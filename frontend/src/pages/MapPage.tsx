@@ -105,7 +105,7 @@ export default function MapPage() {
       el.title = site.name
 
       const marker = new maplibregl.Marker({ element: el })
-        .setLngLat([site.longitude, site.latitude])
+        .setLngLat([Number(site.longitude), Number(site.latitude)])
         .addTo(map)
 
       el.addEventListener('click', () => {
@@ -157,7 +157,7 @@ export default function MapPage() {
           </div>
 
           <p className="map-panel-coords bp6-text-muted">
-            {selected.site.latitude.toFixed(4)}, {selected.site.longitude.toFixed(4)}
+            {Number(selected.site.latitude).toFixed(4)}, {Number(selected.site.longitude).toFixed(4)}
           </p>
 
           {selected.tasks.length > 0 && (

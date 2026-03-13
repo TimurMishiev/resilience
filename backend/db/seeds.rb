@@ -12,7 +12,8 @@ sites_data = [
   { name: "Site Alpha",   latitude:  37.4419,  longitude: -122.1430, status: "active"   }, # Palo Alto, CA
   { name: "Site Bravo",   latitude:  38.8977,  longitude:  -77.0365, status: "active"   }, # Washington, DC
   { name: "Site Charlie", latitude:  51.5074,  longitude:   -0.1278, status: "active"   }, # London, UK
-  { name: "Site Delta",   latitude:  33.4484,  longitude: -112.0740, status: "inactive" }  # Phoenix, AZ (offline)
+  { name: "Site Delta",   latitude:  33.4484,  longitude: -112.0740, status: "inactive" }, # Phoenix, AZ (offline)
+  { name: "Site Echo",    latitude:  40.7128,  longitude:  -74.0060, status: "active"   }  # New York, NY
 ]
 
 sites = sites_data.map do |attrs|

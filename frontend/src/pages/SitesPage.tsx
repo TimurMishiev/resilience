@@ -75,8 +75,8 @@ export default function SitesPage() {
                   {site.status}
                 </Tag>
               </td>
-              <td className="mono">{site.latitude.toFixed(4)}</td>
-              <td className="mono">{site.longitude.toFixed(4)}</td>
+              <td className="mono">{Number(site.latitude).toFixed(4)}</td>
+              <td className="mono">{Number(site.longitude).toFixed(4)}</td>
             </tr>
           ))}
         </tbody>

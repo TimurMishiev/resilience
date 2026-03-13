@@ -1,4 +1,5 @@
 import { api } from './client'
+import type { QueryParams } from './client'
 import type { AuditEvent } from './types'
 
 interface AuditEventsParams {
@@ -8,5 +9,5 @@ interface AuditEventsParams {
 }
 
 export function getAuditEvents(params?: AuditEventsParams): Promise<AuditEvent[]> {
-  return api.get('/api/audit_events', params)
+  return api.get('/api/audit_events', params as QueryParams)
 }

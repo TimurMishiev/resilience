@@ -1,4 +1,5 @@
 import { api } from './client'
+import type { QueryParams } from './client'
 import type {
   Task,
   PaginatedResponse,
@@ -17,11 +18,11 @@ type TasksParams = PaginationParams &
   }
 
 export function getTasks(params?: TasksParams): Promise<PaginatedResponse<Task>> {
-  return api.get('/api/tasks', params)
+  return api.get('/api/tasks', params as QueryParams)
 }
 
 export function getTask(id: string, params?: AsOfParam): Promise<Task> {
-  return api.get(`/api/tasks/${id}`, params)
+  return api.get(`/api/tasks/${id}`, params as QueryParams)
 }
 
 export function createTask(body: CreateTaskBody): Promise<Task> {

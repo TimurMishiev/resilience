@@ -10,8 +10,8 @@ export type WorkflowStatus = 'new' | 'triaged' | 'in_progress' | 'blocked' | 're
 export interface Site {
   id: string
   name: string
-  latitude: number
-  longitude: number
+  latitude: number | string  // Rails serializes decimal columns as strings
+  longitude: number | string
   status: SiteStatus
   created_at: string
   updated_at: string

@@ -13,7 +13,7 @@ export class ApiError extends Error {
   }
 }
 
-type QueryParams = Record<string, string | number | boolean | undefined | null>
+export type QueryParams = Record<string, string | number | boolean | undefined | null>
 
 function buildUrl(path: string, params?: QueryParams): string {
   const url = new URL(path, window.location.origin)
