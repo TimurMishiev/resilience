@@ -59,6 +59,12 @@ export default function AppShell() {
               active={pathname.startsWith('/assets')}
               onClick={() => navigate('/assets')}
             />
+            <MenuItem
+              icon="globe"
+              text="Map"
+              active={pathname.startsWith('/map')}
+              onClick={() => navigate('/map')}
+            />
           </Menu>
         </nav>
 
