@@ -92,3 +92,82 @@ body {
   font-family: monospace;
   font-size: 12px;
 }
+
+/* ── Clickable table rows ──────────────────────────────────── */
+
+.clickable-row {
+  cursor: pointer;
+}
+
+/* ── Task detail drawer ────────────────────────────────────── */
+
+.drawer-body {
+  padding: 16px 20px;
+  overflow-y: auto;
+}
+
+.drawer-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.drawer-description {
+  margin: 0 0 12px;
+  color: #abb3bf;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.drawer-blocked {
+  margin-bottom: 12px;
+}
+
+.drawer-section-title {
+  margin: 12px 0 8px;
+}
+
+/* ── Audit timeline ────────────────────────────────────────── */
+
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.timeline-item {
+  padding: 8px 0;
+  border-bottom: 1px solid #2f363f;
+}
+
+.timeline-item:last-child {
+  border-bottom: none;
+}
+
+.timeline-meta {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 11px;
+}
+
+.timeline-body {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.timeline-label {
+  text-transform: capitalize;
+}
+
+.timeline-changed {
+  font-size: 11px;
+  font-family: monospace;
+}
+
+.timeline-empty {
+  margin: 0;
+  font-size: 13px;
+}

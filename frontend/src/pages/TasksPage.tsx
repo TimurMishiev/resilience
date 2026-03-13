@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import {
   Callout,
+  Divider,
+  Drawer,
+  DrawerSize,
   HTMLSelect,
   HTMLTable,
   NonIdealState,
@@ -9,7 +12,8 @@ import {
 } from '@blueprintjs/core'
 import { getTasks } from '../api/tasks'
 import { getSites } from '../api/sites'
-import type { Task, Site, WorkflowStatus } from '../api/types'
+import AuditTimeline from '../components/AuditTimeline'
+import type { Task, WorkflowStatus } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
 
 const WORKFLOW_STATUS_OPTIONS: { label: string; value: WorkflowStatus | '' }[] = [
@@ -23,11 +27,11 @@ const WORKFLOW_STATUS_OPTIONS: { label: string; value: WorkflowStatus | '' }[] =
 
 function workflowIntent(status: WorkflowStatus): Intent {
   switch (status) {
-    case 'blocked':   return 'danger'
-    case 'resolved':  return 'success'
+    case 'blocked':     return 'danger'
+    case 'resolved':    return 'success'
     case 'in_progress': return 'primary'
-    case 'triaged':   return 'warning'
-    default:          return 'none'
+    case 'triaged':     return 'warning'
+    default:            return 'none'
   }
 }
 
@@ -46,6 +50,7 @@ export default function TasksPage() {
   const [statusFilter, setStatusFilter] = useState<WorkflowStatus | ''>('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -89,53 +94,96 @@ export default function TasksPage() {
   }
 
   return (
-    <div className="page-content">
-      <div className="page-header">
-        <h2 className="bp6-heading">Tasks</h2>
-        <span className="bp6-text-muted">{total} total</span>
-        <HTMLSelect
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.currentTarget.value as WorkflowStatus | '')}
-          options={WORKFLOW_STATUS_OPTIONS.map((o) => ({ label: o.label, value: o.value }))}
-        />
+    <>
+      <div className="page-content">
+        <div className="page-header">
+          <h2 className="bp6-heading">Tasks</h2>
+          <span className="bp6-text-muted">{total} total</span>
+          <HTMLSelect
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.currentTarget.value as WorkflowStatus | '')}
+            options={WORKFLOW_STATUS_OPTIONS.map((o) => ({ label: o.label, value: o.value }))}
+          />
+        </div>
+
+        {tasks.length === 0 ? (
+          <NonIdealState
+            icon="th-list"
+            title="No tasks"
+            description={statusFilter ? `No tasks with status "${statusFilter}".` : 'No tasks found.'}
+          />
+        ) : (
+          <HTMLTable className="data-table" striped interactive>
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Site</th>
+                <th>Priority</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tasks.map((task) => (
+                <tr
+                  key={task.id}
+                  onClick={() => setSelectedTask(task)}
+                  className="clickable-row"
+                >
+                  <td>{task.title}</td>
+                  <td className="bp6-text-muted">{siteMap[task.site_id] ?? task.site_id}</td>
+                  <td>
+                    <Tag minimal intent={priorityIntent(task.priority)}>
+                      {task.priority}
+                    </Tag>
+                  </td>
+                  <td>
+                    <Tag minimal intent={workflowIntent(task.workflow_status)}>
+                      {task.workflow_status.replace('_', ' ')}
+                    </Tag>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </HTMLTable>
+        )}
       </div>
 
-      {tasks.length === 0 ? (
-        <NonIdealState
-          icon="th-list"
-          title="No tasks"
-          description={statusFilter ? `No tasks with status "${statusFilter}".` : 'No tasks found.'}
-        />
-      ) : (
-        <HTMLTable className="data-table" striped interactive>
-          <thead>
-            <tr>
-              <th>Title</th>
-              <th>Site</th>
-              <th>Priority</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {tasks.map((task) => (
-              <tr key={task.id}>
-                <td>{task.title}</td>
-                <td className="bp6-text-muted">{siteMap[task.site_id] ?? task.site_id}</td>
-                <td>
-                  <Tag minimal intent={priorityIntent(task.priority)}>
-                    {task.priority}
-                  </Tag>
-                </td>
-                <td>
-                  <Tag minimal intent={workflowIntent(task.workflow_status)}>
-                    {task.workflow_status.replace('_', ' ')}
-                  </Tag>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </HTMLTable>
-      )}
-    </div>
+      <Drawer
+        isOpen={selectedTask !== null}
+        onClose={() => setSelectedTask(null)}
+        size={DrawerSize.SMALL}
+        title={selectedTask?.title ?? ''}
+        className="bp6-dark"
+      >
+        {selectedTask && (
+          <div className="drawer-body">
+            <div className="drawer-tags">
+              <Tag minimal intent={workflowIntent(selectedTask.workflow_status)}>
+                {selectedTask.workflow_status.replace('_', ' ')}
+              </Tag>
+              <Tag minimal intent={priorityIntent(selectedTask.priority)}>
+                {selectedTask.priority}
+              </Tag>
+              <Tag minimal>{siteMap[selectedTask.site_id] ?? selectedTask.site_id}</Tag>
+            </div>
+
+            {selectedTask.description && (
+              <p className="drawer-description">{selectedTask.description}</p>
+            )}
+
+            {selectedTask.blocked_reason && (
+              <Callout intent="danger" compact className="drawer-blocked">
+                {selectedTask.blocked_reason}
+              </Callout>
+            )}
+
+            <Divider />
+
+            <h4 className="bp6-heading drawer-section-title">Audit History</h4>
+            <AuditTimeline entityType="Task" entityId={selectedTask.id} />
+          </div>
+        )}
+      </Drawer>
+    </>
   )
 }
