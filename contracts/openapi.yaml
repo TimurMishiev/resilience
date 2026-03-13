@@ -1,0 +1,763 @@
+openapi: "3.1.0"
+info:
+  title: Resilience — Mission Operations Console API
+  version: "1.0.0"
+  description: >
+    API contract for the Resilience Mission Operations Console.
+    Provides operational visibility, controlled task workflow execution,
+    immutable audit history, deterministic time-based replay,
+    and grounded AI-assisted reporting.
+
+servers:
+  - url: http://localhost:3000/api
+    description: Local development
+
+tags:
+  - name: Sites
+    description: Operational sites / geographic nodes
+  - name: Tasks
+    description: Units of work occurring at sites
+  - name: Assets
+    description: Vehicles, equipment, or personnel resources
+  - name: Readiness
+    description: Derived readiness scores for sites
+  - name: Audit
+    description: Immutable audit event timeline
+  - name: AI
+    description: Grounded AI-assisted summaries and filter translation
+
+# ---------------------------------------------------------------------------
+# PATHS
+# ---------------------------------------------------------------------------
+
+paths:
+
+  # ---- Sites ---------------------------------------------------------------
+
+  /sites:
+    get:
+      tags: [Sites]
+      summary: List all sites
+      operationId: listSites
+      parameters:
+        - $ref: "#/components/parameters/AsOf"
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, inactive]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Site"
+
+  /sites/{id}:
+    get:
+      tags: [Sites]
+      summary: Get a single site
+      operationId: getSite
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+        - $ref: "#/components/parameters/AsOf"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Site"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---- Tasks ---------------------------------------------------------------
+
+  /tasks:
+    get:
+      tags: [Tasks]
+      summary: List tasks
+      operationId: listTasks
+      parameters:
+        - $ref: "#/components/parameters/AsOf"
+        - name: site_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: workflow_status
+          in: query
+          schema:
+            type: string
+            enum: [new, triaged, in_progress, blocked, resolved]
+        - name: priority
+          in: query
+          schema:
+            type: string
+            enum: [low, normal, high, critical]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Task"
+
+    post:
+      tags: [Tasks]
+      summary: Create a task
+      operationId: createTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Task"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /tasks/{id}:
+    get:
+      tags: [Tasks]
+      summary: Get a single task
+      operationId: getTask
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+        - $ref: "#/components/parameters/AsOf"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Task"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    patch:
+      tags: [Tasks]
+      summary: Update task attributes (not workflow transitions)
+      operationId: updateTask
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskUpdateRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Task"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /tasks/{id}/transition:
+    post:
+      tags: [Tasks]
+      summary: Transition a task to a new workflow state
+      operationId: transitionTask
+      description: >
+        Executes a controlled workflow transition. Transition rules are
+        authoritative on the backend. The frontend must not hardcode
+        allowed transitions — use GET /tasks/{id}/allowed_transitions instead.
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskTransitionRequest"
+      responses:
+        "200":
+          description: Transition applied
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Task"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /tasks/{id}/allowed_transitions:
+    get:
+      tags: [Tasks]
+      summary: List allowed transitions for a task
+      operationId: getAllowedTransitions
+      description: >
+        Returns the list of valid next workflow states for this task.
+        Frontend must use this to render transition action buttons.
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: string
+                    example: ["blocked", "resolved"]
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---- Assets --------------------------------------------------------------
+
+  /assets:
+    get:
+      tags: [Assets]
+      summary: List assets
+      operationId: listAssets
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [available, in_use, maintenance, offline]
+        - name: home_site_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Asset"
+
+  /assets/{id}:
+    get:
+      tags: [Assets]
+      summary: Get a single asset
+      operationId: getAsset
+      parameters:
+        - $ref: "#/components/parameters/ResourceId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Asset"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---- Readiness -----------------------------------------------------------
+
+  /readiness:
+    get:
+      tags: [Readiness]
+      summary: Get readiness scores for all sites
+      operationId: listReadiness
+      description: >
+        Returns derived readiness scores for every site.
+        Score is null when a site has zero tasks.
+        Formula: (resolved/total * 0.6) + (non_blocked/total * 0.4)
+      parameters:
+        - $ref: "#/components/parameters/AsOf"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SiteReadiness"
+
+  # ---- Audit ---------------------------------------------------------------
+
+  /audit_events:
+    get:
+      tags: [Audit]
+      summary: List audit events
+      operationId: listAuditEvents
+      parameters:
+        - name: entity_type
+          in: query
+          schema:
+            type: string
+            enum: [Task, Site, Asset]
+        - name: entity_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AuditEvent"
+
+  # ---- AI ------------------------------------------------------------------
+
+  /ai/filter:
+    get:
+      tags: [AI]
+      summary: Translate natural language query to structured task filters
+      operationId: aiFilterTranslate
+      description: >
+        Converts a natural language operator query into structured filter
+        parameters that can be passed to GET /tasks.
+        AI output is grounded and does not hallucinate filter values.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "Show blocked tasks at Site Alpha created today"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiFilterResult"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /ai/summary:
+    post:
+      tags: [AI]
+      summary: Generate an operational summary grounded in audit data
+      operationId: aiSummary
+      description: >
+        Generates an AI-written operational summary (site, timespan, or briefing).
+        All citations reference validated audit event IDs.
+        No hallucinated references.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiSummaryRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiSummaryResult"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+# ---------------------------------------------------------------------------
+# COMPONENTS
+# ---------------------------------------------------------------------------
+
+components:
+
+  parameters:
+
+    ResourceId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    AsOf:
+      name: as_of
+      in: query
+      description: >
+        ISO 8601 timestamp. When provided, all data is projected to the system
+        state as it existed at this moment (server-side replay).
+      schema:
+        type: string
+        format: date-time
+      example: "2026-03-01T08:00:00Z"
+
+  responses:
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ServiceError"
+
+    UnprocessableEntity:
+      description: Validation error or business rule violation
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ServiceError"
+
+  schemas:
+
+    Site:
+      type: object
+      required: [id, name, latitude, longitude, status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        status:
+          type: string
+          enum: [active, inactive]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Asset:
+      type: object
+      required: [id, name, asset_type, status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        asset_type:
+          type: string
+          enum: [vehicle, equipment, personnel]
+        status:
+          type: string
+          enum: [available, in_use, maintenance, offline]
+        home_site_id:
+          type: string
+          format: uuid
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Task:
+      type: object
+      required: [id, site_id, title, priority, workflow_status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        site_id:
+          type: string
+          format: uuid
+        asset_id:
+          type: string
+          format: uuid
+          nullable: true
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        priority:
+          type: string
+          enum: [low, normal, high, critical]
+        workflow_status:
+          type: string
+          enum: [new, triaged, in_progress, blocked, resolved]
+        blocked_reason:
+          type: string
+          nullable: true
+          description: Present only when workflow_status is 'blocked'
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Set when entering resolved state. Immutable thereafter.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    TaskCreateRequest:
+      type: object
+      required: [site_id, title]
+      properties:
+        site_id:
+          type: string
+          format: uuid
+        asset_id:
+          type: string
+          format: uuid
+          nullable: true
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        priority:
+          type: string
+          enum: [low, normal, high, critical]
+          default: normal
+
+    TaskUpdateRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        priority:
+          type: string
+          enum: [low, normal, high, critical]
+        asset_id:
+          type: string
+          format: uuid
+          nullable: true
+
+    TaskTransitionRequest:
+      type: object
+      required: [to_status]
+      properties:
+        to_status:
+          type: string
+          enum: [new, triaged, in_progress, blocked, resolved]
+        blocked_reason:
+          type: string
+          nullable: true
+          description: Required when to_status is 'blocked'
+
+    AuditEvent:
+      type: object
+      required:
+        - id
+        - schema_version
+        - actor
+        - entity_type
+        - entity_id
+        - event_type
+        - after_snapshot
+        - correlation_id
+        - occurred_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        schema_version:
+          type: integer
+          default: 1
+        actor:
+          type: string
+        entity_type:
+          type: string
+          enum: [Task, Site, Asset]
+        entity_id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+        action:
+          type: string
+          nullable: true
+        before_snapshot:
+          type: object
+          nullable: true
+          additionalProperties: true
+        after_snapshot:
+          type: object
+          additionalProperties: true
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties: true
+        correlation_id:
+          type: string
+          format: uuid
+        occurred_at:
+          type: string
+          format: date-time
+
+    SiteReadiness:
+      type: object
+      required: [site_id, score, counts]
+      properties:
+        site_id:
+          type: string
+          format: uuid
+        score:
+          type: number
+          format: double
+          nullable: true
+          description: >
+            Readiness score 0.0–1.0. Null when site has no tasks.
+        counts:
+          type: object
+          required: [total, resolved, blocked, non_blocked]
+          properties:
+            total:
+              type: integer
+            resolved:
+              type: integer
+            blocked:
+              type: integer
+            non_blocked:
+              type: integer
+
+    AiFilterResult:
+      type: object
+      required: [filters, original_query]
+      properties:
+        original_query:
+          type: string
+        filters:
+          type: object
+          properties:
+            site_id:
+              type: string
+              format: uuid
+              nullable: true
+            workflow_status:
+              type: string
+              nullable: true
+            priority:
+              type: string
+              nullable: true
+            created_after:
+              type: string
+              format: date-time
+              nullable: true
+            created_before:
+              type: string
+              format: date-time
+              nullable: true
+
+    AiSummaryRequest:
+      type: object
+      required: [summary_type]
+      properties:
+        summary_type:
+          type: string
+          enum: [site_activity, readiness_change, leadership_briefing]
+        site_id:
+          type: string
+          format: uuid
+          nullable: true
+        from:
+          type: string
+          format: date-time
+          nullable: true
+        to:
+          type: string
+          format: date-time
+          nullable: true
+
+    AiSummaryResult:
+      type: object
+      required: [summary, citations]
+      properties:
+        summary:
+          type: string
+          description: AI-generated operational summary text
+        citations:
+          type: array
+          description: Validated audit event IDs referenced in the summary
+          items:
+            type: string
+            format: uuid
+
+    ServiceError:
+      type: object
+      required: [errors]
+      properties:
+        errors:
+          type: array
+          items:
+            type: string

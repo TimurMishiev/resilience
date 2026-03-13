@@ -1,0 +1,30 @@
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+  host: localhost
+  port: 5432
+
+development:
+  <<: *default
+  database: resilience_development
+
+test:
+  <<: *default
+  database: resilience_test
+
+production:
+  primary: &primary_production
+    <<: *default
+    database: resilience_production
+    username: <%= ENV["DATABASE_USERNAME"] %>
+    password: <%= ENV["DATABASE_PASSWORD"] %>
+    host: <%= ENV.fetch("DATABASE_HOST") { "localhost" } %>
+  cache:
+    <<: *primary_production
+    database: resilience_production_cache
+    migrations_paths: db/cache_migrate
+  queue:
+    <<: *primary_production
+    database: resilience_production_queue
+    migrations_paths: db/queue_migrate

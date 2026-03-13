@@ -1,0 +1,44 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Rails
+backend/log/
+backend/tmp/
+backend/storage/
+backend/.byebug_history
+backend/db/structure.sql.bak
+backend/node_modules/
+backend/public/packs/
+backend/public/assets/
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# Credentials — commit the encrypted file, never the key
+# backend/config/credentials.yml.enc  <-- safe to commit (encrypted)
+backend/config/master.key
+backend/config/*.key
+
+# Frontend
+frontend/node_modules/
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+frontend/dist/
+frontend/build/
+frontend/.vite/
+
+# Editor
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# Gems installed locally
+backend/vendor/bundle/
+
+# RSpec
+backend/coverage/
+backend/.rspec_status
