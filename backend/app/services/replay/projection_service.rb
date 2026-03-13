@@ -1,0 +1,33 @@
+module Replay
+  # Reconstructs entity attribute snapshots at a given point in time by replaying audit events.
+  #
+  # For each entity_id, it finds all audit events up to (and including) as_of and returns
+  # the after_snapshot from the latest event. Entities with no events before as_of are
+  # excluded — they did not exist yet at that point in time.
+  #
+  # This is a pure read operation with no side effects.
+  class ProjectionService < ApplicationService
+    def initialize(entity_type:, entity_ids:, as_of:)
+      @entity_type = entity_type
+      @entity_ids  = Array(entity_ids)
+      @as_of       = as_of
+    end
+
+    def call
+      return ServiceResult.success(snapshots: []) if @entity_ids.empty?
+
+      events = AuditEvent
+        .where(entity_type: @entity_type, entity_id: @entity_ids)
+        .where("occurred_at <= ?", @as_of)
+        .order(:occurred_at)
+
+      # For each entity, keep the after_snapshot from its latest event up to as_of.
+      latest = {}
+      events.each do |event|
+        latest[event.entity_id] = event.after_snapshot
+      end
+
+      ServiceResult.success(snapshots: latest.values)
+    end
+  end
+end
