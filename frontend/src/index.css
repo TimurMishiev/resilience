@@ -7,3 +7,53 @@ html, body, #root {
   margin: 0;
   padding: 0;
 }
+
+/* Blueprint dark theme: set base background on body */
+body {
+  background-color: #1c2127;
+  color: #d3d8de;
+}
+
+/* ── Shell layout ─────────────────────────────────────────── */
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.shell-navbar {
+  flex-shrink: 0;
+}
+
+.shell-brand {
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  font-size: 13px;
+}
+
+.shell-tagline {
+  font-size: 12px;
+}
+
+.shell-body {
+  display: flex;
+  flex: 1;
+  min-height: 0; /* required for nested overflow to work */
+  background-color: #1c2127;
+}
+
+.shell-sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  padding: 8px 0;
+  background-color: #1c2127;
+  border-right: 1px solid #383e47;
+}
+
+.shell-main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}

@@ -10,7 +10,7 @@ import App from './App.tsx'
 FocusStyleManager.onlyShowFocusOnTabs()
 
 // Apply Blueprint dark theme globally.
-document.body.classList.add('bp5-dark')
+document.body.classList.add('bp6-dark')
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
