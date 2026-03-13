@@ -1,19 +1,23 @@
 import { useEffect, useState } from 'react'
 import { Callout, HTMLTable, NonIdealState, Spinner, Tag } from '@blueprintjs/core'
 import { getSites } from '../api/sites'
+import { useReplay } from '../context/ReplayContext'
 import type { Site, PaginatedResponse } from '../api/types'
 
 export default function SitesPage() {
+  const { asOf } = useReplay()
   const [result, setResult] = useState<PaginatedResponse<Site> | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    getSites({ per_page: 100 })
+    setLoading(true)
+    setError(null)
+    getSites({ per_page: 100, ...(asOf ? { as_of: asOf } : {}) })
       .then(setResult)
       .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Unknown error'))
       .finally(() => setLoading(false))
-  }, [])
+  }, [asOf])
 
   if (loading) {
     return (

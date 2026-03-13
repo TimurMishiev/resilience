@@ -171,3 +171,43 @@ body {
   margin: 0;
   font-size: 13px;
 }
+
+/* ── Replay selector (navbar) ──────────────────────────────── */
+
+.replay-selector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.replay-status-tag {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.replay-input {
+  background: #2f363f;
+  border: 1px solid #4a5568;
+  border-radius: 3px;
+  color: #d3d8de;
+  font-size: 12px;
+  padding: 3px 6px;
+  height: 24px;
+  outline: none;
+  color-scheme: dark;
+}
+
+.replay-input:focus {
+  border-color: #7986cb;
+}
+
+/* ── Replay banner ─────────────────────────────────────────── */
+
+.replay-banner {
+  flex-shrink: 0;
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  font-size: 12px;
+}

@@ -13,6 +13,7 @@ import {
 import { getTasks } from '../api/tasks'
 import { getSites } from '../api/sites'
 import AuditTimeline from '../components/AuditTimeline'
+import { useReplay } from '../context/ReplayContext'
 import type { Task, WorkflowStatus } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
 
@@ -44,6 +45,7 @@ function priorityIntent(priority: Task['priority']): Intent {
 }
 
 export default function TasksPage() {
+  const { asOf } = useReplay()
   const [tasks, setTasks] = useState<Task[]>([])
   const [siteMap, setSiteMap] = useState<Record<string, string>>({})
   const [total, setTotal] = useState(0)
@@ -55,13 +57,15 @@ export default function TasksPage() {
   useEffect(() => {
     setLoading(true)
     setError(null)
+    setSelectedTask(null)
 
     const params = {
       per_page: 100,
       ...(statusFilter ? { workflow_status: statusFilter } : {}),
+      ...(asOf ? { as_of: asOf } : {}),
     }
 
-    Promise.all([getTasks(params), getSites({ per_page: 200 })])
+    Promise.all([getTasks(params), getSites({ per_page: 200, ...(asOf ? { as_of: asOf } : {}) })])
       .then(([taskRes, siteRes]) => {
         setTasks(taskRes.data)
         setTotal(taskRes.meta.total)
@@ -73,7 +77,7 @@ export default function TasksPage() {
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Unknown error'))
       .finally(() => setLoading(false))
-  }, [statusFilter])
+  }, [statusFilter, asOf])
 
   if (loading) {
     return (

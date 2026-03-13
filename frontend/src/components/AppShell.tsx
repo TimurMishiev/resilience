@@ -1,5 +1,6 @@
 import {
   Alignment,
+  Callout,
   Menu,
   MenuItem,
   Navbar,
@@ -8,10 +9,13 @@ import {
   NavbarHeading,
 } from '@blueprintjs/core'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useReplay } from '../context/ReplayContext'
+import ReplaySelector from './ReplaySelector'
 
 export default function AppShell() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
+  const { isReplaying, asOf } = useReplay()
 
   return (
     <div className="shell">
@@ -19,11 +23,20 @@ export default function AppShell() {
         <NavbarGroup align={Alignment.LEFT}>
           <NavbarHeading className="shell-brand">RESILIENCE</NavbarHeading>
           <NavbarDivider />
-          <span className="bp5-text-muted shell-tagline">
+          <span className="bp6-text-muted shell-tagline">
             Mission Operations Console
           </span>
         </NavbarGroup>
+        <NavbarGroup align={Alignment.RIGHT}>
+          <ReplaySelector />
+        </NavbarGroup>
       </Navbar>
+
+      {isReplaying && asOf && (
+        <Callout intent="warning" compact className="replay-banner">
+          Viewing historical state as of {new Date(asOf).toLocaleString()} — data is read-only
+        </Callout>
+      )}
 
       <div className="shell-body">
         <nav className="shell-sidebar">
