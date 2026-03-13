@@ -2,10 +2,11 @@ module Api
   class TasksController < BaseController
     def index
       if as_of
-        render json: replayed_tasks
+        # Replay returns a bounded snapshot set — pagination is not applied.
+        render json: { data: replayed_tasks, meta: nil }
       else
-        tasks = scoped_tasks.order(created_at: :desc)
-        render json: tasks.map { |t| serialize_task(t) }
+        records, meta = paginate(scoped_tasks.order(created_at: :desc))
+        render json: { data: records.map { |t| serialize_task(t) }, meta: meta }
       end
     end
 

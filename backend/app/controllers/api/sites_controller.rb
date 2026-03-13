@@ -3,7 +3,8 @@ module Api
     def index
       sites = Site.all.order(:name)
       sites = sites.where(status: params[:status]) if params[:status].present?
-      render json: sites.map { |s| serialize_site(s) }
+      records, meta = paginate(sites)
+      render json: { data: records.map { |s| serialize_site(s) }, meta: meta }
     end
 
     def show

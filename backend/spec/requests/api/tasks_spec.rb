@@ -8,39 +8,46 @@ RSpec.describe "Api::Tasks", type: :request do
     let!(:task_resolved)   { create(:task, :resolved, site: site) }
     let!(:task_other_site) { create(:task) }
 
-    it "returns 200 with all tasks" do
+    it "returns 200 with all tasks in data array" do
       get "/api/tasks"
       expect(response).to have_http_status(:ok)
-      ids = JSON.parse(response.body).map { |t| t["id"] }
+      ids = JSON.parse(response.body)["data"].map { |t| t["id"] }
       expect(ids).to include(task_new.id, task_resolved.id, task_other_site.id)
     end
 
     it "filters by site_id" do
       get "/api/tasks", params: { site_id: site.id }
-      ids = JSON.parse(response.body).map { |t| t["id"] }
+      ids = JSON.parse(response.body)["data"].map { |t| t["id"] }
       expect(ids).to contain_exactly(task_new.id, task_resolved.id)
     end
 
     it "filters by workflow_status" do
       get "/api/tasks", params: { workflow_status: "resolved" }
-      ids = JSON.parse(response.body).map { |t| t["id"] }
+      ids = JSON.parse(response.body)["data"].map { |t| t["id"] }
       expect(ids).to include(task_resolved.id)
       expect(ids).not_to include(task_new.id)
     end
 
-    it "returns expected fields" do
+    it "returns expected fields on each record" do
       get "/api/tasks"
-      task = JSON.parse(response.body).first
+      task = JSON.parse(response.body)["data"].first
       expect(task.keys).to include(
         "id", "site_id", "title", "priority", "workflow_status", "created_at"
       )
+    end
+
+    it "returns pagination meta" do
+      get "/api/tasks"
+      meta = JSON.parse(response.body)["meta"]
+      expect(meta["total"]).to eq(3)
+      expect(meta["page"]).to eq(1)
     end
   end
 
   describe "GET /api/tasks/:id" do
     let!(:task) { create(:task, site: site) }
 
-    it "returns 200 with the task" do
+    it "returns 200 with the task (no pagination wrapper)" do
       get "/api/tasks/#{task.id}"
       expect(response).to have_http_status(:ok)
       expect(JSON.parse(response.body)["id"]).to eq(task.id)
@@ -145,7 +152,6 @@ RSpec.describe "Api::Tasks", type: :request do
 
     context "with an invalid transition" do
       it "returns 422 and does not change the task" do
-        # "new" -> "resolved" is not allowed
         post "/api/tasks/#{task.id}/transition",
              params: { transition: { to_status: "resolved" } }, as: :json
 
@@ -208,7 +214,6 @@ RSpec.describe "Api::Tasks", type: :request do
     let(:as_of_past) { 1.hour.ago.iso8601 }
 
     before do
-      # Simulate a creation audit event that occurred 2 hours ago
       AuditEvent.create!(
         schema_version: 1,
         actor: "test",
@@ -226,10 +231,15 @@ RSpec.describe "Api::Tasks", type: :request do
     it "returns the task state at the given point in time" do
       get "/api/tasks", params: { as_of: as_of_past, site_id: site.id }
       expect(response).to have_http_status(:ok)
-      snapshots = JSON.parse(response.body)
+      snapshots = JSON.parse(response.body)["data"]
       expect(snapshots).not_to be_empty
       expect(snapshots.first["id"]).to eq(task.id)
       expect(snapshots.first["workflow_status"]).to eq("new")
+    end
+
+    it "returns nil meta for replay responses" do
+      get "/api/tasks", params: { as_of: as_of_past, site_id: site.id }
+      expect(JSON.parse(response.body)["meta"]).to be_nil
     end
 
     it "excludes tasks created after as_of" do
@@ -244,11 +254,11 @@ RSpec.describe "Api::Tasks", type: :request do
         before_snapshot: nil,
         after_snapshot: future_task.attributes.except("updated_at"),
         correlation_id: SecureRandom.uuid,
-        occurred_at: 30.minutes.ago  # After as_of_past (1 hour ago)
+        occurred_at: 30.minutes.ago
       )
 
       get "/api/tasks", params: { as_of: as_of_past, site_id: site.id }
-      ids = JSON.parse(response.body).map { |t| t["id"] }
+      ids = JSON.parse(response.body)["data"].map { |t| t["id"] }
       expect(ids).not_to include(future_task.id)
     end
   end
