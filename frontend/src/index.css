@@ -57,3 +57,38 @@ body {
   overflow-y: auto;
   padding: 24px;
 }
+
+/* ── Page layouts ──────────────────────────────────────────── */
+
+.page-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.page-content {
+  max-width: 960px;
+}
+
+.page-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.page-header h2 {
+  margin: 0;
+}
+
+/* ── Data table ────────────────────────────────────────────── */
+
+.data-table {
+  width: 100%;
+}
+
+.mono {
+  font-family: monospace;
+  font-size: 12px;
+}
