@@ -350,3 +350,82 @@ body {
   border-right: none;
   font-size: 12px;
 }
+
+/* ── AI natural-language filter ───────────────────────────── */
+
+.nl-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.nl-filter-row .bp5-input-group,
+.nl-filter-row .bp6-input-group {
+  flex: 1;
+  max-width: 480px;
+}
+
+.nl-filter-error {
+  font-size: 12px;
+  color: #cd4246;
+}
+
+/* ── Briefing panel ───────────────────────────────────────── */
+
+.briefing-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 720px;
+}
+
+.briefing-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.briefing-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.briefing-result {
+  background: #252d38;
+  border: 1px solid #2f363f;
+}
+
+.briefing-summary {
+  margin: 0 0 12px 0;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.briefing-citations {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 12px;
+  border-top: 1px solid #2f363f;
+}
+
+.briefing-citations-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.briefing-citation-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.briefing-citation-tag {
+  font-family: monospace;
+  font-size: 11px;
+}

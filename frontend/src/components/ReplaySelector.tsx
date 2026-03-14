@@ -1,17 +1,26 @@
+import { useRef } from 'react'
 import { Button, Tag } from '@blueprintjs/core'
 import { useReplay } from '../context/ReplayContext'
 
 export default function ReplaySelector() {
   const { asOf, setAsOf, isReplaying } = useReplay()
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const val = e.currentTarget.value
+  function commit(val: string) {
     if (!val) {
       setAsOf(null)
       return
     }
-    // datetime-local gives "YYYY-MM-DDTHH:mm" — convert to full ISO with seconds
-    setAsOf(new Date(val).toISOString())
+    // datetime-local gives "YYYY-MM-DDTHH:mm" — convert to full ISO
+    const parsed = new Date(val)
+    if (!isNaN(parsed.getTime())) {
+      setAsOf(parsed.toISOString())
+    }
+  }
+
+  function handleClear() {
+    setAsOf(null)
+    if (inputRef.current) inputRef.current.value = ''
   }
 
   // Convert ISO string back to datetime-local format for the input
@@ -30,11 +39,14 @@ export default function ReplaySelector() {
       </Tag>
 
       <input
+        ref={inputRef}
         type="datetime-local"
         className="replay-input"
-        value={inputValue}
+        defaultValue={inputValue}
+        key={inputValue}          /* re-mount when cleared so the value resets */
         max={new Date().toISOString().slice(0, 16)}
-        onChange={handleChange}
+        onChange={(e) => commit(e.currentTarget.value)}
+        onBlur={(e) => commit(e.currentTarget.value)}
         title="Set replay timestamp — leave empty for live data"
       />
 
@@ -44,7 +56,7 @@ export default function ReplaySelector() {
           small
           icon="cross"
           title="Return to live"
-          onClick={() => setAsOf(null)}
+          onClick={handleClear}
         />
       )}
     </div>

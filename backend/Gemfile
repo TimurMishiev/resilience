@@ -31,6 +31,11 @@ gem "thruster", require: false
 # Use Rack CORS for handling Cross-Origin Resource Sharing (CORS), making cross-origin Ajax possible
 gem "rack-cors"
 
+# Anthropic API client for AI-assisted filter translation and operational summaries
+gem "anthropic"
+
+gem "dotenv-rails", groups: [:development, :test]
+
 group :development, :test do
   gem "rspec-rails", "~> 7.0"
   gem "factory_bot_rails"

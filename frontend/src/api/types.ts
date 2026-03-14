@@ -114,3 +114,32 @@ export interface PaginationParams {
 export interface AsOfParam {
   as_of?: string
 }
+
+// ---------------------------------------------------------------------------
+// AI types
+// ---------------------------------------------------------------------------
+
+export interface AiFilterResult {
+  original_query: string
+  filters: {
+    site_id: string | null
+    workflow_status: WorkflowStatus | null
+    priority: TaskPriority | null
+    created_after: string | null
+    created_before: string | null
+  }
+}
+
+export type AiSummaryType = 'site_activity' | 'readiness_change' | 'leadership_briefing'
+
+export interface AiSummaryRequest {
+  summary_type: AiSummaryType
+  site_id?: string | null
+  from?: string | null
+  to?: string | null
+}
+
+export interface AiSummaryResult {
+  summary: string
+  citations: string[]
+}

@@ -65,6 +65,12 @@ export default function AppShell() {
               active={pathname.startsWith('/map')}
               onClick={() => navigate('/map')}
             />
+            <MenuItem
+              icon="predictive-analysis"
+              text="Briefing"
+              active={pathname.startsWith('/briefing')}
+              onClick={() => navigate('/briefing')}
+            />
           </Menu>
         </nav>
 

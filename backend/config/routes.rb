@@ -15,5 +15,10 @@ Rails.application.routes.draw do
     resources :audit_events, only: [:index]
 
     get "readiness", to: "readiness#index"
+
+    namespace :ai do
+      get  :filter
+      post :summary
+    end
   end
 end

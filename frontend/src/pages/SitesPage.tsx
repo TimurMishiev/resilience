@@ -51,7 +51,7 @@ export default function SitesPage() {
     <div className="page-content">
       <div className="page-header">
         <h2 className="bp6-heading">Sites</h2>
-        <span className="bp6-text-muted">{result.meta.total} total</span>
+        <span className="bp6-text-muted">{result.meta?.total ?? result.data.length} total</span>
       </div>
 
       <HTMLTable className="data-table" striped interactive>

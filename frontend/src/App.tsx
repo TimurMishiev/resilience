@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { ReplayProvider } from './context/ReplayContext'
 import AppShell from './components/AppShell'
 import AssetsPage from './pages/AssetsPage'
+import BriefingPage from './pages/BriefingPage'
 import MapPage from './pages/MapPage'
 import SitesPage from './pages/SitesPage'
 import TasksPage from './pages/TasksPage'
@@ -17,6 +18,7 @@ export default function App() {
             <Route path="tasks" element={<TasksPage />} />
             <Route path="assets" element={<AssetsPage />} />
             <Route path="map" element={<MapPage />} />
+            <Route path="briefing" element={<BriefingPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

@@ -1,20 +1,23 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
+  Button,
   Callout,
   Divider,
   Drawer,
   DrawerSize,
   HTMLSelect,
   HTMLTable,
+  InputGroup,
   NonIdealState,
   Spinner,
   Tag,
 } from '@blueprintjs/core'
 import { getTasks } from '../api/tasks'
 import { getSites } from '../api/sites'
+import { getAiFilter } from '../api/ai'
 import AuditTimeline from '../components/AuditTimeline'
 import { useReplay } from '../context/ReplayContext'
-import type { Task, WorkflowStatus } from '../api/types'
+import type { Task, TaskPriority, WorkflowStatus } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
 
 const WORKFLOW_STATUS_OPTIONS: { label: string; value: WorkflowStatus | '' }[] = [
@@ -46,13 +49,22 @@ function priorityIntent(priority: Task['priority']): Intent {
 
 export default function TasksPage() {
   const { asOf } = useReplay()
-  const [tasks, setTasks] = useState<Task[]>([])
-  const [siteMap, setSiteMap] = useState<Record<string, string>>({})
-  const [total, setTotal] = useState(0)
-  const [statusFilter, setStatusFilter] = useState<WorkflowStatus | ''>('')
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [tasks, setTasks]               = useState<Task[]>([])
+  const [siteMap, setSiteMap]           = useState<Record<string, string>>({})
+  const [total, setTotal]               = useState(0)
+  const [statusFilter, setStatusFilter]     = useState<WorkflowStatus | ''>('')
+  const [siteFilter, setSiteFilter]         = useState<string | null>(null)
+  const [priorityFilter, setPriorityFilter] = useState<TaskPriority | null>(null)
+  const [error, setError]               = useState<string | null>(null)
+  const [loading, setLoading]           = useState(true)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+
+  // AI natural-language filter state
+  const [nlQuery, setNlQuery]         = useState('')
+  const [nlLoading, setNlLoading]     = useState(false)
+  const [nlError, setNlError]         = useState<string | null>(null)
+  const [nlApplied, setNlApplied]     = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -61,38 +73,63 @@ export default function TasksPage() {
 
     const params = {
       per_page: 100,
-      ...(statusFilter ? { workflow_status: statusFilter } : {}),
-      ...(asOf ? { as_of: asOf } : {}),
+      ...(statusFilter   ? { workflow_status: statusFilter } : {}),
+      ...(siteFilter     ? { site_id: siteFilter }           : {}),
+      ...(priorityFilter ? { priority: priorityFilter }      : {}),
+      ...(asOf           ? { as_of: asOf }                   : {}),
     }
 
     Promise.all([getTasks(params), getSites({ per_page: 200, ...(asOf ? { as_of: asOf } : {}) })])
       .then(([taskRes, siteRes]) => {
         setTasks(taskRes.data)
-        setTotal(taskRes.meta.total)
+        setTotal(taskRes.meta?.total ?? taskRes.data.length)
         const map: Record<string, string> = {}
-        for (const site of siteRes.data) {
-          map[site.id] = site.name
-        }
+        for (const site of siteRes.data) map[site.id] = site.name
         setSiteMap(map)
       })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Unknown error'))
       .finally(() => setLoading(false))
-  }, [statusFilter, asOf])
+  }, [statusFilter, siteFilter, priorityFilter, asOf])
+
+  function handleNlSearch() {
+    const q = nlQuery.trim()
+    if (!q) return
+
+    setNlLoading(true)
+    setNlError(null)
+
+    getAiFilter(q)
+      .then(({ data }) => {
+        const { filters } = data
+        setStatusFilter((filters.workflow_status as WorkflowStatus | null) ?? '')
+        setSiteFilter(filters.site_id)
+        setPriorityFilter(filters.priority as TaskPriority | null)
+        setNlApplied(true)
+      })
+      .catch((err: unknown) => {
+        setNlError(err instanceof Error ? err.message : 'AI filter failed')
+      })
+      .finally(() => setNlLoading(false))
+  }
+
+  function clearNlFilter() {
+    setNlQuery('')
+    setNlApplied(false)
+    setNlError(null)
+    setStatusFilter('')
+    setSiteFilter(null)
+    setPriorityFilter(null)
+    inputRef.current?.focus()
+  }
 
   if (loading) {
-    return (
-      <div className="page-center">
-        <Spinner />
-      </div>
-    )
+    return <div className="page-center"><Spinner /></div>
   }
 
   if (error) {
     return (
       <div className="page-content">
-        <Callout intent="danger" title="Failed to load tasks">
-          {error}
-        </Callout>
+        <Callout intent="danger" title="Failed to load tasks">{error}</Callout>
       </div>
     )
   }
@@ -105,9 +142,38 @@ export default function TasksPage() {
           <span className="bp6-text-muted">{total} total</span>
           <HTMLSelect
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.currentTarget.value as WorkflowStatus | '')}
+            onChange={(e) => {
+              setStatusFilter(e.currentTarget.value as WorkflowStatus | '')
+              setPriorityFilter(null)
+              setNlApplied(false)
+            }}
             options={WORKFLOW_STATUS_OPTIONS.map((o) => ({ label: o.label, value: o.value }))}
           />
+        </div>
+
+        {/* AI natural-language filter */}
+        <div className="nl-filter-row">
+          <InputGroup
+            inputRef={inputRef}
+            placeholder="e.g. show blocked tasks at Site Alpha"
+            value={nlQuery}
+            onChange={(e) => setNlQuery(e.currentTarget.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleNlSearch() }}
+            rightElement={
+              nlApplied
+                ? <Button minimal icon="cross" onClick={clearNlFilter} title="Clear AI filter" />
+                : <Button minimal icon="search" loading={nlLoading} onClick={handleNlSearch} title="Apply AI filter" />
+            }
+            disabled={nlLoading}
+          />
+          {nlApplied && (
+            <Tag intent="primary" minimal icon="predictive-analysis">
+              AI filter applied
+            </Tag>
+          )}
+          {nlError && (
+            <span className="nl-filter-error bp6-text-muted">{nlError}</span>
+          )}
         </div>
 
         {tasks.length === 0 ? (
