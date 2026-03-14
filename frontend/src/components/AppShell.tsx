@@ -1,5 +1,6 @@
 import {
   Alignment,
+  Button,
   Callout,
   Menu,
   MenuItem,
@@ -7,15 +8,23 @@ import {
   NavbarDivider,
   NavbarGroup,
   NavbarHeading,
+  Tag,
 } from '@blueprintjs/core'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useReplay } from '../context/ReplayContext'
+import { useAuth } from '../context/AuthContext'
 import ReplaySelector from './ReplaySelector'
 
 export default function AppShell() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const { isReplaying, asOf } = useReplay()
+  const { currentUser, logout } = useAuth()
+
+  function handleLogout() {
+    logout()
+    navigate('/login', { replace: true })
+  }
 
   return (
     <div className="shell">
@@ -29,6 +38,26 @@ export default function AppShell() {
         </NavbarGroup>
         <NavbarGroup align={Alignment.RIGHT}>
           <ReplaySelector />
+          <NavbarDivider />
+          {currentUser && (
+            <div className="shell-user">
+              <Tag
+                minimal
+                intent={currentUser.role === 'commander' ? 'warning' : 'none'}
+                className="shell-role-tag"
+              >
+                {currentUser.role}
+              </Tag>
+              <span className="shell-email bp6-text-muted">{currentUser.email}</span>
+              <Button
+                minimal
+                small
+                icon="log-out"
+                onClick={handleLogout}
+                title="Sign out"
+              />
+            </div>
+          )}
         </NavbarGroup>
       </Navbar>
 

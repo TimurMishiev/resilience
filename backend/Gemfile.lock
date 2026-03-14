@@ -82,6 +82,7 @@ GEM
       connection_pool
     ast (2.4.3)
     base64 (0.3.0)
+    bcrypt (3.1.21)
     bcrypt_pbkdf (1.1.2)
     bigdecimal (4.0.1)
     bootsnap (1.23.0)
@@ -139,6 +140,8 @@ GEM
     json-schema (6.2.0)
       addressable (~> 2.8)
       bigdecimal (>= 3.1, < 5)
+    jwt (2.10.2)
+      base64
     kamal (2.10.1)
       activesupport (>= 7.0)
       base64 (~> 0.2)
@@ -374,6 +377,7 @@ PLATFORMS
 
 DEPENDENCIES
   anthropic
+  bcrypt (~> 3.1.7)
   bootsnap
   brakeman
   bundler-audit
@@ -382,6 +386,7 @@ DEPENDENCIES
   dotenv-rails
   factory_bot_rails
   faker
+  jwt (~> 2.10)
   kamal
   pg (~> 1.1)
   puma (>= 5.0)

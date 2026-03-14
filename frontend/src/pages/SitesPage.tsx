@@ -1,43 +1,26 @@
-import { useEffect, useState } from 'react'
 import { Callout, HTMLTable, NonIdealState, Spinner, Tag } from '@blueprintjs/core'
-import { getSites } from '../api/sites'
+import { useSites } from '../hooks/useSites'
 import { useReplay } from '../context/ReplayContext'
-import type { Site, PaginatedResponse } from '../api/types'
 
 export default function SitesPage() {
   const { asOf } = useReplay()
-  const [result, setResult] = useState<PaginatedResponse<Site> | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { data, error, isPending } = useSites({ per_page: 100, ...(asOf ? { as_of: asOf } : {}) })
 
-  useEffect(() => {
-    setLoading(true)
-    setError(null)
-    getSites({ per_page: 100, ...(asOf ? { as_of: asOf } : {}) })
-      .then(setResult)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Unknown error'))
-      .finally(() => setLoading(false))
-  }, [asOf])
-
-  if (loading) {
-    return (
-      <div className="page-center">
-        <Spinner />
-      </div>
-    )
+  if (isPending) {
+    return <div className="page-center"><Spinner /></div>
   }
 
   if (error) {
     return (
       <div className="page-content">
         <Callout intent="danger" title="Failed to load sites">
-          {error}
+          {error.message}
         </Callout>
       </div>
     )
   }
 
-  if (!result || result.data.length === 0) {
+  if (!data || data.data.length === 0) {
     return (
       <NonIdealState
         icon="map-marker"
@@ -51,7 +34,7 @@ export default function SitesPage() {
     <div className="page-content">
       <div className="page-header">
         <h2 className="bp6-heading">Sites</h2>
-        <span className="bp6-text-muted">{result.meta?.total ?? result.data.length} total</span>
+        <span className="bp6-text-muted">{data.meta?.total ?? data.data.length} total</span>
       </div>
 
       <HTMLTable className="data-table" striped interactive>
@@ -64,14 +47,11 @@ export default function SitesPage() {
           </tr>
         </thead>
         <tbody>
-          {result.data.map((site) => (
+          {data.data.map((site) => (
             <tr key={site.id}>
               <td>{site.name}</td>
               <td>
-                <Tag
-                  minimal
-                  intent={site.status === 'active' ? 'success' : 'none'}
-                >
+                <Tag minimal intent={site.status === 'active' ? 'success' : 'none'}>
                   {site.status}
                 </Tag>
               </td>

@@ -3,17 +3,54 @@
 // ---------------------------------------------------------------------------
 
 export class ApiError extends Error {
+  public readonly status: number
+  public readonly body: unknown
+
   constructor(
-    public readonly status: number,
-    public readonly body: unknown,
+    status: number,
+    body: unknown,
     message: string,
   ) {
     super(message)
+    this.status = status
+    this.body = body
     this.name = 'ApiError'
   }
 }
 
 export type QueryParams = Record<string, string | number | boolean | undefined | null>
+
+// ---------------------------------------------------------------------------
+// Token storage — simple localStorage slot; AuthContext reads/writes this
+// ---------------------------------------------------------------------------
+
+const TOKEN_KEY = 'resilience_token'
+
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY)
+}
+
+export function setToken(token: string): void {
+  localStorage.setItem(TOKEN_KEY, token)
+}
+
+export function clearToken(): void {
+  localStorage.removeItem(TOKEN_KEY)
+}
+
+// ---------------------------------------------------------------------------
+// 401 callback — AuthContext registers this so it can clear state on expiry
+// ---------------------------------------------------------------------------
+
+let onUnauthorized: (() => void) | null = null
+
+export function registerUnauthorizedHandler(fn: () => void): void {
+  onUnauthorized = fn
+}
+
+// ---------------------------------------------------------------------------
+// Core request
+// ---------------------------------------------------------------------------
 
 function buildUrl(path: string, params?: QueryParams): string {
   const url = new URL(path, window.location.origin)
@@ -34,10 +71,17 @@ async function request<T>(
 ): Promise<T> {
   const url = buildUrl(path, options.params)
 
-  const init: RequestInit = {
-    method,
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
   }
+
+  const token = getToken()
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+
+  const init: RequestInit = { method, headers }
 
   if (options.body !== undefined) {
     init.body = JSON.stringify(options.body)
@@ -51,6 +95,11 @@ async function request<T>(
     payload = await res.json()
   } else {
     payload = await res.text()
+  }
+
+  if (res.status === 401) {
+    onUnauthorized?.()
+    throw new ApiError(res.status, payload, `Unauthorized`)
   }
 
   if (!res.ok) {

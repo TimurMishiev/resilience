@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   Button,
   Callout,
@@ -11,9 +11,10 @@ import {
   NonIdealState,
   Spinner,
   Tag,
+  TextArea,
 } from '@blueprintjs/core'
-import { getTasks } from '../api/tasks'
-import { getSites } from '../api/sites'
+import { useTasks, useAllowedTransitions, useTransitionTask } from '../hooks/useTasks'
+import { useSites } from '../hooks/useSites'
 import { getAiFilter } from '../api/ai'
 import AuditTimeline from '../components/AuditTimeline'
 import { useReplay } from '../context/ReplayContext'
@@ -47,57 +48,64 @@ function priorityIntent(priority: Task['priority']): Intent {
   }
 }
 
+function statusLabel(status: WorkflowStatus): string {
+  switch (status) {
+    case 'new':         return 'New'
+    case 'triaged':     return 'Triaged'
+    case 'in_progress': return 'In Progress'
+    case 'blocked':     return 'Blocked'
+    case 'resolved':    return 'Resolved'
+  }
+}
+
 export default function TasksPage() {
-  const { asOf } = useReplay()
-  const [tasks, setTasks]               = useState<Task[]>([])
-  const [siteMap, setSiteMap]           = useState<Record<string, string>>({})
-  const [total, setTotal]               = useState(0)
+  const { asOf, isReplaying } = useReplay()
+
   const [statusFilter, setStatusFilter]     = useState<WorkflowStatus | ''>('')
   const [siteFilter, setSiteFilter]         = useState<string | null>(null)
   const [priorityFilter, setPriorityFilter] = useState<TaskPriority | null>(null)
-  const [error, setError]               = useState<string | null>(null)
-  const [loading, setLoading]           = useState(true)
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+  const [selectedTask, setSelectedTask]     = useState<Task | null>(null)
+
+  // Transition state
+  const [pendingStatus, setPendingStatus]     = useState<WorkflowStatus | null>(null)
+  const [blockedReason, setBlockedReason]     = useState('')
+  const [transitionError, setTransitionError] = useState<string | null>(null)
 
   // AI natural-language filter state
-  const [nlQuery, setNlQuery]         = useState('')
-  const [nlLoading, setNlLoading]     = useState(false)
-  const [nlError, setNlError]         = useState<string | null>(null)
-  const [nlApplied, setNlApplied]     = useState(false)
+  const [nlQuery, setNlQuery]     = useState('')
+  const [nlLoading, setNlLoading] = useState(false)
+  const [nlError, setNlError]     = useState<string | null>(null)
+  const [nlApplied, setNlApplied] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    setLoading(true)
-    setError(null)
-    setSelectedTask(null)
+  const taskParams = {
+    per_page: 100,
+    ...(statusFilter   ? { workflow_status: statusFilter } : {}),
+    ...(siteFilter     ? { site_id: siteFilter }           : {}),
+    ...(priorityFilter ? { priority: priorityFilter }      : {}),
+    ...(asOf           ? { as_of: asOf }                   : {}),
+  }
 
-    const params = {
-      per_page: 100,
-      ...(statusFilter   ? { workflow_status: statusFilter } : {}),
-      ...(siteFilter     ? { site_id: siteFilter }           : {}),
-      ...(priorityFilter ? { priority: priorityFilter }      : {}),
-      ...(asOf           ? { as_of: asOf }                   : {}),
-    }
+  const { data: taskRes, error, isPending } = useTasks(taskParams)
+  const { data: siteRes } = useSites({ per_page: 200, ...(asOf ? { as_of: asOf } : {}) })
+  const { data: transitionsData } = useAllowedTransitions(
+    selectedTask && !isReplaying ? selectedTask.id : null
+  )
+  const transitionMutation = useTransitionTask()
 
-    Promise.all([getTasks(params), getSites({ per_page: 200, ...(asOf ? { as_of: asOf } : {}) })])
-      .then(([taskRes, siteRes]) => {
-        setTasks(taskRes.data)
-        setTotal(taskRes.meta?.total ?? taskRes.data.length)
-        const map: Record<string, string> = {}
-        for (const site of siteRes.data) map[site.id] = site.name
-        setSiteMap(map)
-      })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Unknown error'))
-      .finally(() => setLoading(false))
-  }, [statusFilter, siteFilter, priorityFilter, asOf])
+  const tasks = taskRes?.data ?? []
+  const total = taskRes?.meta?.total ?? tasks.length
+
+  const siteMap: Record<string, string> = {}
+  for (const site of siteRes?.data ?? []) siteMap[site.id] = site.name
+
+  const allowedTransitions = transitionsData?.allowed ?? []
 
   function handleNlSearch() {
     const q = nlQuery.trim()
     if (!q) return
-
     setNlLoading(true)
     setNlError(null)
-
     getAiFilter(q)
       .then(({ data }) => {
         const { filters } = data
@@ -122,14 +130,33 @@ export default function TasksPage() {
     inputRef.current?.focus()
   }
 
-  if (loading) {
+  async function handleTransition() {
+    if (!selectedTask || !pendingStatus) return
+    setTransitionError(null)
+    try {
+      const updated = await transitionMutation.mutateAsync({
+        id: selectedTask.id,
+        body: {
+          to_status: pendingStatus,
+          ...(pendingStatus === 'blocked' ? { blocked_reason: blockedReason.trim() } : {}),
+        },
+      })
+      setSelectedTask(updated)
+      setPendingStatus(null)
+      setBlockedReason('')
+    } catch (err: unknown) {
+      setTransitionError(err instanceof Error ? err.message : 'Transition failed')
+    }
+  }
+
+  if (isPending) {
     return <div className="page-center"><Spinner /></div>
   }
 
   if (error) {
     return (
       <div className="page-content">
-        <Callout intent="danger" title="Failed to load tasks">{error}</Callout>
+        <Callout intent="danger" title="Failed to load tasks">{error.message}</Callout>
       </div>
     )
   }
@@ -167,9 +194,7 @@ export default function TasksPage() {
             disabled={nlLoading}
           />
           {nlApplied && (
-            <Tag intent="primary" minimal icon="predictive-analysis">
-              AI filter applied
-            </Tag>
+            <Tag intent="primary" minimal icon="predictive-analysis">AI filter applied</Tag>
           )}
           {nlError && (
             <span className="nl-filter-error bp6-text-muted">{nlError}</span>
@@ -196,15 +221,18 @@ export default function TasksPage() {
               {tasks.map((task) => (
                 <tr
                   key={task.id}
-                  onClick={() => setSelectedTask(task)}
+                  onClick={() => {
+                    setSelectedTask(task)
+                    setPendingStatus(null)
+                    setBlockedReason('')
+                    setTransitionError(null)
+                  }}
                   className="clickable-row"
                 >
                   <td>{task.title}</td>
                   <td className="bp6-text-muted">{siteMap[task.site_id] ?? task.site_id}</td>
                   <td>
-                    <Tag minimal intent={priorityIntent(task.priority)}>
-                      {task.priority}
-                    </Tag>
+                    <Tag minimal intent={priorityIntent(task.priority)}>{task.priority}</Tag>
                   </td>
                   <td>
                     <Tag minimal intent={workflowIntent(task.workflow_status)}>
@@ -220,7 +248,12 @@ export default function TasksPage() {
 
       <Drawer
         isOpen={selectedTask !== null}
-        onClose={() => setSelectedTask(null)}
+        onClose={() => {
+          setSelectedTask(null)
+          setPendingStatus(null)
+          setBlockedReason('')
+          setTransitionError(null)
+        }}
         size={DrawerSize.SMALL}
         title={selectedTask?.title ?? ''}
         className="bp6-dark"
@@ -245,6 +278,59 @@ export default function TasksPage() {
               <Callout intent="danger" compact className="drawer-blocked">
                 {selectedTask.blocked_reason}
               </Callout>
+            )}
+
+            {/* Transitions — hidden in replay mode */}
+            {!isReplaying && allowedTransitions.length > 0 && (
+              <div className="drawer-transitions">
+                <span className="drawer-section-label bp6-text-muted">Move to</span>
+                <div className="transition-buttons">
+                  {allowedTransitions.map((status) => (
+                    <Button
+                      key={status}
+                      small
+                      active={pendingStatus === status}
+                      intent={workflowIntent(status)}
+                      onClick={() => {
+                        setPendingStatus(pendingStatus === status ? null : status)
+                        setBlockedReason('')
+                        setTransitionError(null)
+                      }}
+                    >
+                      {statusLabel(status)}
+                    </Button>
+                  ))}
+                </div>
+
+                {pendingStatus === 'blocked' && (
+                  <TextArea
+                    fill
+                    small
+                    placeholder="Blocked reason (required)"
+                    value={blockedReason}
+                    onChange={(e) => setBlockedReason(e.currentTarget.value)}
+                    className="transition-blocked-reason"
+                  />
+                )}
+
+                {pendingStatus && (
+                  <Button
+                    intent="primary"
+                    small
+                    fill
+                    loading={transitionMutation.isPending}
+                    disabled={pendingStatus === 'blocked' && !blockedReason.trim()}
+                    onClick={handleTransition}
+                    className="transition-confirm"
+                  >
+                    Confirm — move to {statusLabel(pendingStatus)}
+                  </Button>
+                )}
+
+                {transitionError && (
+                  <Callout intent="danger" compact>{transitionError}</Callout>
+                )}
+              </div>
             )}
 
             <Divider />

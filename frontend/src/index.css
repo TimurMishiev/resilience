@@ -124,6 +124,33 @@ body {
   margin-bottom: 12px;
 }
 
+.drawer-transitions {
+  margin: 12px 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.drawer-section-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.transition-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.transition-blocked-reason {
+  font-size: 13px;
+}
+
+.transition-confirm {
+  margin-top: 2px;
+}
+
 .drawer-section-title {
   margin: 12px 0 8px;
 }
@@ -428,4 +455,76 @@ body {
 .briefing-citation-tag {
   font-family: monospace;
   font-size: 11px;
+}
+
+/* ── Login page ───────────────────────────────────────────── */
+
+.login-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background-color: #1c2127;
+}
+
+.login-card {
+  width: 360px;
+  background: #252d38;
+  border: 1px solid #383e47;
+  border-radius: 6px;
+  padding: 32px;
+}
+
+.login-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 28px;
+}
+
+.login-brand {
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: 0.15em;
+  color: #e1e8ed;
+}
+
+.login-tagline {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.login-error {
+  margin-top: 4px;
+}
+
+.login-submit {
+  margin-top: 8px;
+}
+
+/* ── Navbar user info ─────────────────────────────────────── */
+
+.shell-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shell-role-tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+.shell-email {
+  font-size: 12px;
 }

@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    dedupe: ['react', 'react-dom'],
+  },
   server: {
     // Forward /api/* to the Rails backend in development.
     // Override the target by setting VITE_API_TARGET in .env.local.

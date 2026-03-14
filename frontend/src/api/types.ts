@@ -98,7 +98,7 @@ export interface UpdateTaskBody {
 }
 
 export interface TransitionTaskBody {
-  to: WorkflowStatus
+  to_status: WorkflowStatus
   blocked_reason?: string | null
 }
 

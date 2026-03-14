@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react'
 import { Callout, Spinner, Tag } from '@blueprintjs/core'
-import { getAuditEvents } from '../api/audit_events'
+import { useAuditEvents } from '../hooks/useAuditEvents'
 import type { AuditEvent } from '../api/types'
 
 interface Props {
@@ -36,32 +35,19 @@ function eventLabel(event: AuditEvent): string {
 }
 
 export default function AuditTimeline({ entityType, entityId }: Props) {
-  const [events, setEvents] = useState<AuditEvent[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { data: events, error, isPending } = useAuditEvents({
+    entity_type: entityType,
+    entity_id: entityId,
+    limit: 50,
+  })
 
-  useEffect(() => {
-    setLoading(true)
-    setError(null)
-    getAuditEvents({ entity_type: entityType, entity_id: entityId, limit: 50 })
-      .then(setEvents)
-      .catch((err: unknown) =>
-        setError(err instanceof Error ? err.message : 'Unknown error'),
-      )
-      .finally(() => setLoading(false))
-  }, [entityType, entityId])
-
-  if (loading) return <Spinner size={16} />
+  if (isPending) return <Spinner size={16} />
 
   if (error) {
-    return (
-      <Callout intent="danger" compact>
-        {error}
-      </Callout>
-    )
+    return <Callout intent="danger" compact>{error.message}</Callout>
   }
 
-  if (events.length === 0) {
+  if (!events || events.length === 0) {
     return <p className="bp6-text-muted timeline-empty">No audit events recorded.</p>
   }
 

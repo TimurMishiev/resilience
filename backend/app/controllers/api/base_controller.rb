@@ -1,5 +1,7 @@
 module Api
   class BaseController < ApplicationController
+    include JwtAuthenticatable
+
     rescue_from ActiveRecord::RecordNotFound do |e|
       render json: { errors: ["#{e.model} not found"] }, status: :not_found
     end
@@ -9,11 +11,6 @@ module Api
     end
 
     private
-
-    # Placeholder actor until authentication is added in a later phase.
-    def actor
-      "api:anonymous"
-    end
 
     # Parses the ?as_of= query param into a Time. Returns nil if absent or invalid.
     def as_of

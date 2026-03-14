@@ -268,6 +268,22 @@ audit_event(entity_type: "Task", entity_id: t.id, event_type: "task.transitioned
 audit_event(entity_type: "Task", entity_id: t.id, event_type: "task.transitioned", action: "transition", before_snapshot: task_snapshot(t, workflow_status: "triaged"), after_snapshot: task_snapshot(t, workflow_status: "in_progress"), occurred_at: T24H)
 puts "  Created task: #{t.title} [#{t.workflow_status}]"
 
+# ---------------------------------------------------------------------------
+# Users
+# ---------------------------------------------------------------------------
+
+puts "  Seeding users..."
+
+[
+  { email: "commander@resilience.mil", password: "password", role: "commander" },
+  { email: "operator@resilience.mil",  password: "password", role: "operator"  }
+].each do |attrs|
+  user = User.find_or_initialize_by(email: attrs[:email])
+  user.assign_attributes(password: attrs[:password], role: attrs[:role])
+  user.save!
+  puts "  #{user.new_record? ? 'Created' : 'Updated'} user: #{user.email} [#{user.role}]"
+end
+
 puts "\nSeed complete."
 puts "  Sites:       #{Site.count}"
 puts "  Assets:      #{Asset.count}"

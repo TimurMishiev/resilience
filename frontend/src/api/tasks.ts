@@ -34,9 +34,9 @@ export function updateTask(id: string, body: UpdateTaskBody): Promise<Task> {
 }
 
 export function transitionTask(id: string, body: TransitionTaskBody): Promise<Task> {
-  return api.post(`/api/tasks/${id}/transition`, body)
+  return api.post(`/api/tasks/${id}/transition`, { transition: body })
 }
 
-export function getAllowedTransitions(id: string): Promise<{ allowed_transitions: WorkflowStatus[] }> {
+export function getAllowedTransitions(id: string): Promise<{ allowed: WorkflowStatus[] }> {
   return api.get(`/api/tasks/${id}/allowed_transitions`)
 }
