@@ -37,7 +37,7 @@ module Feeds
         end
       end
 
-      ServiceResult.success(payload: { ingested: total_ingested })
+      ServiceResult.success(ingested: total_ingested)
     rescue => e
       ServiceResult.failure(errors: [e.message])
     end
