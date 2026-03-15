@@ -17,19 +17,27 @@ module Feeds
     # Prevents log spam when OpenSky is down for extended periods.
     LOG_THROTTLE_SECONDS = 3600 # 1 hour
 
-    # Shared SSL context — VERIFY_PEER with CRL checking disabled.
-    # OpenSky's certificate chain includes a CRL Distribution Point whose
-    # server is intermittently unavailable (OpenSSL: "unable to get certificate
-    # CRL"). This is a known issue on OpenSky's CDN side. We still validate the
-    # full certificate chain against trusted roots; we just skip the revocation
-    # list lookup that CRL checking requires. OCSP stapling supersedes CRL for
-    # revocation checking on modern infrastructure anyway.
-    SSL_CONTEXT = begin
-      ctx = OpenSSL::SSL::SSLContext.new
-      ctx.set_params(verify_mode: OpenSSL::SSL::VERIFY_PEER)
-      ctx.verify_flags = 0 # clear V_FLAG_CRL_CHECK / V_FLAG_CRL_CHECK_ALL
-      ctx
-    end
+    # verify_callback for OpenSky SSL connections.
+    #
+    # OpenSky's certificate chain includes a CRL Distribution Point (CDP)
+    # whose server is intermittently unreachable. We still do full VERIFY_PEER
+    # (hostname + chain + trusted CA). We only waive errors 3 and 33, which
+    # mean "CRL server unreachable" — not "cert is revoked". A revoked cert
+    # produces error 23 (CERT_REVOKED) which is NOT skipped here.
+    #
+    #   3  = X509_V_ERR_UNABLE_TO_GET_CRL
+    #   23 = X509_V_ERR_CERT_REVOKED          (NOT skipped — still rejected)
+    #   33 = X509_V_ERR_UNABLE_TO_GET_CRL_ISSUER
+    #
+    # Note: Net::HTTP on this Ruby version exposes verify_callback as a direct
+    # attribute on the HTTP object, not via ssl_context=.
+    SSL_VERIFY_CALLBACK = proc { |preverify_ok, store_ctx|
+      if !preverify_ok && [3, 33].include?(store_ctx.error)
+        true
+      else
+        preverify_ok
+      end
+    }.freeze
 
     # Bounding boxes that cover the 4 seed site theaters.
     # lamin/lamax = latitude bounds, lomin/lomax = longitude bounds.
@@ -121,11 +129,11 @@ module Feeds
         lamax: box[:lamax], lomax: box[:lomax]
       )
 
-      http              = Net::HTTP.new(uri.host, uri.port)
-      http.use_ssl      = true
-      http.ssl_context  = SSL_CONTEXT
-      http.open_timeout = TIMEOUT
-      http.read_timeout = TIMEOUT
+      http                  = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl          = true
+      http.verify_callback  = SSL_VERIFY_CALLBACK
+      http.open_timeout     = TIMEOUT
+      http.read_timeout     = TIMEOUT
 
       request  = Net::HTTP::Get.new(uri)
       response = http.request(request)
