@@ -897,3 +897,13 @@ body {
 .gs-nav-btn {
   margin-right: 4px;
 }
+
+/* ── Offline banner ────────────────────────────────────────── */
+
+.offline-banner {
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  letter-spacing: 0.04em;
+  font-size: 12px;
+}

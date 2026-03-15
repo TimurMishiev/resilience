@@ -17,6 +17,7 @@ import { useReplay } from '../context/ReplayContext'
 import { useAuth } from '../context/AuthContext'
 import ReplaySelector from './ReplaySelector'
 import { useEventSource } from '../hooks/useEventSource'
+import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import GlobalSearch from './GlobalSearch'
 
 export default function AppShell() {
@@ -26,6 +27,7 @@ export default function AppShell() {
   const { currentUser, logout } = useAuth()
   const queryClient = useQueryClient()
   const [searchOpen, setSearchOpen] = useState(false)
+  const isOnline = useOnlineStatus()
 
   const { status: liveStatus } = useEventSource({
     enabled: !!currentUser && !isReplaying,
@@ -98,6 +100,12 @@ export default function AppShell() {
           )}
         </NavbarGroup>
       </Navbar>
+
+      {!isOnline && (
+        <Callout intent="danger" compact className="offline-banner">
+          OFFLINE — displaying cached data. Mutations are disabled until connection is restored.
+        </Callout>
+      )}
 
       {isReplaying && asOf && (
         <Callout intent="warning" compact className="replay-banner">
