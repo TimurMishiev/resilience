@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import {
   Button,
   Callout,
+  Classes,
   Divider,
   Drawer,
   DrawerSize,
@@ -9,7 +10,6 @@ import {
   HTMLTable,
   InputGroup,
   NonIdealState,
-  Spinner,
   Tag,
   TextArea,
 } from '@blueprintjs/core'
@@ -163,10 +163,6 @@ export default function TasksPage() {
     }
   }
 
-  if (isPending) {
-    return <div className="page-center"><Spinner /></div>
-  }
-
   if (error) {
     return (
       <div className="page-content">
@@ -180,7 +176,11 @@ export default function TasksPage() {
       <div className="page-content">
         <div className="page-header">
           <h2 className="bp6-heading">Tasks</h2>
-          <span className="bp6-text-muted">{total} total</span>
+          <span className="bp6-text-muted">
+            {isPending
+              ? <span className={Classes.SKELETON} style={{ width: 48, display: 'inline-block' }}>&nbsp;</span>
+              : `${total} total`}
+          </span>
           <HTMLSelect
             value={statusFilter}
             onChange={(e) => {
@@ -215,7 +215,7 @@ export default function TasksPage() {
           )}
         </div>
 
-        {tasks.length === 0 ? (
+        {!isPending && tasks.length === 0 ? (
           <NonIdealState
             icon="th-list"
             title="No tasks"
@@ -232,29 +232,39 @@ export default function TasksPage() {
               </tr>
             </thead>
             <tbody>
-              {tasks.map((task) => (
-                <tr
-                  key={task.id}
-                  onClick={() => {
-                    setSelectedTask(task)
-                    setPendingStatus(null)
-                    setBlockedReason('')
-                    setTransitionError(null)
-                  }}
-                  className="clickable-row"
-                >
-                  <td>{task.title}</td>
-                  <td className="bp6-text-muted">{siteMap[task.site_id] ?? task.site_id}</td>
-                  <td>
-                    <Tag minimal intent={priorityIntent(task.priority)}>{task.priority}</Tag>
-                  </td>
-                  <td>
-                    <Tag minimal intent={workflowIntent(task.workflow_status)}>
-                      {task.workflow_status.replace('_', ' ')}
-                    </Tag>
-                  </td>
-                </tr>
-              ))}
+              {isPending
+                ? Array.from({ length: 8 }).map((_, i) => (
+                    <tr key={i}>
+                      <td><span className={Classes.SKELETON} style={{ display: 'block' }}>&nbsp;</span></td>
+                      <td><span className={Classes.SKELETON} style={{ width: 96, display: 'inline-block' }}>&nbsp;</span></td>
+                      <td><span className={Classes.SKELETON} style={{ width: 64, display: 'inline-block' }}>&nbsp;</span></td>
+                      <td><span className={Classes.SKELETON} style={{ width: 72, display: 'inline-block' }}>&nbsp;</span></td>
+                    </tr>
+                  ))
+                : tasks.map((task) => (
+                    <tr
+                      key={task.id}
+                      onClick={() => {
+                        setSelectedTask(task)
+                        setPendingStatus(null)
+                        setBlockedReason('')
+                        setTransitionError(null)
+                      }}
+                      className="clickable-row"
+                    >
+                      <td>{task.title}</td>
+                      <td className="bp6-text-muted">{siteMap[task.site_id] ?? task.site_id}</td>
+                      <td>
+                        <Tag minimal intent={priorityIntent(task.priority)}>{task.priority}</Tag>
+                      </td>
+                      <td>
+                        <Tag minimal intent={workflowIntent(task.workflow_status)}>
+                          {task.workflow_status.replace('_', ' ')}
+                        </Tag>
+                      </td>
+                    </tr>
+                  ))
+              }
             </tbody>
           </HTMLTable>
         )}

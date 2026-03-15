@@ -1,4 +1,4 @@
-import { Callout, HTMLTable, NonIdealState, Spinner, Tag } from '@blueprintjs/core'
+import { Callout, Classes, HTMLTable, NonIdealState, Tag } from '@blueprintjs/core'
 import { useAssets } from '../hooks/useAssets'
 import { useSites } from '../hooks/useSites'
 import { useReplay } from '../context/ReplayContext'
@@ -27,6 +27,8 @@ function typeLabel(t: string): string {
   return t.charAt(0).toUpperCase() + t.slice(1)
 }
 
+const SKELETON_ROWS = 7
+
 export default function AssetsPage() {
   const { asOf } = useReplay()
   const params = { per_page: 100, ...(asOf ? { as_of: asOf } : {}) }
@@ -35,10 +37,6 @@ export default function AssetsPage() {
   const { data: siteRes,  isPending: sitesPending } = useSites({ per_page: 100, ...params })
 
   const loading = assetsPending || sitesPending
-
-  if (loading) {
-    return <div className="page-center"><Spinner /></div>
-  }
 
   if (assetError) {
     return (
@@ -54,7 +52,7 @@ export default function AssetsPage() {
   const siteMap: Record<string, string> = {}
   for (const site of siteRes?.data ?? []) siteMap[site.id] = site.name
 
-  if (assets.length === 0) {
+  if (!loading && assets.length === 0) {
     return (
       <NonIdealState icon="cube" title="No assets" description="No assets found." />
     )
@@ -64,7 +62,11 @@ export default function AssetsPage() {
     <div className="page-content">
       <div className="page-header">
         <h2 className="bp6-heading">Assets</h2>
-        <span className="bp6-text-muted">{total} total</span>
+        <span className="bp6-text-muted">
+          {loading
+            ? <span className={Classes.SKELETON} style={{ width: 48, display: 'inline-block' }}>&nbsp;</span>
+            : `${total} total`}
+        </span>
       </div>
 
       <HTMLTable className="data-table" striped interactive>
@@ -77,22 +79,32 @@ export default function AssetsPage() {
           </tr>
         </thead>
         <tbody>
-          {assets.map((asset) => (
-            <tr key={asset.id}>
-              <td>{asset.name}</td>
-              <td>
-                <Tag minimal>{typeLabel(asset.asset_type)}</Tag>
-              </td>
-              <td>
-                <Tag minimal intent={statusIntent(asset.status)}>
-                  {statusLabel(asset.status)}
-                </Tag>
-              </td>
-              <td className="bp6-text-muted">
-                {asset.home_site_id ? (siteMap[asset.home_site_id] ?? asset.home_site_id) : '—'}
-              </td>
-            </tr>
-          ))}
+          {loading
+            ? Array.from({ length: SKELETON_ROWS }).map((_, i) => (
+                <tr key={i}>
+                  <td><span className={Classes.SKELETON} style={{ display: 'block' }}>&nbsp;</span></td>
+                  <td><span className={Classes.SKELETON} style={{ width: 80, display: 'inline-block' }}>&nbsp;</span></td>
+                  <td><span className={Classes.SKELETON} style={{ width: 80, display: 'inline-block' }}>&nbsp;</span></td>
+                  <td><span className={Classes.SKELETON} style={{ width: 96, display: 'inline-block' }}>&nbsp;</span></td>
+                </tr>
+              ))
+            : assets.map((asset) => (
+                <tr key={asset.id}>
+                  <td>{asset.name}</td>
+                  <td>
+                    <Tag minimal>{typeLabel(asset.asset_type)}</Tag>
+                  </td>
+                  <td>
+                    <Tag minimal intent={statusIntent(asset.status)}>
+                      {statusLabel(asset.status)}
+                    </Tag>
+                  </td>
+                  <td className="bp6-text-muted">
+                    {asset.home_site_id ? (siteMap[asset.home_site_id] ?? asset.home_site_id) : '—'}
+                  </td>
+                </tr>
+              ))
+          }
         </tbody>
       </HTMLTable>
     </div>
