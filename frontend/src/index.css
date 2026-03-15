@@ -1557,3 +1557,179 @@ body {
     display: none !important;
   }
 }
+
+/* ── Globe page ──────────────────────────────────────────────── */
+
+.globe-page {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+}
+
+.globe-container {
+  width: 100%;
+  height: 100%;
+}
+
+/* Hide Cesium credit bar — keep it minimal */
+.globe-container .cesium-widget-credits {
+  display: none !important;
+}
+
+.globe-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10;
+}
+
+/* ── Globe toolbar ───────────────────────────────────────────── */
+
+.globe-toolbar {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: rgba(28, 33, 39, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  backdrop-filter: blur(8px);
+  z-index: 10;
+  pointer-events: all;
+}
+
+.globe-toolbar-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #f5f8fa;
+}
+
+.globe-toolbar-hint {
+  font-size: 11px;
+}
+
+/* ── Globe detail panel ──────────────────────────────────────── */
+
+.globe-panel {
+  position: absolute;
+  top: 60px;
+  right: 16px;
+  width: 280px;
+  background: rgba(28, 33, 39, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  backdrop-filter: blur(8px);
+  z-index: 10;
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
+}
+
+.globe-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 8px;
+}
+
+.globe-panel-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #f5f8fa;
+}
+
+.globe-panel-close {
+  flex-shrink: 0;
+}
+
+.globe-panel-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 0 14px 10px;
+}
+
+.globe-panel-coords {
+  font-size: 11px;
+  padding: 0 14px 10px;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.globe-task-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.globe-task-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.globe-task-title {
+  font-size: 12px;
+  color: #d3d8de;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.globe-no-tasks {
+  padding: 0 14px 14px;
+  font-size: 12px;
+  margin: 0;
+}
+
+/* ── Globe legend ────────────────────────────────────────────── */
+
+.globe-legend {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  display: flex;
+  gap: 14px;
+  background: rgba(28, 33, 39, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 11px;
+  color: #8f99a8;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+}
+
+.globe-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.globe-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Override shell-main padding for globe route */
+.shell-main:has(.globe-page) {
+  padding: 0;
+  overflow: hidden;
+}

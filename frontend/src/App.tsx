@@ -5,6 +5,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 import AssetsPage from './pages/AssetsPage'
 import BriefingPage from './pages/BriefingPage'
 import GraphPage from './pages/GraphPage'
+import GlobePage from './pages/GlobePage'
 import DashboardPage from './pages/DashboardPage'
 import LoginPage from './pages/LoginPage'
 import MapPage from './pages/MapPage'
@@ -26,6 +27,7 @@ export default function App() {
               <Route path="assets" element={<AssetsPage />} />
               <Route path="map" element={<MapPage />} />
               <Route path="graph" element={<GraphPage />} />
+              <Route path="globe" element={<GlobePage />} />
               <Route path="briefing" element={<BriefingPage />} />
             </Route>
           </Route>
