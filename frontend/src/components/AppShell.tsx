@@ -12,10 +12,12 @@ import {
 } from '@blueprintjs/core'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
 import { useReplay } from '../context/ReplayContext'
 import { useAuth } from '../context/AuthContext'
 import ReplaySelector from './ReplaySelector'
 import { useEventSource } from '../hooks/useEventSource'
+import GlobalSearch from './GlobalSearch'
 
 export default function AppShell() {
   const navigate    = useNavigate()
@@ -23,6 +25,7 @@ export default function AppShell() {
   const { isReplaying, asOf } = useReplay()
   const { currentUser, logout } = useAuth()
   const queryClient = useQueryClient()
+  const [searchOpen, setSearchOpen] = useState(false)
 
   const { status: liveStatus } = useEventSource({
     enabled: !!currentUser && !isReplaying,
@@ -31,6 +34,18 @@ export default function AppShell() {
       queryClient.invalidateQueries({ queryKey: ['readiness'] })
     },
   })
+
+  // Cmd+K / Ctrl+K — open global search
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setSearchOpen(o => !o)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   function handleLogout() {
     logout()
@@ -51,6 +66,14 @@ export default function AppShell() {
           <span
             className={`live-indicator live-indicator--${liveStatus}`}
             title={`Stream: ${liveStatus}`}
+          />
+          <Button
+            minimal
+            small
+            icon="search"
+            onClick={() => setSearchOpen(true)}
+            className="gs-nav-btn"
+            title="Search (⌘K)"
           />
           <ReplaySelector />
           <NavbarDivider />
@@ -81,6 +104,8 @@ export default function AppShell() {
           Viewing historical state as of {new Date(asOf).toLocaleString()} — data is read-only
         </Callout>
       )}
+
+      <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
 
       <div className="shell-body">
         <nav className="shell-sidebar">
