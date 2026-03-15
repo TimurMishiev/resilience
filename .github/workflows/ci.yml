@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Frontend: type safety + lint + build ────────────────────────────────────
+  frontend:
+    name: Frontend — typecheck, lint, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: yarn
+          cache-dependency-path: frontend/yarn.lock
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: TypeScript typecheck
+        run: npx tsc --noEmit
+
+      - name: ESLint
+        run: yarn lint
+
+      - name: Build
+        run: yarn build
+
+  # ── Backend: security audit ─────────────────────────────────────────────────
+  backend-security:
+    name: Backend — Brakeman + bundler-audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4.7'
+          bundler-cache: true
+          working-directory: backend
+
+      - name: Brakeman static analysis
+        run: bundle exec brakeman --no-pager --exit-on-warn
+
+      - name: bundler-audit CVE check
+        run: bundle exec bundler-audit check --update
+
+  # ── Backend: RSpec unit tests ────────────────────────────────────────────────
+  backend-tests:
+    name: Backend — RSpec
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: resilience_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      RAILS_ENV: test
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/resilience_test
+      JWT_SECRET: test_secret_for_ci_only
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4.7'
+          bundler-cache: true
+          working-directory: backend
+
+      - name: Set up database
+        run: bundle exec rails db:schema:load
+
+      - name: Run specs
+        run: bundle exec rspec --format progress
