@@ -198,6 +198,16 @@ export default function AppShell() {
                 : undefined
               }
             />
+            <MenuItem
+              icon="polygon-filter"
+              text="Areas"
+              active={pathname.startsWith('/areas')}
+              onClick={() => navigate('/areas')}
+              labelElement={currentUser?.role !== 'commander'
+                ? <Icon icon="lock" size={10} className="shell-menu-lock" />
+                : undefined
+              }
+            />
           </Menu>
         </nav>
 

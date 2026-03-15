@@ -5,6 +5,7 @@ import PageErrorBoundary from './components/PageErrorBoundary'
 import ProtectedRoute from './components/ProtectedRoute'
 import AssetsPage from './pages/AssetsPage'
 import BriefingPage from './pages/BriefingPage'
+import AreasPage from './pages/AreasPage'
 import CorrelationRulesPage from './pages/CorrelationRulesPage'
 import GraphPage from './pages/GraphPage'
 import GlobePage from './pages/GlobePage'
@@ -42,6 +43,7 @@ export default function App() {
               } />
               <Route path="signals" element={<SignalFeedPage />} />
               <Route path="rules" element={<CorrelationRulesPage />} />
+              <Route path="areas" element={<AreasPage />} />
             </Route>
           </Route>
         </Routes>

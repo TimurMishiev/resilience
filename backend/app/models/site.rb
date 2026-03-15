@@ -1,6 +1,8 @@
 class Site < ApplicationRecord
   STATUSES = %w[active inactive].freeze
 
+  belongs_to :area_of_operation, optional: true
+
   has_many :tasks, dependent: :restrict_with_error
   has_many :assets, foreign_key: :home_site_id, dependent: :nullify, inverse_of: :home_site
 

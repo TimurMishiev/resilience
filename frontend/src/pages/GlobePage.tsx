@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import * as Cesium from 'cesium'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 import { Button, Divider, Tag, Spinner } from '@blueprintjs/core'
@@ -6,6 +6,7 @@ import { useSites } from '../hooks/useSites'
 import { useTasks } from '../hooks/useTasks'
 import { useAssets } from '../hooks/useAssets'
 import { useTelemetryStream } from '../hooks/useTelemetryStream'
+import { useAreasOfOperation } from '../hooks/useAreasOfOperation'
 import { useReplay } from '../context/ReplayContext'
 import type { Site, Task, WorkflowStatus } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
@@ -55,10 +56,12 @@ export default function GlobePage() {
   const sitesQuery  = useSites({ per_page: 200, ...asOfParam })
   const tasksQuery  = useTasks({ per_page: 200, ...asOfParam })
   const assetsQuery = useAssets({ per_page: 200, ...asOfParam })
+  const { data: areasRes } = useAreasOfOperation({ per_page: 200 })
 
   const sites  = sitesQuery.data?.data  ?? []
   const tasks  = tasksQuery.data?.data  ?? []
   const assets = assetsQuery.data?.data ?? []
+  const areaOfOperations = useMemo(() => areasRes?.data ?? [], [areasRes?.data])
   const loading = sitesQuery.isLoading || tasksQuery.isLoading
 
   const { readings } = useTelemetryStream(!isReplaying)
@@ -69,6 +72,8 @@ export default function GlobePage() {
   const siteEntitiesRef  = useRef<Map<string, Cesium.Entity>>(new Map())
   // asset entity refs for position updates
   const assetEntitiesRef = useRef<Map<string, Cesium.Entity>>(new Map())
+  // AO entity refs
+  const aoEntitiesRef    = useRef<Map<string, Cesium.Entity>>(new Map())
 
   const [selectedSite, setSelectedSite]   = useState<Site | null>(null)
   const [selectedTasks, setSelectedTasks] = useState<Task[]>([])
@@ -135,6 +140,8 @@ export default function GlobePage() {
       viewerRef.current = null
       siteEntitiesRef.current.clear()
       assetEntitiesRef.current.clear()
+      // Safe: aoEntitiesRef is a stable ref, cleared only on unmount
+      aoEntitiesRef.current.clear() // eslint-disable-line react-hooks/exhaustive-deps
     }
   }, [])
 
@@ -245,6 +252,49 @@ export default function GlobePage() {
       assetEntitiesRef.current.set(key, entity)
     }
   }, [assets, sites])
+
+  // -------------------------------------------------------------------------
+  // AO polygon entities — translucent fill + outline
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const viewer = viewerRef.current
+    if (!viewer) return
+
+    // Remove AOs that no longer exist
+    const currentIds = new Set(areaOfOperations.map(ao => `ao-${ao.id}`))
+    for (const [key, entity] of aoEntitiesRef.current) {
+      if (!currentIds.has(key)) {
+        viewer.entities.remove(entity)
+        aoEntitiesRef.current.delete(key)
+      }
+    }
+
+    for (const ao of areaOfOperations) {
+      const key = `ao-${ao.id}`
+      if (aoEntitiesRef.current.has(key)) continue
+
+      const coords    = ao.geometry.coordinates[0]  // [[lng, lat], ...]
+      const flat      = coords.flatMap(([lng, lat]: number[]) => [lng, lat])
+      const positions = Cesium.Cartesian3.fromDegreesArray(flat)
+      const fillColor = Cesium.Color.fromCssColorString(ao.color).withAlpha(0.15)
+      const lineColor = Cesium.Color.fromCssColorString(ao.color).withAlpha(0.8)
+
+      const entity = viewer.entities.add({
+        id:   key,
+        name: ao.name,
+        polygon: {
+          hierarchy:    new Cesium.PolygonHierarchy(positions),
+          material:     fillColor,
+          outline:      new Cesium.ConstantProperty(true),
+          outlineColor: new Cesium.ConstantProperty(lineColor),
+          outlineWidth: new Cesium.ConstantProperty(2),
+          height:       new Cesium.ConstantProperty(0),
+        },
+      })
+
+      aoEntitiesRef.current.set(key, entity)
+    }
+  }, [areaOfOperations])
 
   // -------------------------------------------------------------------------
   // Update asset positions from live telemetry

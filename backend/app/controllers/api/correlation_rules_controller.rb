@@ -50,7 +50,7 @@ module Api
 
     def rule_params
       params.require(:correlation_rule).permit(
-        :name, :description, :is_active, :cooldown_minutes,
+        :name, :description, :is_active, :cooldown_minutes, :area_of_operation_id,
         conditions: {},
         actions:    {}
       )
@@ -65,7 +65,7 @@ module Api
     def serialize_rule(rule)
       rule.as_json(only: %i[
         id name description is_active cooldown_minutes
-        last_fired_at created_at updated_at
+        area_of_operation_id last_fired_at created_at updated_at
       ]).merge(
         conditions:  rule.conditions,
         actions:     rule.actions,

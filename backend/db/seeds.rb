@@ -47,10 +47,14 @@ end
 # Clear all seed data — idempotent on re-run
 # ---------------------------------------------------------------------------
 puts "  Clearing existing data..."
+SignalRuleMatch.delete_all
 AuditEvent.delete_all
 Task.delete_all
 Asset.delete_all
+ExternalSignal.delete_all
+CorrelationRule.delete_all
 Site.delete_all
+AreaOfOperation.delete_all
 
 # ---------------------------------------------------------------------------
 # Sites — 9 locations across active operational theaters
@@ -89,6 +93,104 @@ sites = sites_data.map do |attrs|
 end
 
 alpha, bravo, charlie, delta, echo, foxtrot, golf, hotel, india = sites
+
+# ---------------------------------------------------------------------------
+# Areas of Operation — 4 theater-level AOs, one per command
+# ---------------------------------------------------------------------------
+puts "\nSeeding areas of operation..."
+
+commander_for_ao = User.find_or_create_by!(email: "commander@resilience.mil") do |u|
+  u.password = "password"
+  u.role     = "commander"
+end
+
+eucom = AreaOfOperation.create!(
+  name:         "European Command (EUCOM)",
+  description:  "NATO eastern flank operations — Poland, Germany, Turkey theater",
+  threat_level: "amber",
+  color:        "#ffb347",
+  geometry: {
+    "type" => "Polygon",
+    "coordinates" => [[
+      [5.0,  38.0],
+      [5.0,  55.0],
+      [40.0, 55.0],
+      [40.0, 38.0],
+      [5.0,  38.0]
+    ]]
+  },
+  created_by: commander_for_ao
+)
+puts "  Created AO: #{eucom.name}"
+
+centcom = AreaOfOperation.create!(
+  name:         "Central Command (CENTCOM)",
+  description:  "Middle East operations — Riyadh, Tel Aviv theater",
+  threat_level: "red",
+  color:        "#ff4757",
+  geometry: {
+    "type" => "Polygon",
+    "coordinates" => [[
+      [32.0, 22.0],
+      [32.0, 35.0],
+      [50.0, 35.0],
+      [50.0, 22.0],
+      [32.0, 22.0]
+    ]]
+  },
+  created_by: commander_for_ao
+)
+puts "  Created AO: #{centcom.name}"
+
+africom = AreaOfOperation.create!(
+  name:         "Africa Command (AFRICOM)",
+  description:  "Horn of Africa and Indian Ocean theater — Djibouti, Diego Garcia",
+  threat_level: "amber",
+  color:        "#ffb347",
+  geometry: {
+    "type" => "Polygon",
+    "coordinates" => [[
+      [40.0, -10.0],
+      [40.0,  15.0],
+      [75.0,  15.0],
+      [75.0, -10.0],
+      [40.0, -10.0]
+    ]]
+  },
+  created_by: commander_for_ao
+)
+puts "  Created AO: #{africom.name}"
+
+indopacom = AreaOfOperation.create!(
+  name:         "Indo-Pacific Command (INDOPACOM)",
+  description:  "Northeast Asia and Pacific theater — Seoul, Guam",
+  threat_level: "green",
+  color:        "#23d160",
+  geometry: {
+    "type" => "Polygon",
+    "coordinates" => [[
+      [118.0, 10.0],
+      [118.0, 42.0],
+      [150.0, 42.0],
+      [150.0, 10.0],
+      [118.0, 10.0]
+    ]]
+  },
+  created_by: commander_for_ao
+)
+puts "  Created AO: #{indopacom.name}"
+
+# Assign sites to their AOs
+alpha.update!(area_of_operation: eucom)
+bravo.update!(area_of_operation: eucom)
+charlie.update!(area_of_operation: eucom)
+delta.update!(area_of_operation: centcom)
+echo.update!(area_of_operation: centcom)
+foxtrot.update!(area_of_operation: africom)
+golf.update!(area_of_operation: africom)
+hotel.update!(area_of_operation: indopacom)
+india.update!(area_of_operation: indopacom)
+puts "  Assigned all 9 sites to their AOs"
 
 # ---------------------------------------------------------------------------
 # Assets — 7 across multiple types and statuses
@@ -432,11 +534,14 @@ puts "\nSeeding correlation rules..."
 commander = User.find_by(role: "commander")
 
 if commander
+  eucom_ao = AreaOfOperation.find_by(name: "European Command (EUCOM)")
+
   unless CorrelationRule.exists?(name: "Unplanned Air Activity Near Site")
     CorrelationRule.create!(
-      name:             "Unplanned Air Activity Near Site",
-      description:      "Fires when any aircraft is detected within 30km of an active site. Creates a high-priority task for the duty officer to investigate.",
-      is_active:        true,
+      name:                 "Unplanned Air Activity Near Site",
+      description:          "Fires when any aircraft is detected within 30km of an active EUCOM site. Creates a high-priority task for the duty officer to investigate.",
+      is_active:            true,
+      area_of_operation:    eucom_ao,
       conditions: {
         "signal_type"          => "aircraft_position",
         "proximity_km"         => 30,
@@ -459,9 +564,10 @@ if commander
 
   unless CorrelationRule.exists?(name: "Seismic Event Near Site")
     CorrelationRule.create!(
-      name:             "Seismic Event Near Site",
-      description:      "Fires when a seismic event of magnitude 4.5 or greater occurs within 75km of any active site. Creates a high-priority damage assessment task.",
-      is_active:        true,
+      name:                 "Seismic Event Near Site",
+      description:          "Fires when a seismic event of magnitude 4.5 or greater occurs within 75km of any active EUCOM site. Creates a high-priority damage assessment task.",
+      is_active:            true,
+      area_of_operation:    eucom_ao,
       conditions: {
         "signal_type"          => "seismic_event",
         "proximity_km"         => 75,
@@ -485,8 +591,9 @@ if commander
 
   unless CorrelationRule.exists?(name: "GPS Jamming Detected")
     CorrelationRule.create!(
-      name:             "GPS Jamming Detected",
-      description:      "Fires when GPS interference is detected within 100km of any active site. Creates a critical task to shift to alternate navigation procedures.",
+      name:                 "GPS Jamming Detected",
+      description:          "Fires when GPS interference is detected within 100km of any active EUCOM site. Creates a critical task to shift to alternate navigation procedures.",
+      area_of_operation:    eucom_ao,
       is_active:        true,
       conditions: {
         "signal_type"          => "gps_jamming",
@@ -512,6 +619,7 @@ else
 end
 
 puts "\nSeed complete."
+puts "  Areas:       #{AreaOfOperation.count}  (EUCOM amber, CENTCOM red, AFRICOM amber, INDOPACOM green)"
 puts "  Sites:       #{Site.count}  (#{Site.where(status: 'active').count} active, #{Site.where(status: 'inactive').count} inactive)"
 puts "  Assets:      #{Asset.count}"
 puts "  Tasks:       #{Task.count}  (#{Task.group(:workflow_status).count.map { |s, c| "#{c} #{s}" }.join(', ')})"

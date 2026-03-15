@@ -55,7 +55,11 @@ module Correlations
 
     def target_sites(rule)
       site_id = rule.conditions["site_id"]
-      site_id.present? ? Site.where(id: site_id) : Site.active
+      return Site.where(id: site_id) if site_id.present?
+
+      base = Site.active
+      base = base.where(area_of_operation_id: rule.area_of_operation_id) if rule.area_of_operation_id.present?
+      base
     end
 
     def within_proximity?(site, rule)

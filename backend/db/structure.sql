@@ -40,6 +40,24 @@ CREATE TABLE public.ar_internal_metadata (
 
 
 --
+-- Name: areas_of_operation; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.areas_of_operation (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    name text NOT NULL,
+    description text,
+    threat_level text DEFAULT 'green'::text NOT NULL,
+    color text DEFAULT '#23d160'::text NOT NULL,
+    geometry jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_by_id uuid NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    CONSTRAINT areas_of_operation_threat_level_check CHECK ((threat_level = ANY (ARRAY['green'::text, 'amber'::text, 'red'::text, 'black'::text])))
+);
+
+
+--
 -- Name: assets; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -89,7 +107,8 @@ CREATE TABLE public.correlation_rules (
     cooldown_minutes integer DEFAULT 60 NOT NULL,
     last_fired_at timestamp(6) without time zone,
     created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL
+    updated_at timestamp(6) without time zone NOT NULL,
+    area_of_operation_id uuid
 );
 
 
@@ -151,7 +170,8 @@ CREATE TABLE public.sites (
     longitude numeric(9,6) NOT NULL,
     status text DEFAULT 'active'::text NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL
+    updated_at timestamp(6) without time zone NOT NULL,
+    area_of_operation_id uuid
 );
 
 
@@ -196,6 +216,14 @@ CREATE TABLE public.users (
 
 ALTER TABLE ONLY public.ar_internal_metadata
     ADD CONSTRAINT ar_internal_metadata_pkey PRIMARY KEY (key);
+
+
+--
+-- Name: areas_of_operation areas_of_operation_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.areas_of_operation
+    ADD CONSTRAINT areas_of_operation_pkey PRIMARY KEY (id);
 
 
 --
@@ -278,6 +306,20 @@ CREATE INDEX idx_on_entity_type_entity_id_occurred_at_dfd7f189aa ON public.audit
 
 
 --
+-- Name: index_ao_on_threat_level; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_ao_on_threat_level ON public.areas_of_operation USING btree (threat_level);
+
+
+--
+-- Name: index_areas_of_operation_on_created_by_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_areas_of_operation_on_created_by_id ON public.areas_of_operation USING btree (created_by_id);
+
+
+--
 -- Name: index_assets_on_home_site_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -296,6 +338,13 @@ CREATE INDEX index_audit_events_on_correlation_id ON public.audit_events USING b
 --
 
 CREATE INDEX index_audit_events_on_occurred_at ON public.audit_events USING btree (occurred_at);
+
+
+--
+-- Name: index_correlation_rules_on_area_of_operation_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_correlation_rules_on_area_of_operation_id ON public.correlation_rules USING btree (area_of_operation_id);
 
 
 --
@@ -376,6 +425,13 @@ CREATE UNIQUE INDEX index_signals_on_dedup ON public.external_signals USING btre
 
 
 --
+-- Name: index_sites_on_area_of_operation_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_sites_on_area_of_operation_id ON public.sites USING btree (area_of_operation_id);
+
+
+--
 -- Name: index_tasks_on_asset_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -401,6 +457,14 @@ CREATE INDEX index_tasks_on_workflow_status ON public.tasks USING btree (workflo
 --
 
 CREATE UNIQUE INDEX index_users_on_email ON public.users USING btree (email);
+
+
+--
+-- Name: areas_of_operation fk_rails_0bd4a97ef0; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.areas_of_operation
+    ADD CONSTRAINT fk_rails_0bd4a97ef0 FOREIGN KEY (created_by_id) REFERENCES public.users(id);
 
 
 --
@@ -433,6 +497,22 @@ ALTER TABLE ONLY public.assets
 
 ALTER TABLE ONLY public.tasks
     ADD CONSTRAINT fk_rails_a53067c46b FOREIGN KEY (site_id) REFERENCES public.sites(id);
+
+
+--
+-- Name: sites fk_rails_ad9cdb6510; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sites
+    ADD CONSTRAINT fk_rails_ad9cdb6510 FOREIGN KEY (area_of_operation_id) REFERENCES public.areas_of_operation(id) ON DELETE SET NULL;
+
+
+--
+-- Name: correlation_rules fk_rails_b88d28d836; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.correlation_rules
+    ADD CONSTRAINT fk_rails_b88d28d836 FOREIGN KEY (area_of_operation_id) REFERENCES public.areas_of_operation(id) ON DELETE SET NULL;
 
 
 --
@@ -475,6 +555,9 @@ SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
 ('20260315061734'),
+('20260315000006'),
+('20260315000005'),
+('20260315000004'),
 ('20260315000003'),
 ('20260315000002'),
 ('20260315000001'),

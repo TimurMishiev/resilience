@@ -35,8 +35,9 @@ Rails.application.routes.draw do
       get :stream
     end
 
-    resources :signals,             only: %i[index show]
-    resources :correlation_rules,   only: %i[index show create update destroy]
-    resources :signal_rule_matches, only: %i[index show]
+    resources :signals,               only: %i[index show]
+    resources :correlation_rules,     only: %i[index show create update destroy]
+    resources :signal_rule_matches,   only: %i[index show]
+    resources :areas_of_operation,    only: %i[index show create update destroy]
   end
 end

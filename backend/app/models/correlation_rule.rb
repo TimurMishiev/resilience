@@ -1,5 +1,6 @@
 class CorrelationRule < ApplicationRecord
   belongs_to :created_by, class_name: "User"
+  belongs_to :area_of_operation, optional: true
   has_many :signal_rule_matches, dependent: :destroy
 
   validates :name,             presence: true

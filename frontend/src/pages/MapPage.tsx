@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import {
@@ -14,6 +14,7 @@ import { useSites } from '../hooks/useSites'
 import { useTasks, useTransitionTask } from '../hooks/useTasks'
 import { useAssets } from '../hooks/useAssets'
 import { useTelemetryStream } from '../hooks/useTelemetryStream'
+import { useAreasOfOperation } from '../hooks/useAreasOfOperation'
 import { useReplay } from '../context/ReplayContext'
 import type { Site, Task, Asset, WorkflowStatus } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
@@ -225,11 +226,14 @@ export default function MapPage() {
 
   const [selectedSiteId,  setSelectedSiteId]  = useState<string | null>(null)
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
+  const [mapLoaded,        setMapLoaded]       = useState(false)
 
   const asOfParam  = asOf ? { as_of: asOf } : {}
   const sitesQuery = useSites({ per_page: 200, ...asOfParam })
   const tasksQuery = useTasks({ per_page: 200, ...asOfParam })
   const assetsQuery = useAssets({ per_page: 200, ...asOfParam })
+  const { data: areasRes } = useAreasOfOperation({ per_page: 200 })
+  const areaOfOperations = useMemo(() => areasRes?.data ?? [], [areasRes?.data])
 
   const sites    = sitesQuery.data?.data ?? []
   const allTasks = tasksQuery.data?.data ?? []
@@ -263,14 +267,16 @@ export default function MapPage() {
   // -------------------------------------------------------------------------
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return
-    mapRef.current = new maplibregl.Map({
+    const map = new maplibregl.Map({
       container: mapContainerRef.current,
       style:     'https://demotiles.maplibre.org/style.json',
       center:    [0, 20],
       zoom:      1.5,
     })
-    mapRef.current.addControl(new maplibregl.NavigationControl(), 'top-left')
-    return () => { mapRef.current?.remove(); mapRef.current = null }
+    map.addControl(new maplibregl.NavigationControl(), 'top-left')
+    map.on('load', () => setMapLoaded(true))
+    mapRef.current = map
+    return () => { mapRef.current?.remove(); mapRef.current = null; setMapLoaded(false) }
   }, [])
 
   useEffect(() => { setSelectedSiteId(null); setSelectedAssetId(null) }, [asOf])
@@ -303,6 +309,55 @@ export default function MapPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sites, allTasks])
+
+  // -------------------------------------------------------------------------
+  // AO polygon overlays — GeoJSON fill + dashed stroke
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapLoaded) return
+
+    const geojsonData: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: areaOfOperations.map(ao => ({
+        type: 'Feature' as const,
+        properties: { color: ao.color, name: ao.name },
+        geometry: ao.geometry,
+      })),
+    }
+
+    const source = map.getSource('ao-polygons') as maplibregl.GeoJSONSource | undefined
+    if (source) {
+      source.setData(geojsonData)
+      return
+    }
+
+    map.addSource('ao-polygons', { type: 'geojson', data: geojsonData })
+
+    // Fill layer — inserted behind site markers if that layer exists
+    const beforeLayer = map.getLayer('site-markers') ? 'site-markers' : undefined
+    map.addLayer(
+      {
+        id:     'ao-fill',
+        type:   'fill',
+        source: 'ao-polygons',
+        paint:  { 'fill-color': ['get', 'color'], 'fill-opacity': 0.12 },
+      },
+      beforeLayer,
+    )
+
+    // Dashed stroke on top
+    map.addLayer({
+      id:     'ao-stroke',
+      type:   'line',
+      source: 'ao-polygons',
+      paint:  {
+        'line-color':     ['get', 'color'],
+        'line-width':     1.5,
+        'line-dasharray': [4, 2],
+      },
+    })
+  }, [mapLoaded, areaOfOperations])
 
   // -------------------------------------------------------------------------
   // Asset markers — created once from DB positions, then moved by telemetry

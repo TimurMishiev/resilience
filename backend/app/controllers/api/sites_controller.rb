@@ -15,7 +15,7 @@ module Api
     private
 
     def serialize_site(site)
-      site.as_json(only: %i[id name latitude longitude status created_at])
+      site.as_json(only: %i[id name latitude longitude status area_of_operation_id created_at])
     end
   end
 end

@@ -3,6 +3,44 @@
 // ---------------------------------------------------------------------------
 
 export type SiteStatus = 'active' | 'inactive'
+export type ThreatLevel = 'green' | 'amber' | 'red' | 'black'
+
+export interface GeoJsonPolygon {
+  type: 'Polygon'
+  coordinates: number[][][]   // [[[lng, lat], ...]]
+}
+
+export interface AreaOfOperation {
+  id: string
+  name: string
+  description: string | null
+  threat_level: ThreatLevel
+  color: string               // hex e.g. "#ff4757"
+  geometry: GeoJsonPolygon
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateAreaOfOperationBody {
+  name: string
+  description?: string | null
+  threat_level: ThreatLevel
+  color: string
+  geometry: GeoJsonPolygon
+}
+
+export interface UpdateAreaOfOperationBody {
+  name?: string
+  description?: string | null
+  threat_level?: ThreatLevel
+  color?: string
+  geometry?: GeoJsonPolygon
+}
+
+export interface AreasOfOperationParams extends PaginationParams {
+  threat_level?: ThreatLevel
+}
 export type AssetStatus = 'available' | 'in_use' | 'maintenance' | 'offline'
 export type TaskPriority = 'low' | 'normal' | 'high' | 'critical'
 export type WorkflowStatus = 'new' | 'triaged' | 'in_progress' | 'blocked' | 'resolved'
@@ -13,6 +51,7 @@ export interface Site {
   latitude: number | string  // Rails serializes decimal columns as strings
   longitude: number | string
   status: SiteStatus
+  area_of_operation_id: string | null
   created_at: string
   updated_at: string
 }
@@ -193,6 +232,7 @@ export interface CorrelationRule {
   conditions: CorrelationConditions
   actions: CorrelationActions
   created_by: string
+  area_of_operation_id: string | null
   cooldown_minutes: number
   last_fired_at: string | null
   created_at: string
