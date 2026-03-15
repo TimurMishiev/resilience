@@ -182,6 +182,22 @@ export default function AppShell() {
                 : undefined
               }
             />
+            <MenuItem
+              icon="feed"
+              text="Signals"
+              active={pathname.startsWith('/signals')}
+              onClick={() => navigate('/signals')}
+            />
+            <MenuItem
+              icon="lightning"
+              text="Rules"
+              active={pathname.startsWith('/rules')}
+              onClick={() => navigate('/rules')}
+              labelElement={currentUser?.role !== 'commander'
+                ? <Icon icon="lock" size={10} className="shell-menu-lock" />
+                : undefined
+              }
+            />
           </Menu>
         </nav>
 

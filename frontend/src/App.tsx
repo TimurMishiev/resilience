@@ -5,11 +5,13 @@ import PageErrorBoundary from './components/PageErrorBoundary'
 import ProtectedRoute from './components/ProtectedRoute'
 import AssetsPage from './pages/AssetsPage'
 import BriefingPage from './pages/BriefingPage'
+import CorrelationRulesPage from './pages/CorrelationRulesPage'
 import GraphPage from './pages/GraphPage'
 import GlobePage from './pages/GlobePage'
 import DashboardPage from './pages/DashboardPage'
 import LoginPage from './pages/LoginPage'
 import MapPage from './pages/MapPage'
+import SignalFeedPage from './pages/SignalFeedPage'
 import SitesPage from './pages/SitesPage'
 import TasksPage from './pages/TasksPage'
 
@@ -38,6 +40,8 @@ export default function App() {
                   <BriefingPage />
                 </PageErrorBoundary>
               } />
+              <Route path="signals" element={<SignalFeedPage />} />
+              <Route path="rules" element={<CorrelationRulesPage />} />
             </Route>
           </Route>
         </Routes>

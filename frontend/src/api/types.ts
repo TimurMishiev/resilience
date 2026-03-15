@@ -145,6 +145,116 @@ export interface AiSummaryResult {
 }
 
 // ---------------------------------------------------------------------------
+// Signal types
+// ---------------------------------------------------------------------------
+
+export type SignalSource = 'opensky' | 'ais' | 'usgs_seismic' | 'gpsjam' | 'firms_wildfire' | 'manual'
+export type SignalType = 'aircraft_position' | 'vessel_position' | 'seismic_event' | 'gps_jamming' | 'wildfire' | 'manual'
+
+export interface Signal {
+  id: string
+  source: SignalSource
+  signal_type: SignalType
+  external_id: string
+  lat: string | number
+  lng: string | number
+  altitude: string | number | null
+  speed: string | number | null
+  heading: string | number | null
+  magnitude: string | number | null
+  raw_payload: Record<string, unknown>
+  occurred_at: string
+  ingested_at: string
+}
+
+export interface CorrelationConditions {
+  signal_type?: SignalType | null
+  proximity_km?: number | null
+  site_id?: string | null
+  magnitude_min?: number | null
+  count_threshold?: number | null
+  time_window_minutes?: number | null
+}
+
+export interface CorrelationActions {
+  create_task?: {
+    title?: string
+    description?: string
+    priority?: TaskPriority
+    assign_to_site?: string
+  }
+}
+
+export interface CorrelationRule {
+  id: string
+  name: string
+  description: string | null
+  is_active: boolean
+  conditions: CorrelationConditions
+  actions: CorrelationActions
+  created_by: string
+  cooldown_minutes: number
+  last_fired_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface SignalRuleMatch {
+  id: string
+  fired_at: string
+  metadata: Record<string, unknown>
+  signal: {
+    id: string
+    source: SignalSource
+    signal_type: SignalType
+    lat: string | number
+    lng: string | number
+    occurred_at: string
+  } | null
+  correlation_rule: { id: string; name: string } | null
+  site: { id: string; name: string } | null
+  task: {
+    id: string
+    title: string
+    workflow_status: WorkflowStatus
+    priority: TaskPriority
+  } | null
+}
+
+export interface CreateCorrelationRuleBody {
+  name: string
+  description?: string | null
+  is_active?: boolean
+  conditions: CorrelationConditions
+  actions: CorrelationActions
+  cooldown_minutes?: number
+}
+
+export interface UpdateCorrelationRuleBody {
+  name?: string
+  description?: string | null
+  is_active?: boolean
+  conditions?: CorrelationConditions
+  actions?: CorrelationActions
+  cooldown_minutes?: number
+}
+
+export interface SignalsParams extends PaginationParams {
+  source?: SignalSource
+  signal_type?: SignalType
+  from?: string
+  to?: string
+  site_id?: string
+}
+
+export interface SignalRuleMatchesParams extends PaginationParams {
+  rule_id?: string
+  site_id?: string
+  from?: string
+  to?: string
+}
+
+// ---------------------------------------------------------------------------
 // Analytics types
 // ---------------------------------------------------------------------------
 

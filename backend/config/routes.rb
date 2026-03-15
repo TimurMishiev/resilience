@@ -34,5 +34,9 @@ Rails.application.routes.draw do
     namespace :telemetry do
       get :stream
     end
+
+    resources :signals,             only: %i[index show]
+    resources :correlation_rules,   only: %i[index show create update destroy]
+    resources :signal_rule_matches, only: %i[index show]
   end
 end

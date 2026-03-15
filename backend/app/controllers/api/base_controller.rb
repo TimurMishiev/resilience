@@ -25,6 +25,14 @@ module Api
       render json: { errors: result.errors }, status: :unprocessable_entity
     end
 
+    # Safely parses a datetime string, returning nil on any error.
+    def safe_parse_datetime(value)
+      return nil if value.blank?
+      Time.zone.parse(value.to_s)
+    rescue ArgumentError, TypeError
+      nil
+    end
+
     # Applies offset pagination to an ActiveRecord relation.
     # Returns [records, meta] where meta includes total, page, per_page, total_pages.
     # Defaults: page=1, per_page=50. Cap: per_page=200.

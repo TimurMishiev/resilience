@@ -1,9 +1,12 @@
 module Tasks
   # Creates a new Task and writes the corresponding audit event in a single transaction.
+  # The optional +metadata+ hash is stored on the audit event — used by the correlation
+  # engine to record rule_id and signal_id for system-generated tasks.
   class CreationService < ApplicationService
-    def initialize(params:, actor:)
-      @params = params
-      @actor = actor
+    def initialize(params:, actor:, metadata: nil)
+      @params   = params
+      @actor    = actor
+      @metadata = metadata
     end
 
     def call
@@ -26,6 +29,7 @@ module Tasks
           action: "create",
           before_snapshot: nil,
           after_snapshot: task_snapshot(task),
+          metadata: @metadata,
           correlation_id: correlation_id
         )
       end

@@ -75,11 +75,68 @@ CREATE TABLE public.audit_events (
 
 
 --
+-- Name: correlation_rules; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.correlation_rules (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    name text NOT NULL,
+    description text,
+    is_active boolean DEFAULT true NOT NULL,
+    conditions jsonb DEFAULT '{}'::jsonb NOT NULL,
+    actions jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_by_id uuid NOT NULL,
+    cooldown_minutes integer DEFAULT 60 NOT NULL,
+    last_fired_at timestamp(6) without time zone,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: external_signals; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.external_signals (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    source text NOT NULL,
+    signal_type text NOT NULL,
+    external_id text NOT NULL,
+    lat numeric(9,6) NOT NULL,
+    lng numeric(9,6) NOT NULL,
+    altitude numeric(10,2),
+    speed numeric(8,2),
+    heading numeric(6,2),
+    magnitude numeric(5,2),
+    raw_payload jsonb DEFAULT '{}'::jsonb NOT NULL,
+    occurred_at timestamp(6) without time zone NOT NULL,
+    ingested_at timestamp(6) without time zone DEFAULT now() NOT NULL,
+    CONSTRAINT signals_signal_type_check CHECK ((signal_type = ANY (ARRAY['aircraft_position'::text, 'vessel_position'::text, 'seismic_event'::text, 'gps_jamming'::text, 'wildfire'::text, 'manual'::text]))),
+    CONSTRAINT signals_source_check CHECK ((source = ANY (ARRAY['opensky'::text, 'ais'::text, 'usgs_seismic'::text, 'gpsjam'::text, 'firms_wildfire'::text, 'manual'::text])))
+);
+
+
+--
 -- Name: schema_migrations; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.schema_migrations (
     version character varying NOT NULL
+);
+
+
+--
+-- Name: signal_rule_matches; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.signal_rule_matches (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    signal_id uuid NOT NULL,
+    correlation_rule_id uuid NOT NULL,
+    site_id uuid,
+    task_id uuid,
+    fired_at timestamp(6) without time zone DEFAULT now() NOT NULL,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL
 );
 
 
@@ -158,11 +215,35 @@ ALTER TABLE ONLY public.audit_events
 
 
 --
+-- Name: correlation_rules correlation_rules_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.correlation_rules
+    ADD CONSTRAINT correlation_rules_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: external_signals external_signals_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.external_signals
+    ADD CONSTRAINT external_signals_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: schema_migrations schema_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.schema_migrations
     ADD CONSTRAINT schema_migrations_pkey PRIMARY KEY (version);
+
+
+--
+-- Name: signal_rule_matches signal_rule_matches_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.signal_rule_matches
+    ADD CONSTRAINT signal_rule_matches_pkey PRIMARY KEY (id);
 
 
 --
@@ -218,6 +299,83 @@ CREATE INDEX index_audit_events_on_occurred_at ON public.audit_events USING btre
 
 
 --
+-- Name: index_correlation_rules_on_created_by_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_correlation_rules_on_created_by_id ON public.correlation_rules USING btree (created_by_id);
+
+
+--
+-- Name: index_correlation_rules_on_is_active; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_correlation_rules_on_is_active ON public.correlation_rules USING btree (is_active);
+
+
+--
+-- Name: index_external_signals_on_lat_and_lng; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_external_signals_on_lat_and_lng ON public.external_signals USING btree (lat, lng);
+
+
+--
+-- Name: index_external_signals_on_occurred_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_external_signals_on_occurred_at ON public.external_signals USING btree (occurred_at);
+
+
+--
+-- Name: index_external_signals_on_source; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_external_signals_on_source ON public.external_signals USING btree (source);
+
+
+--
+-- Name: index_signal_rule_matches_on_correlation_rule_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_signal_rule_matches_on_correlation_rule_id ON public.signal_rule_matches USING btree (correlation_rule_id);
+
+
+--
+-- Name: index_signal_rule_matches_on_fired_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_signal_rule_matches_on_fired_at ON public.signal_rule_matches USING btree (fired_at);
+
+
+--
+-- Name: index_signal_rule_matches_on_signal_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_signal_rule_matches_on_signal_id ON public.signal_rule_matches USING btree (signal_id);
+
+
+--
+-- Name: index_signal_rule_matches_on_site_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_signal_rule_matches_on_site_id ON public.signal_rule_matches USING btree (site_id);
+
+
+--
+-- Name: index_signal_rule_matches_on_task_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_signal_rule_matches_on_task_id ON public.signal_rule_matches USING btree (task_id);
+
+
+--
+-- Name: index_signals_on_dedup; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_signals_on_dedup ON public.external_signals USING btree (source, external_id, occurred_at);
+
+
+--
 -- Name: index_tasks_on_asset_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -254,6 +412,14 @@ ALTER TABLE ONLY public.tasks
 
 
 --
+-- Name: signal_rule_matches fk_rails_56955fb8d9; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.signal_rule_matches
+    ADD CONSTRAINT fk_rails_56955fb8d9 FOREIGN KEY (signal_id) REFERENCES public.external_signals(id);
+
+
+--
 -- Name: assets fk_rails_905e385552; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -270,12 +436,48 @@ ALTER TABLE ONLY public.tasks
 
 
 --
+-- Name: signal_rule_matches fk_rails_d0622d6dac; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.signal_rule_matches
+    ADD CONSTRAINT fk_rails_d0622d6dac FOREIGN KEY (task_id) REFERENCES public.tasks(id);
+
+
+--
+-- Name: correlation_rules fk_rails_df82305965; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.correlation_rules
+    ADD CONSTRAINT fk_rails_df82305965 FOREIGN KEY (created_by_id) REFERENCES public.users(id);
+
+
+--
+-- Name: signal_rule_matches fk_rails_e7bfadaf05; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.signal_rule_matches
+    ADD CONSTRAINT fk_rails_e7bfadaf05 FOREIGN KEY (correlation_rule_id) REFERENCES public.correlation_rules(id);
+
+
+--
+-- Name: signal_rule_matches fk_rails_f6fa1e442c; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.signal_rule_matches
+    ADD CONSTRAINT fk_rails_f6fa1e442c FOREIGN KEY (site_id) REFERENCES public.sites(id);
+
+
+--
 -- PostgreSQL database dump complete
 --
 
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260315061734'),
+('20260315000003'),
+('20260315000002'),
+('20260315000001'),
 ('20260314034831'),
 ('20260313104951'),
 ('20260313104950'),

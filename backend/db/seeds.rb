@@ -424,6 +424,93 @@ end
 # Summary
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Correlation Rules — 3 starter rules for the intelligence-to-action engine
+# ---------------------------------------------------------------------------
+puts "\nSeeding correlation rules..."
+
+commander = User.find_by(role: "commander")
+
+if commander
+  unless CorrelationRule.exists?(name: "Unplanned Air Activity Near Site")
+    CorrelationRule.create!(
+      name:             "Unplanned Air Activity Near Site",
+      description:      "Fires when any aircraft is detected within 30km of an active site. Creates a high-priority task for the duty officer to investigate.",
+      is_active:        true,
+      conditions: {
+        "signal_type"          => "aircraft_position",
+        "proximity_km"         => 30,
+        "site_id"              => nil,
+        "count_threshold"      => 1,
+        "time_window_minutes"  => 5
+      },
+      actions: {
+        "create_task" => {
+          "title"       => "Air activity detected near {{site_name}}",
+          "description" => "Correlation engine detected an aircraft within {{proximity_km}}km of {{site_name}}. Verify identification and intent. Signal source: OpenSky.",
+          "priority"    => "high"
+        }
+      },
+      created_by:      commander,
+      cooldown_minutes: 60
+    )
+    puts "  Created rule: Unplanned Air Activity Near Site"
+  end
+
+  unless CorrelationRule.exists?(name: "Seismic Event Near Site")
+    CorrelationRule.create!(
+      name:             "Seismic Event Near Site",
+      description:      "Fires when a seismic event of magnitude 4.5 or greater occurs within 75km of any active site. Creates a high-priority damage assessment task.",
+      is_active:        true,
+      conditions: {
+        "signal_type"          => "seismic_event",
+        "proximity_km"         => 75,
+        "site_id"              => nil,
+        "magnitude_min"        => 4.5,
+        "count_threshold"      => 1,
+        "time_window_minutes"  => 60
+      },
+      actions: {
+        "create_task" => {
+          "title"       => "Seismic event — assess {{site_name}}",
+          "description" => "Magnitude {{magnitude_min}}+ seismic event detected within {{proximity_km}}km. Conduct immediate structural and personnel damage assessment. Signal source: USGS.",
+          "priority"    => "high"
+        }
+      },
+      created_by:      commander,
+      cooldown_minutes: 1440  # 24 hours
+    )
+    puts "  Created rule: Seismic Event Near Site"
+  end
+
+  unless CorrelationRule.exists?(name: "GPS Jamming Detected")
+    CorrelationRule.create!(
+      name:             "GPS Jamming Detected",
+      description:      "Fires when GPS interference is detected within 100km of any active site. Creates a critical task to shift to alternate navigation procedures.",
+      is_active:        true,
+      conditions: {
+        "signal_type"          => "gps_jamming",
+        "proximity_km"         => 100,
+        "site_id"              => nil,
+        "count_threshold"      => 1,
+        "time_window_minutes"  => 30
+      },
+      actions: {
+        "create_task" => {
+          "title"       => "GPS jamming active — {{site_name}}",
+          "description" => "GPS interference signal detected within {{proximity_km}}km of {{site_name}}. Activate alternate navigation procedures immediately. Do not rely on GPS-dependent systems until all-clear.",
+          "priority"    => "critical"
+        }
+      },
+      created_by:      commander,
+      cooldown_minutes: 30
+    )
+    puts "  Created rule: GPS Jamming Detected"
+  end
+else
+  puts "  WARNING: No commander user found — skipping correlation rules seed"
+end
+
 puts "\nSeed complete."
 puts "  Sites:       #{Site.count}  (#{Site.where(status: 'active').count} active, #{Site.where(status: 'inactive').count} inactive)"
 puts "  Assets:      #{Asset.count}"
