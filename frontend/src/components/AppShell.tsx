@@ -11,15 +11,26 @@ import {
   Tag,
 } from '@blueprintjs/core'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { useReplay } from '../context/ReplayContext'
 import { useAuth } from '../context/AuthContext'
 import ReplaySelector from './ReplaySelector'
+import { useEventSource } from '../hooks/useEventSource'
 
 export default function AppShell() {
-  const navigate = useNavigate()
+  const navigate    = useNavigate()
   const { pathname } = useLocation()
   const { isReplaying, asOf } = useReplay()
   const { currentUser, logout } = useAuth()
+  const queryClient = useQueryClient()
+
+  const { status: liveStatus } = useEventSource({
+    enabled: !!currentUser && !isReplaying,
+    onEvent: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['readiness'] })
+    },
+  })
 
   function handleLogout() {
     logout()
@@ -37,6 +48,10 @@ export default function AppShell() {
           </span>
         </NavbarGroup>
         <NavbarGroup align={Alignment.RIGHT}>
+          <span
+            className={`live-indicator live-indicator--${liveStatus}`}
+            title={`Stream: ${liveStatus}`}
+          />
           <ReplaySelector />
           <NavbarDivider />
           {currentUser && (

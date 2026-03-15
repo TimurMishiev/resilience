@@ -24,7 +24,9 @@ module Api
     def create
       result = Tasks::CreationService.call(params: task_create_params, actor: actor)
       if result.success
-        render json: serialize_task(result.payload[:task]), status: :created
+        task = result.payload[:task]
+        broadcast("task_created", task)
+        render json: serialize_task(task), status: :created
       else
         render_service_failure(result)
       end
@@ -34,7 +36,9 @@ module Api
       task = Task.find(params[:id])
       result = Tasks::UpdateService.call(task: task, params: task_update_params, actor: actor)
       if result.success
-        render json: serialize_task(result.payload[:task])
+        task = result.payload[:task]
+        broadcast("task_updated", task)
+        render json: serialize_task(task)
       else
         render_service_failure(result)
       end
@@ -49,7 +53,9 @@ module Api
         blocked_reason: transition_params[:blocked_reason]
       )
       if result.success
-        render json: serialize_task(result.payload[:task])
+        task = result.payload[:task]
+        broadcast("task_transitioned", task)
+        render json: serialize_task(task)
       else
         render_service_failure(result)
       end
@@ -104,6 +110,15 @@ module Api
 
     def transition_params
       params.require(:transition).permit(:to_status, :blocked_reason)
+    end
+
+    def broadcast(event, task)
+      Sse::Broadcaster.instance.publish(
+        event: event,
+        data:  { id: task.id, site_id: task.site_id, workflow_status: task.workflow_status }
+      )
+    rescue StandardError
+      # Never let a broadcast failure affect the HTTP response
     end
   end
 end

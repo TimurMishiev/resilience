@@ -1,0 +1,53 @@
+module Api
+  class EventsController < ApplicationController
+    include ActionController::Live
+    include JwtAuthenticatable
+
+    # GET /api/events
+    # Opens a persistent SSE stream for the authenticated client.
+    # The client receives a heartbeat every 25 seconds to keep the
+    # connection alive through proxies and load balancers.
+    def stream
+      response.headers["Content-Type"]  = "text/event-stream"
+      response.headers["Cache-Control"] = "no-cache"
+      response.headers["X-Accel-Buffering"] = "no"
+
+      broadcaster = Sse::Broadcaster.instance
+      queue       = broadcaster.subscribe
+
+      # Send an initial connection confirmation event
+      sse_write(response.stream, event: "connected", data: { message: "stream open" })
+
+      # Heartbeat thread — keeps the TCP connection alive
+      heartbeat = Thread.new do
+        loop do
+          sleep 25
+          sse_write(response.stream, event: "heartbeat", data: { ts: Time.current.to_i })
+        rescue IOError, ActionController::Live::ClientDisconnected
+          break
+        end
+      end
+
+      # Block here, draining the queue until the client disconnects
+      loop do
+        payload = queue.pop          # blocks until a message arrives
+        response.stream.write(payload)
+        response.stream.write("\n\n")
+      rescue IOError, ActionController::Live::ClientDisconnected
+        break
+      end
+
+    ensure
+      heartbeat&.kill
+      broadcaster.unsubscribe(queue)
+      response.stream.close
+    end
+
+    private
+
+    def sse_write(stream, event:, data:)
+      stream.write("event: #{event}\n")
+      stream.write("data: #{data.to_json}\n\n")
+    end
+  end
+end

@@ -28,5 +28,7 @@ Rails.application.routes.draw do
       get  :filter
       post :summary
     end
+
+    get "events", to: "events#stream"
   end
 end

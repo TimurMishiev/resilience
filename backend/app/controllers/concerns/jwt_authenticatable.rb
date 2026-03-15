@@ -33,6 +33,8 @@ module JwtAuthenticatable
 
     def authenticate_request!
       token = request.headers["Authorization"]&.delete_prefix("Bearer ")&.strip
+      # SSE clients cannot send custom headers — fall back to query param
+      token = params[:token]&.strip if token.blank?
       raise JwtAuthenticatable::AuthenticationError, "Missing token" if token.blank?
 
       payload = JwtAuthenticatable.decode(token)

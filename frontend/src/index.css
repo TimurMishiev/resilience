@@ -642,3 +642,34 @@ body {
   display: flex;
   gap: 4px;
 }
+
+/* ── Live indicator ────────────────────────────────────────── */
+
+.live-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 10px;
+  flex-shrink: 0;
+  transition: background-color 0.4s ease;
+}
+
+.live-indicator--connected {
+  background-color: #15b371;
+  box-shadow: 0 0 6px #15b371aa;
+  animation: pulse-live 2.5s infinite;
+}
+
+.live-indicator--connecting {
+  background-color: #f0b726;
+}
+
+.live-indicator--disconnected {
+  background-color: #5c7080;
+}
+
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
