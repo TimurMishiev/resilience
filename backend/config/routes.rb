@@ -20,6 +20,10 @@ Rails.application.routes.draw do
 
     get "readiness", to: "readiness#index"
 
+    namespace :analytics do
+      get :throughput
+    end
+
     namespace :ai do
       get  :filter
       post :summary

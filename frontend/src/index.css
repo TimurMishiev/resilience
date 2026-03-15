@@ -528,3 +528,117 @@ body {
 .shell-email {
   font-size: 12px;
 }
+
+/* ── Dashboard ─────────────────────────────────────────────── */
+
+.dashboard-page {
+  max-width: 1100px;
+}
+
+.dashboard-kpi-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.dashboard-kpi {
+  flex: 1;
+  min-width: 140px;
+  background: #252c35;
+  border: 1px solid #383e47;
+  border-radius: 4px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dashboard-kpi-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.dashboard-kpi-value {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1;
+  color: #e1e8ed;
+}
+
+.dashboard-kpi-sub {
+  font-size: 14px;
+  font-weight: 400;
+  color: #8a9ba8;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.dashboard-card {
+  background: #252c35;
+  border: 1px solid #383e47;
+  border-radius: 4px;
+  padding: 16px 20px;
+}
+
+.dashboard-card--wide {
+  grid-column: 1 / -1;
+}
+
+.dashboard-card-title {
+  margin: 0 0 14px;
+  font-size: 13px;
+}
+
+/* Site readiness bars */
+
+.readiness-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.readiness-row {
+  display: grid;
+  grid-template-columns: 100px 1fr 36px auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.readiness-name {
+  font-size: 12px;
+  color: #d3d8de;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.readiness-bar-track {
+  height: 8px;
+  background: #2f363f;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.readiness-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.readiness-pct {
+  font-size: 12px;
+  font-weight: 600;
+  font-family: monospace;
+  text-align: right;
+}
+
+.readiness-counts {
+  display: flex;
+  gap: 4px;
+}

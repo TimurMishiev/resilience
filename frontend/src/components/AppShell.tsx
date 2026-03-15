@@ -71,6 +71,12 @@ export default function AppShell() {
         <nav className="shell-sidebar">
           <Menu>
             <MenuItem
+              icon="dashboard"
+              text="Dashboard"
+              active={pathname.startsWith('/dashboard')}
+              onClick={() => navigate('/dashboard')}
+            />
+            <MenuItem
               icon="map-marker"
               text="Sites"
               active={pathname.startsWith('/sites')}

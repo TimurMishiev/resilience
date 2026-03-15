@@ -143,3 +143,28 @@ export interface AiSummaryResult {
   summary: string
   citations: string[]
 }
+
+// ---------------------------------------------------------------------------
+// Analytics types
+// ---------------------------------------------------------------------------
+
+export interface SiteReadiness {
+  site_id: string
+  site_name: string
+  score: number | null
+  counts: {
+    total: number
+    resolved: number
+    blocked: number
+    in_progress: number
+    new: number
+    triaged: number
+  }
+  computed_at: string
+  as_of: string | null
+}
+
+export interface ThroughputPoint {
+  date: string
+  resolved: number
+}
