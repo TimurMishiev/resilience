@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { ReplayProvider } from './context/ReplayContext'
 import AppShell from './components/AppShell'
+import PageErrorBoundary from './components/PageErrorBoundary'
 import ProtectedRoute from './components/ProtectedRoute'
 import AssetsPage from './pages/AssetsPage'
 import BriefingPage from './pages/BriefingPage'
@@ -27,8 +28,16 @@ export default function App() {
               <Route path="assets" element={<AssetsPage />} />
               <Route path="map" element={<MapPage />} />
               <Route path="graph" element={<GraphPage />} />
-              <Route path="globe" element={<GlobePage />} />
-              <Route path="briefing" element={<BriefingPage />} />
+              <Route path="globe" element={
+                <PageErrorBoundary pageName="Globe">
+                  <GlobePage />
+                </PageErrorBoundary>
+              } />
+              <Route path="briefing" element={
+                <PageErrorBoundary pageName="Briefing">
+                  <BriefingPage />
+                </PageErrorBoundary>
+              } />
             </Route>
           </Route>
         </Routes>
