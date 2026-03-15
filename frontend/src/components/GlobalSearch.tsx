@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from 'react'
+import { useEffect, useRef, useState, useMemo, startTransition } from 'react'
 import { Icon, Tag } from '@blueprintjs/core'
 import { useNavigate } from 'react-router-dom'
 import { useSites } from '../hooks/useSites'
@@ -143,14 +143,16 @@ export default function GlobalSearch({ open, onClose }: Props) {
   // Reset state when opened
   useEffect(() => {
     if (open) {
-      setQuery('')
-      setSelected(0)
+      startTransition(() => {
+        setQuery('')
+        setSelected(0)
+      })
       setTimeout(() => inputRef.current?.focus(), 50)
     }
   }, [open])
 
   // Reset selection when results change
-  useEffect(() => { setSelected(0) }, [results.length])
+  useEffect(() => { startTransition(() => setSelected(0)) }, [results.length])
 
   // Scroll selected item into view
   useEffect(() => {
