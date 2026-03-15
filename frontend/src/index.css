@@ -1769,3 +1769,24 @@ body {
   margin: 0;
   font-size: 13px;
 }
+
+/* ── Role-based UI ────────────────────────────────────────────────────────── */
+
+/* Lock badge on Briefing sidebar item for non-commander users */
+.shell-menu-lock {
+  opacity: 0.45;
+  vertical-align: middle;
+}
+
+/* Star badge on commander-only transition buttons */
+.transition-cmd-badge {
+  font-size: 10px;
+  opacity: 0.6;
+  margin-left: 2px;
+  vertical-align: super;
+}
+
+/* Briefing access denied callout */
+.briefing-access-denied {
+  max-width: 520px;
+}

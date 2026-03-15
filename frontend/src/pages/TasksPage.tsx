@@ -18,8 +18,20 @@ import { useSites } from '../hooks/useSites'
 import { getAiFilter } from '../api/ai'
 import AuditTimeline from '../components/AuditTimeline'
 import { useReplay } from '../context/ReplayContext'
+import { useAuth } from '../context/AuthContext'
 import type { Task, TaskPriority, WorkflowStatus } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
+
+// Transitions that require commander authority:
+// - resolving a task (sign-off)
+// - unblocking a task (resource / escalation authority)
+// - reopening a resolved task
+function isCommanderOnlyTransition(task: Task, target: WorkflowStatus): boolean {
+  if (target === 'resolved') return true
+  if (task.workflow_status === 'blocked'  && target === 'in_progress') return true
+  if (task.workflow_status === 'resolved' && target === 'triaged')     return true
+  return false
+}
 
 const WORKFLOW_STATUS_OPTIONS: { label: string; value: WorkflowStatus | '' }[] = [
   { label: 'All statuses', value: '' },
@@ -60,6 +72,8 @@ function statusLabel(status: WorkflowStatus): string {
 
 export default function TasksPage() {
   const { asOf, isReplaying } = useReplay()
+  const { currentUser } = useAuth()
+  const isCommander = currentUser?.role === 'commander'
 
   const [statusFilter, setStatusFilter]     = useState<WorkflowStatus | ''>('')
   const [siteFilter, setSiteFilter]         = useState<string | null>(null)
@@ -285,21 +299,29 @@ export default function TasksPage() {
               <div className="drawer-transitions">
                 <span className="drawer-section-label bp6-text-muted">Move to</span>
                 <div className="transition-buttons">
-                  {allowedTransitions.map((status) => (
-                    <Button
-                      key={status}
-                      small
-                      active={pendingStatus === status}
-                      intent={workflowIntent(status)}
-                      onClick={() => {
-                        setPendingStatus(pendingStatus === status ? null : status)
-                        setBlockedReason('')
-                        setTransitionError(null)
-                      }}
-                    >
-                      {statusLabel(status)}
-                    </Button>
-                  ))}
+                  {allowedTransitions.map((status) => {
+                    const cmdOnly = isCommanderOnlyTransition(selectedTask, status)
+                    const blocked = !isCommander && cmdOnly
+                    return (
+                      <Button
+                        key={status}
+                        small
+                        active={pendingStatus === status}
+                        intent={workflowIntent(status)}
+                        disabled={blocked}
+                        title={blocked ? 'Commander authority required' : undefined}
+                        onClick={() => {
+                          if (blocked) return
+                          setPendingStatus(pendingStatus === status ? null : status)
+                          setBlockedReason('')
+                          setTransitionError(null)
+                        }}
+                      >
+                        {statusLabel(status)}
+                        {cmdOnly && <span className="transition-cmd-badge" title="Commander only"> ★</span>}
+                      </Button>
+                    )
+                  })}
                 </div>
 
                 {pendingStatus === 'blocked' && (

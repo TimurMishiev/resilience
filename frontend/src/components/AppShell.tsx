@@ -177,6 +177,10 @@ export default function AppShell() {
               text="Briefing"
               active={pathname.startsWith('/briefing')}
               onClick={() => navigate('/briefing')}
+              labelElement={currentUser?.role !== 'commander'
+                ? <Icon icon="lock" size={10} className="shell-menu-lock" />
+                : undefined
+              }
             />
           </Menu>
         </nav>
