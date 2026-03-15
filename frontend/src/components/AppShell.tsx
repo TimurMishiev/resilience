@@ -2,6 +2,7 @@ import {
   Alignment,
   Button,
   Callout,
+  Icon,
   Menu,
   MenuItem,
   Navbar,
@@ -19,13 +20,23 @@ import ReplaySelector from './ReplaySelector'
 import { useEventSource } from '../hooks/useEventSource'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import GlobalSearch from './GlobalSearch'
+import type { IconName } from '@blueprintjs/icons'
+
+// Bottom nav tabs — shown on mobile only (hidden via CSS on desktop)
+const TABS: { icon: IconName; label: string; path: string }[] = [
+  { icon: 'dashboard',          label: 'Dashboard', path: '/dashboard' },
+  { icon: 'th-list',            label: 'Tasks',     path: '/tasks'     },
+  { icon: 'globe',              label: 'Map',       path: '/map'       },
+  { icon: 'graph',              label: 'Graph',     path: '/graph'     },
+  { icon: 'predictive-analysis',label: 'Briefing',  path: '/briefing'  },
+]
 
 export default function AppShell() {
-  const navigate    = useNavigate()
+  const navigate     = useNavigate()
   const { pathname } = useLocation()
   const { isReplaying, asOf } = useReplay()
   const { currentUser, logout } = useAuth()
-  const queryClient = useQueryClient()
+  const queryClient  = useQueryClient()
   const [searchOpen, setSearchOpen] = useState(false)
   const isOnline = useOnlineStatus()
 
@@ -116,6 +127,7 @@ export default function AppShell() {
       <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
 
       <div className="shell-body">
+        {/* Desktop sidebar */}
         <nav className="shell-sidebar">
           <Menu>
             <MenuItem
@@ -167,6 +179,22 @@ export default function AppShell() {
           <Outlet />
         </main>
       </div>
+
+      {/* Mobile bottom tab bar — hidden on desktop via CSS */}
+      <nav className="shell-bottom-nav" aria-label="Main navigation">
+        {TABS.map(tab => (
+          <button
+            key={tab.path}
+            className={`shell-tab ${pathname.startsWith(tab.path) ? 'shell-tab--active' : ''}`}
+            onClick={() => navigate(tab.path)}
+            aria-label={tab.label}
+            aria-current={pathname.startsWith(tab.path) ? 'page' : undefined}
+          >
+            <Icon icon={tab.icon} size={20} />
+            <span>{tab.label}</span>
+          </button>
+        ))}
+      </nav>
     </div>
   )
 }
