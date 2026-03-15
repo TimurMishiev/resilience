@@ -190,9 +190,6 @@ export default function GlobalSearch({ open, onClose }: Props) {
     ...grouped.asset,
   ]
 
-  // Map flat index back to original results order for keyboard nav
-  let flatIndex = 0
-
   return (
     <div className="gs-backdrop" onClick={onClose}>
       <div className="gs-modal bp6-dark" onClick={e => e.stopPropagation()}>

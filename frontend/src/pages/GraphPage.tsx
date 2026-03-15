@@ -442,10 +442,8 @@ export default function GraphPage() {
     return () => { simRef.current?.stop() }
   }, [loading, buildAndRender])
 
-  // Deselect if selected node filtered out
-  useEffect(() => {
-    if (selected && !filters.has(selected.type)) setSelected(null)
-  }, [filters, selected])
+  // Derive active selection — null if the node's type has been filtered out
+  const activeSelected = selected && filters.has(selected.type) ? selected : null
 
   // ── Legend counts
   const counts = { site: sites.length, task: tasks.length, asset: assets.length }
@@ -493,7 +491,7 @@ export default function GraphPage() {
       </div>
 
       {/* ── Detail panel ── */}
-      <DetailPanel node={selected} onClose={() => setSelected(null)} />
+      <DetailPanel node={activeSelected} onClose={() => setSelected(null)} />
 
       {/* ── Legend ── */}
       {!loading && !hoveredId && (

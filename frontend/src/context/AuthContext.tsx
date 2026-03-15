@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { registerUnauthorizedHandler, getToken, clearToken } from '../api/client'
+import { registerUnauthorizedHandler, getToken } from '../api/client'
 import { logout as apiLogout } from '../api/auth'
 import type { CurrentUser } from '../api/auth'
 
@@ -56,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext)
   if (!ctx) throw new Error('useAuth must be used inside AuthProvider')

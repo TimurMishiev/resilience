@@ -19,6 +19,7 @@ export function ReplayProvider({ children }: { children: ReactNode }) {
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useReplay(): ReplayContextValue {
   const ctx = useContext(ReplayContext)
   if (!ctx) throw new Error('useReplay must be used inside ReplayProvider')

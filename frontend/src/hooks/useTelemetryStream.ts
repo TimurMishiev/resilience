@@ -29,12 +29,20 @@ export function useTelemetryStream(enabled = true) {
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const delayRef = useRef(1000)
 
+  // Reset state when the stream is disabled.
+  // Calling setState inside an effect body is intentional here: we want to
+  // clear readings synchronously when `enabled` transitions to false.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!enabled) {
       setReadings(new Map())
       setConnected(false)
-      return
     }
+  }, [enabled])
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  useEffect(() => {
+    if (!enabled) return
 
     function connect() {
       const token = getToken()

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import * as Cesium from 'cesium'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
-import { Button, Callout, Divider, Tag, Spinner } from '@blueprintjs/core'
+import { Button, Divider, Tag, Spinner } from '@blueprintjs/core'
 import { useSites } from '../hooks/useSites'
 import { useTasks } from '../hooks/useTasks'
 import { useAssets } from '../hooks/useAssets'
@@ -244,7 +244,6 @@ export default function GlobePage() {
 
       assetEntitiesRef.current.set(key, entity)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assets, sites])
 
   // -------------------------------------------------------------------------

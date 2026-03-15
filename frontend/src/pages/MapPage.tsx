@@ -346,7 +346,6 @@ export default function MapPage() {
 
       assetMarkersRef.current.set(asset.id, marker)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assets, sites])
 
   // -------------------------------------------------------------------------
