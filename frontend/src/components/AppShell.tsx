@@ -149,6 +149,12 @@ export default function AppShell() {
               onClick={() => navigate('/map')}
             />
             <MenuItem
+              icon="graph"
+              text="Graph"
+              active={pathname.startsWith('/graph')}
+              onClick={() => navigate('/graph')}
+            />
+            <MenuItem
               icon="predictive-analysis"
               text="Briefing"
               active={pathname.startsWith('/briefing')}

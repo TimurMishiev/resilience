@@ -4,6 +4,7 @@ import AppShell from './components/AppShell'
 import ProtectedRoute from './components/ProtectedRoute'
 import AssetsPage from './pages/AssetsPage'
 import BriefingPage from './pages/BriefingPage'
+import GraphPage from './pages/GraphPage'
 import DashboardPage from './pages/DashboardPage'
 import LoginPage from './pages/LoginPage'
 import MapPage from './pages/MapPage'
@@ -24,6 +25,7 @@ export default function App() {
               <Route path="tasks" element={<TasksPage />} />
               <Route path="assets" element={<AssetsPage />} />
               <Route path="map" element={<MapPage />} />
+              <Route path="graph" element={<GraphPage />} />
               <Route path="briefing" element={<BriefingPage />} />
             </Route>
           </Route>
