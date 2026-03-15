@@ -1,14 +1,40 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { Callout, Divider, Spinner, Tag } from '@blueprintjs/core'
-import { getSites } from '../api/sites'
-import { getTasks } from '../api/tasks'
+import {
+  Button,
+  Callout,
+  Divider,
+  InputGroup,
+  Spinner,
+  Tag,
+} from '@blueprintjs/core'
+import { useQueryClient } from '@tanstack/react-query'
+import { useSites } from '../hooks/useSites'
+import { useTasks, useTransitionTask } from '../hooks/useTasks'
 import { useReplay } from '../context/ReplayContext'
-import type { Site, Task } from '../api/types'
+import type { Site, Task, WorkflowStatus } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
 
-function workflowIntent(status: Task['workflow_status']): Intent {
+// ---------------------------------------------------------------------------
+// Transition table — mirrors backend ALLOWED_TRANSITIONS
+// ---------------------------------------------------------------------------
+const ALLOWED: Record<WorkflowStatus, WorkflowStatus[]> = {
+  new:         ['triaged'],
+  triaged:     ['in_progress'],
+  in_progress: ['blocked', 'resolved'],
+  blocked:     ['in_progress'],
+  resolved:    ['triaged'],
+}
+
+function allowedTransitions(status: WorkflowStatus): WorkflowStatus[] {
+  return ALLOWED[status] ?? []
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function workflowIntent(status: WorkflowStatus): Intent {
   switch (status) {
     case 'blocked':     return 'danger'
     case 'resolved':    return 'success'
@@ -18,167 +44,290 @@ function workflowIntent(status: Task['workflow_status']): Intent {
   }
 }
 
-function priorityIntent(priority: Task['priority']): Intent {
-  switch (priority) {
+function priorityIntent(p: Task['priority']): Intent {
+  switch (p) {
     case 'critical': return 'danger'
     case 'high':     return 'warning'
     default:         return 'none'
   }
 }
 
-interface SiteDetail {
-  site: Site
-  tasks: Task[]
+function transitionLabel(s: WorkflowStatus): string {
+  return s.replace('_', ' ')
 }
 
+function transitionIntent(s: WorkflowStatus): Intent {
+  switch (s) {
+    case 'resolved':    return 'success'
+    case 'blocked':     return 'danger'
+    case 'in_progress': return 'primary'
+    default:            return 'none'
+  }
+}
+
+function siteHealthClass(tasks: Task[], siteStatus: Site['status']): string {
+  if (siteStatus === 'inactive') return 'map-marker--inactive'
+  if (tasks.length === 0)        return 'map-marker--active'
+  const hasBlocked    = tasks.some(t => t.workflow_status === 'blocked')
+  const allResolved   = tasks.every(t => t.workflow_status === 'resolved')
+  const hasInProgress = tasks.some(t => t.workflow_status === 'in_progress')
+  if (hasBlocked)    return 'map-marker--blocked'
+  if (allResolved)   return 'map-marker--resolved'
+  if (hasInProgress) return 'map-marker--in-progress'
+  return 'map-marker--active'
+}
+
+function computeReadiness(tasks: Task[]): number | null {
+  const total = tasks.length
+  if (total === 0) return null
+  const resolved   = tasks.filter(t => t.workflow_status === 'resolved').length
+  const nonBlocked = tasks.filter(t => t.workflow_status !== 'blocked').length
+  return (resolved / total) * 0.6 + (nonBlocked / total) * 0.4
+}
+
+// ---------------------------------------------------------------------------
+// TaskRow
+// ---------------------------------------------------------------------------
+interface TaskRowProps {
+  task: Task
+  disabled: boolean
+  onTransitioned: () => void
+}
+
+function TaskRow({ task, disabled, onTransitioned }: TaskRowProps) {
+  const transition = useTransitionTask()
+  const [blockReason, setBlockReason] = useState('')
+  const [blocking, setBlocking]       = useState(false)
+  const next = allowedTransitions(task.workflow_status)
+
+  function handleTransition(to: WorkflowStatus) {
+    if (to === 'blocked') { setBlocking(true); return }
+    transition.mutate(
+      { id: task.id, body: { to_status: to } },
+      { onSuccess: onTransitioned },
+    )
+  }
+
+  function submitBlock() {
+    transition.mutate(
+      { id: task.id, body: { to_status: 'blocked', blocked_reason: blockReason || null } },
+      {
+        onSuccess: () => {
+          setBlocking(false)
+          setBlockReason('')
+          onTransitioned()
+        },
+      },
+    )
+  }
+
+  return (
+    <li className="map-task-item">
+      <div className="map-task-header">
+        <span className="map-task-title">{task.title}</span>
+        <div className="map-task-tags">
+          <Tag minimal small intent={workflowIntent(task.workflow_status)}>
+            {task.workflow_status.replace('_', ' ')}
+          </Tag>
+          <Tag minimal small intent={priorityIntent(task.priority)}>
+            {task.priority}
+          </Tag>
+        </div>
+      </div>
+
+      {task.workflow_status === 'blocked' && task.blocked_reason && (
+        <p className="map-task-blocked-reason bp6-text-muted">{task.blocked_reason}</p>
+      )}
+
+      {blocking && (
+        <div className="map-task-block-input">
+          <InputGroup
+            small
+            placeholder="Reason for blocking (optional)"
+            value={blockReason}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBlockReason(e.target.value)}
+            onKeyDown={(e: React.KeyboardEvent) => {
+              if (e.key === 'Enter') submitBlock()
+              if (e.key === 'Escape') { setBlocking(false); setBlockReason('') }
+            }}
+            autoFocus
+          />
+          <div className="map-task-block-actions">
+            <Button small intent="danger" onClick={submitBlock} loading={transition.isPending}>
+              Confirm block
+            </Button>
+            <Button small minimal onClick={() => { setBlocking(false); setBlockReason('') }}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {!blocking && next.length > 0 && !disabled && (
+        <div className="map-task-actions">
+          {next.map(to => (
+            <Button
+              key={to}
+              small
+              minimal
+              intent={transitionIntent(to)}
+              onClick={() => handleTransition(to)}
+              loading={transition.isPending}
+              disabled={transition.isPending}
+            >
+              → {transitionLabel(to)}
+            </Button>
+          ))}
+        </div>
+      )}
+    </li>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// MapPage
+// ---------------------------------------------------------------------------
 export default function MapPage() {
-  const { asOf } = useReplay()
+  const { asOf, isReplaying } = useReplay()
+  const queryClient           = useQueryClient()
+
   const mapContainerRef = useRef<HTMLDivElement>(null)
-  const mapRef = useRef<maplibregl.Map | null>(null)
-  const markersRef = useRef<maplibregl.Marker[]>([])
+  const mapRef          = useRef<maplibregl.Map | null>(null)
+  const markersRef      = useRef<maplibregl.Marker[]>([])
 
-  const [sites, setSites] = useState<Site[]>([])
-  const [tasksBySite, setTasksBySite] = useState<Record<string, Task[]>>({})
-  const [selected, setSelected] = useState<SiteDetail | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null)
 
-  // Initialise map once
+  const asOfParam  = asOf ? { as_of: asOf } : {}
+  const sitesQuery = useSites({ per_page: 200, ...asOfParam })
+  const tasksQuery = useTasks({ per_page: 200, ...asOfParam })
+
+  const sites    = sitesQuery.data?.data ?? []
+  const allTasks = tasksQuery.data?.data ?? []
+  const loading  = sitesQuery.isLoading || tasksQuery.isLoading
+  const error    = sitesQuery.error?.message ?? tasksQuery.error?.message ?? null
+
+  const tasksBySite: Record<string, Task[]> = {}
+  for (const task of allTasks) {
+    if (!tasksBySite[task.site_id]) tasksBySite[task.site_id] = []
+    tasksBySite[task.site_id].push(task)
+  }
+
+  const selectedSite  = sites.find(s => s.id === selectedSiteId) ?? null
+  const selectedTasks = selectedSiteId ? (tasksBySite[selectedSiteId] ?? []) : []
+  const readiness     = computeReadiness(selectedTasks)
+
+  const handleTransitioned = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    queryClient.invalidateQueries({ queryKey: ['readiness'] })
+  }, [queryClient])
+
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return
-
     mapRef.current = new maplibregl.Map({
       container: mapContainerRef.current,
-      style: 'https://demotiles.maplibre.org/style.json',
-      center: [0, 20],
-      zoom: 1.5,
+      style:     'https://demotiles.maplibre.org/style.json',
+      center:    [0, 20],
+      zoom:      1.5,
     })
-
     mapRef.current.addControl(new maplibregl.NavigationControl(), 'top-left')
-
-    return () => {
-      mapRef.current?.remove()
-      mapRef.current = null
-    }
+    return () => { mapRef.current?.remove(); mapRef.current = null }
   }, [])
 
-  // Fetch sites + tasks whenever asOf changes
-  useEffect(() => {
-    setLoading(true)
-    setError(null)
-    setSelected(null)
+  useEffect(() => { setSelectedSiteId(null) }, [asOf])
 
-    const params = asOf ? { as_of: asOf } : {}
-
-    Promise.all([
-      getSites({ per_page: 200, ...params }),
-      getTasks({ per_page: 200, ...params }),
-    ])
-      .then(([siteRes, taskRes]) => {
-        setSites(siteRes.data)
-
-        const bysite: Record<string, Task[]> = {}
-        for (const task of taskRes.data) {
-          if (!bysite[task.site_id]) bysite[task.site_id] = []
-          bysite[task.site_id].push(task)
-        }
-        setTasksBySite(bysite)
-      })
-      .catch((err: unknown) =>
-        setError(err instanceof Error ? err.message : 'Unknown error'),
-      )
-      .finally(() => setLoading(false))
-  }, [asOf])
-
-  // Place / replace markers whenever sites change
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
-
-    // Remove old markers
     for (const m of markersRef.current) m.remove()
     markersRef.current = []
 
     for (const site of sites) {
-      const el = document.createElement('div')
-      el.className = `map-marker ${site.status === 'active' ? 'map-marker--active' : 'map-marker--inactive'}`
-      el.title = site.name
+      const tasks  = tasksBySite[site.id] ?? []
+      const health = siteHealthClass(tasks, site.status)
+      const el     = document.createElement('div')
+      el.className = `map-marker ${health}`
+      el.title     = site.name
 
       const marker = new maplibregl.Marker({ element: el })
         .setLngLat([Number(site.longitude), Number(site.latitude)])
         .addTo(map)
 
-      el.addEventListener('click', () => {
-        setSelected({ site, tasks: tasksBySite[site.id] ?? [] })
-      })
-
+      el.addEventListener('click', () =>
+        setSelectedSiteId(id => id === site.id ? null : site.id)
+      )
       markersRef.current.push(marker)
     }
-  }, [sites, tasksBySite])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sites, allTasks])
 
   return (
     <div className="map-page">
-      {/* Map container */}
       <div ref={mapContainerRef} className="map-container" />
 
-      {/* Loading overlay */}
       {loading && (
-        <div className="map-overlay map-overlay--loading">
-          <Spinner />
-        </div>
+        <div className="map-overlay map-overlay--loading"><Spinner /></div>
       )}
 
-      {/* Error overlay */}
       {error && (
         <div className="map-overlay map-overlay--error">
-          <Callout intent="danger" title="Failed to load map data" compact>
-            {error}
-          </Callout>
+          <Callout intent="danger" title="Failed to load map data" compact>{error}</Callout>
         </div>
       )}
 
-      {/* Site detail panel */}
-      {selected && (
+      {selectedSite && (
         <div className="map-panel bp6-dark">
           <div className="map-panel-header">
-            <span className="map-panel-title">{selected.site.name}</span>
+            <span className="map-panel-title">{selectedSite.name}</span>
             <button
               className="map-panel-close bp6-button bp6-minimal bp6-icon-cross"
-              onClick={() => setSelected(null)}
+              onClick={() => setSelectedSiteId(null)}
               aria-label="Close"
             />
           </div>
 
           <div className="map-panel-tags">
-            <Tag minimal intent={selected.site.status === 'active' ? 'success' : 'none'}>
-              {selected.site.status}
+            <Tag minimal intent={selectedSite.status === 'active' ? 'success' : 'none'}>
+              {selectedSite.status}
             </Tag>
-            <Tag minimal>{selected.tasks.length} task{selected.tasks.length !== 1 ? 's' : ''}</Tag>
+            <Tag minimal>{selectedTasks.length} task{selectedTasks.length !== 1 ? 's' : ''}</Tag>
+            {readiness !== null && (
+              <Tag
+                minimal
+                intent={readiness >= 0.8 ? 'success' : readiness >= 0.5 ? 'warning' : 'danger'}
+              >
+                {Math.round(readiness * 100)}% ready
+              </Tag>
+            )}
           </div>
 
           <p className="map-panel-coords bp6-text-muted">
-            {Number(selected.site.latitude).toFixed(4)}, {Number(selected.site.longitude).toFixed(4)}
+            {Number(selectedSite.latitude).toFixed(4)}, {Number(selectedSite.longitude).toFixed(4)}
           </p>
 
-          {selected.tasks.length > 0 && (
+          {isReplaying && (
+            <Callout intent="warning" compact className="map-replay-notice">
+              Replay mode — transitions disabled
+            </Callout>
+          )}
+
+          {selectedTasks.length > 0 && (
             <>
               <Divider />
               <ul className="map-task-list">
-                {selected.tasks.map((task) => (
-                  <li key={task.id} className="map-task-item">
-                    <span className="map-task-title">{task.title}</span>
-                    <div className="map-task-tags">
-                      <Tag minimal small intent={workflowIntent(task.workflow_status)}>
-                        {task.workflow_status.replace('_', ' ')}
-                      </Tag>
-                      <Tag minimal small intent={priorityIntent(task.priority)}>
-                        {task.priority}
-                      </Tag>
-                    </div>
-                  </li>
+                {selectedTasks.map(task => (
+                  <TaskRow
+                    key={task.id}
+                    task={task}
+                    disabled={isReplaying}
+                    onTransitioned={handleTransitioned}
+                  />
                 ))}
               </ul>
             </>
+          )}
+
+          {selectedTasks.length === 0 && (
+            <p className="bp6-text-muted map-no-tasks">No tasks assigned to this site.</p>
           )}
         </div>
       )}

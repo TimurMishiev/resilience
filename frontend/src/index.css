@@ -673,3 +673,67 @@ body {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.4; }
 }
+
+/* ── Map marker health states ──────────────────────────────── */
+
+.map-marker--blocked {
+  background-color: #ff7373;
+  box-shadow: 0 0 6px #ff737380;
+  animation: pulse-blocked 1.8s infinite;
+}
+
+.map-marker--resolved {
+  background-color: #3dcc91;
+}
+
+.map-marker--in-progress {
+  background-color: #48aff0;
+}
+
+@keyframes pulse-blocked {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.5; }
+}
+
+/* ── Map task action buttons ───────────────────────────────── */
+
+.map-task-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.map-task-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.map-task-blocked-reason {
+  font-size: 11px;
+  margin: 2px 0 4px;
+  font-style: italic;
+}
+
+.map-task-block-input {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.map-task-block-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.map-no-tasks {
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.map-replay-notice {
+  margin: 8px 0;
+}
