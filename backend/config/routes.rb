@@ -30,5 +30,9 @@ Rails.application.routes.draw do
     end
 
     get "events", to: "events#stream"
+
+    namespace :telemetry do
+      get :stream
+    end
   end
 end

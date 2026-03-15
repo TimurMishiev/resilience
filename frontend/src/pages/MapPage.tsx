@@ -12,8 +12,10 @@ import {
 import { useQueryClient } from '@tanstack/react-query'
 import { useSites } from '../hooks/useSites'
 import { useTasks, useTransitionTask } from '../hooks/useTasks'
+import { useAssets } from '../hooks/useAssets'
+import { useTelemetryStream } from '../hooks/useTelemetryStream'
 import { useReplay } from '../context/ReplayContext'
-import type { Site, Task, WorkflowStatus } from '../api/types'
+import type { Site, Task, Asset, WorkflowStatus } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
 
 // ---------------------------------------------------------------------------
@@ -83,6 +85,30 @@ function computeReadiness(tasks: Task[]): number | null {
   const resolved   = tasks.filter(t => t.workflow_status === 'resolved').length
   const nonBlocked = tasks.filter(t => t.workflow_status !== 'blocked').length
   return (resolved / total) * 0.6 + (nonBlocked / total) * 0.4
+}
+
+function batteryIntent(pct: number): Intent {
+  if (pct < 20) return 'danger'
+  if (pct < 40) return 'warning'
+  return 'success'
+}
+
+function assetTypeIcon(type: Asset['asset_type']): string {
+  switch (type) {
+    case 'vehicle':   return '🚗'
+    case 'equipment': return '📡'
+    case 'personnel': return '🪖'
+    default:          return '●'
+  }
+}
+
+function headingLabel(deg: number): string {
+  const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
+  return dirs[Math.round(deg / 45) % 8]
+}
+
+function formatTimestamp(ts: number): string {
+  return new Date(ts * 1000).toLocaleTimeString()
 }
 
 // ---------------------------------------------------------------------------
@@ -191,20 +217,28 @@ export default function MapPage() {
   const { asOf, isReplaying } = useReplay()
   const queryClient           = useQueryClient()
 
-  const mapContainerRef = useRef<HTMLDivElement>(null)
-  const mapRef          = useRef<maplibregl.Map | null>(null)
-  const markersRef      = useRef<maplibregl.Marker[]>([])
+  const mapContainerRef  = useRef<HTMLDivElement>(null)
+  const mapRef           = useRef<maplibregl.Map | null>(null)
+  const siteMarkersRef   = useRef<maplibregl.Marker[]>([])
+  // asset_id → Marker (kept alive for position updates)
+  const assetMarkersRef  = useRef<Map<string, maplibregl.Marker>>(new Map())
 
-  const [selectedSiteId, setSelectedSiteId] = useState<string | null>(null)
+  const [selectedSiteId,  setSelectedSiteId]  = useState<string | null>(null)
+  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
 
   const asOfParam  = asOf ? { as_of: asOf } : {}
   const sitesQuery = useSites({ per_page: 200, ...asOfParam })
   const tasksQuery = useTasks({ per_page: 200, ...asOfParam })
+  const assetsQuery = useAssets({ per_page: 200, ...asOfParam })
 
   const sites    = sitesQuery.data?.data ?? []
   const allTasks = tasksQuery.data?.data ?? []
+  const assets   = assetsQuery.data?.data ?? []
   const loading  = sitesQuery.isLoading || tasksQuery.isLoading
   const error    = sitesQuery.error?.message ?? tasksQuery.error?.message ?? null
+
+  // Live telemetry — disabled in replay mode
+  const { readings, connected: telemetryConnected } = useTelemetryStream(!isReplaying)
 
   const tasksBySite: Record<string, Task[]> = {}
   for (const task of allTasks) {
@@ -216,11 +250,17 @@ export default function MapPage() {
   const selectedTasks = selectedSiteId ? (tasksBySite[selectedSiteId] ?? []) : []
   const readiness     = computeReadiness(selectedTasks)
 
+  const selectedAsset   = assets.find(a => a.id === selectedAssetId) ?? null
+  const selectedReading = selectedAssetId ? readings.get(selectedAssetId) ?? null : null
+
   const handleTransitioned = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['tasks'] })
     queryClient.invalidateQueries({ queryKey: ['readiness'] })
   }, [queryClient])
 
+  // -------------------------------------------------------------------------
+  // Map init
+  // -------------------------------------------------------------------------
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return
     mapRef.current = new maplibregl.Map({
@@ -233,13 +273,16 @@ export default function MapPage() {
     return () => { mapRef.current?.remove(); mapRef.current = null }
   }, [])
 
-  useEffect(() => { setSelectedSiteId(null) }, [asOf])
+  useEffect(() => { setSelectedSiteId(null); setSelectedAssetId(null) }, [asOf])
 
+  // -------------------------------------------------------------------------
+  // Site markers — rebuild when sites / task data changes
+  // -------------------------------------------------------------------------
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
-    for (const m of markersRef.current) m.remove()
-    markersRef.current = []
+    for (const m of siteMarkersRef.current) m.remove()
+    siteMarkersRef.current = []
 
     for (const site of sites) {
       const tasks  = tasksBySite[site.id] ?? []
@@ -252,14 +295,75 @@ export default function MapPage() {
         .setLngLat([Number(site.longitude), Number(site.latitude)])
         .addTo(map)
 
-      el.addEventListener('click', () =>
+      el.addEventListener('click', () => {
+        setSelectedAssetId(null)
         setSelectedSiteId(id => id === site.id ? null : site.id)
-      )
-      markersRef.current.push(marker)
+      })
+      siteMarkersRef.current.push(marker)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sites, allTasks])
 
+  // -------------------------------------------------------------------------
+  // Asset markers — created once from DB positions, then moved by telemetry
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || assets.length === 0) return
+
+    // Remove any markers for assets no longer in the list
+    const currentIds = new Set(assets.map(a => a.id))
+    for (const [id, marker] of assetMarkersRef.current) {
+      if (!currentIds.has(id)) {
+        marker.remove()
+        assetMarkersRef.current.delete(id)
+      }
+    }
+
+    // Create new markers for assets we haven't seen yet
+    for (const asset of assets) {
+      if (assetMarkersRef.current.has(asset.id)) continue
+
+      // Seed position: home site or world centre
+      const homeSite = sites.find(s => s.id === asset.home_site_id)
+      const lat = homeSite ? Number(homeSite.latitude)  : 37.7749
+      const lng = homeSite ? Number(homeSite.longitude) : -122.4194
+
+      const el = document.createElement('div')
+      el.className = `map-marker map-asset-marker`
+      el.title     = asset.name
+      el.textContent = assetTypeIcon(asset.asset_type)
+
+      const marker = new maplibregl.Marker({ element: el })
+        .setLngLat([lng, lat])
+        .addTo(map)
+
+      el.addEventListener('click', (e) => {
+        e.stopPropagation()
+        setSelectedSiteId(null)
+        setSelectedAssetId(id => id === asset.id ? null : asset.id)
+      })
+
+      assetMarkersRef.current.set(asset.id, marker)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assets, sites])
+
+  // -------------------------------------------------------------------------
+  // Update asset marker positions from live telemetry
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    for (const [assetId, reading] of readings) {
+      const marker = assetMarkersRef.current.get(assetId)
+      if (marker) {
+        marker.setLngLat([reading.lng, reading.lat])
+      }
+    }
+  }, [readings])
+
+  // -------------------------------------------------------------------------
+  // Render
+  // -------------------------------------------------------------------------
   return (
     <div className="map-page">
       <div ref={mapContainerRef} className="map-container" />
@@ -274,6 +378,15 @@ export default function MapPage() {
         </div>
       )}
 
+      {/* Telemetry connectivity badge */}
+      {!isReplaying && (
+        <div className={`map-telemetry-badge map-telemetry-badge--${telemetryConnected ? 'live' : 'offline'}`}>
+          <span className="map-telemetry-dot" />
+          {telemetryConnected ? 'TELEMETRY LIVE' : 'TELEMETRY OFFLINE'}
+        </div>
+      )}
+
+      {/* ── Site panel ── */}
       {selectedSite && (
         <div className="map-panel bp6-dark">
           <div className="map-panel-header">
@@ -328,6 +441,92 @@ export default function MapPage() {
 
           {selectedTasks.length === 0 && (
             <p className="bp6-text-muted map-no-tasks">No tasks assigned to this site.</p>
+          )}
+        </div>
+      )}
+
+      {/* ── Asset telemetry panel ── */}
+      {selectedAsset && (
+        <div className="map-panel map-panel--asset bp6-dark">
+          <div className="map-panel-header">
+            <span className="map-panel-title">
+              {assetTypeIcon(selectedAsset.asset_type)} {selectedAsset.name}
+            </span>
+            <button
+              className="map-panel-close bp6-button bp6-minimal bp6-icon-cross"
+              onClick={() => setSelectedAssetId(null)}
+              aria-label="Close"
+            />
+          </div>
+
+          <div className="map-panel-tags">
+            <Tag minimal>{selectedAsset.asset_type}</Tag>
+            <Tag
+              minimal
+              intent={
+                selectedAsset.status === 'available' ? 'success'
+                : selectedAsset.status === 'in_use' ? 'primary'
+                : selectedAsset.status === 'maintenance' ? 'warning'
+                : 'danger'
+              }
+            >
+              {selectedAsset.status.replace('_', ' ')}
+            </Tag>
+          </div>
+
+          <Divider />
+
+          {selectedReading ? (
+            <div className="map-telemetry-readings">
+              <div className="map-telemetry-row">
+                <span className="map-telemetry-label">Battery</span>
+                <div className="map-telemetry-bar-wrap">
+                  <div
+                    className={`map-telemetry-bar map-telemetry-bar--${
+                      selectedReading.battery < 20 ? 'danger'
+                      : selectedReading.battery < 40 ? 'warning'
+                      : 'success'
+                    }`}
+                    style={{ width: `${selectedReading.battery}%` }}
+                  />
+                </div>
+                <Tag minimal small intent={batteryIntent(selectedReading.battery)}>
+                  {selectedReading.battery.toFixed(0)}%
+                </Tag>
+              </div>
+
+              <div className="map-telemetry-row">
+                <span className="map-telemetry-label">Speed</span>
+                <span className="map-telemetry-value">
+                  {selectedReading.speed.toFixed(1)} m/s
+                </span>
+              </div>
+
+              <div className="map-telemetry-row">
+                <span className="map-telemetry-label">Heading</span>
+                <span className="map-telemetry-value">
+                  {headingLabel(selectedReading.heading)} ({selectedReading.heading}°)
+                </span>
+              </div>
+
+              <div className="map-telemetry-row">
+                <span className="map-telemetry-label">Position</span>
+                <span className="map-telemetry-value">
+                  {selectedReading.lat.toFixed(4)}, {selectedReading.lng.toFixed(4)}
+                </span>
+              </div>
+
+              <div className="map-telemetry-row">
+                <span className="map-telemetry-label">Last seen</span>
+                <span className="map-telemetry-value bp6-text-muted">
+                  {formatTimestamp(selectedReading.ts)}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <p className="bp6-text-muted map-no-tasks">
+              {isReplaying ? 'Telemetry unavailable in replay mode.' : 'Awaiting telemetry data…'}
+            </p>
           )}
         </div>
       )}
