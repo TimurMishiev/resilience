@@ -1,6 +1,7 @@
 require "rails_helper"
 
 RSpec.describe "Api::AuditEvents", type: :request do
+  let(:current_user) { create(:user, :commander) }
   let!(:site) { create(:site) }
   let!(:task) { create(:task, site: site) }
 
@@ -22,7 +23,7 @@ RSpec.describe "Api::AuditEvents", type: :request do
 
   describe "GET /api/audit_events" do
     it "returns 200 with events in descending occurred_at order" do
-      get "/api/audit_events"
+      get "/api/audit_events", headers: auth_headers(current_user)
       expect(response).to have_http_status(:ok)
       events = JSON.parse(response.body)
       expect(events.map { |e| e["id"] }).to include(event_a.id, event_b.id)
@@ -31,32 +32,31 @@ RSpec.describe "Api::AuditEvents", type: :request do
     end
 
     it "filters by entity_type" do
-      get "/api/audit_events", params: { entity_type: "Task" }
+      get "/api/audit_events", params: { entity_type: "Task" }, headers: auth_headers(current_user)
       ids = JSON.parse(response.body).map { |e| e["id"] }
       expect(ids).to include(event_a.id)
       expect(ids).not_to include(event_b.id)
     end
 
     it "filters by entity_id" do
-      get "/api/audit_events", params: { entity_id: task.id }
+      get "/api/audit_events", params: { entity_id: task.id }, headers: auth_headers(current_user)
       ids = JSON.parse(response.body).map { |e| e["id"] }
       expect(ids).to eq([event_a.id])
     end
 
     it "respects the limit param" do
       create_list(:audit_event, 5, entity_type: "Task", entity_id: task.id)
-      get "/api/audit_events", params: { limit: 2 }
+      get "/api/audit_events", params: { limit: 2 }, headers: auth_headers(current_user)
       expect(JSON.parse(response.body).size).to eq(2)
     end
 
     it "caps limit at 500" do
-      get "/api/audit_events", params: { limit: 9999 }
-      # Just verifying it does not blow up; actual capping tested at service level
+      get "/api/audit_events", params: { limit: 9999 }, headers: auth_headers(current_user)
       expect(response).to have_http_status(:ok)
     end
 
     it "returns expected fields" do
-      get "/api/audit_events"
+      get "/api/audit_events", headers: auth_headers(current_user)
       event = JSON.parse(response.body).first
       expect(event.keys).to include(
         "id", "schema_version", "actor", "entity_type", "entity_id",

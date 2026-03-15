@@ -1,6 +1,7 @@
 require "rails_helper"
 
 RSpec.describe "Api::Tasks", type: :request do
+  let(:current_user) { create(:user, :commander) }
   let!(:site) { create(:site) }
 
   describe "GET /api/tasks" do
@@ -9,27 +10,27 @@ RSpec.describe "Api::Tasks", type: :request do
     let!(:task_other_site) { create(:task) }
 
     it "returns 200 with all tasks in data array" do
-      get "/api/tasks"
+      get "/api/tasks", headers: auth_headers(current_user)
       expect(response).to have_http_status(:ok)
       ids = JSON.parse(response.body)["data"].map { |t| t["id"] }
       expect(ids).to include(task_new.id, task_resolved.id, task_other_site.id)
     end
 
     it "filters by site_id" do
-      get "/api/tasks", params: { site_id: site.id }
+      get "/api/tasks", params: { site_id: site.id }, headers: auth_headers(current_user)
       ids = JSON.parse(response.body)["data"].map { |t| t["id"] }
       expect(ids).to contain_exactly(task_new.id, task_resolved.id)
     end
 
     it "filters by workflow_status" do
-      get "/api/tasks", params: { workflow_status: "resolved" }
+      get "/api/tasks", params: { workflow_status: "resolved" }, headers: auth_headers(current_user)
       ids = JSON.parse(response.body)["data"].map { |t| t["id"] }
       expect(ids).to include(task_resolved.id)
       expect(ids).not_to include(task_new.id)
     end
 
     it "returns expected fields on each record" do
-      get "/api/tasks"
+      get "/api/tasks", headers: auth_headers(current_user)
       task = JSON.parse(response.body)["data"].first
       expect(task.keys).to include(
         "id", "site_id", "title", "priority", "workflow_status", "created_at"
@@ -37,7 +38,7 @@ RSpec.describe "Api::Tasks", type: :request do
     end
 
     it "returns pagination meta" do
-      get "/api/tasks"
+      get "/api/tasks", headers: auth_headers(current_user)
       meta = JSON.parse(response.body)["meta"]
       expect(meta["total"]).to eq(3)
       expect(meta["page"]).to eq(1)
@@ -48,13 +49,13 @@ RSpec.describe "Api::Tasks", type: :request do
     let!(:task) { create(:task, site: site) }
 
     it "returns 200 with the task (no pagination wrapper)" do
-      get "/api/tasks/#{task.id}"
+      get "/api/tasks/#{task.id}", headers: auth_headers(current_user)
       expect(response).to have_http_status(:ok)
       expect(JSON.parse(response.body)["id"]).to eq(task.id)
     end
 
     it "returns 404 for an unknown id" do
-      get "/api/tasks/00000000-0000-0000-0000-000000000000"
+      get "/api/tasks/00000000-0000-0000-0000-000000000000", headers: auth_headers(current_user)
       expect(response).to have_http_status(:not_found)
     end
   end
@@ -66,7 +67,7 @@ RSpec.describe "Api::Tasks", type: :request do
 
     it "creates a task and returns 201" do
       expect {
-        post "/api/tasks", params: valid_params, as: :json
+        post "/api/tasks", params: valid_params, headers: auth_headers(current_user), as: :json
       }.to change(Task, :count).by(1)
 
       expect(response).to have_http_status(:created)
@@ -78,16 +79,17 @@ RSpec.describe "Api::Tasks", type: :request do
 
     it "writes an audit event" do
       expect {
-        post "/api/tasks", params: valid_params, as: :json
+        post "/api/tasks", params: valid_params, headers: auth_headers(current_user), as: :json
       }.to change(AuditEvent, :count).by(1)
 
       event = AuditEvent.last
       expect(event.event_type).to eq("task.created")
-      expect(event.actor).to eq("api:anonymous")
+      expect(event.actor).to eq(current_user.email)
     end
 
     it "returns 422 when title is missing" do
-      post "/api/tasks", params: { task: { site_id: site.id } }, as: :json
+      post "/api/tasks", params: { task: { site_id: site.id } },
+           headers: auth_headers(current_user), as: :json
       expect(response).to have_http_status(:unprocessable_entity)
       expect(JSON.parse(response.body)["errors"]).not_to be_empty
     end
@@ -97,7 +99,8 @@ RSpec.describe "Api::Tasks", type: :request do
     let!(:task) { create(:task, site: site, title: "Original", priority: "normal") }
 
     it "updates allowed fields and returns 200" do
-      patch "/api/tasks/#{task.id}", params: { task: { title: "Updated", priority: "high" } }, as: :json
+      patch "/api/tasks/#{task.id}", params: { task: { title: "Updated", priority: "high" } },
+            headers: auth_headers(current_user), as: :json
       expect(response).to have_http_status(:ok)
       body = JSON.parse(response.body)
       expect(body["title"]).to eq("Updated")
@@ -106,21 +109,23 @@ RSpec.describe "Api::Tasks", type: :request do
 
     it "writes an audit event for the update" do
       expect {
-        patch "/api/tasks/#{task.id}", params: { task: { title: "Updated" } }, as: :json
+        patch "/api/tasks/#{task.id}", params: { task: { title: "Updated" } },
+              headers: auth_headers(current_user), as: :json
       }.to change(AuditEvent, :count).by(1)
 
       expect(AuditEvent.last.event_type).to eq("task.updated")
     end
 
     it "does not allow workflow_status to be changed via update" do
-      patch "/api/tasks/#{task.id}", params: { task: { workflow_status: "resolved" } }, as: :json
+      patch "/api/tasks/#{task.id}", params: { task: { workflow_status: "resolved" } },
+            headers: auth_headers(current_user), as: :json
       task.reload
       expect(task.workflow_status).to eq("new")
     end
 
     it "returns 404 for an unknown id" do
       patch "/api/tasks/00000000-0000-0000-0000-000000000000",
-            params: { task: { title: "x" } }, as: :json
+            params: { task: { title: "x" } }, headers: auth_headers(current_user), as: :json
       expect(response).to have_http_status(:not_found)
     end
   end
@@ -131,7 +136,8 @@ RSpec.describe "Api::Tasks", type: :request do
     context "with a valid transition" do
       it "transitions the task and returns 200" do
         post "/api/tasks/#{task.id}/transition",
-             params: { transition: { to_status: "triaged" } }, as: :json
+             params: { transition: { to_status: "triaged" } },
+             headers: auth_headers(current_user), as: :json
 
         expect(response).to have_http_status(:ok)
         expect(JSON.parse(response.body)["workflow_status"]).to eq("triaged")
@@ -141,7 +147,8 @@ RSpec.describe "Api::Tasks", type: :request do
       it "writes an audit event" do
         expect {
           post "/api/tasks/#{task.id}/transition",
-               params: { transition: { to_status: "triaged" } }, as: :json
+               params: { transition: { to_status: "triaged" } },
+               headers: auth_headers(current_user), as: :json
         }.to change(AuditEvent, :count).by(1)
 
         event = AuditEvent.last
@@ -153,7 +160,8 @@ RSpec.describe "Api::Tasks", type: :request do
     context "with an invalid transition" do
       it "returns 422 and does not change the task" do
         post "/api/tasks/#{task.id}/transition",
-             params: { transition: { to_status: "resolved" } }, as: :json
+             params: { transition: { to_status: "resolved" } },
+             headers: auth_headers(current_user), as: :json
 
         expect(response).to have_http_status(:unprocessable_entity)
         expect(JSON.parse(response.body)["errors"]).not_to be_empty
@@ -166,12 +174,14 @@ RSpec.describe "Api::Tasks", type: :request do
 
       before do
         post "/api/tasks/#{triaged_task.id}/transition",
-             params: { transition: { to_status: "in_progress" } }, as: :json
+             params: { transition: { to_status: "in_progress" } },
+             headers: auth_headers(current_user), as: :json
       end
 
       it "requires blocked_reason" do
         post "/api/tasks/#{triaged_task.id}/transition",
-             params: { transition: { to_status: "blocked" } }, as: :json
+             params: { transition: { to_status: "blocked" } },
+             headers: auth_headers(current_user), as: :json
 
         expect(response).to have_http_status(:unprocessable_entity)
         expect(JSON.parse(response.body)["errors"].first).to match(/blocked_reason/)
@@ -179,7 +189,8 @@ RSpec.describe "Api::Tasks", type: :request do
 
       it "succeeds when blocked_reason is provided" do
         post "/api/tasks/#{triaged_task.id}/transition",
-             params: { transition: { to_status: "blocked", blocked_reason: "Waiting on parts" } }, as: :json
+             params: { transition: { to_status: "blocked", blocked_reason: "Waiting on parts" } },
+             headers: auth_headers(current_user), as: :json
 
         expect(response).to have_http_status(:ok)
         body = JSON.parse(response.body)
@@ -192,19 +203,20 @@ RSpec.describe "Api::Tasks", type: :request do
   describe "GET /api/tasks/:id/allowed_transitions" do
     it "returns allowed transitions for a new task" do
       task = create(:task, site: site)
-      get "/api/tasks/#{task.id}/allowed_transitions"
+      get "/api/tasks/#{task.id}/allowed_transitions", headers: auth_headers(current_user)
       expect(response).to have_http_status(:ok)
       expect(JSON.parse(response.body)["allowed"]).to eq(["triaged"])
     end
 
     it "returns allowed transitions for a resolved task" do
       task = create(:task, :resolved, site: site)
-      get "/api/tasks/#{task.id}/allowed_transitions"
+      get "/api/tasks/#{task.id}/allowed_transitions", headers: auth_headers(current_user)
       expect(JSON.parse(response.body)["allowed"]).to eq(["triaged"])
     end
 
     it "returns 404 for an unknown task" do
-      get "/api/tasks/00000000-0000-0000-0000-000000000000/allowed_transitions"
+      get "/api/tasks/00000000-0000-0000-0000-000000000000/allowed_transitions",
+          headers: auth_headers(current_user)
       expect(response).to have_http_status(:not_found)
     end
   end
@@ -229,7 +241,8 @@ RSpec.describe "Api::Tasks", type: :request do
     end
 
     it "returns the task state at the given point in time" do
-      get "/api/tasks", params: { as_of: as_of_past, site_id: site.id }
+      get "/api/tasks", params: { as_of: as_of_past, site_id: site.id },
+          headers: auth_headers(current_user)
       expect(response).to have_http_status(:ok)
       snapshots = JSON.parse(response.body)["data"]
       expect(snapshots).not_to be_empty
@@ -238,7 +251,8 @@ RSpec.describe "Api::Tasks", type: :request do
     end
 
     it "returns nil meta for replay responses" do
-      get "/api/tasks", params: { as_of: as_of_past, site_id: site.id }
+      get "/api/tasks", params: { as_of: as_of_past, site_id: site.id },
+          headers: auth_headers(current_user)
       expect(JSON.parse(response.body)["meta"]).to be_nil
     end
 
@@ -257,7 +271,8 @@ RSpec.describe "Api::Tasks", type: :request do
         occurred_at: 30.minutes.ago
       )
 
-      get "/api/tasks", params: { as_of: as_of_past, site_id: site.id }
+      get "/api/tasks", params: { as_of: as_of_past, site_id: site.id },
+          headers: auth_headers(current_user)
       ids = JSON.parse(response.body)["data"].map { |t| t["id"] }
       expect(ids).not_to include(future_task.id)
     end
