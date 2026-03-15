@@ -8,6 +8,7 @@ default: &default
 development:
   <<: *default
   database: resilience_development
+  pool: 20
 
 test:
   <<: *default

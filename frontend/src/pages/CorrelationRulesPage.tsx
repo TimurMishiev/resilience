@@ -105,8 +105,8 @@ function ruleToForm(rule: CorrelationRule): RuleFormState {
 }
 
 export default function CorrelationRulesPage() {
-  const { user } = useAuth()
-  const isCommander = user?.role === 'commander'
+  const { currentUser } = useAuth()
+  const isCommander = currentUser?.role === 'commander'
 
   const { data, error, isPending } = useCorrelationRules()
   const { data: matchesData } = useSignalRuleMatches({ per_page: 5 })
