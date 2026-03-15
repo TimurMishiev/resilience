@@ -152,10 +152,10 @@ function TaskRow({ task, disabled, onTransitioned }: TaskRowProps) {
       <div className="map-task-header">
         <span className="map-task-title">{task.title}</span>
         <div className="map-task-tags">
-          <Tag minimal small intent={workflowIntent(task.workflow_status)}>
+          <Tag minimal intent={workflowIntent(task.workflow_status)}>
             {task.workflow_status.replace('_', ' ')}
           </Tag>
-          <Tag minimal small intent={priorityIntent(task.priority)}>
+          <Tag minimal intent={priorityIntent(task.priority)}>
             {task.priority}
           </Tag>
         </div>
@@ -489,7 +489,7 @@ export default function MapPage() {
                     style={{ width: `${selectedReading.battery}%` }}
                   />
                 </div>
-                <Tag minimal small intent={batteryIntent(selectedReading.battery)}>
+                <Tag minimal intent={batteryIntent(selectedReading.battery)}>
                   {selectedReading.battery.toFixed(0)}%
                 </Tag>
               </div>

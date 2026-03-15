@@ -29,8 +29,10 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // Precache all static build assets
+        // Precache all static build assets; exclude large Cesium bundle
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff,woff2}'],
+        globIgnores: ['**/Cesium.js', '**/cesium/**'],
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024, // 6 MB
         // Network-first for API — serve cached data when offline
         runtimeCaching: [
           {

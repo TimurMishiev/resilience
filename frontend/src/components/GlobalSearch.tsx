@@ -226,7 +226,6 @@ export default function GlobalSearch({ open, onClose }: Props) {
                     {group.map(result => {
                       const idx = flatOrder.indexOf(result)
                       const isSelected = idx === selected
-                      flatIndex++
                       return (
                         <li
                           key={result.id}
@@ -240,7 +239,7 @@ export default function GlobalSearch({ open, onClose }: Props) {
                             <span className="gs-item-subtitle bp6-text-muted">{result.subtitle}</span>
                           </div>
                           {result.tag && (
-                            <Tag minimal small intent={result.tagIntent}>
+                            <Tag minimal intent={result.tagIntent}>
                               {result.tag}
                             </Tag>
                           )}

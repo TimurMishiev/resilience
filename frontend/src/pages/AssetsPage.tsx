@@ -34,7 +34,7 @@ export default function AssetsPage() {
   const params = { per_page: 100, ...(asOf ? { as_of: asOf } : {}) }
 
   const { data: assetRes, error: assetError, isPending: assetsPending } = useAssets(params)
-  const { data: siteRes,  isPending: sitesPending } = useSites({ per_page: 100, ...params })
+  const { data: siteRes,  isPending: sitesPending } = useSites(params)
 
   const loading = assetsPending || sitesPending
 

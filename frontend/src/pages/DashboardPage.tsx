@@ -247,7 +247,7 @@ export default function DashboardPage() {
                 <YAxis tick={{ fill: '#8a9ba8', fontSize: 11 }} allowDecimals={false} />
                 <Tooltip
                   contentStyle={{ background: '#252c35', border: '1px solid #383e47', fontSize: 12 }}
-                  labelFormatter={(d: string) => d}
+                  labelFormatter={(d) => String(d)}
                 />
                 <Line
                   type="monotone"

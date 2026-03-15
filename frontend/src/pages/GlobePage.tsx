@@ -378,7 +378,7 @@ export default function GlobePage() {
                 {selectedTasks.map(t => (
                   <li key={t.id} className="globe-task-item">
                     <span className="globe-task-title">{t.title}</span>
-                    <Tag minimal small intent={workflowIntent(t.workflow_status)}>
+                    <Tag minimal intent={workflowIntent(t.workflow_status)}>
                       {t.workflow_status.replace('_', ' ')}
                     </Tag>
                   </li>
