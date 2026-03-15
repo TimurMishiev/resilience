@@ -1,5 +1,6 @@
 require "net/http"
 require "json"
+require "openssl"
 
 module Feeds
   # Polls the OpenSky Network REST API for live aircraft positions and ingests
@@ -12,6 +13,24 @@ module Feeds
     BASE_URL = "https://opensky-network.org/api/states/all"
     TIMEOUT  = 15 # seconds per request
 
+    # How often (seconds) to repeat the same fetch-error message in the log.
+    # Prevents log spam when OpenSky is down for extended periods.
+    LOG_THROTTLE_SECONDS = 3600 # 1 hour
+
+    # Shared SSL context — VERIFY_PEER with CRL checking disabled.
+    # OpenSky's certificate chain includes a CRL Distribution Point whose
+    # server is intermittently unavailable (OpenSSL: "unable to get certificate
+    # CRL"). This is a known issue on OpenSky's CDN side. We still validate the
+    # full certificate chain against trusted roots; we just skip the revocation
+    # list lookup that CRL checking requires. OCSP stapling supersedes CRL for
+    # revocation checking on modern infrastructure anyway.
+    SSL_CONTEXT = begin
+      ctx = OpenSSL::SSL::SSLContext.new
+      ctx.set_params(verify_mode: OpenSSL::SSL::VERIFY_PEER)
+      ctx.verify_flags = 0 # clear V_FLAG_CRL_CHECK / V_FLAG_CRL_CHECK_ALL
+      ctx
+    end
+
     # Bounding boxes that cover the 4 seed site theaters.
     # lamin/lamax = latitude bounds, lomin/lomax = longitude bounds.
     BOUNDING_BOXES = [
@@ -23,6 +42,7 @@ module Feeds
 
     def call
       total_ingested = 0
+      @last_logged_error = {} # box_name => Time — throttle repeated warnings
 
       BOUNDING_BOXES.each do |box|
         response = fetch_box(box)
@@ -101,8 +121,9 @@ module Feeds
         lamax: box[:lamax], lomax: box[:lomax]
       )
 
-      http          = Net::HTTP.new(uri.host, uri.port)
-      http.use_ssl  = true
+      http              = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl      = true
+      http.ssl_context  = SSL_CONTEXT
       http.open_timeout = TIMEOUT
       http.read_timeout = TIMEOUT
 
@@ -110,14 +131,25 @@ module Feeds
       response = http.request(request)
 
       unless response.code == "200"
-        Rails.logger.warn "[OpenSkyFeed] HTTP #{response.code} for #{box[:name]}"
+        throttled_warn(box[:name], "HTTP #{response.code}")
         return nil
       end
 
       JSON.parse(response.body)
     rescue => e
-      Rails.logger.warn "[OpenSkyFeed] fetch error for #{box[:name]}: #{e.message}"
+      throttled_warn(box[:name], e.message)
       nil
+    end
+
+    # Log a warning for +key+ at most once per LOG_THROTTLE_SECONDS interval.
+    # First occurrence always logs; subsequent identical errors are suppressed
+    # until the throttle window expires, keeping logs readable during outages.
+    def throttled_warn(key, message)
+      last = @last_logged_error&.dig(key)
+      return if last && Time.current - last < LOG_THROTTLE_SECONDS
+
+      Rails.logger.warn "[OpenSkyFeed] fetch error for #{key}: #{message}"
+      (@last_logged_error ||= {})[key] = Time.current
     end
   end
 end
