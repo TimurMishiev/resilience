@@ -614,15 +614,73 @@ if commander
     )
     puts "  Created rule: GPS Jamming Detected"
   end
+
+  # Phase D — vessel activity rule (AFRICOM — Bab-el-Mandeb / Horn of Africa chokepoint)
+  africom_ao = AreaOfOperation.find_by(name: "Africa Command (AFRICOM)")
+  unless CorrelationRule.exists?(name: "Vessel Activity Near Site")
+    CorrelationRule.create!(
+      name:                 "Vessel Activity Near Site",
+      description:          "Fires when a vessel is detected within 50km of an active AFRICOM site. Creates a medium-priority task to identify and assess vessel intent in the maritime corridor.",
+      is_active:            true,
+      area_of_operation:    africom_ao,
+      conditions: {
+        "signal_type"          => "vessel_position",
+        "proximity_km"         => 50,
+        "site_id"              => nil,
+        "count_threshold"      => 1,
+        "time_window_minutes"  => 15
+      },
+      actions: {
+        "create_task" => {
+          "title"       => "Vessel detected near {{site_name}}",
+          "description" => "AIS feed detected a vessel within {{proximity_km}}km of {{site_name}}. Identify vessel (MMSI, name, flag) and assess intent. Check against known vessel watch-list. Signal source: AIS.",
+          "priority"    => "normal"
+        }
+      },
+      created_by:      commander,
+      cooldown_minutes: 120
+    )
+    puts "  Created rule: Vessel Activity Near Site"
+  end
+
+  # Phase D — wildfire proximity rule (INDOPACOM — Indo-Pacific jungle/island terrain)
+  indopacom_ao = AreaOfOperation.find_by(name: "Indo-Pacific Command (INDOPACOM)")
+  unless CorrelationRule.exists?(name: "Wildfire Proximity Alert")
+    CorrelationRule.create!(
+      name:                 "Wildfire Proximity Alert",
+      description:          "Fires when a high-intensity wildfire (FRP > 100 MW) is detected within 50km of any active INDOPACOM site. Creates a high-priority task to assess threat to site operations.",
+      is_active:            true,
+      area_of_operation:    indopacom_ao,
+      conditions: {
+        "signal_type"          => "wildfire",
+        "proximity_km"         => 50,
+        "site_id"              => nil,
+        "magnitude_min"        => 100,  # FRP in MW — 100 MW = significant fire
+        "count_threshold"      => 1,
+        "time_window_minutes"  => 60
+      },
+      actions: {
+        "create_task" => {
+          "title"       => "Wildfire threat near {{site_name}}",
+          "description" => "NASA FIRMS detected a wildfire within {{proximity_km}}km of {{site_name}} with fire radiative power exceeding {{magnitude_min}}MW. Assess air quality, access road status, and evacuation routes. Signal source: NASA FIRMS VIIRS.",
+          "priority"    => "high"
+        }
+      },
+      created_by:      commander,
+      cooldown_minutes: 240  # 4 hours
+    )
+    puts "  Created rule: Wildfire Proximity Alert"
+  end
 else
   puts "  WARNING: No commander user found — skipping correlation rules seed"
 end
 
 puts "\nSeed complete."
-puts "  Areas:       #{AreaOfOperation.count}  (EUCOM amber, CENTCOM red, AFRICOM amber, INDOPACOM green)"
-puts "  Sites:       #{Site.count}  (#{Site.where(status: 'active').count} active, #{Site.where(status: 'inactive').count} inactive)"
-puts "  Assets:      #{Asset.count}"
-puts "  Tasks:       #{Task.count}  (#{Task.group(:workflow_status).count.map { |s, c| "#{c} #{s}" }.join(', ')})"
+puts "  Areas:            #{AreaOfOperation.count}  (EUCOM amber, CENTCOM red, AFRICOM amber, INDOPACOM green)"
+puts "  Sites:            #{Site.count}  (#{Site.where(status: 'active').count} active, #{Site.where(status: 'inactive').count} inactive)"
+puts "  Assets:           #{Asset.count}"
+puts "  Tasks:            #{Task.count}  (#{Task.group(:workflow_status).count.map { |s, c| "#{c} #{s}" }.join(', ')})"
+puts "  Correlation Rules:#{CorrelationRule.count}  (Air/Seismic/GPS/Vessel/Wildfire)"
 puts "  AuditEvents: #{AuditEvent.count}"
 puts ""
 puts "  Theaters:"

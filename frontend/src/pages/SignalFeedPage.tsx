@@ -109,7 +109,7 @@ export default function SignalFeedPage() {
         <NonIdealState
           icon="feed"
           title="No signals yet"
-          description="Signal ingestion starts automatically when the server boots. Aircraft data arrives within 60 seconds."
+          description="Signal ingestion starts automatically when the server boots. Aircraft (OpenSky) and seismic (USGS) data arrive within 60–300 seconds. Vessel (AIS Hub) and wildfire (NASA FIRMS) feeds require API keys in .env."
         />
       )}
 
@@ -122,8 +122,8 @@ export default function SignalFeedPage() {
               <th>External ID</th>
               <th>Latitude</th>
               <th>Longitude</th>
-              <th>Speed (m/s)</th>
-              <th>Altitude (m)</th>
+              <th>Speed / Mag</th>
+              <th>Alt / Depth</th>
               <th>Occurred</th>
             </tr>
           </thead>
@@ -141,32 +141,46 @@ export default function SignalFeedPage() {
                     <td><span className={Classes.SKELETON} style={{ width: 72, display: 'inline-block' }}>&nbsp;</span></td>
                   </tr>
                 ))
-              : signals.map(signal => (
-                  <tr key={signal.id}>
-                    <td>
-                      <Tag minimal intent="none">
-                        {SOURCE_LABELS[signal.source] ?? signal.source}
-                      </Tag>
-                    </td>
-                    <td>
-                      <Tag minimal intent={TYPE_INTENTS[signal.signal_type] ?? 'none'}>
-                        {TYPE_LABELS[signal.signal_type] ?? signal.signal_type}
-                      </Tag>
-                    </td>
-                    <td className="mono" style={{ fontSize: 12 }}>{signal.external_id}</td>
-                    <td className="mono">{Number(signal.lat).toFixed(4)}</td>
-                    <td className="mono">{Number(signal.lng).toFixed(4)}</td>
-                    <td className="mono">
-                      {signal.speed != null ? Number(signal.speed).toFixed(1) : '—'}
-                    </td>
-                    <td className="mono">
-                      {signal.altitude != null ? Number(signal.altitude).toFixed(0) : '—'}
-                    </td>
-                    <td className="mono" style={{ whiteSpace: 'nowrap' }}>
-                      {formatRelativeTime(signal.occurred_at)}
-                    </td>
-                  </tr>
-                ))
+              : signals.map(signal => {
+                  // Column 6: speed (m/s) for moving objects; magnitude for seismic/wildfire
+                  const isSeismic  = signal.signal_type === 'seismic_event'
+                  const isWildfire = signal.signal_type === 'wildfire'
+                  const speedOrMag = (isSeismic || isWildfire)
+                    ? (signal.magnitude != null ? `M ${Number(signal.magnitude).toFixed(1)}` : '—')
+                    : (signal.speed      != null ? `${Number(signal.speed).toFixed(1)} m/s`  : '—')
+
+                  // Column 7: altitude for aircraft; depth (km) for seismic
+                  const altOrDepth = isSeismic
+                    ? (signal.raw_payload?.depth_km != null
+                        ? `${Number(signal.raw_payload.depth_km).toFixed(0)} km`
+                        : '—')
+                    : (signal.altitude != null
+                        ? `${Number(signal.altitude).toFixed(0)} m`
+                        : '—')
+
+                  return (
+                    <tr key={signal.id}>
+                      <td>
+                        <Tag minimal intent="none">
+                          {SOURCE_LABELS[signal.source] ?? signal.source}
+                        </Tag>
+                      </td>
+                      <td>
+                        <Tag minimal intent={TYPE_INTENTS[signal.signal_type] ?? 'none'}>
+                          {TYPE_LABELS[signal.signal_type] ?? signal.signal_type}
+                        </Tag>
+                      </td>
+                      <td className="mono" style={{ fontSize: 12 }}>{signal.external_id}</td>
+                      <td className="mono">{Number(signal.lat).toFixed(4)}</td>
+                      <td className="mono">{Number(signal.lng).toFixed(4)}</td>
+                      <td className="mono">{speedOrMag}</td>
+                      <td className="mono">{altOrDepth}</td>
+                      <td className="mono" style={{ whiteSpace: 'nowrap' }}>
+                        {formatRelativeTime(signal.occurred_at)}
+                      </td>
+                    </tr>
+                  )
+                })
             }
           </tbody>
         </HTMLTable>

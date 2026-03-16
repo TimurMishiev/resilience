@@ -1,0 +1,158 @@
+require "net/http"
+require "json"
+
+module Feeds
+  # Polls AIS Hub (https://www.aishub.net/) for live vessel positions across
+  # the 4 operational theater bounding boxes and ingests them as ExternalSignal
+  # records via Signals::IngestService.
+  #
+  # Requires AISHUB_USERNAME environment variable.
+  # Free registration at: https://www.aishub.net/join-us
+  #
+  # AIS Hub returns the last known position for all vessels within the bounding
+  # box (positions updated within the last 30 minutes).
+  # Poll interval: 30 seconds — see config/initializers/feed_ingestion.rb
+  class AisIngestionService < ApplicationService
+    include SslHelper
+
+    BASE_URL = "https://data.aishub.net/ws.php"
+    TIMEOUT  = 15  # seconds per request
+
+    # AIS NAVSTAT code 511 = "not available" — filter out undefined headings
+    HEADING_UNAVAILABLE = 511
+
+    # Same geographic boxes as the OpenSky feed so all theater feeds are aligned
+    BOUNDING_BOXES = [
+      { name: "Eastern Europe", latmin: 44.0, lonmin: 22.0, latmax: 52.0, lonmax: 40.0 },
+      { name: "Middle East",    latmin: 29.0, lonmin: 34.0, latmax: 35.0, lonmax: 45.0 },
+      { name: "Horn of Africa", latmin: 10.0, lonmin: 42.0, latmax: 13.0, lonmax: 45.0 },
+      { name: "Indo-Pacific",   latmin:  1.0, lonmin: 73.0, latmax:  8.0, lonmax: 104.0 }
+    ].freeze
+
+    def call
+      username = ENV["AISHUB_USERNAME"]
+      return ServiceResult.failure(errors: ["AISHUB_USERNAME not configured"]) if username.blank?
+
+      total_ingested = 0
+
+      BOUNDING_BOXES.each do |box|
+        vessels = fetch_box(box, username)
+        next unless vessels
+
+        vessels.each do |vessel|
+          result = ingest_vessel(vessel)
+          total_ingested += 1 if result&.success && result.payload[:created]
+        end
+      end
+
+      ServiceResult.success(ingested: total_ingested)
+    rescue => e
+      ServiceResult.failure(errors: [e.message])
+    end
+
+    private
+
+    def fetch_box(box, username)
+      uri = URI(BASE_URL)
+      uri.query = URI.encode_www_form(
+        username: username,
+        format:   1,
+        output:   "json",
+        compress: 0,
+        latmin:   box[:latmin],
+        latmax:   box[:latmax],
+        lonmin:   box[:lonmin],
+        lonmax:   box[:lonmax]
+      )
+
+      http     = ssl_http(uri.host, uri.port, timeout: TIMEOUT)
+      response = http.get(uri.request_uri)
+
+      unless response.code == "200"
+        Rails.logger.warn "[AISFeed] HTTP #{response.code} for #{box[:name]}"
+        return nil
+      end
+
+      parsed = JSON.parse(response.body)
+
+      # AIS Hub response format: [metadata_hash, vessel_hash, vessel_hash, ...]
+      # where metadata_hash = {"ERROR": false, "USERNAME": "...", ...}
+      # On auth failure: {"ERROR": true, "ERRORMESSAGE": "..."}
+      return nil if parsed.is_a?(Hash) && parsed["ERROR"]
+      return nil unless parsed.is_a?(Array) && parsed.length > 1
+
+      metadata = parsed.first
+      if metadata.is_a?(Hash) && metadata["ERROR"]
+        Rails.logger.warn "[AISFeed] API error for #{box[:name]}: #{metadata['ERRORMESSAGE']}"
+        return nil
+      end
+
+      parsed[1..]  # Drop the metadata entry; remaining elements are vessel records
+    rescue => e
+      Rails.logger.warn "[AISFeed] fetch error for #{box[:name]}: #{e.message}"
+      nil
+    end
+
+    # AIS Hub vessel record fields:
+    #   MMSI       — Maritime Mobile Service Identity (9-digit unique vessel ID)
+    #   TIME       — "YYYY-MM-DD HH:MM:SS" UTC, last position timestamp
+    #   LONGITUDE  — decimal degrees WGS-84
+    #   LATITUDE   — decimal degrees WGS-84
+    #   COG        — course over ground in degrees (0–359.9, 360 = not available)
+    #   SOG        — speed over ground in knots (102.3 = not available)
+    #   HEADING    — true heading in degrees (511 = not available)
+    #   ROT        — rate of turn (-128 to 127, -128 = not available)
+    #   NAVSTAT    — AIS navigational status (0=under way, 1=at anchor, …)
+    #   NAME       — vessel name (may be empty string)
+    #   CALLSIGN   — vessel radio callsign
+    #   TYPE       — AIS vessel type code (0–99)
+    #   DRAUGHT    — draught in decimetres
+    #   DEST       — destination port
+    def ingest_vessel(vessel)
+      mmsi     = vessel["MMSI"]
+      lat      = vessel["LATITUDE"]
+      lng      = vessel["LONGITUDE"]
+      time_str = vessel["TIME"]
+
+      return nil unless mmsi && lat && lng && time_str
+
+      occurred_at = begin
+        Time.parse("#{time_str} UTC")
+      rescue ArgumentError
+        Time.current
+      end
+
+      # SOG in knots — convert to m/s for consistency with OpenSky (1 kn ≈ 0.514 m/s)
+      sog_knots = vessel["SOG"]&.to_f
+      speed_ms  = (sog_knots && sog_knots < 102.3) ? (sog_knots * 0.514444).round(2) : nil
+
+      heading = vessel["HEADING"]&.to_i
+      heading = nil if heading == HEADING_UNAVAILABLE
+
+      Signals::IngestService.call(
+        source:      "ais",
+        signal_type: "vessel_position",
+        external_id: mmsi.to_s,
+        lat:         lat.to_f,
+        lng:         lng.to_f,
+        speed:       speed_ms,
+        heading:     heading&.to_f,
+        occurred_at: occurred_at,
+        raw_payload: {
+          mmsi:        mmsi,
+          name:        vessel["NAME"]&.strip.presence,
+          callsign:    vessel["CALLSIGN"]&.strip.presence,
+          cog:         vessel["COG"]&.to_f,
+          sog_knots:   sog_knots,
+          nav_stat:    vessel["NAVSTAT"],
+          vessel_type: vessel["TYPE"],
+          draught:     vessel["DRAUGHT"],
+          dest:        vessel["DEST"]&.strip.presence
+        }
+      )
+    rescue => e
+      Rails.logger.warn "[AISFeed] failed to ingest vessel #{vessel&.dig('MMSI')}: #{e.message}"
+      nil
+    end
+  end
+end
