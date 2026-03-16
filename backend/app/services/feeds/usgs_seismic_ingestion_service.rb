@@ -10,15 +10,16 @@ module Feeds
   # https://earthquake.usgs.gov/fdsnws/event/1/
   #
   # Poll interval: 5 minutes (300 s) — see config/initializers/feed_ingestion.rb
-  # Lookback window: 10 minutes — prevents gaps between polls while avoiding
-  # duplicate load (deduplication happens in IngestService via unique index).
+  # Lookback window: 24 hours — ensures the table is immediately populated after
+  # a restart or seed clear. Deduplication via unique index (source, external_id,
+  # occurred_at) makes repeated fetches of the same window idempotent at zero cost.
   # Min magnitude: 2.5 — filters out micro-tremors that don't affect operations.
   class UsgsSeismicIngestionService < ApplicationService
     include SslHelper
 
     BASE_URL         = "https://earthquake.usgs.gov/fdsnws/event/1/query"
     MIN_MAGNITUDE    = 2.5
-    LOOKBACK_MINUTES = 10  # seconds between polls defined in initializer
+    LOOKBACK_MINUTES = 1440  # 24 hours — deduplication keeps re-fetches idempotent
     TIMEOUT          = 20  # seconds per HTTP request
 
     def call
