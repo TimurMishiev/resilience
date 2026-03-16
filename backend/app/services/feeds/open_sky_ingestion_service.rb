@@ -4,46 +4,41 @@ require "openssl"
 
 module Feeds
   # Polls the OpenSky Network REST API for live aircraft positions and ingests
-  # them as Signal records via Signals::IngestService.
+  # them as ExternalSignal records via Signals::IngestService.
   #
-  # OpenSky anonymous rate limit: ~400 req/day, burst limit ~10 req/min.
-  # We poll 4 bounding boxes every 900s (15 min) = 384 req/day total.
-  # A 12s gap between box fetches avoids burst rejection.
+  # Authentication (recommended):
+  #   Set OPENSKY_USERNAME + OPENSKY_PASSWORD in .env.
+  #   Free account at https://opensky-network.org/
+  #   Authenticated limit: 4,000 req/day — 10× the anonymous cap.
   #
-  # STARTUP_DELAY: first poll is deferred by 5 minutes. This prevents rapid
-  # server restarts (common in development) from burning through the daily
-  # quota before the first real request cycle has run.
+  # Anonymous fallback (no credentials set):
+  #   Limit: ~400 req/day, burst ~10 req/min.
+  #   First poll deferred by STARTUP_DELAY (300s) to survive dev restarts
+  #   without burning the daily quota.
+  #
+  # Either way we poll 4 bounding boxes every 900s (15 min) with 12s gaps
+  # between boxes = 384 req/day — safely under both limits.
   class OpenSkyIngestionService < ApplicationService
     BASE_URL      = "https://opensky-network.org/api/states/all"
-    TIMEOUT       = 15  # seconds per request
-    STARTUP_DELAY = 300 # seconds — defer first poll to survive dev restarts
+    TIMEOUT       = 15  # seconds per HTTP request
 
-    # How often (seconds) to repeat the same fetch-error message in the log.
-    # Prevents log spam when OpenSky is down for extended periods.
-    # Class-level hash so the throttle persists across poll cycles (not just
-    # within one call), which is critical for surviving a 429-rate-limited period.
-    LOG_THROTTLE_SECONDS = 3600 # 1 hour
+    # Defer the first anonymous poll by 5 minutes so rapid dev restarts do not
+    # exhaust the 400 req/day quota. Ignored when credentials are present.
+    STARTUP_DELAY = 300 # seconds
 
-    # Class-level error log tracker — survives across service instantiations.
+    # Suppress repeated fetch-error log lines: at most once per hour per box.
+    # Class-level so the window persists across service instantiations/poll cycles.
+    LOG_THROTTLE_SECONDS = 3600
+
     @last_logged_error = {}
     class << self
       attr_accessor :last_logged_error
     end
 
-    # verify_callback for OpenSky SSL connections.
-    #
-    # OpenSky's certificate chain includes a CRL Distribution Point (CDP)
-    # whose server is intermittently unreachable. We still do full VERIFY_PEER
-    # (hostname + chain + trusted CA). We only waive errors 3 and 33, which
-    # mean "CRL server unreachable" — not "cert is revoked". A revoked cert
-    # produces error 23 (CERT_REVOKED) which is NOT skipped here.
-    #
+    # OpenSky SSL verify_callback — waives CRL-unreachable errors (3, 33) only.
+    # Error 23 (CERT_REVOKED) is never waived.
     #   3  = X509_V_ERR_UNABLE_TO_GET_CRL
-    #   23 = X509_V_ERR_CERT_REVOKED          (NOT skipped — still rejected)
     #   33 = X509_V_ERR_UNABLE_TO_GET_CRL_ISSUER
-    #
-    # Note: Net::HTTP on this Ruby version exposes verify_callback as a direct
-    # attribute on the HTTP object, not via ssl_context=.
     SSL_VERIFY_CALLBACK = proc { |preverify_ok, store_ctx|
       if !preverify_ok && [3, 33].include?(store_ctx.error)
         true
@@ -52,8 +47,7 @@ module Feeds
       end
     }.freeze
 
-    # Bounding boxes that cover the 4 seed site theaters.
-    # lamin/lamax = latitude bounds, lomin/lomax = longitude bounds.
+    # Bounding boxes covering the 4 seed site theaters.
     BOUNDING_BOXES = [
       { name: "Eastern Europe",  lamin: 44.0, lomin: 22.0, lamax: 52.0, lomax: 40.0 },
       { name: "Middle East",     lamin: 29.0, lomin: 34.0, lamax: 35.0, lomax: 45.0 },
@@ -65,7 +59,7 @@ module Feeds
       total_ingested = 0
 
       BOUNDING_BOXES.each_with_index do |box, idx|
-        sleep 12 if idx > 0  # spread requests 12s apart — avoids burst 429s
+        sleep 12 if idx > 0  # 12s gap between boxes — avoids burst 429s
         response = fetch_box(box)
         next unless response
 
@@ -85,27 +79,29 @@ module Feeds
 
     private
 
-    # OpenSky state vector indices:
-    # 0  icao24          — unique ICAO 24-bit transponder address
-    # 1  callsign        — aircraft callsign (may have trailing spaces)
+    # Returns the OpenSky username from env, or nil for anonymous mode.
+    def opensky_username = ENV["OPENSKY_USERNAME"].presence
+    def opensky_password = ENV["OPENSKY_PASSWORD"].presence
+
+    # OpenSky state vector field indices:
+    # 0  icao24         — ICAO 24-bit transponder address
+    # 1  callsign       — aircraft callsign (may have trailing spaces)
     # 2  origin_country
-    # 3  time_position   — unix timestamp of last position report (may be nil)
-    # 4  last_contact    — unix timestamp of last contact
-    # 5  longitude       — WGS-84 longitude (may be nil if on ground without GPS)
-    # 6  latitude        — WGS-84 latitude
-    # 7  geo_altitude    — geometric altitude in metres
-    # 8  on_ground       — bool
-    # 9  velocity        — ground speed in m/s
-    # 10 true_track      — true track angle (heading) in degrees
-    # 11 vertical_rate   — m/s
-    # 12 sensors         — array of receiver IDs
-    # 13 baro_altitude   — barometric altitude in metres
+    # 3  time_position  — unix ms of last position update (may be nil)
+    # 4  last_contact   — unix ms of last contact
+    # 5  longitude      — WGS-84 (nil if no GPS fix)
+    # 6  latitude       — WGS-84
+    # 7  geo_altitude   — geometric altitude in metres
+    # 8  on_ground      — bool
+    # 9  velocity       — ground speed m/s
+    # 10 true_track     — heading in degrees
+    # 11 vertical_rate  — m/s
+    # 12 sensors        — array of receiver IDs
+    # 13 baro_altitude  — barometric altitude in metres
     def ingest_state(state, server_time)
       icao24 = state[0]
       lng    = state[5]
       lat    = state[6]
-
-      # Skip aircraft without a current GPS fix
       return nil unless lat && lng
 
       position_time = state[3] || state[4] || server_time
@@ -142,13 +138,15 @@ module Feeds
         lamax: box[:lamax], lomax: box[:lomax]
       )
 
-      http                  = Net::HTTP.new(uri.host, uri.port)
-      http.use_ssl          = true
-      http.verify_callback  = SSL_VERIFY_CALLBACK
-      http.open_timeout     = TIMEOUT
-      http.read_timeout     = TIMEOUT
+      http                 = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl         = true
+      http.verify_callback = SSL_VERIFY_CALLBACK
+      http.open_timeout    = TIMEOUT
+      http.read_timeout    = TIMEOUT
 
-      request  = Net::HTTP::Get.new(uri)
+      request = Net::HTTP::Get.new(uri)
+      request.basic_auth(opensky_username, opensky_password) if opensky_username
+
       response = http.request(request)
 
       unless response.code == "200"
@@ -162,9 +160,7 @@ module Feeds
       nil
     end
 
-    # Log a warning for +key+ at most once per LOG_THROTTLE_SECONDS interval.
-    # Uses the class-level hash so the throttle persists across poll cycles and
-    # server-reload hot-patches — not just within one call's 4-box iteration.
+    # Logs a warning for +key+ at most once per LOG_THROTTLE_SECONDS.
     def throttled_warn(key, message)
       store = self.class.last_logged_error
       last  = store[key]

@@ -17,33 +17,36 @@ unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAM
   Rails.application.config.after_initialize do
 
     # ─── OpenSky aircraft positions ──────────────────────────────────────────
-    Thread.new do
-      Thread.current.name = "opensky-feed"
-      # Defer first poll by STARTUP_DELAY (300s). Rapid dev restarts otherwise
-      # exhaust the 400 req/day anonymous quota before the app has warmed up.
-      delay = Feeds::OpenSkyIngestionService::STARTUP_DELAY
-      Rails.logger.info "[OpenSkyFeed] started — first poll in #{delay}s, then every 900s (4 boxes × 12s apart)"
-      sleep delay
+    # Requires OPENSKY_USERNAME + OPENSKY_PASSWORD (free account at opensky-network.org).
+    # Authenticated limit: 4,000 req/day — 10× anonymous, reliable in dev.
+    # Without credentials the thread is skipped (same pattern as AIS/FIRMS).
+    if ENV["OPENSKY_USERNAME"].present?
+      Thread.new do
+        Thread.current.name = "opensky-feed"
+        Rails.logger.info "[OpenSkyFeed] started (authenticated) — polling every 900s (4 boxes × 12s apart)"
 
-      loop do
-        begin
-          result = Feeds::OpenSkyIngestionService.call
-          if result.success
-            count = result.payload[:ingested]
-            Rails.logger.info "[OpenSkyFeed] ingested #{count} new signals" if count.to_i > 0
-          else
-            Rails.logger.warn "[OpenSkyFeed] errors: #{result.errors.join(', ')}"
+        loop do
+          begin
+            result = Feeds::OpenSkyIngestionService.call
+            if result.success
+              count = result.payload[:ingested]
+              Rails.logger.info "[OpenSkyFeed] ingested #{count} new signals" if count.to_i > 0
+            else
+              Rails.logger.warn "[OpenSkyFeed] errors: #{result.errors.join(', ')}"
+            end
+          rescue ActiveRecord::StatementInvalid, PG::Error => e
+            Rails.logger.error "[OpenSkyFeed] DB error: #{e.message}"
+            sleep 30
+            next
+          rescue => e
+            Rails.logger.error "[OpenSkyFeed] unexpected error: #{e.message}"
           end
-        rescue ActiveRecord::StatementInvalid, PG::Error => e
-          Rails.logger.error "[OpenSkyFeed] DB error: #{e.message}"
-          sleep 30
-          next
-        rescue => e
-          Rails.logger.error "[OpenSkyFeed] unexpected error: #{e.message}"
-        end
 
-        sleep 900  # 15 minutes — 4 boxes × 12s apart = 384 req/day, under anonymous limit
+          sleep 900  # 15 minutes — 4 boxes × 12s apart = 384 req/day, well under 4,000 limit
+        end
       end
+    else
+      Rails.logger.info "[OpenSkyFeed] OPENSKY_USERNAME not set — aircraft feed disabled (see .env.example)"
     end
 
     # ─── USGS seismic events ─────────────────────────────────────────────────
