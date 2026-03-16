@@ -6,9 +6,9 @@ module Feeds
   # Polls the OpenSky Network REST API for live aircraft positions and ingests
   # them as Signal records via Signals::IngestService.
   #
-  # OpenSky free tier: anonymous, max ~10 req/min globally.
-  # We poll 4 bounding boxes covering the seed site theaters.
-  # Each box is a separate request; total = 4 req/min well within limit.
+  # OpenSky anonymous rate limit: ~400 req/day, burst limit ~10 req/min.
+  # We poll 4 bounding boxes every 900s (15 min) = 384 req/day total.
+  # A 12s gap between box fetches avoids burst rejection.
   class OpenSkyIngestionService < ApplicationService
     BASE_URL = "https://opensky-network.org/api/states/all"
     TIMEOUT  = 15 # seconds per request
@@ -52,7 +52,8 @@ module Feeds
       total_ingested = 0
       @last_logged_error = {} # box_name => Time — throttle repeated warnings
 
-      BOUNDING_BOXES.each do |box|
+      BOUNDING_BOXES.each_with_index do |box, idx|
+        sleep 12 if idx > 0  # spread requests 12s apart — avoids burst 429s
         response = fetch_box(box)
         next unless response
 

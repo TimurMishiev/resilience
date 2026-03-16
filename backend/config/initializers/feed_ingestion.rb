@@ -5,7 +5,7 @@
 # Skipped in test mode, rake tasks, and Rails console.
 #
 # Feed summary:
-#   opensky-feed   — aircraft positions (OpenSky Network, no key)    — 60s
+#   opensky-feed   — aircraft positions (OpenSky Network, no key)    — 900s
 #   usgs-feed      — seismic events     (USGS FDSN, no key)          — 300s
 #   gpsjam-feed    — GPS interference   (gpsjam.org, no key)         — 900s
 #   ais-feed       — vessel positions   (AIS Hub, AISHUB_USERNAME)   — 30s
@@ -19,7 +19,7 @@ unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAM
     # ─── OpenSky aircraft positions ──────────────────────────────────────────
     Thread.new do
       Thread.current.name = "opensky-feed"
-      Rails.logger.info "[OpenSkyFeed] started — polling every 60s"
+      Rails.logger.info "[OpenSkyFeed] started — polling every 900s (4 boxes × 12s apart)"
 
       loop do
         begin
@@ -38,7 +38,7 @@ unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAM
           Rails.logger.error "[OpenSkyFeed] unexpected error: #{e.message}"
         end
 
-        sleep 60
+        sleep 900  # 15 minutes — 4 boxes × 12s apart = 384 req/day, under anonymous limit
       end
     end
 
