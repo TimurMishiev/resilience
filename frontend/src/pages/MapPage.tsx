@@ -235,9 +235,9 @@ export default function MapPage() {
   const { data: areasRes } = useAreasOfOperation({ per_page: 200 })
   const areaOfOperations = useMemo(() => areasRes?.data ?? [], [areasRes?.data])
 
-  const sites    = sitesQuery.data?.data ?? []
-  const allTasks = tasksQuery.data?.data ?? []
-  const assets   = assetsQuery.data?.data ?? []
+  const sites    = useMemo(() => sitesQuery.data?.data  ?? [], [sitesQuery.data?.data])
+  const allTasks = useMemo(() => tasksQuery.data?.data  ?? [], [tasksQuery.data?.data])
+  const assets   = useMemo(() => assetsQuery.data?.data ?? [], [assetsQuery.data?.data])
   const loading  = sitesQuery.isLoading || tasksQuery.isLoading
   const error    = sitesQuery.error?.message ?? tasksQuery.error?.message ?? null
 

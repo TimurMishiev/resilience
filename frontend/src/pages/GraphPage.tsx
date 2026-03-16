@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import * as d3 from 'd3'
 import { Button, Callout, Divider, Spinner, Tag } from '@blueprintjs/core'
 import { useSites } from '../hooks/useSites'
@@ -258,9 +258,9 @@ export default function GraphPage() {
   const tasksQuery  = useTasks({ per_page: 200, ...asOfParam })
   const assetsQuery = useAssets({ per_page: 200, ...asOfParam })
 
-  const sites  = sitesQuery.data?.data  ?? []
-  const tasks  = tasksQuery.data?.data  ?? []
-  const assets = assetsQuery.data?.data ?? []
+  const sites  = useMemo(() => sitesQuery.data?.data  ?? [], [sitesQuery.data?.data])
+  const tasks  = useMemo(() => tasksQuery.data?.data  ?? [], [tasksQuery.data?.data])
+  const assets = useMemo(() => assetsQuery.data?.data ?? [], [assetsQuery.data?.data])
 
   const loading = sitesQuery.isLoading || tasksQuery.isLoading || assetsQuery.isLoading
   const error   = sitesQuery.error?.message ?? tasksQuery.error?.message ?? assetsQuery.error?.message ?? null

@@ -131,13 +131,14 @@ export default function GlobalSearch({ open, onClose }: Props) {
   const tasksQuery  = useTasks({ per_page: 200 })
   const assetsQuery = useAssets({ per_page: 200 })
 
-  const sites  = sitesQuery.data?.data  ?? []
-  const tasks  = tasksQuery.data?.data  ?? []
-  const assets = assetsQuery.data?.data ?? []
-
   const results = useMemo(
-    () => buildResults(sites, tasks, assets, query),
-    [sites, tasks, assets, query],
+    () => buildResults(
+      sitesQuery.data?.data  ?? [],
+      tasksQuery.data?.data  ?? [],
+      assetsQuery.data?.data ?? [],
+      query,
+    ),
+    [sitesQuery.data?.data, tasksQuery.data?.data, assetsQuery.data?.data, query],
   )
 
   // Reset state when opened

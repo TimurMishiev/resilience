@@ -58,9 +58,9 @@ export default function GlobePage() {
   const assetsQuery = useAssets({ per_page: 200, ...asOfParam })
   const { data: areasRes } = useAreasOfOperation({ per_page: 200 })
 
-  const sites  = sitesQuery.data?.data  ?? []
-  const tasks  = tasksQuery.data?.data  ?? []
-  const assets = assetsQuery.data?.data ?? []
+  const sites  = useMemo(() => sitesQuery.data?.data  ?? [], [sitesQuery.data?.data])
+  const tasks  = useMemo(() => tasksQuery.data?.data  ?? [], [tasksQuery.data?.data])
+  const assets = useMemo(() => assetsQuery.data?.data ?? [], [assetsQuery.data?.data])
   const areaOfOperations = useMemo(() => areasRes?.data ?? [], [areasRes?.data])
   const loading = sitesQuery.isLoading || tasksQuery.isLoading
 
@@ -135,13 +135,17 @@ export default function GlobePage() {
 
     viewerRef.current = viewer
 
+    // Capture ref values so the cleanup function uses the same Map instances
+    const siteEntities  = siteEntitiesRef.current
+    const assetEntities = assetEntitiesRef.current
+    const aoEntities    = aoEntitiesRef.current
+
     return () => {
       viewer.destroy()
       viewerRef.current = null
-      siteEntitiesRef.current.clear()
-      assetEntitiesRef.current.clear()
-      // Safe: aoEntitiesRef is a stable ref, cleared only on unmount
-      aoEntitiesRef.current.clear() // eslint-disable-line react-hooks/exhaustive-deps
+      siteEntities.clear()
+      assetEntities.clear()
+      aoEntities.clear()
     }
   }, [])
 
