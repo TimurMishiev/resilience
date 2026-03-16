@@ -9,13 +9,26 @@ module Feeds
   # OpenSky anonymous rate limit: ~400 req/day, burst limit ~10 req/min.
   # We poll 4 bounding boxes every 900s (15 min) = 384 req/day total.
   # A 12s gap between box fetches avoids burst rejection.
+  #
+  # STARTUP_DELAY: first poll is deferred by 5 minutes. This prevents rapid
+  # server restarts (common in development) from burning through the daily
+  # quota before the first real request cycle has run.
   class OpenSkyIngestionService < ApplicationService
-    BASE_URL = "https://opensky-network.org/api/states/all"
-    TIMEOUT  = 15 # seconds per request
+    BASE_URL      = "https://opensky-network.org/api/states/all"
+    TIMEOUT       = 15  # seconds per request
+    STARTUP_DELAY = 300 # seconds — defer first poll to survive dev restarts
 
     # How often (seconds) to repeat the same fetch-error message in the log.
     # Prevents log spam when OpenSky is down for extended periods.
+    # Class-level hash so the throttle persists across poll cycles (not just
+    # within one call), which is critical for surviving a 429-rate-limited period.
     LOG_THROTTLE_SECONDS = 3600 # 1 hour
+
+    # Class-level error log tracker — survives across service instantiations.
+    @last_logged_error = {}
+    class << self
+      attr_accessor :last_logged_error
+    end
 
     # verify_callback for OpenSky SSL connections.
     #
@@ -50,7 +63,6 @@ module Feeds
 
     def call
       total_ingested = 0
-      @last_logged_error = {} # box_name => Time — throttle repeated warnings
 
       BOUNDING_BOXES.each_with_index do |box, idx|
         sleep 12 if idx > 0  # spread requests 12s apart — avoids burst 429s
@@ -151,14 +163,15 @@ module Feeds
     end
 
     # Log a warning for +key+ at most once per LOG_THROTTLE_SECONDS interval.
-    # First occurrence always logs; subsequent identical errors are suppressed
-    # until the throttle window expires, keeping logs readable during outages.
+    # Uses the class-level hash so the throttle persists across poll cycles and
+    # server-reload hot-patches — not just within one call's 4-box iteration.
     def throttled_warn(key, message)
-      last = @last_logged_error&.dig(key)
+      store = self.class.last_logged_error
+      last  = store[key]
       return if last && Time.current - last < LOG_THROTTLE_SECONDS
 
       Rails.logger.warn "[OpenSkyFeed] fetch error for #{key}: #{message}"
-      (@last_logged_error ||= {})[key] = Time.current
+      store[key] = Time.current
     end
   end
 end

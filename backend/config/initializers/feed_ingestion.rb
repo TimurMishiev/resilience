@@ -19,7 +19,11 @@ unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAM
     # ─── OpenSky aircraft positions ──────────────────────────────────────────
     Thread.new do
       Thread.current.name = "opensky-feed"
-      Rails.logger.info "[OpenSkyFeed] started — polling every 900s (4 boxes × 12s apart)"
+      # Defer first poll by STARTUP_DELAY (300s). Rapid dev restarts otherwise
+      # exhaust the 400 req/day anonymous quota before the app has warmed up.
+      delay = Feeds::OpenSkyIngestionService::STARTUP_DELAY
+      Rails.logger.info "[OpenSkyFeed] started — first poll in #{delay}s, then every 900s (4 boxes × 12s apart)"
+      sleep delay
 
       loop do
         begin
