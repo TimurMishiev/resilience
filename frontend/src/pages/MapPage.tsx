@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import maplibregl from 'maplibre-gl'
+import maplibregl, { type StyleSpecification } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import {
   Button,
@@ -57,6 +57,40 @@ const SOURCE_LABELS: Record<string, string> = {
   gpsjam:         'GPSJam',
   firms_wildfire: 'FIRMS Wildfire',
   manual:         'Manual',
+}
+
+// ---------------------------------------------------------------------------
+// Map style options
+// ---------------------------------------------------------------------------
+type MapStyleKey = 'tactical' | 'satellite' | 'street'
+
+const SATELLITE_STYLE: StyleSpecification = {
+  version: 8,
+  sources: {
+    'esri-imagery': {
+      type: 'raster',
+      tiles: ['https://server.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+      tileSize: 256,
+      attribution: '© Esri, Maxar, Earthstar Geographics',
+      maxzoom: 18,
+    },
+    'esri-labels': {
+      type: 'raster',
+      tiles: ['https://server.arcgisonline.com/arcgis/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'],
+      tileSize: 256,
+      maxzoom: 18,
+    },
+  },
+  layers: [
+    { id: 'imagery', type: 'raster', source: 'esri-imagery' },
+    { id: 'labels',  type: 'raster', source: 'esri-labels',  paint: { 'raster-opacity': 0.85 } },
+  ],
+}
+
+const MAP_STYLE_CONFIGS: Record<MapStyleKey, { label: string; style: string | StyleSpecification }> = {
+  tactical:  { label: 'Tactical',   style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json' },
+  satellite: { label: 'Satellite',  style: SATELLITE_STYLE },
+  street:    { label: 'Street',     style: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json' },
 }
 
 // ---------------------------------------------------------------------------
@@ -271,6 +305,8 @@ export default function MapPage() {
   const [selectedSignal,  setSelectedSignal]   = useState<Signal | null>(null)
   const [showSignals,     setShowSignals]       = useState(true)
   const [mapLoaded,       setMapLoaded]         = useState(false)
+  const [mapStyle,        setMapStyle]          = useState<MapStyleKey>('tactical')
+  const mapStyleInitRef = useRef(false)
 
   const asOfParam  = asOf ? { as_of: asOf } : {}
   const sitesQuery = useSites({ per_page: 200, ...asOfParam })
@@ -316,7 +352,7 @@ export default function MapPage() {
     if (!mapContainerRef.current || mapRef.current) return
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
-      style:     'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+      style:     MAP_STYLE_CONFIGS.tactical.style as string,
       center:    [0, 20],
       zoom:      1.5,
     })
@@ -327,6 +363,19 @@ export default function MapPage() {
   }, [])
 
   useEffect(() => { setSelectedSiteId(null); setSelectedAssetId(null) }, [asOf])
+
+  // -------------------------------------------------------------------------
+  // Style switching — skip first render (map init already loaded tactical)
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    if (!mapStyleInitRef.current) { mapStyleInitRef.current = true; return }
+    setMapLoaded(false)
+    const cfg = MAP_STYLE_CONFIGS[mapStyle]
+    map.setStyle(cfg.style as StyleSpecification)
+    map.once('style.load', () => setMapLoaded(true))
+  }, [mapStyle])
 
   // -------------------------------------------------------------------------
   // Site markers — rebuild when sites / task data changes
@@ -649,6 +698,19 @@ export default function MapPage() {
           {telemetryConnected ? 'TELEMETRY LIVE' : 'TELEMETRY OFFLINE'}
         </div>
       )}
+
+      {/* Map style switcher */}
+      <div className="map-style-switcher">
+        {(Object.keys(MAP_STYLE_CONFIGS) as MapStyleKey[]).map(key => (
+          <button
+            key={key}
+            className={`map-style-btn${mapStyle === key ? ' map-style-btn--active' : ''}`}
+            onClick={() => setMapStyle(key)}
+          >
+            {MAP_STYLE_CONFIGS[key].label}
+          </button>
+        ))}
+      </div>
 
       {/* Signal layer toggle */}
       {showSignals && (
