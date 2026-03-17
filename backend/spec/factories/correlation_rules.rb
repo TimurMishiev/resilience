@@ -36,5 +36,13 @@ FactoryBot.define do
         }
       end
     end
+
+    trait :escalate_task do
+      actions { { "escalate_task" => { "min_priority" => "high" } } }
+    end
+
+    trait :flag_site do
+      actions { { "flag_site" => { "reason" => "Rule '{{site_name}}' triggered by {{signal_type}}" } } }
+    end
   end
 end

@@ -52,6 +52,8 @@ export interface Site {
   longitude: number | string
   status: SiteStatus
   area_of_operation_id: string | null
+  flagged_at: string | null
+  flag_reason: string | null
   created_at: string
   updated_at: string
 }
@@ -220,7 +222,13 @@ export interface CorrelationActions {
     title?: string
     description?: string
     priority?: TaskPriority
-    assign_to_site?: string
+  }
+  escalate_task?: {
+    title?: string
+    min_priority?: TaskPriority
+  }
+  flag_site?: {
+    reason?: string
   }
 }
 

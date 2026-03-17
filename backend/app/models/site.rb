@@ -11,5 +11,6 @@ class Site < ApplicationRecord
   validates :longitude, presence: true, numericality: { greater_than_or_equal_to: -180, less_than_or_equal_to: 180 }
   validates :status, inclusion: { in: STATUSES }
 
-  scope :active, -> { where(status: "active") }
+  scope :active,  -> { where(status: "active") }
+  scope :flagged, -> { where.not(flagged_at: nil) }
 end

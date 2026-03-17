@@ -63,7 +63,15 @@ export default function SitesPage() {
               ))
             : sites.map((site) => (
                 <tr key={site.id}>
-                  <td>{site.name}</td>
+                  <td>
+                    {site.name}
+                    {site.flagged_at && (
+                      <Tag minimal intent="danger" icon="flag" style={{ marginLeft: 6 }}
+                           title={site.flag_reason ?? 'Flagged by correlation engine'}>
+                        flagged
+                      </Tag>
+                    )}
+                  </td>
                   <td>
                     <Tag minimal intent={site.status === 'active' ? 'success' : 'none'}>
                       {site.status}

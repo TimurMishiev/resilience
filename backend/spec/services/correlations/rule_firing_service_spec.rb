@@ -119,4 +119,137 @@ RSpec.describe Correlations::RuleFiringService do
       expect { result }.not_to change { rule.reload.last_fired_at }
     end
   end
+
+  # ---------------------------------------------------------------------------
+  # escalate_task action
+  # ---------------------------------------------------------------------------
+  describe "escalate_task action" do
+    let(:escalate_rule) do
+      create(:correlation_rule, :escalate_task,
+             conditions: { "signal_type" => "seismic_event", "proximity_km" => 100 })
+    end
+
+    context "when an open task exists at the site" do
+      let!(:existing_task) { create(:task, site: site, priority: "normal") }
+
+      subject(:result) { described_class.call(rule: escalate_rule, signal: signal, site: site) }
+
+      it "returns success" do
+        expect(result.success).to be true
+      end
+
+      it "does not create a new Task" do
+        expect { result }.not_to change(Task, :count)
+      end
+
+      it "bumps the task priority one level" do
+        result
+        expect(existing_task.reload.priority).to eq("high")
+      end
+
+      it "respects min_priority floor" do
+        # task is already 'normal'; min_priority is 'high' → should land at 'high'
+        result
+        expect(existing_task.reload.priority).to eq("high")
+      end
+
+      it "records actions_taken as escalate_task in the match metadata" do
+        result
+        expect(SignalRuleMatch.last.metadata["actions_taken"]).to include("escalate_task")
+      end
+
+      it "does not escalate beyond critical" do
+        critical_task = create(:task, site: site, priority: "critical")
+        r = described_class.call(rule: escalate_rule, signal: signal, site: site)
+        expect(r.payload[:task].priority).to eq("critical")
+        expect(critical_task.reload.priority).to eq("critical")
+      end
+    end
+
+    context "when no open task exists at the site" do
+      subject(:result) { described_class.call(rule: escalate_rule, signal: signal, site: site) }
+
+      it "creates a new Task as fallback" do
+        expect { result }.to change(Task, :count).by(1)
+      end
+
+      it "creates the task at min_priority or high" do
+        expect(result.payload[:task].priority).to eq("high")
+      end
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # flag_site action
+  # ---------------------------------------------------------------------------
+  describe "flag_site action" do
+    let(:flag_rule) do
+      create(:correlation_rule, :flag_site,
+             conditions: { "signal_type" => "seismic_event", "proximity_km" => 100 })
+    end
+
+    subject(:result) { described_class.call(rule: flag_rule, signal: signal, site: site) }
+
+    it "returns success" do
+      expect(result.success).to be true
+    end
+
+    it "does not create a Task" do
+      expect { result }.not_to change(Task, :count)
+    end
+
+    it "sets flagged_at on the site" do
+      expect { result }.to change { site.reload.flagged_at }.from(nil)
+    end
+
+    it "sets flag_reason with the interpolated reason" do
+      result
+      expect(site.reload.flag_reason).to include("Site Alpha")
+      expect(site.reload.flag_reason).to include("seismic_event")
+    end
+
+    it "still creates a SignalRuleMatch" do
+      expect { result }.to change(SignalRuleMatch, :count).by(1)
+    end
+
+    it "records actions_taken as flag_site in the match metadata" do
+      result
+      expect(SignalRuleMatch.last.metadata["actions_taken"]).to include("flag_site")
+    end
+
+    it "broadcasts rule_fired with actions_taken" do
+      result
+      expect(Sse::Broadcaster.instance).to have_received(:publish).with(
+        hash_including(event: "rule_fired",
+                       data:  hash_including(actions_taken: include("flag_site")))
+      )
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # combined actions
+  # ---------------------------------------------------------------------------
+  describe "combined create_task + flag_site" do
+    let(:combo_rule) do
+      create(:correlation_rule,
+             conditions: { "signal_type" => "seismic_event", "proximity_km" => 100 },
+             actions: {
+               "create_task" => { "title" => "Alert", "priority" => "high" },
+               "flag_site"   => { "reason" => "Combo trigger" }
+             })
+    end
+
+    subject(:result) { described_class.call(rule: combo_rule, signal: signal, site: site) }
+
+    it "creates a Task and flags the site" do
+      expect { result }.to change(Task, :count).by(1)
+      expect(site.reload.flagged_at).not_to be_nil
+    end
+
+    it "records both actions_taken in the match metadata" do
+      result
+      taken = SignalRuleMatch.last.metadata["actions_taken"]
+      expect(taken).to include("create_task", "flag_site")
+    end
+  end
 end

@@ -49,17 +49,19 @@ export default function AppShell() {
 
       if (e.event === 'rule_fired') {
         const d = e.data as {
-          rule_name:   string
-          site_name:   string
-          task_title:  string
-          priority:    string
-          signal_type: string
-          distance_km: number
+          rule_name:    string
+          site_name:    string
+          task_title:   string | null
+          priority:     string | null
+          signal_type:  string
+          distance_km:  number
+          actions_taken: string[]
         }
         queryClient.invalidateQueries({ queryKey: ['signal_rule_matches'] })
         queryClient.invalidateQueries({ queryKey: ['correlation_rules'] })
+        queryClient.invalidateQueries({ queryKey: ['sites'] })
         AppToaster.then(t => t.show({
-          message: `⚡ ${d.rule_name} fired near ${d.site_name} — "${d.task_title}" created (${d.priority}, ${d.signal_type}, ${d.distance_km} km)`,
+          message: `⚡ ${d.rule_name} fired near ${d.site_name} — "${d.task_title ?? d.actions_taken?.join(', ')}" (${d.signal_type}, ${d.distance_km} km)`,
           intent:  'warning',
           icon:    'lightning',
           timeout: 10_000,
