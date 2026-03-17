@@ -316,7 +316,7 @@ export default function MapPage() {
     if (!mapContainerRef.current || mapRef.current) return
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
-      style:     'https://demotiles.maplibre.org/style.json',
+      style:     'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
       center:    [0, 20],
       zoom:      1.5,
     })
@@ -507,6 +507,32 @@ export default function MapPage() {
 
     map.addSource('signal-points', { type: 'geojson', data: geojson })
 
+    // Glow halo behind each signal point
+    map.addLayer({
+      id:     'signal-glow',
+      type:   'circle',
+      source: 'signal-points',
+      paint:  {
+        'circle-radius': [
+          'match', ['get', 'signal_type'],
+          'seismic_event', 18,
+          'wildfire',      16,
+          12,
+        ],
+        'circle-color': [
+          'match', ['get', 'signal_type'],
+          'aircraft_position', SIGNAL_COLORS.aircraft_position,
+          'vessel_position',   SIGNAL_COLORS.vessel_position,
+          'seismic_event',     SIGNAL_COLORS.seismic_event,
+          'gps_jamming',       SIGNAL_COLORS.gps_jamming,
+          'wildfire',          SIGNAL_COLORS.wildfire,
+          SIGNAL_COLORS.manual,
+        ],
+        'circle-opacity': 0.15,
+        'circle-blur':    1.2,
+      },
+    })
+
     map.addLayer({
       id:     'signal-circles',
       type:   'circle',
@@ -543,11 +569,46 @@ export default function MapPage() {
       setSelectedSignal(prev => prev?.id === sig.id ? null : sig)
     })
 
-    map.on('mouseenter', 'signal-circles', () => {
-      map.getCanvas().style.cursor = 'pointer'
+    const popup = new maplibregl.Popup({
+      closeButton: false,
+      closeOnClick: false,
+      offset: 8,
+      className: 'signal-popup-container',
     })
+
+    map.on('mouseenter', 'signal-circles', e => {
+      map.getCanvas().style.cursor = 'pointer'
+      if (!e.features?.length) return
+      const props = e.features[0].properties as Record<string, string>
+      const coords = (e.features[0].geometry as { coordinates: [number, number] }).coordinates
+      const label  = SIGNAL_LABELS[props.signal_type] ?? props.signal_type
+      const icon   = SIGNAL_ICONS[props.signal_type] ?? '●'
+      const color  = SIGNAL_COLORS[props.signal_type] ?? '#8f99a8'
+      const mag    = props.magnitude ? `<span class="sp-row"><span>Magnitude</span><b>${Number(props.magnitude).toFixed(1)}</b></span>` : ''
+      const alt    = props.altitude  ? `<span class="sp-row"><span>Altitude</span><b>${Number(props.altitude).toFixed(0)} m</b></span>` : ''
+      const spd    = props.speed     ? `<span class="sp-row"><span>Speed</span><b>${Number(props.speed).toFixed(0)} kn</b></span>` : ''
+      const time   = props.occurred_at ? new Date(props.occurred_at).toLocaleTimeString() : ''
+      popup
+        .setLngLat(coords)
+        .setHTML(`
+          <div class="signal-popup">
+            <div class="sp-header" style="border-left: 3px solid ${color}">
+              <span class="sp-icon">${icon}</span>
+              <span class="sp-type">${label}</span>
+            </div>
+            <div class="sp-body">
+              <span class="sp-row"><span>Source</span><b>${SOURCE_LABELS[props.source] ?? props.source}</b></span>
+              ${mag}${alt}${spd}
+              ${time ? `<span class="sp-row"><span>Time</span><b>${time}</b></span>` : ''}
+              <span class="sp-hint">Click for details</span>
+            </div>
+          </div>`)
+        .addTo(map)
+    })
+
     map.on('mouseleave', 'signal-circles', () => {
       map.getCanvas().style.cursor = ''
+      popup.remove()
     })
   }, [mapLoaded, signals])
 
@@ -558,6 +619,9 @@ export default function MapPage() {
     const map = mapRef.current
     if (!map || !mapLoaded || !map.getLayer('signal-circles')) return
     map.setLayoutProperty('signal-circles', 'visibility', showSignals ? 'visible' : 'none')
+    if (map.getLayer('signal-glow')) {
+      map.setLayoutProperty('signal-glow', 'visibility', showSignals ? 'visible' : 'none')
+    }
     if (!showSignals) setSelectedSignal(null)
   }, [showSignals, mapLoaded])
 

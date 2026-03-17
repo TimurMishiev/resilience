@@ -7,6 +7,7 @@ import { useTasks } from '../hooks/useTasks'
 import { useAssets } from '../hooks/useAssets'
 import { useTelemetryStream } from '../hooks/useTelemetryStream'
 import { useAreasOfOperation } from '../hooks/useAreasOfOperation'
+import { useSignals } from '../hooks/useSignals'
 import { useReplay } from '../context/ReplayContext'
 import type { Site, Task, WorkflowStatus } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
@@ -46,6 +47,24 @@ function computeReadiness(tasks: Task[]): number | null {
   return (resolved / total) * 0.6 + (nonBlocked / total) * 0.4
 }
 
+const GLOBE_SIGNAL_COLORS: Record<string, Cesium.Color> = {
+  aircraft_position: Cesium.Color.fromCssColorString('#00d4ff'),
+  vessel_position:   Cesium.Color.fromCssColorString('#00c4a0'),
+  seismic_event:     Cesium.Color.fromCssColorString('#ff8c42'),
+  gps_jamming:       Cesium.Color.fromCssColorString('#ffd700'),
+  wildfire:          Cesium.Color.fromCssColorString('#ff4422'),
+  manual:            Cesium.Color.fromCssColorString('#8f99a8'),
+}
+
+const GLOBE_SIGNAL_LABELS: Record<string, string> = {
+  aircraft_position: 'Aircraft',
+  vessel_position:   'Vessel',
+  seismic_event:     'Seismic',
+  gps_jamming:       'GPS Jam',
+  wildfire:          'Wildfire',
+  manual:            'Manual',
+}
+
 // ---------------------------------------------------------------------------
 // GlobePage
 // ---------------------------------------------------------------------------
@@ -57,11 +76,13 @@ export default function GlobePage() {
   const tasksQuery  = useTasks({ per_page: 200, ...asOfParam })
   const assetsQuery = useAssets({ per_page: 200, ...asOfParam })
   const { data: areasRes } = useAreasOfOperation({ per_page: 200 })
+  const { data: signalsRes } = useSignals({ per_page: 200 })
 
   const sites  = useMemo(() => sitesQuery.data?.data  ?? [], [sitesQuery.data?.data])
   const tasks  = useMemo(() => tasksQuery.data?.data  ?? [], [tasksQuery.data?.data])
   const assets = useMemo(() => assetsQuery.data?.data ?? [], [assetsQuery.data?.data])
   const areaOfOperations = useMemo(() => areasRes?.data ?? [], [areasRes?.data])
+  const signals = useMemo(() => signalsRes?.data ?? [], [signalsRes?.data])
   const loading = sitesQuery.isLoading || tasksQuery.isLoading
 
   const { readings } = useTelemetryStream(!isReplaying)
@@ -74,9 +95,12 @@ export default function GlobePage() {
   const assetEntitiesRef = useRef<Map<string, Cesium.Entity>>(new Map())
   // AO entity refs
   const aoEntitiesRef    = useRef<Map<string, Cesium.Entity>>(new Map())
+  const signalEntitiesRef = useRef<Cesium.Entity[]>([])
+  const isRotatingRef    = useRef(true)
 
   const [selectedSite, setSelectedSite]   = useState<Site | null>(null)
   const [selectedTasks, setSelectedTasks] = useState<Task[]>([])
+  const [showSignals, setShowSignals]     = useState(true)
 
   const tasksBySite: Record<string, Task[]> = {}
   for (const t of tasks) {
@@ -135,17 +159,27 @@ export default function GlobePage() {
 
     viewerRef.current = viewer
 
+    // Slow auto-rotation — stop when site selected
+    const onTickFn = () => {
+      if (isRotatingRef.current) {
+        viewer.scene.camera.rotate(Cesium.Cartesian3.UNIT_Z, Cesium.Math.toRadians(0.008))
+      }
+    }
+    viewer.clock.onTick.addEventListener(onTickFn)
+
     // Capture ref values so the cleanup function uses the same Map instances
     const siteEntities  = siteEntitiesRef.current
     const assetEntities = assetEntitiesRef.current
     const aoEntities    = aoEntitiesRef.current
 
     return () => {
+      viewer.clock.onTick.removeEventListener(onTickFn)
       viewer.destroy()
       viewerRef.current = null
       siteEntities.clear()
       assetEntities.clear()
       aoEntities.clear()
+      signalEntitiesRef.current = []
     }
   }, [])
 
@@ -301,6 +335,38 @@ export default function GlobePage() {
   }, [areaOfOperations])
 
   // -------------------------------------------------------------------------
+  // Signal entities — rebuild on signal data or visibility change
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const viewer = viewerRef.current
+    if (!viewer) return
+
+    // Remove all old signal entities
+    for (const entity of signalEntitiesRef.current) {
+      viewer.entities.remove(entity)
+    }
+    signalEntitiesRef.current = []
+
+    if (!showSignals) return
+
+    for (const signal of signals) {
+      const color = GLOBE_SIGNAL_COLORS[signal.signal_type] ?? Cesium.Color.WHITE
+      const entity = viewer.entities.add({
+        position: Cesium.Cartesian3.fromDegrees(Number(signal.lng), Number(signal.lat)),
+        point: {
+          pixelSize:       6,
+          color:           color.withAlpha(0.9),
+          outlineColor:    color.withAlpha(0.3),
+          outlineWidth:    4,
+          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        },
+      })
+      signalEntitiesRef.current.push(entity)
+    }
+  }, [signals, showSignals])
+
+  // -------------------------------------------------------------------------
   // Update asset positions from live telemetry
   // -------------------------------------------------------------------------
   useEffect(() => {
@@ -335,6 +401,7 @@ export default function GlobePage() {
 
       setSelectedSite(site)
       setSelectedTasks(tasksBySite[site.id] ?? [])
+      isRotatingRef.current = false
 
       // Fly to the site
       viewer.camera.flyTo({
@@ -387,8 +454,16 @@ export default function GlobePage() {
               duration: 1.5,
             })
             setSelectedSite(null)
+            isRotatingRef.current = true
           }}
         />
+        <div
+          className={`globe-signal-toggle${showSignals ? ' globe-signal-toggle--active' : ''}`}
+          onClick={() => setShowSignals(v => !v)}
+          role="button"
+        >
+          SIGNALS {showSignals ? 'ON' : 'OFF'}
+        </div>
         <span className="globe-toolbar-hint bp6-text-muted">
           Click a site marker to fly to it
         </span>
@@ -401,7 +476,7 @@ export default function GlobePage() {
             <span className="globe-panel-title">{selectedSite.name}</span>
             <button
               className="globe-panel-close bp6-button bp6-minimal bp6-icon-cross"
-              onClick={() => setSelectedSite(null)}
+              onClick={() => { setSelectedSite(null); isRotatingRef.current = true }}
               aria-label="Close"
             />
           </div>
@@ -449,6 +524,7 @@ export default function GlobePage() {
 
       {/* ── Legend ── */}
       <div className="globe-legend bp6-dark">
+        <div className="globe-legend-section-title">SITES</div>
         <div className="globe-legend-item">
           <span className="globe-legend-dot" style={{ background: '#ff4444' }} />Blocked
         </div>
@@ -461,6 +537,17 @@ export default function GlobePage() {
         <div className="globe-legend-item">
           <span className="globe-legend-dot" style={{ background: '#00ffff' }} />Asset (live)
         </div>
+        {showSignals && (
+          <>
+            <div className="globe-legend-section-title" style={{ marginTop: 10 }}>SIGNALS</div>
+            {Object.entries(GLOBE_SIGNAL_LABELS).map(([type, label]) => (
+              <div key={type} className="globe-legend-item">
+                <span className="globe-legend-dot" style={{ background: GLOBE_SIGNAL_COLORS[type].toCssHexString() }} />
+                {label}
+              </div>
+            ))}
+          </>
+        )}
       </div>
     </div>
   )

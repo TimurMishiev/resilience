@@ -171,7 +171,9 @@ CREATE TABLE public.sites (
     status text DEFAULT 'active'::text NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    area_of_operation_id uuid
+    area_of_operation_id uuid,
+    flagged_at timestamp(6) without time zone,
+    flag_reason text
 );
 
 
@@ -554,6 +556,7 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260317232051'),
 ('20260315061734'),
 ('20260315000006'),
 ('20260315000005'),
