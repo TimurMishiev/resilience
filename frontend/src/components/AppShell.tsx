@@ -11,6 +11,7 @@ import {
   NavbarHeading,
   Tag,
 } from '@blueprintjs/core'
+import { AppToaster } from '../lib/toaster'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
@@ -42,9 +43,28 @@ export default function AppShell() {
 
   const { status: liveStatus } = useEventSource({
     enabled: !!currentUser && !isReplaying,
-    onEvent: () => {
+    onEvent: (e) => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
       queryClient.invalidateQueries({ queryKey: ['readiness'] })
+
+      if (e.event === 'rule_fired') {
+        const d = e.data as {
+          rule_name:   string
+          site_name:   string
+          task_title:  string
+          priority:    string
+          signal_type: string
+          distance_km: number
+        }
+        queryClient.invalidateQueries({ queryKey: ['signal_rule_matches'] })
+        queryClient.invalidateQueries({ queryKey: ['correlation_rules'] })
+        AppToaster.then(t => t.show({
+          message: `⚡ ${d.rule_name} fired near ${d.site_name} — "${d.task_title}" created (${d.priority}, ${d.signal_type}, ${d.distance_km} km)`,
+          intent:  'warning',
+          icon:    'lightning',
+          timeout: 10_000,
+        }))
+      }
     },
   })
 

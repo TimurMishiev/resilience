@@ -46,6 +46,23 @@ module Correlations
 
       @rule.update_column(:last_fired_at, Time.current)
 
+      Sse::Broadcaster.instance.publish(
+        event: "rule_fired",
+        data: {
+          rule_id:     @rule.id,
+          rule_name:   @rule.name,
+          site_id:     @site.id,
+          site_name:   @site.name,
+          task_id:     task.id,
+          task_title:  task.title,
+          priority:    task.priority,
+          signal_type: @signal.signal_type,
+          source:      @signal.source,
+          distance_km: distance_to_site.round(1),
+          fired_at:    Time.current.iso8601
+        }
+      )
+
       ServiceResult.success(match: match, task: task)
     rescue => e
       ServiceResult.failure(errors: [e.message])
