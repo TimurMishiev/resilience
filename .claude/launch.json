@@ -4,8 +4,8 @@
     {
       "name": "resilience-frontend",
       "runtimeExecutable": "yarn",
-      "runtimeArgs": ["dev"],
-      "port": 5173
+      "runtimeArgs": ["--cwd", "frontend", "dev", "--port", "5176"],
+      "port": 5176
     }
   ]
 }
