@@ -15,9 +15,49 @@ import { useTasks, useTransitionTask } from '../hooks/useTasks'
 import { useAssets } from '../hooks/useAssets'
 import { useTelemetryStream } from '../hooks/useTelemetryStream'
 import { useAreasOfOperation } from '../hooks/useAreasOfOperation'
+import { useSignals } from '../hooks/useSignals'
 import { useReplay } from '../context/ReplayContext'
-import type { Site, Task, Asset, WorkflowStatus } from '../api/types'
+import type { Site, Task, Asset, WorkflowStatus, Signal } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
+
+// ---------------------------------------------------------------------------
+// Signal layer config
+// ---------------------------------------------------------------------------
+const SIGNAL_COLORS: Record<string, string> = {
+  aircraft_position: '#00d4ff',
+  vessel_position:   '#00c4a0',
+  seismic_event:     '#ff8c42',
+  gps_jamming:       '#ffd700',
+  wildfire:          '#ff4422',
+  manual:            '#8f99a8',
+}
+
+const SIGNAL_LABELS: Record<string, string> = {
+  aircraft_position: 'Aircraft',
+  vessel_position:   'Vessel',
+  seismic_event:     'Seismic',
+  gps_jamming:       'GPS Jam',
+  wildfire:          'Wildfire',
+  manual:            'Manual',
+}
+
+const SIGNAL_ICONS: Record<string, string> = {
+  aircraft_position: '✈',
+  vessel_position:   '⛴',
+  seismic_event:     '⚡',
+  gps_jamming:       '⚠',
+  wildfire:          '🔥',
+  manual:            '●',
+}
+
+const SOURCE_LABELS: Record<string, string> = {
+  opensky:        'OpenSky',
+  ais:            'AIS',
+  usgs_seismic:   'USGS Seismic',
+  gpsjam:         'GPSJam',
+  firms_wildfire: 'FIRMS Wildfire',
+  manual:         'Manual',
+}
 
 // ---------------------------------------------------------------------------
 // Transition table — mirrors backend ALLOWED_TRANSITIONS
@@ -223,10 +263,14 @@ export default function MapPage() {
   const siteMarkersRef   = useRef<maplibregl.Marker[]>([])
   // asset_id → Marker (kept alive for position updates)
   const assetMarkersRef  = useRef<Map<string, maplibregl.Marker>>(new Map())
+  // Ref so the signal click handler always reads fresh data without re-registering
+  const signalsRef       = useRef<Signal[]>([])
 
-  const [selectedSiteId,  setSelectedSiteId]  = useState<string | null>(null)
-  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
-  const [mapLoaded,        setMapLoaded]       = useState(false)
+  const [selectedSiteId,  setSelectedSiteId]   = useState<string | null>(null)
+  const [selectedAssetId, setSelectedAssetId]  = useState<string | null>(null)
+  const [selectedSignal,  setSelectedSignal]   = useState<Signal | null>(null)
+  const [showSignals,     setShowSignals]       = useState(true)
+  const [mapLoaded,       setMapLoaded]         = useState(false)
 
   const asOfParam  = asOf ? { as_of: asOf } : {}
   const sitesQuery = useSites({ per_page: 200, ...asOfParam })
@@ -234,6 +278,9 @@ export default function MapPage() {
   const assetsQuery = useAssets({ per_page: 200, ...asOfParam })
   const { data: areasRes } = useAreasOfOperation({ per_page: 200 })
   const areaOfOperations = useMemo(() => areasRes?.data ?? [], [areasRes?.data])
+
+  const { data: signalsRes } = useSignals({ per_page: 200 })
+  const signals = useMemo(() => signalsRes?.data ?? [], [signalsRes?.data])
 
   const sites    = useMemo(() => sitesQuery.data?.data  ?? [], [sitesQuery.data?.data])
   const allTasks = useMemo(() => tasksQuery.data?.data  ?? [], [tasksQuery.data?.data])
@@ -303,6 +350,7 @@ export default function MapPage() {
 
       el.addEventListener('click', () => {
         setSelectedAssetId(null)
+        setSelectedSignal(null)
         setSelectedSiteId(id => id === site.id ? null : site.id)
       })
       siteMarkersRef.current.push(marker)
@@ -396,6 +444,7 @@ export default function MapPage() {
       el.addEventListener('click', (e) => {
         e.stopPropagation()
         setSelectedSiteId(null)
+        setSelectedSignal(null)
         setSelectedAssetId(id => id === asset.id ? null : asset.id)
       })
 
@@ -414,6 +463,103 @@ export default function MapPage() {
       }
     }
   }, [readings])
+
+  // -------------------------------------------------------------------------
+  // Keep signalsRef current so the map click handler always reads fresh data
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    signalsRef.current = signals
+  }, [signals])
+
+  // -------------------------------------------------------------------------
+  // Signal GeoJSON layer — set up once, update data on each refresh
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapLoaded) return
+
+    const geojson: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: signals.map(s => ({
+        type:       'Feature' as const,
+        properties: {
+          id:          s.id,
+          signal_type: s.signal_type,
+          source:      s.source,
+          magnitude:   s.magnitude,
+          altitude:    s.altitude,
+          speed:       s.speed,
+          heading:     s.heading,
+          occurred_at: s.occurred_at,
+        },
+        geometry: {
+          type:        'Point' as const,
+          coordinates: [Number(s.lng), Number(s.lat)],
+        },
+      })),
+    }
+
+    const existing = map.getSource('signal-points') as maplibregl.GeoJSONSource | undefined
+    if (existing) {
+      existing.setData(geojson)
+      return
+    }
+
+    map.addSource('signal-points', { type: 'geojson', data: geojson })
+
+    map.addLayer({
+      id:     'signal-circles',
+      type:   'circle',
+      source: 'signal-points',
+      paint:  {
+        'circle-radius': [
+          'match', ['get', 'signal_type'],
+          'seismic_event', 8,
+          'wildfire',      7,
+          5,
+        ],
+        'circle-color': [
+          'match', ['get', 'signal_type'],
+          'aircraft_position', SIGNAL_COLORS.aircraft_position,
+          'vessel_position',   SIGNAL_COLORS.vessel_position,
+          'seismic_event',     SIGNAL_COLORS.seismic_event,
+          'gps_jamming',       SIGNAL_COLORS.gps_jamming,
+          'wildfire',          SIGNAL_COLORS.wildfire,
+          SIGNAL_COLORS.manual,
+        ],
+        'circle-opacity':       0.85,
+        'circle-stroke-width':  1,
+        'circle-stroke-color':  'rgba(255,255,255,0.25)',
+      },
+    })
+
+    map.on('click', 'signal-circles', e => {
+      if (!e.features?.length) return
+      const props = e.features[0].properties
+      const sig   = signalsRef.current.find(s => s.id === props.id)
+      if (!sig) return
+      setSelectedSiteId(null)
+      setSelectedAssetId(null)
+      setSelectedSignal(prev => prev?.id === sig.id ? null : sig)
+    })
+
+    map.on('mouseenter', 'signal-circles', () => {
+      map.getCanvas().style.cursor = 'pointer'
+    })
+    map.on('mouseleave', 'signal-circles', () => {
+      map.getCanvas().style.cursor = ''
+    })
+  }, [mapLoaded, signals])
+
+  // -------------------------------------------------------------------------
+  // Toggle signal layer visibility
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapLoaded || !map.getLayer('signal-circles')) return
+    map.setLayoutProperty('signal-circles', 'visibility', showSignals ? 'visible' : 'none')
+    if (!showSignals) setSelectedSignal(null)
+  }, [showSignals, mapLoaded])
 
   // -------------------------------------------------------------------------
   // Render
@@ -439,6 +585,27 @@ export default function MapPage() {
           {telemetryConnected ? 'TELEMETRY LIVE' : 'TELEMETRY OFFLINE'}
         </div>
       )}
+
+      {/* Signal layer toggle */}
+      {showSignals && (
+        <div className="map-signal-legend">
+          {Object.entries(SIGNAL_LABELS).map(([type, label]) => (
+            <div key={type} className="map-signal-legend-item">
+              <span className="map-signal-legend-dot" style={{ background: SIGNAL_COLORS[type] }} />
+              {label}
+            </div>
+          ))}
+        </div>
+      )}
+      <div
+        className={`map-signal-toggle${showSignals ? ' map-signal-toggle--active' : ''}`}
+        onClick={() => setShowSignals(v => !v)}
+        role="button"
+        aria-label="Toggle signal layer"
+      >
+        <span className="map-signal-toggle-dot" />
+        SIGNALS {showSignals ? 'ON' : 'OFF'}
+      </div>
 
       {/* ── Site panel ── */}
       {selectedSite && (
@@ -582,6 +749,82 @@ export default function MapPage() {
               {isReplaying ? 'Telemetry unavailable in replay mode.' : 'Awaiting telemetry data…'}
             </p>
           )}
+        </div>
+      )}
+      {/* ── Signal info panel ── */}
+      {selectedSignal && (
+        <div className="map-panel bp6-dark">
+          <div className="map-panel-header">
+            <span className="map-panel-title">
+              {SIGNAL_ICONS[selectedSignal.signal_type]}{' '}
+              {SIGNAL_LABELS[selectedSignal.signal_type] ?? selectedSignal.signal_type}
+            </span>
+            <button
+              className="map-panel-close bp6-button bp6-minimal bp6-icon-cross"
+              onClick={() => setSelectedSignal(null)}
+              aria-label="Close"
+            />
+          </div>
+
+          <div className="map-panel-tags">
+            <Tag
+              minimal
+              style={{
+                background: SIGNAL_COLORS[selectedSignal.signal_type] + '28',
+                color:      SIGNAL_COLORS[selectedSignal.signal_type],
+              }}
+            >
+              {selectedSignal.signal_type.replace(/_/g, ' ')}
+            </Tag>
+            <Tag minimal>{SOURCE_LABELS[selectedSignal.source] ?? selectedSignal.source}</Tag>
+          </div>
+
+          <p className="map-panel-coords bp6-text-muted">
+            {Number(selectedSignal.lat).toFixed(4)}, {Number(selectedSignal.lng).toFixed(4)}
+          </p>
+
+          <Divider />
+
+          <div className="map-telemetry-readings">
+            {selectedSignal.magnitude !== null && selectedSignal.magnitude !== undefined && (
+              <div className="map-telemetry-row">
+                <span className="map-telemetry-label">Magnitude</span>
+                <span className="map-telemetry-value">
+                  {Number(selectedSignal.magnitude).toFixed(1)}
+                </span>
+              </div>
+            )}
+            {selectedSignal.altitude !== null && selectedSignal.altitude !== undefined && (
+              <div className="map-telemetry-row">
+                <span className="map-telemetry-label">Altitude</span>
+                <span className="map-telemetry-value">
+                  {Number(selectedSignal.altitude).toFixed(0)} m
+                </span>
+              </div>
+            )}
+            {selectedSignal.speed !== null && selectedSignal.speed !== undefined && (
+              <div className="map-telemetry-row">
+                <span className="map-telemetry-label">Speed</span>
+                <span className="map-telemetry-value">
+                  {Number(selectedSignal.speed).toFixed(0)} kn
+                </span>
+              </div>
+            )}
+            {selectedSignal.heading !== null && selectedSignal.heading !== undefined && (
+              <div className="map-telemetry-row">
+                <span className="map-telemetry-label">Heading</span>
+                <span className="map-telemetry-value">
+                  {Number(selectedSignal.heading).toFixed(0)}°
+                </span>
+              </div>
+            )}
+            <div className="map-telemetry-row">
+              <span className="map-telemetry-label">Occurred</span>
+              <span className="map-telemetry-value bp6-text-muted">
+                {new Date(selectedSignal.occurred_at).toLocaleString()}
+              </span>
+            </div>
+          </div>
         </div>
       )}
     </div>
