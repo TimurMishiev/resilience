@@ -33,12 +33,21 @@ module Signals
       end
 
       signal.assign_attributes(@attrs)
+      signal.save!
+      ServiceResult.success(signal: signal, created: true)
 
-      if signal.save
-        ServiceResult.success(signal: signal, created: true)
-      else
-        ServiceResult.failure(errors: signal.errors.full_messages)
-      end
+    rescue ActiveRecord::RecordNotUnique
+      # Two feed threads raced on the same signal — the unique index caught it.
+      # Re-find the winner's record and return it as a non-created success.
+      signal = ExternalSignal.find_by!(
+        source:      @attrs[:source],
+        external_id: @attrs[:external_id],
+        occurred_at: @attrs[:occurred_at]
+      )
+      ServiceResult.success(signal: signal, created: false)
+
+    rescue ActiveRecord::RecordInvalid => e
+      ServiceResult.failure(errors: e.record.errors.full_messages)
     end
   end
 end

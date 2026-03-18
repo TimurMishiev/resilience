@@ -9,6 +9,12 @@ module Api
       payload[:remote_ip] = request.remote_ip
     end
 
+    def require_commander!
+      unless current_user&.role == "commander"
+        render json: { errors: ["Commander role required"] }, status: :forbidden
+      end
+    end
+
     rescue_from ActiveRecord::RecordNotFound do |e|
       render json: { errors: ["#{e.model} not found"] }, status: :not_found
     end

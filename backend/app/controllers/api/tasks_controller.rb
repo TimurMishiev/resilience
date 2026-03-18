@@ -101,7 +101,9 @@ module Api
     end
 
     def task_create_params
-      params.require(:task).permit(:site_id, :asset_id, :title, :description, :priority, :workflow_status)
+      # workflow_status is intentionally excluded — new tasks always start as 'new'
+      # to enforce the state machine. Clients cannot skip states on creation.
+      params.require(:task).permit(:site_id, :asset_id, :title, :description, :priority)
     end
 
     def task_update_params

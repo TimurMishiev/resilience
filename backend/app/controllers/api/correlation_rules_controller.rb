@@ -56,12 +56,6 @@ module Api
       )
     end
 
-    def require_commander!
-      unless current_user&.role == "commander"
-        render json: { errors: ["Commander role required"] }, status: :forbidden
-      end
-    end
-
     def serialize_rule(rule)
       rule.as_json(only: %i[
         id name description is_active cooldown_minutes
