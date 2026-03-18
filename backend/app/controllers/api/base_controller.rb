@@ -2,6 +2,13 @@ module Api
   class BaseController < ApplicationController
     include JwtAuthenticatable
 
+    # Append authenticated user_id to lograge's structured log line.
+    def append_info_to_payload(payload)
+      super
+      payload[:user_id]   = current_user&.id
+      payload[:remote_ip] = request.remote_ip
+    end
+
     rescue_from ActiveRecord::RecordNotFound do |e|
       render json: { errors: ["#{e.model} not found"] }, status: :not_found
     end

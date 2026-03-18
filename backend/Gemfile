@@ -37,6 +37,9 @@ gem "rack-cors"
 # Rate limiting — protect API and AI endpoints from abuse
 gem "rack-attack"
 
+# Structured request logging — one JSON line per request instead of multi-line Rails default
+gem "lograge"
+
 # Anthropic API client for AI-assisted filter translation and operational summaries
 gem "anthropic"
 
