@@ -675,6 +675,87 @@ else
   puts "  WARNING: No commander user found — skipping correlation rules seed"
 end
 
+# ---------------------------------------------------------------------------
+# Demo signals — vessel + wildfire (AIS/FIRMS require API keys; seeded for
+# demo purposes so all 5 signal types appear on the map immediately)
+# ---------------------------------------------------------------------------
+puts "\nSeeding demo signals (vessel + GPS jamming + wildfire)..."
+
+vessel_signals = [
+  # Gulf of Aden — near Site Foxtrot (Djibouti 11.57, 43.14)
+  { external_id: "DEMO-AIS-001", lat:  11.82, lng:  43.55, speed: 7.2,  heading: 275, raw_payload: { mmsi: "123456001", vessel_name: "MSC ATHENS",     flag: "LR", vessel_type: "Cargo"  } },
+  { external_id: "DEMO-AIS-002", lat:  12.31, lng:  43.72, speed: 12.5, heading: 142, raw_payload: { mmsi: "123456002", vessel_name: "NORDIC HAWK",     flag: "NO", vessel_type: "Tanker" } },
+  # Indian Ocean — near Site Golf (Diego Garcia -7.30, 72.42)
+  { external_id: "DEMO-AIS-003", lat:  -6.45, lng:  73.18, speed: 9.1,  heading: 210, raw_payload: { mmsi: "123456003", vessel_name: "EVERGREEN GRACE",  flag: "TW", vessel_type: "Container" } },
+  { external_id: "DEMO-AIS-004", lat:  -7.82, lng:  71.54, speed: 14.3, heading: 55,  raw_payload: { mmsi: "123456004", vessel_name: "GULF PIONEER",     flag: "AE", vessel_type: "Tanker" } },
+  # Mediterranean — near Site Echo (Tel Aviv 32.08, 34.78)
+  { external_id: "DEMO-AIS-005", lat:  31.55, lng:  34.45, speed: 4.8,  heading: 320, raw_payload: { mmsi: "123456005", vessel_name: "OFER FORTUNE",     flag: "IL", vessel_type: "Cargo"  } },
+  # Pacific shipping lane — near Site India (Guam 13.44, 144.79)
+  { external_id: "DEMO-AIS-006", lat:  13.15, lng: 144.32, speed: 11.7, heading: 85,  raw_payload: { mmsi: "123456006", vessel_name: "PACIFIC VOYAGER",  flag: "MH", vessel_type: "Container" } },
+]
+
+vessel_signals.each do |attrs|
+  ExternalSignal.create!(
+    source:      "ais",
+    signal_type: "vessel_position",
+    external_id: attrs[:external_id],
+    lat:         attrs[:lat],
+    lng:         attrs[:lng],
+    speed:       attrs[:speed],
+    heading:     attrs[:heading],
+    occurred_at: NOW - rand(20).minutes,
+    raw_payload: attrs[:raw_payload]
+  )
+  puts "  Vessel: #{attrs[:raw_payload][:vessel_name]} (#{attrs[:lat]}, #{attrs[:lng]})"
+end
+
+wildfire_signals = [
+  # Near Site India (Guam 13.44, 144.79) — INDOPACOM, triggers Wildfire rule (FRP > 100)
+  { external_id: "DEMO-FIRMS-001", lat:  13.22, lng: 144.61, magnitude: 185.0, raw_payload: { frp: 185.0, brightness: 342.1, confidence: "h", satellite: "N" } },
+  # Near Site Hotel (Seoul 37.56, 126.97) — INDOPACOM
+  { external_id: "DEMO-FIRMS-002", lat:  37.81, lng: 127.22, magnitude: 124.0, raw_payload: { frp: 124.0, brightness: 328.5, confidence: "h", satellite: "N" } },
+  # Near Site Golf (Diego Garcia -7.30, 72.42) — AFRICOM
+  { external_id: "DEMO-FIRMS-003", lat:  -7.55, lng:  73.51, magnitude: 210.0, raw_payload: { frp: 210.0, brightness: 361.3, confidence: "h", satellite: "N" } },
+  # Horn of Africa — near Site Foxtrot (Djibouti 11.57, 43.14)
+  { external_id: "DEMO-FIRMS-004", lat:  10.95, lng:  43.82, magnitude:  78.0, raw_payload: { frp:  78.0, brightness: 312.8, confidence: "n", satellite: "N" } },
+]
+
+gps_jam_signals = [
+  # Eastern Europe — near Site Alpha (Warsaw 52.22, 21.01) and Charlie (Ankara 39.93, 32.86)
+  { external_id: "DEMO-GPS-001", lat:  52.45, lng:  23.80, magnitude: 0.82, raw_payload: { signal_level: 0.82, hex_id: "demo-hex-001", source: "ADS-B derived" } },
+  { external_id: "DEMO-GPS-002", lat:  50.10, lng:  29.50, magnitude: 0.71, raw_payload: { signal_level: 0.71, hex_id: "demo-hex-002", source: "ADS-B derived" } },
+  { external_id: "DEMO-GPS-003", lat:  39.20, lng:  36.40, magnitude: 0.91, raw_payload: { signal_level: 0.91, hex_id: "demo-hex-003", source: "ADS-B derived" } },
+  # Middle East — near Site Echo (Tel Aviv 32.08, 34.78)
+  { external_id: "DEMO-GPS-004", lat:  31.80, lng:  35.20, magnitude: 0.88, raw_payload: { signal_level: 0.88, hex_id: "demo-hex-004", source: "ADS-B derived" } },
+]
+
+gps_jam_signals.each do |attrs|
+  ExternalSignal.create!(
+    source:      "gpsjam",
+    signal_type: "gps_jamming",
+    external_id: attrs[:external_id],
+    lat:         attrs[:lat],
+    lng:         attrs[:lng],
+    occurred_at: NOW - rand(30).minutes,
+    raw_payload: attrs[:raw_payload]
+  )
+  puts "  GPS Jam: #{(attrs[:magnitude] * 100).round}% intensity (#{attrs[:lat]}, #{attrs[:lng]})"
+end
+
+wildfire_signals.each do |attrs|
+  ExternalSignal.create!(
+    source:      "firms_wildfire",
+    signal_type: "wildfire",
+    external_id: attrs[:external_id],
+    lat:         attrs[:lat],
+    lng:         attrs[:lng],
+    magnitude:   attrs[:magnitude],
+    occurred_at: NOW - rand(40).minutes,
+    raw_payload: attrs[:raw_payload]
+  )
+  puts "  Wildfire: FRP #{attrs[:magnitude]} MW (#{attrs[:lat]}, #{attrs[:lng]})"
+end
+
 puts "\nSeed complete."
 puts "  Areas:            #{AreaOfOperation.count}  (EUCOM amber, CENTCOM red, AFRICOM amber, INDOPACOM green)"
 puts "  Sites:            #{Site.count}  (#{Site.where(status: 'active').count} active, #{Site.where(status: 'inactive').count} inactive)"
