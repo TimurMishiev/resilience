@@ -91,7 +91,7 @@ RSpec.describe "Api::AreasOfOperation", type: :request do
       post "/api/areas_of_operation",
            params:  { area_of_operation: valid_params[:area_of_operation].except(:name) },
            headers: auth_headers(commander)
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
     end
   end
 

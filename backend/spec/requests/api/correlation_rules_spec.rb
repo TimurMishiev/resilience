@@ -107,7 +107,7 @@ RSpec.describe "Api::CorrelationRules", type: :request do
       post "/api/correlation_rules",
            params:  { correlation_rule: valid_params[:correlation_rule].except(:name) },
            headers: auth_headers(commander), as: :json
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(JSON.parse(response.body)["errors"]).not_to be_empty
     end
   end

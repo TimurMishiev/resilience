@@ -90,7 +90,7 @@ RSpec.describe "Api::Tasks", type: :request do
     it "returns 422 when title is missing" do
       post "/api/tasks", params: { task: { site_id: site.id } },
            headers: auth_headers(current_user), as: :json
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(JSON.parse(response.body)["errors"]).not_to be_empty
     end
   end
@@ -163,7 +163,7 @@ RSpec.describe "Api::Tasks", type: :request do
              params: { transition: { to_status: "resolved" } },
              headers: auth_headers(current_user), as: :json
 
-        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response).to have_http_status(:unprocessable_content)
         expect(JSON.parse(response.body)["errors"]).not_to be_empty
         expect(task.reload.workflow_status).to eq("new")
       end
@@ -183,7 +183,7 @@ RSpec.describe "Api::Tasks", type: :request do
              params: { transition: { to_status: "blocked" } },
              headers: auth_headers(current_user), as: :json
 
-        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response).to have_http_status(:unprocessable_content)
         expect(JSON.parse(response.body)["errors"].first).to match(/blocked_reason/)
       end
 
