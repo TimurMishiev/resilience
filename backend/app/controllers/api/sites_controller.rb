@@ -12,6 +12,29 @@ module Api
       render json: serialize_site(site)
     end
 
+    def toggle_status
+      site   = Site.find(params[:id])
+      before = site.as_json(only: %i[status])
+      new_status = site.status == "active" ? "inactive" : "active"
+
+      ActiveRecord::Base.transaction do
+        site.update!(status: new_status)
+
+        Audit::EventWriter.write(
+          actor:           current_user.email,
+          entity_type:     "Site",
+          entity_id:       site.id,
+          event_type:      "site_status_changed",
+          action:          "toggle_status",
+          before_snapshot: before,
+          after_snapshot:  site.as_json(only: %i[status]),
+          correlation_id:  SecureRandom.uuid
+        )
+      end
+
+      render json: serialize_site(site)
+    end
+
     def unflag
       site = Site.find(params[:id])
 

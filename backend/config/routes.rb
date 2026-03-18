@@ -22,6 +22,7 @@ Rails.application.routes.draw do
     resources :sites, only: %i[index show] do
       member do
         patch :unflag
+        patch :toggle_status
       end
     end
     resources :assets, only: %i[index show]

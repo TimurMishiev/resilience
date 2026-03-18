@@ -26,7 +26,7 @@ export function getTask(id: string, params?: AsOfParam): Promise<Task> {
 }
 
 export function createTask(body: CreateTaskBody): Promise<Task> {
-  return api.post('/api/tasks', body)
+  return api.post('/api/tasks', { task: body })
 }
 
 export function updateTask(id: string, body: UpdateTaskBody): Promise<Task> {

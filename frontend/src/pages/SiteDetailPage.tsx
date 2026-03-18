@@ -4,20 +4,28 @@ import {
   Button,
   Callout,
   Classes,
+  Dialog,
+  DialogBody,
+  DialogFooter,
+  FormGroup,
+  HTMLSelect,
   HTMLTable,
+  InputGroup,
   NonIdealState,
   Spinner,
   Tab,
   Tabs,
   Tag,
+  TextArea,
 } from '@blueprintjs/core'
-import { useSite, useUnflagSite } from '../hooks/useSite'
-import { useTasks } from '../hooks/useTasks'
+import { useSite, useUnflagSite, useToggleSiteStatus } from '../hooks/useSite'
+import { useTasks, useCreateTask } from '../hooks/useTasks'
 import { useSignals } from '../hooks/useSignals'
 import { useSignalRuleMatches } from '../hooks/useSignalRuleMatches'
 import { useAssets } from '../hooks/useAssets'
 import { useReadiness } from '../hooks/useReadiness'
 import AuditTimeline from '../components/AuditTimeline'
+import type { TaskPriority } from '../api/types'
 import type { Task, Signal, SignalRuleMatch, Asset } from '../api/types'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -262,17 +270,93 @@ function AssetsTab({ siteId }: { siteId: string }) {
   )
 }
 
+// ── create task dialog ────────────────────────────────────────────────────────
+
+const PRIORITY_OPTIONS: { value: TaskPriority; label: string }[] = [
+  { value: 'low',      label: 'Low' },
+  { value: 'normal',   label: 'Normal' },
+  { value: 'high',     label: 'High' },
+  { value: 'critical', label: 'Critical' },
+]
+
+function CreateTaskDialog({ siteId, isOpen, onClose }: { siteId: string; isOpen: boolean; onClose: () => void }) {
+  const [title, setTitle]         = useState('')
+  const [description, setDesc]    = useState('')
+  const [priority, setPriority]   = useState<TaskPriority>('normal')
+  const [error, setError]         = useState<string | null>(null)
+  const { mutate, isPending }     = useCreateTask()
+
+  function handleSubmit() {
+    if (!title.trim()) { setError('Title is required'); return }
+    setError(null)
+    mutate(
+      { site_id: siteId, title: title.trim(), description: description.trim() || undefined, priority },
+      {
+        onSuccess: () => { onClose(); setTitle(''); setDesc(''); setPriority('normal') },
+        onError: (e: Error) => setError(e.message),
+      }
+    )
+  }
+
+  return (
+    <Dialog isOpen={isOpen} onClose={onClose} title="New Task" style={{ width: 440 }}>
+      <DialogBody>
+        {error && <Callout intent="danger" compact style={{ marginBottom: 12 }}>{error}</Callout>}
+        <FormGroup label="Title" labelFor="ct-title" labelInfo="(required)">
+          <InputGroup
+            id="ct-title"
+            placeholder="e.g. Investigate GPS jamming near sector 4"
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            autoFocus
+          />
+        </FormGroup>
+        <FormGroup label="Description" labelFor="ct-desc">
+          <TextArea
+            id="ct-desc"
+            fill
+            rows={3}
+            placeholder="Optional — additional context or instructions"
+            value={description}
+            onChange={e => setDesc(e.target.value)}
+          />
+        </FormGroup>
+        <FormGroup label="Priority" labelFor="ct-priority">
+          <HTMLSelect
+            id="ct-priority"
+            value={priority}
+            onChange={e => setPriority(e.target.value as TaskPriority)}
+            fill
+          >
+            {PRIORITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </HTMLSelect>
+        </FormGroup>
+      </DialogBody>
+      <DialogFooter
+        actions={
+          <>
+            <Button onClick={onClose} disabled={isPending}>Cancel</Button>
+            <Button intent="primary" onClick={handleSubmit} loading={isPending}>Create Task</Button>
+          </>
+        }
+      />
+    </Dialog>
+  )
+}
+
 // ── main page ─────────────────────────────────────────────────────────────────
 
 export default function SiteDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const [tab, setTab] = useState<string>('tasks')
+  const [tab, setTab]             = useState<string>('tasks')
+  const [createTaskOpen, setCreateTaskOpen] = useState(false)
 
   const { data: site, isPending, error } = useSite(id)
   const { data: readinessData } = useReadiness()
   const readiness = readinessData?.find((r) => r.site_id === id) ?? null
-  const { mutate: unflag, isPending: unflagging } = useUnflagSite()
+  const { mutate: unflag, isPending: unflagging }           = useUnflagSite()
+  const { mutate: toggleStatus, isPending: togglingStatus } = useToggleSiteStatus()
 
   if (isPending) {
     return (
@@ -304,6 +388,12 @@ export default function SiteDetailPage() {
 
   return (
     <div className="page-content site-detail">
+      <CreateTaskDialog
+        siteId={site.id}
+        isOpen={createTaskOpen}
+        onClose={() => setCreateTaskOpen(false)}
+      />
+
       {/* ── header ── */}
       <div className="site-detail-header">
         <Button
@@ -338,11 +428,24 @@ export default function SiteDetailPage() {
           </>
         )}
 
-        {readinessScore != null && (
-          <Tag minimal intent={readinessIntent} style={{ marginLeft: 'auto' }}>
-            Readiness {Math.round(readinessScore * 100)}%
-          </Tag>
-        )}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Button
+            icon={site.status === 'active' ? 'pause' : 'play'}
+            minimal
+            small
+            loading={togglingStatus}
+            intent={site.status === 'active' ? 'none' : 'success'}
+            onClick={() => toggleStatus(site.id)}
+            title={site.status === 'active' ? 'Deactivate site' : 'Activate site'}
+          >
+            {site.status === 'active' ? 'Deactivate' : 'Activate'}
+          </Button>
+          {readinessScore != null && (
+            <Tag minimal intent={readinessIntent}>
+              Readiness {Math.round(readinessScore * 100)}%
+            </Tag>
+          )}
+        </div>
       </div>
 
       {/* ── meta row ── */}
@@ -372,7 +475,19 @@ export default function SiteDetailPage() {
         onChange={(t) => setTab(String(t))}
         className="site-detail-tabs"
       >
-        <Tab id="tasks" title="Tasks" panel={<TasksTab siteId={site.id} />} />
+        <Tab id="tasks" title={
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            Tasks
+            <Button
+              icon="plus"
+              minimal
+              small
+              intent="primary"
+              onClick={e => { e.stopPropagation(); setCreateTaskOpen(true) }}
+              title="New task for this site"
+            />
+          </span>
+        } panel={<TasksTab siteId={site.id} />} />
         <Tab id="signals" title="Signals" panel={<SignalsTab siteId={site.id} />} />
         <Tab id="rule_fires" title="Rule Fires" panel={<RuleFiresTab siteId={site.id} />} />
         <Tab id="assets" title="Assets" panel={<AssetsTab siteId={site.id} />} />

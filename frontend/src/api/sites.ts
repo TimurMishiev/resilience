@@ -15,3 +15,7 @@ export function getSite(id: string, params?: AsOfParam): Promise<Site> {
 export function unflagSite(id: string): Promise<Site> {
   return api.patch(`/api/sites/${id}/unflag`, {})
 }
+
+export function toggleSiteStatus(id: string): Promise<Site> {
+  return api.patch(`/api/sites/${id}/toggle_status`, {})
+}
