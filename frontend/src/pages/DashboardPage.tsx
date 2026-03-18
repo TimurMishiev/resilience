@@ -1,4 +1,5 @@
 import { Callout, Classes, Tag } from '@blueprintjs/core'
+import { useNavigate } from 'react-router-dom'
 import {
   BarChart,
   Bar,
@@ -13,8 +14,9 @@ import {
 } from 'recharts'
 import { useReadiness, useThroughput } from '../hooks/useReadiness'
 import { useTasks } from '../hooks/useTasks'
+import { useSignalRuleMatches } from '../hooks/useSignalRuleMatches'
 import { useReplay } from '../context/ReplayContext'
-import type { WorkflowStatus, TaskPriority } from '../api/types'
+import type { WorkflowStatus, TaskPriority, SignalRuleMatch } from '../api/types'
 
 const STATUS_ORDER: WorkflowStatus[] = ['new', 'triaged', 'in_progress', 'blocked', 'resolved']
 const PRIORITY_ORDER: TaskPriority[] = ['critical', 'high', 'normal', 'low']
@@ -46,8 +48,81 @@ function pct(n: number | null): string {
   return `${Math.round(n * 100)}%`
 }
 
+const SIGNAL_ICON: Record<string, string> = {
+  aircraft_position: '✈',
+  vessel_position: '⛵',
+  seismic_event: '🌊',
+  gps_jamming: '📡',
+  wildfire: '🔥',
+  manual: '⚡',
+}
+
+function fmtTime(iso: string) {
+  return new Date(iso).toLocaleString(undefined, {
+    month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
+}
+
+function AlertsPanel({ matches }: { matches: SignalRuleMatch[] }) {
+  const navigate = useNavigate()
+
+  if (matches.length === 0) {
+    return <p className="bp6-text-muted" style={{ fontSize: 13, margin: 0 }}>No rule fires recorded yet.</p>
+  }
+
+  return (
+    <div className="alerts-list">
+      {matches.map((m) => {
+        const actions = (m.metadata?.actions_taken as string[] | undefined) ?? []
+        const hasFlag = actions.some((a) => a.includes('flag'))
+        const hasTask = actions.some((a) => a.includes('task'))
+        const distKm = m.metadata?.distance_km as number | undefined
+        const intent = hasFlag ? 'danger' : hasTask ? 'warning' : 'none'
+
+        return (
+          <div
+            key={m.id}
+            className={`alert-row alert-row--${intent}`}
+            onClick={() => m.site?.id && navigate(`/sites/${m.site.id}`)}
+            style={{ cursor: m.site?.id ? 'pointer' : 'default' }}
+          >
+            <div className="alert-row-left">
+              <span className="alert-signal-icon">
+                {m.signal ? (SIGNAL_ICON[m.signal.signal_type] ?? '•') : '•'}
+              </span>
+              <div className="alert-body">
+                <span className="alert-rule-name">{m.correlation_rule?.name ?? 'Unknown rule'}</span>
+                {m.site && (
+                  <span className="alert-site bp6-text-muted">@ {m.site.name}</span>
+                )}
+              </div>
+            </div>
+            <div className="alert-row-right">
+              <div className="alert-actions">
+                {actions.map((a) => (
+                  <Tag key={a} minimal intent={hasFlag ? 'danger' : 'warning'} style={{ fontSize: 10 }}>
+                    {a.replace(/_/g, ' ')}
+                  </Tag>
+                ))}
+                {distKm != null && (
+                  <span className="bp6-text-muted" style={{ fontSize: 11 }}>{Number(distKm).toFixed(0)} km</span>
+                )}
+              </div>
+              <span className="alert-time bp6-text-muted">{fmtTime(m.fired_at)}</span>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function DashboardPage() {
   const { asOf } = useReplay()
+
+  const { data: matchesRes } = useSignalRuleMatches({ per_page: 15 })
+  const recentMatches = matchesRes?.data ?? []
 
   const { data: readinessData, isPending: readinessPending, error: readinessError } = useReadiness(
     asOf ? { as_of: asOf } : undefined
@@ -227,6 +302,15 @@ export default function DashboardPage() {
               </BarChart>
             </ResponsiveContainer>
           )}
+        </div>
+
+        {/* Recent alerts — rule fires */}
+        <div className="dashboard-card dashboard-card--wide">
+          <div className="dashboard-card-header">
+            <h4 className="dashboard-card-title bp6-heading">Recent Alerts</h4>
+            <span className="bp6-text-muted" style={{ fontSize: 11 }}>auto-refreshes · click to open site</span>
+          </div>
+          <AlertsPanel matches={recentMatches} />
         </div>
 
         {/* Throughput — resolved tasks per day */}
