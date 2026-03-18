@@ -11,3 +11,7 @@ export function getSites(params?: SitesParams): Promise<PaginatedResponse<Site>>
 export function getSite(id: string, params?: AsOfParam): Promise<Site> {
   return api.get(`/api/sites/${id}`, params as QueryParams)
 }
+
+export function unflagSite(id: string): Promise<Site> {
+  return api.patch(`/api/sites/${id}/unflag`, {})
+}

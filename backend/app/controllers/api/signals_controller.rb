@@ -28,7 +28,38 @@ module Api
       render json: serialize_signal(signal)
     end
 
+    # POST /api/signals
+    # Manually inject a signal — triggers correlation engine immediately.
+    def create
+      p = signal_params
+
+      result = Signals::IngestService.call(
+        source:      "manual",
+        signal_type: p[:signal_type],
+        external_id: "manual-#{SecureRandom.uuid}",
+        lat:         p[:lat],
+        lng:         p[:lng],
+        magnitude:   p[:magnitude].presence,
+        occurred_at: Time.current,
+        raw_payload: { injected_by: current_user.email, note: p[:note].presence }
+      )
+
+      unless result.success
+        render json: { errors: result.errors }, status: :unprocessable_entity
+        return
+      end
+
+      # Trigger rule evaluation immediately — don't wait for the 10s background poll
+      Correlations::EvaluatorService.call(signal: result.signal)
+
+      render json: serialize_signal(result.signal), status: :created
+    end
+
     private
+
+    def signal_params
+      params.require(:signal).permit(:signal_type, :lat, :lng, :magnitude, :note)
+    end
 
     def serialize_signal(signal)
       signal.as_json(only: %i[

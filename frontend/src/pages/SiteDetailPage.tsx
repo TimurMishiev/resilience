@@ -11,7 +11,7 @@ import {
   Tabs,
   Tag,
 } from '@blueprintjs/core'
-import { useSite } from '../hooks/useSite'
+import { useSite, useUnflagSite } from '../hooks/useSite'
 import { useTasks } from '../hooks/useTasks'
 import { useSignals } from '../hooks/useSignals'
 import { useSignalRuleMatches } from '../hooks/useSignalRuleMatches'
@@ -272,6 +272,7 @@ export default function SiteDetailPage() {
   const { data: site, isPending, error } = useSite(id)
   const { data: readinessData } = useReadiness()
   const readiness = readinessData?.find((r) => r.site_id === id) ?? null
+  const { mutate: unflag, isPending: unflagging } = useUnflagSite()
 
   if (isPending) {
     return (
@@ -319,9 +320,22 @@ export default function SiteDetailPage() {
         </Tag>
 
         {site.flagged_at && (
-          <Tag minimal intent="danger" icon="flag" title={site.flag_reason ?? 'Flagged'}>
-            flagged
-          </Tag>
+          <>
+            <Tag minimal intent="danger" icon="flag" title={site.flag_reason ?? 'Flagged'}>
+              flagged
+            </Tag>
+            <Button
+              icon="flag"
+              intent="danger"
+              minimal
+              small
+              loading={unflagging}
+              onClick={() => unflag(site.id)}
+              title="Clear flag"
+            >
+              Clear flag
+            </Button>
+          </>
         )}
 
         {readinessScore != null && (

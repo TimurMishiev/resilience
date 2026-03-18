@@ -29,3 +29,29 @@ export function updateCorrelationRule(id: string, body: UpdateCorrelationRuleBod
 export function deleteCorrelationRule(id: string): Promise<void> {
   return api.delete(`/api/correlation_rules/${id}`)
 }
+
+export interface DryRunMatch {
+  signal_id: string
+  signal_type: string
+  source: string
+  lat: number | string
+  lng: number | string
+  magnitude: number | null
+  occurred_at: string
+  site_id: string
+  site_name: string
+  distance_km: number
+  would_fire: string[]
+}
+
+export interface DryRunResult {
+  rule_id: string
+  rule_name: string
+  window_hours: number
+  total_matches: number
+  matches: DryRunMatch[]
+}
+
+export function dryRunRule(id: string, hours = 24): Promise<DryRunResult> {
+  return api.post(`/api/correlation_rules/${id}/dry_run`, { hours })
+}

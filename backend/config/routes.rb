@@ -19,7 +19,11 @@ Rails.application.routes.draw do
       post :login, to: "sessions#create"
     end
 
-    resources :sites,  only: %i[index show]
+    resources :sites, only: %i[index show] do
+      member do
+        patch :unflag
+      end
+    end
     resources :assets, only: %i[index show]
 
     resources :tasks, only: %i[index show create update] do
@@ -49,8 +53,12 @@ Rails.application.routes.draw do
       get :stream
     end
 
-    resources :signals,               only: %i[index show]
-    resources :correlation_rules,     only: %i[index show create update destroy]
+    resources :signals,               only: %i[index show create]
+    resources :correlation_rules, only: %i[index show create update destroy] do
+      member do
+        post :dry_run
+      end
+    end
     resources :signal_rule_matches,   only: %i[index show]
     resources :areas_of_operation,    only: %i[index show create update destroy]
   end

@@ -12,12 +12,16 @@ import {
   InputGroup,
   NonIdealState,
   NumericInput,
+  Spinner,
   Switch,
   Tag,
   TextArea,
 } from '@blueprintjs/core'
+import { useMutation } from '@tanstack/react-query'
 import { useCorrelationRules, useCreateCorrelationRule, useUpdateCorrelationRule, useDeleteCorrelationRule } from '../hooks/useCorrelationRules'
 import { useSignalRuleMatches } from '../hooks/useSignalRuleMatches'
+import { dryRunRule } from '../api/correlation_rules'
+import type { DryRunResult } from '../api/correlation_rules'
 import { useAuth } from '../context/AuthContext'
 import type { CorrelationRule, SignalType, TaskPriority } from '../api/types'
 
@@ -115,9 +119,17 @@ export default function CorrelationRulesPage() {
   const updateMutation = useUpdateCorrelationRule()
   const deleteMutation = useDeleteCorrelationRule()
 
-  const [drawerOpen, setDrawerOpen]   = useState(false)
-  const [editingRule, setEditingRule] = useState<CorrelationRule | null>(null)
-  const [form, setForm]               = useState<RuleFormState>(DEFAULT_FORM)
+  const [drawerOpen, setDrawerOpen]     = useState(false)
+  const [editingRule, setEditingRule]   = useState<CorrelationRule | null>(null)
+  const [form, setForm]                 = useState<RuleFormState>(DEFAULT_FORM)
+  const [dryRunRule_,  setDryRunRule]   = useState<CorrelationRule | null>(null)
+  const [dryRunResult, setDryRunResult] = useState<DryRunResult | null>(null)
+  const [dryRunHours,  setDryRunHours]  = useState(24)
+
+  const dryRunMutation = useMutation({
+    mutationFn: ({ id, hours }: { id: string; hours: number }) => dryRunRule(id, hours),
+    onSuccess: (result) => setDryRunResult(result),
+  })
 
   const rules   = data?.data ?? []
   const matches = matchesData?.data ?? []
@@ -250,6 +262,7 @@ export default function CorrelationRulesPage() {
               <th>Active</th>
               <th>Last Fired</th>
               <th>Cooldown</th>
+              <th></th>
               {isCommander && <th>Actions</th>}
             </tr>
           </thead>
@@ -299,6 +312,20 @@ export default function CorrelationRulesPage() {
                       </td>
                       <td className="mono">{formatLastFired(rule.last_fired_at)}</td>
                       <td className="mono">{rule.cooldown_minutes}m</td>
+                      <td onClick={e => e.stopPropagation()}>
+                        <Button
+                          icon="lab-test"
+                          minimal
+                          small
+                          intent="primary"
+                          title="Dry run — test against recent signals"
+                          onClick={() => {
+                            setDryRunRule(rule)
+                            setDryRunResult(null)
+                            setDryRunHours(24)
+                          }}
+                        />
+                      </td>
                       {isCommander && (
                         <td onClick={e => e.stopPropagation()}>
                           <Button
@@ -318,6 +345,92 @@ export default function CorrelationRulesPage() {
           </tbody>
         </HTMLTable>
       )}
+
+      {/* Dry Run Drawer */}
+      <Drawer
+        isOpen={Boolean(dryRunRule_)}
+        onClose={() => { setDryRunRule(null); setDryRunResult(null) }}
+        title={`Dry Run — ${dryRunRule_?.name ?? ''}`}
+        size={DrawerSize.LARGE}
+        position="right"
+      >
+        <div className="drawer-body">
+          <p className="bp6-text-muted" style={{ marginTop: 0 }}>
+            Simulates this rule against historical signals. No tasks will be created, no sites flagged.
+          </p>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 16 }}>
+            <FormGroup label="Look-back window (hours)" style={{ margin: 0 }}>
+              <NumericInput
+                value={dryRunHours}
+                onValueChange={v => setDryRunHours(Math.max(1, Math.min(168, v)))}
+                min={1}
+                max={168}
+                style={{ width: 100 }}
+              />
+            </FormGroup>
+            <Button
+              intent="primary"
+              icon="play"
+              loading={dryRunMutation.isPending}
+              onClick={() => dryRunRule_ && dryRunMutation.mutate({ id: dryRunRule_.id, hours: dryRunHours })}
+            >
+              Run
+            </Button>
+          </div>
+
+          {dryRunMutation.isPending && <Spinner size={20} />}
+
+          {dryRunResult && (
+            <>
+              <Callout
+                intent={dryRunResult.total_matches > 0 ? 'warning' : 'success'}
+                style={{ marginBottom: 12 }}
+              >
+                <strong>{dryRunResult.total_matches} match{dryRunResult.total_matches !== 1 ? 'es' : ''}</strong>
+                {' '}would have fired over the last {dryRunResult.window_hours}h.
+                {dryRunResult.total_matches > 50 && ' Showing first 50.'}
+              </Callout>
+
+              {dryRunResult.matches.length > 0 && (
+                <HTMLTable className="data-table" striped style={{ fontSize: 12 }}>
+                  <thead>
+                    <tr>
+                      <th>Signal Type</th>
+                      <th>Source</th>
+                      <th>Site</th>
+                      <th>Distance</th>
+                      <th>Magnitude</th>
+                      <th>Would Fire</th>
+                      <th>Occurred</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dryRunResult.matches.map((m, i) => (
+                      <tr key={i}>
+                        <td className="mono">{m.signal_type.replace(/_/g, ' ')}</td>
+                        <td className="mono">{m.source}</td>
+                        <td>{m.site_name}</td>
+                        <td className="mono">{m.distance_km.toFixed(1)} km</td>
+                        <td className="mono">{m.magnitude != null ? Number(m.magnitude).toFixed(1) : '—'}</td>
+                        <td>
+                          {m.would_fire.map(a => (
+                            <Tag key={a} minimal intent="warning" style={{ fontSize: 10, marginRight: 3 }}>
+                              {a.replace(/_/g, ' ')}
+                            </Tag>
+                          ))}
+                        </td>
+                        <td className="mono">
+                          {new Date(m.occurred_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </HTMLTable>
+              )}
+            </>
+          )}
+        </div>
+      </Drawer>
 
       {/* Create / Edit Drawer */}
       <Drawer
