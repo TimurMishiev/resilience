@@ -38,9 +38,10 @@ module Feeds
 
     def call
       @last_logged_error ||= {}
-      uri      = URI(BASE_URL)
-      http     = ssl_http(uri.host, uri.port, timeout: TIMEOUT)
-      response = http.get(uri.request_uri)
+      uri       = URI(BASE_URL)
+      uri.query = URI.encode_www_form(date: Date.today.to_s)
+      http      = ssl_http(uri.host, uri.port, timeout: TIMEOUT)
+      response  = http.get(uri.request_uri)
 
       unless response.code == "200"
         # Treat non-200 as "no data" rather than an error — endpoint may be
