@@ -128,8 +128,8 @@ module Api
           workflow_status: task.workflow_status
         }
       )
-    rescue StandardError
-      # Never let a broadcast failure affect the HTTP response
+    rescue StandardError => e
+      Rails.logger.error "[TasksBroadcast] event=#{event} task=#{task.id} error=#{e.class}: #{e.message}"
     end
   end
 end

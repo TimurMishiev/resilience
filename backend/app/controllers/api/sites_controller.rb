@@ -1,5 +1,7 @@
 module Api
   class SitesController < BaseController
+    before_action :require_commander!, only: %i[toggle_status unflag]
+
     def index
       sites = Site.all.order(:name)
       sites = sites.where(status: params[:status]) if params[:status].present?

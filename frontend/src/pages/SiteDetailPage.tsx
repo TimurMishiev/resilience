@@ -221,8 +221,7 @@ function RuleFiresTab({ siteId }: { siteId: string }) {
 }
 
 function AssetsTab({ siteId }: { siteId: string }) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, isPending, error } = useAssets({ home_site_id: siteId, per_page: 50 } as any)
+  const { data, isPending, error } = useAssets({ home_site_id: siteId, per_page: 50 })
 
   if (isPending) return <Spinner size={20} style={{ marginTop: 24 }} />
   if (error) return <Callout intent="danger" compact>{error.message}</Callout>

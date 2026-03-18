@@ -124,11 +124,13 @@ export default function CorrelationRulesPage() {
   const [form, setForm]                 = useState<RuleFormState>(DEFAULT_FORM)
   const [dryRunRule_,  setDryRunRule]   = useState<CorrelationRule | null>(null)
   const [dryRunResult, setDryRunResult] = useState<DryRunResult | null>(null)
+  const [dryRunError,  setDryRunError]  = useState<string | null>(null)
   const [dryRunHours,  setDryRunHours]  = useState(24)
 
   const dryRunMutation = useMutation({
     mutationFn: ({ id, hours }: { id: string; hours: number }) => dryRunRule(id, hours),
-    onSuccess: (result) => setDryRunResult(result),
+    onSuccess: (result) => { setDryRunResult(result); setDryRunError(null) },
+    onError:   (err: Error) => setDryRunError(err.message),
   })
 
   const rules   = data?.data ?? []
@@ -322,6 +324,7 @@ export default function CorrelationRulesPage() {
                           onClick={() => {
                             setDryRunRule(rule)
                             setDryRunResult(null)
+                            setDryRunError(null)
                             setDryRunHours(24)
                           }}
                         />
@@ -379,6 +382,12 @@ export default function CorrelationRulesPage() {
           </div>
 
           {dryRunMutation.isPending && <Spinner size={20} />}
+
+          {dryRunError && (
+            <Callout intent="danger" compact style={{ marginBottom: 12 }}>
+              {dryRunError}
+            </Callout>
+          )}
 
           {dryRunResult && (
             <>

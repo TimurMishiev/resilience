@@ -29,7 +29,9 @@ module Correlations
       result = Correlations::RuleFiringService.call(rule: rule, signal: signal, site: site)
 
       unless result.success
-        Rails.logger.warn "[RuleFiringJob] rule_id=#{rule_id} signal_id=#{signal_id} site_id=#{site_id} errors=#{result.errors.join(', ')}"
+        error_msg = result.errors.join(", ")
+        Rails.logger.error "[RuleFiringJob] FAILED rule_id=#{rule_id} signal_id=#{signal_id} site_id=#{site_id} errors=#{error_msg}"
+        raise "[RuleFiringJob] Rule firing failed: #{error_msg}"
       end
     end
   end

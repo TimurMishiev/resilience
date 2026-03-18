@@ -1,5 +1,7 @@
 module Api
   class SignalsController < BaseController
+    before_action :require_commander!, only: %i[create]
+
     # GET /api/signals
     # Query params: source, signal_type, from, to, site_id (proximity filter), page, per_page
     def index
@@ -41,7 +43,7 @@ module Api
         lng:         p[:lng],
         magnitude:   p[:magnitude].presence,
         occurred_at: Time.current,
-        raw_payload: { injected_by: current_user.email, note: p[:note].presence }
+        raw_payload: { injected_by: current_user.email, note: p[:note].presence&.truncate(500) }
       )
 
       unless result.success

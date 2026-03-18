@@ -76,7 +76,8 @@ module Correlations
       )
 
       ServiceResult.success(match: match, task: task, actions_taken: actions_taken)
-    rescue => e
+    rescue StandardError => e
+      Rails.logger.error "[RuleFiringService] rule=#{@rule.id} signal=#{@signal.id} site=#{@site.id} error=#{e.class}: #{e.message}"
       ServiceResult.failure(errors: [e.message])
     end
 

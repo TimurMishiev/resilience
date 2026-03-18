@@ -2,7 +2,11 @@ import { api } from './client'
 import type { QueryParams } from './client'
 import type { Asset, PaginatedResponse, PaginationParams, AsOfParam } from './types'
 
-type AssetsParams = PaginationParams & AsOfParam
+type AssetsParams = PaginationParams & AsOfParam & {
+  home_site_id?: string
+  status?: string
+  asset_type?: string
+}
 
 export function getAssets(params?: AssetsParams): Promise<PaginatedResponse<Asset>> {
   return api.get('/api/assets', params as QueryParams)
