@@ -147,13 +147,17 @@ export default function GlobePage() {
     viewer.scene.globe.showGroundAtmosphere = true
     viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#0a0f1a')
     // Atmosphere glow for realism
-    viewer.scene.skyAtmosphere.show = true
-    viewer.scene.skyAtmosphere.atmosphereLightIntensity = 20.0
-    viewer.scene.skyAtmosphere.atmosphereRayleighScaleHeight = 12000
+    if (viewer.scene.skyAtmosphere) {
+      viewer.scene.skyAtmosphere.show = true
+      viewer.scene.skyAtmosphere.atmosphereLightIntensity = 20.0
+      viewer.scene.skyAtmosphere.atmosphereRayleighScaleHeight = 12000
+    }
     // Soft fog for depth
     viewer.scene.fog.enabled = false
     // Deeper space background
-    viewer.scene.skyBox.show = true
+    if (viewer.scene.skyBox) {
+      viewer.scene.skyBox.show = true
+    }
 
     // Start with a full-Earth view looking straight down
     viewer.camera.setView({

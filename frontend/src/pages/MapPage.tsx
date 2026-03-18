@@ -629,7 +629,7 @@ export default function MapPage() {
       map.getCanvas().style.cursor = 'pointer'
       if (!e.features?.length) return
       const props = e.features[0].properties as Record<string, string>
-      const coords = (e.features[0].geometry as { coordinates: [number, number] }).coordinates
+      const coords = (e.features[0].geometry as unknown as { coordinates: [number, number] }).coordinates
       const label  = SIGNAL_LABELS[props.signal_type] ?? props.signal_type
       const icon   = SIGNAL_ICONS[props.signal_type] ?? '●'
       const color  = SIGNAL_COLORS[props.signal_type] ?? '#8f99a8'
