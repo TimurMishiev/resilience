@@ -69,7 +69,7 @@ module Api
     private
 
     def scoped_tasks
-      tasks = Task.all
+      tasks = Task.includes(:site, :asset)
       tasks = tasks.where(site_id: params[:site_id]) if params[:site_id].present?
       tasks = tasks.where(workflow_status: params[:workflow_status]) if params[:workflow_status].present?
       tasks = tasks.where(priority: params[:priority]) if params[:priority].present?

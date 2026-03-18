@@ -1,7 +1,7 @@
 module Api
   class ReadinessController < BaseController
     def index
-      sites = Site.all.order(:name)
+      sites = Site.all.includes(:tasks).order(:name)
       computed_at = Time.current
 
       result = sites.map do |site|

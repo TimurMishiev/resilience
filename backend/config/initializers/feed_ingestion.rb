@@ -13,43 +13,86 @@
 #
 # AIS and FIRMS feeds require API keys; threads are skipped if keys are absent.
 # See backend/.env.example for all required variables.
+#
+# Retry policy: exponential backoff on errors — 5s → 10s → 20s → … → cap 300s.
+# After MAX_CONSECUTIVE_ERRORS failures in a row the thread logs a critical alert
+# and sleeps for DEAD_SLEEP_SECONDS before trying again (rather than spinning).
 unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAME) == "rake"
   Rails.application.config.after_initialize do
 
+    # ---------------------------------------------------------------------------
+    # Shared retry helper — yields to the caller's poll block, handles errors
+    # with exponential backoff, and resets the backoff counter on success.
+    #
+    # tag             — log prefix, e.g. "[OpenSkyFeed]"
+    # poll_interval   — normal sleep between successful polls (seconds)
+    # ---------------------------------------------------------------------------
+    MAX_CONSECUTIVE_ERRORS = 10
+    DEAD_SLEEP_SECONDS     = 600  # 10 min pause after MAX_CONSECUTIVE_ERRORS
+
+    feed_loop = lambda do |tag, poll_interval, &block|
+      consecutive_errors = 0
+      backoff            = 5  # initial backoff seconds
+
+      loop do
+        begin
+          result = block.call
+
+          if result.success
+            count = result.payload[:ingested]
+            Rails.logger.info "#{tag} ingested #{count} new records" if count.to_i > 0
+          else
+            Rails.logger.warn "#{tag} errors: #{result.errors.join(', ')}"
+          end
+
+          # Success — reset backoff
+          consecutive_errors = 0
+          backoff            = 5
+          sleep poll_interval
+
+        rescue ActiveRecord::StatementInvalid, PG::Error => e
+          consecutive_errors += 1
+          wait = [backoff, 300].min
+          Rails.logger.error "#{tag} DB error (attempt #{consecutive_errors}): #{e.message} — retrying in #{wait}s"
+          backoff = [backoff * 2, 300].min
+
+          if consecutive_errors >= MAX_CONSECUTIVE_ERRORS
+            Rails.logger.error "#{tag} CRITICAL: #{MAX_CONSECUTIVE_ERRORS} consecutive DB errors — pausing #{DEAD_SLEEP_SECONDS}s"
+            sleep DEAD_SLEEP_SECONDS
+            consecutive_errors = 0
+            backoff            = 5
+          else
+            sleep wait
+          end
+
+        rescue => e
+          consecutive_errors += 1
+          wait = [backoff, 300].min
+          Rails.logger.error "#{tag} unexpected error (attempt #{consecutive_errors}): #{e.class}: #{e.message} — retrying in #{wait}s"
+          backoff = [backoff * 2, 300].min
+
+          if consecutive_errors >= MAX_CONSECUTIVE_ERRORS
+            Rails.logger.error "#{tag} CRITICAL: #{MAX_CONSECUTIVE_ERRORS} consecutive errors — pausing #{DEAD_SLEEP_SECONDS}s"
+            sleep DEAD_SLEEP_SECONDS
+            consecutive_errors = 0
+            backoff            = 5
+          else
+            sleep wait
+          end
+        end
+      end
+    end
+
     # ─── OpenSky aircraft positions ──────────────────────────────────────────
-    # Runs in authenticated mode if OPENSKY_USERNAME + OPENSKY_PASSWORD are set
-    # (free account at opensky-network.org, 4,000 req/day limit).
-    # Falls back to anonymous mode automatically — the service omits Basic Auth
-    # when credentials are absent. A 300s startup delay protects the anonymous
-    # quota (~400 req/day) from rapid dev restarts burning requests.
     Thread.new do
       Thread.current.name = "opensky-feed"
       authenticated = ENV["OPENSKY_USERNAME"].present?
       mode = authenticated ? "authenticated" : "anonymous — 300s startup delay, ~400 req/day"
       Rails.logger.info "[OpenSkyFeed] started (#{mode}) — polling every 900s (4 boxes × 12s apart)"
 
-      # Defer first anonymous poll to protect daily quota across rapid restarts
       sleep Feeds::OpenSkyIngestionService::STARTUP_DELAY unless authenticated
 
-      loop do
-        begin
-          result = Feeds::OpenSkyIngestionService.call
-          if result.success
-            count = result.payload[:ingested]
-            Rails.logger.info "[OpenSkyFeed] ingested #{count} new signals" if count.to_i > 0
-          else
-            Rails.logger.warn "[OpenSkyFeed] errors: #{result.errors.join(', ')}"
-          end
-        rescue ActiveRecord::StatementInvalid, PG::Error => e
-          Rails.logger.error "[OpenSkyFeed] DB error: #{e.message}"
-          sleep 30
-          next
-        rescue => e
-          Rails.logger.error "[OpenSkyFeed] unexpected error: #{e.message}"
-        end
-
-        sleep 900  # 15 minutes — 4 boxes × 12s apart = 384 req/day, well under both limits
-      end
+      feed_loop.call("[OpenSkyFeed]", 900) { Feeds::OpenSkyIngestionService.call }
     end
 
     # ─── USGS seismic events ─────────────────────────────────────────────────
@@ -57,25 +100,7 @@ unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAM
       Thread.current.name = "usgs-feed"
       Rails.logger.info "[USGSFeed] started — polling every 300s (M2.5+ global)"
 
-      loop do
-        begin
-          result = Feeds::UsgsSeismicIngestionService.call
-          if result.success
-            count = result.payload[:ingested]
-            Rails.logger.info "[USGSFeed] ingested #{count} new seismic events" if count.to_i > 0
-          else
-            Rails.logger.warn "[USGSFeed] errors: #{result.errors.join(', ')}"
-          end
-        rescue ActiveRecord::StatementInvalid, PG::Error => e
-          Rails.logger.error "[USGSFeed] DB error: #{e.message}"
-          sleep 30
-          next
-        rescue => e
-          Rails.logger.error "[USGSFeed] unexpected error: #{e.message}"
-        end
-
-        sleep 300  # 5 minutes
-      end
+      feed_loop.call("[USGSFeed]", 300) { Feeds::UsgsSeismicIngestionService.call }
     end
 
     # ─── GPSJam interference ─────────────────────────────────────────────────
@@ -83,25 +108,7 @@ unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAM
       Thread.current.name = "gpsjam-feed"
       Rails.logger.info "[GPSJamFeed] started — polling every 900s"
 
-      loop do
-        begin
-          result = Feeds::GpsjamIngestionService.call
-          if result.success
-            count = result.payload[:ingested]
-            Rails.logger.info "[GPSJamFeed] ingested #{count} jamming hexagons" if count.to_i > 0
-          else
-            Rails.logger.warn "[GPSJamFeed] errors: #{result.errors.join(', ')}"
-          end
-        rescue ActiveRecord::StatementInvalid, PG::Error => e
-          Rails.logger.error "[GPSJamFeed] DB error: #{e.message}"
-          sleep 30
-          next
-        rescue => e
-          Rails.logger.error "[GPSJamFeed] unexpected error: #{e.message}"
-        end
-
-        sleep 900  # 15 minutes
-      end
+      feed_loop.call("[GPSJamFeed]", 900) { Feeds::GpsjamIngestionService.call }
     end
 
     # ─── AIS vessel positions (requires AISHUB_USERNAME) ─────────────────────
@@ -110,25 +117,7 @@ unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAM
         Thread.current.name = "ais-feed"
         Rails.logger.info "[AISFeed] started — polling every 30s across 4 theater boxes"
 
-        loop do
-          begin
-            result = Feeds::AisIngestionService.call
-            if result.success
-              count = result.payload[:ingested]
-              Rails.logger.info "[AISFeed] ingested #{count} new vessel positions" if count.to_i > 0
-            else
-              Rails.logger.warn "[AISFeed] errors: #{result.errors.join(', ')}"
-            end
-          rescue ActiveRecord::StatementInvalid, PG::Error => e
-            Rails.logger.error "[AISFeed] DB error: #{e.message}"
-            sleep 30
-            next
-          rescue => e
-            Rails.logger.error "[AISFeed] unexpected error: #{e.message}"
-          end
-
-          sleep 30
-        end
+        feed_loop.call("[AISFeed]", 30) { Feeds::AisIngestionService.call }
       end
     else
       Rails.logger.info "[AISFeed] AISHUB_USERNAME not set — vessel feed disabled (see .env.example)"
@@ -140,25 +129,7 @@ unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAM
         Thread.current.name = "firms-feed"
         Rails.logger.info "[FIRMSFeed] started — polling every 900s (VIIRS SNPP NRT)"
 
-        loop do
-          begin
-            result = Feeds::FirmsWildfireIngestionService.call
-            if result.success
-              count = result.payload[:ingested]
-              Rails.logger.info "[FIRMSFeed] ingested #{count} new wildfire detections" if count.to_i > 0
-            else
-              Rails.logger.warn "[FIRMSFeed] errors: #{result.errors.join(', ')}"
-            end
-          rescue ActiveRecord::StatementInvalid, PG::Error => e
-            Rails.logger.error "[FIRMSFeed] DB error: #{e.message}"
-            sleep 30
-            next
-          rescue => e
-            Rails.logger.error "[FIRMSFeed] unexpected error: #{e.message}"
-          end
-
-          sleep 900  # 15 minutes
-        end
+        feed_loop.call("[FIRMSFeed]", 900) { Feeds::FirmsWildfireIngestionService.call }
       end
     else
       Rails.logger.info "[FIRMSFeed] NASA_FIRMS_MAP_KEY not set — wildfire feed disabled (see .env.example)"
