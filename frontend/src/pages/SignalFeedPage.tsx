@@ -158,13 +158,17 @@ function InjectDialog({ isOpen, onClose }: { isOpen: boolean; onClose: () => voi
   )
 }
 
+const PER_PAGE = 50
+
 export default function SignalFeedPage() {
   const [sourceFilter, setSourceFilter] = useState<SignalSource | ''>('')
   const [typeFilter,   setTypeFilter]   = useState<SignalType | ''>('')
   const [injectOpen,   setInjectOpen]   = useState(false)
+  const [page,         setPage]         = useState(1)
 
   const { data, error, isPending } = useSignals({
-    per_page: 100,
+    per_page: PER_PAGE,
+    page,
     ...(sourceFilter ? { source: sourceFilter } : {}),
     ...(typeFilter   ? { signal_type: typeFilter } : {}),
   })
@@ -190,7 +194,9 @@ export default function SignalFeedPage() {
         <span className="bp6-text-muted">
           {isPending
             ? <span className={Classes.SKELETON} style={{ width: 64, display: 'inline-block' }}>&nbsp;</span>
-            : `${total} signals`}
+            : total > PER_PAGE
+              ? `${signals.length} of ${total} signals`
+              : `${total} signals`}
         </span>
         <Button
           icon="lightning"
@@ -207,7 +213,7 @@ export default function SignalFeedPage() {
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <HTMLSelect
           value={sourceFilter}
-          onChange={e => setSourceFilter(e.target.value as SignalSource | '')}
+          onChange={e => { setSourceFilter(e.target.value as SignalSource | ''); setPage(1) }}
           style={{ minWidth: 140 }}
         >
           <option value="">All sources</option>
@@ -218,7 +224,7 @@ export default function SignalFeedPage() {
 
         <HTMLSelect
           value={typeFilter}
-          onChange={e => setTypeFilter(e.target.value as SignalType | '')}
+          onChange={e => { setTypeFilter(e.target.value as SignalType | ''); setPage(1) }}
           style={{ minWidth: 140 }}
         >
           <option value="">All types</option>
@@ -234,6 +240,29 @@ export default function SignalFeedPage() {
           title="No signals yet"
           description="Signal ingestion starts automatically when the server boots. Aircraft (OpenSky) and seismic (USGS) data arrive within 60–300 seconds. Vessel (AIS Hub) and wildfire (NASA FIRMS) feeds require API keys in .env."
         />
+      )}
+
+      {/* Pagination controls */}
+      {!isPending && total > PER_PAGE && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <Button
+            icon="chevron-left"
+            minimal
+            small
+            disabled={page <= 1}
+            onClick={() => setPage(p => p - 1)}
+          />
+          <span className="bp6-text-muted" style={{ fontSize: 13 }}>
+            Page {page} of {Math.ceil(total / PER_PAGE)} &nbsp;·&nbsp; {total} signals
+          </span>
+          <Button
+            icon="chevron-right"
+            minimal
+            small
+            disabled={page >= Math.ceil(total / PER_PAGE)}
+            onClick={() => setPage(p => p + 1)}
+          />
+        </div>
       )}
 
       {(isPending || signals.length > 0) && (
