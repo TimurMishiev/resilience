@@ -29,7 +29,8 @@ Rails.application.routes.draw do
       post :summary
     end
 
-    get "events", to: "events#stream"
+    get  "events",    to: "events#stream"
+    post "sse_token", to: "sse_tokens#create"
 
     namespace :telemetry do
       get :stream

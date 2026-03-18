@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { getToken } from '../api/client'
+import { api } from '../api/client'
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected'
 
@@ -15,9 +15,12 @@ interface Options {
 
 /**
  * Opens a persistent SSE connection to /api/events.
+ *
+ * Security: Fetches a short-lived (60s) SSE token from POST /api/sse_token
+ * before opening the EventSource. This avoids passing the long-lived 24h JWT
+ * as a URL query parameter where it would be visible in proxy/access logs.
+ *
  * Automatically reconnects with exponential back-off on failure.
- * Passes the JWT as a query-param because EventSource does not
- * support custom request headers.
  */
 export function useEventSource({ onEvent, enabled = true }: Options = {}) {
   const [status, setStatus] = useState<ConnectionStatus>('disconnected')
@@ -32,40 +35,61 @@ export function useEventSource({ onEvent, enabled = true }: Options = {}) {
   useEffect(() => {
     if (!enabled) return
 
-    function connect() {
-      const token = getToken()
-      if (!token) return
+    let cancelled = false
 
-      setStatus('connecting')
-      const url = `/api/events?token=${encodeURIComponent(token)}`
-      const es  = new EventSource(url)
-      esRef.current = es
+    async function connect() {
+      try {
+        setStatus('connecting')
 
-      es.addEventListener('connected', () => {
-        setStatus('connected')
-        delayRef.current = 1000   // reset back-off on success
-      })
+        // Exchange the long-lived JWT for a short-lived (60s) SSE-only token.
+        // The SSE token is scoped to the stream endpoint only — it cannot be
+        // used to call any other API endpoint.
+        const { token } = await api.post<{ token: string; expires_in: number }>(
+          '/api/sse_token',
+          {}
+        )
 
-      es.addEventListener('heartbeat', () => {
-        // Heartbeats confirm the stream is alive — no action needed
-      })
+        if (cancelled) return
 
-      // Listen for task mutation and correlation engine events
-      for (const evt of ['task_created', 'task_updated', 'task_transitioned', 'rule_fired']) {
-        es.addEventListener(evt, (e: MessageEvent) => {
-          try {
-            const data = JSON.parse(e.data)
-            onEventRef.current?.({ event: evt, data })
-          } catch { /* ignore parse errors */ }
+        const url = `/api/events?token=${encodeURIComponent(token)}`
+        const es  = new EventSource(url)
+        esRef.current = es
+
+        es.addEventListener('connected', () => {
+          setStatus('connected')
+          delayRef.current = 1000   // reset back-off on success
         })
-      }
 
-      es.onerror = () => {
-        es.close()
-        esRef.current = null
+        es.addEventListener('heartbeat', () => {
+          // Heartbeats confirm the stream is alive — no action needed
+        })
+
+        // Listen for task mutation and correlation engine events
+        for (const evt of ['task_created', 'task_updated', 'task_transitioned', 'rule_fired']) {
+          es.addEventListener(evt, (e: MessageEvent) => {
+            try {
+              const data = JSON.parse(e.data)
+              onEventRef.current?.({ event: evt, data })
+            } catch { /* ignore parse errors */ }
+          })
+        }
+
+        es.onerror = () => {
+          es.close()
+          esRef.current = null
+          setStatus('disconnected')
+
+          if (cancelled) return
+
+          // Exponential back-off, capped at 30s
+          retryRef.current = setTimeout(() => {
+            delayRef.current = Math.min(delayRef.current * 2, 30_000)
+            connect()
+          }, delayRef.current)
+        }
+      } catch {
+        if (cancelled) return
         setStatus('disconnected')
-
-        // Exponential back-off, capped at 30s
         retryRef.current = setTimeout(() => {
           delayRef.current = Math.min(delayRef.current * 2, 30_000)
           connect()
@@ -76,6 +100,7 @@ export function useEventSource({ onEvent, enabled = true }: Options = {}) {
     connect()
 
     return () => {
+      cancelled = true
       esRef.current?.close()
       esRef.current = null
       if (retryRef.current) clearTimeout(retryRef.current)

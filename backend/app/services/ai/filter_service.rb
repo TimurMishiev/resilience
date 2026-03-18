@@ -1,10 +1,17 @@
 module Ai
   # Translates a natural language operator query into structured task filter params.
-  # Grounds the output by injecting real site IDs before sending to the model.
-  # Validates every returned value against known enums — never trusts model output blindly.
+  #
+  # Uses Claude tool_use instead of free-form JSON generation:
+  # - Valid site_ids are embedded as an `enum` in the tool schema, so the model
+  #   is structurally prevented from returning an invalid UUID regardless of what
+  #   the user query or site names contain.
+  # - workflow_status and priority are also enum-constrained at the schema level.
+  # - No prompt injection risk from site names — names appear only in the
+  #   description field, never as executable instructions.
   class FilterService < ApplicationService
     ALLOWED_WORKFLOW_STATUSES = %w[new triaged in_progress blocked resolved].freeze
     ALLOWED_PRIORITIES        = %w[low normal high critical].freeze
+    TOOL_NAME                 = "apply_task_filters"
 
     def initialize(query:)
       @query = query.to_s.strip
@@ -18,18 +25,19 @@ module Ai
 
       response = client.messages.create(
         model:      "claude-haiku-4-5",
-        max_tokens: 512,
-        system:     build_system_prompt(sites),
+        max_tokens: 256,
+        system:     SYSTEM_PROMPT,
+        tools:      [ build_tool(sites) ],
+        tool_choice: { type: "tool", name: TOOL_NAME },
         messages:   [ { role: "user", content: @query } ]
       )
 
-      raw     = response.content.first.text.gsub(/\A```(?:json)?\n?/, '').gsub(/\n?```\z/, '').strip
-      parsed  = JSON.parse(raw)
-      filters = validate_filters(parsed, sites)
+      tool_block = response.content.find { |b| b.type == "tool_use" && b.name == TOOL_NAME }
+      return ServiceResult.failure(errors: ["AI did not return a filter tool call"]) unless tool_block
 
+      filters = validate_filters(tool_block.input, sites)
       ServiceResult.success({ original_query: @query, filters: filters })
-    rescue JSON::ParserError
-      ServiceResult.failure(errors: ["AI returned an unparseable response"])
+
     rescue KeyError
       ServiceResult.failure(errors: ["ANTHROPIC_API_KEY is not set"])
     rescue => e
@@ -38,43 +46,64 @@ module Ai
 
     private
 
-    def build_system_prompt(sites)
-      site_list = sites.map { |s| "  - \"#{s[:name]}\" → #{s[:id]}" }.join("\n")
+    SYSTEM_PROMPT = <<~PROMPT.strip
+      You are a filter translator for a mission operations console.
+      Convert the operator's natural language query into task filter parameters
+      by calling the #{TOOL_NAME} tool.
+      If a filter field is not mentioned or unclear, omit it or set it to null.
+    PROMPT
 
-      <<~PROMPT
-        You are a filter translator for a mission operations console.
-        Convert the operator's natural language query into a JSON filter object.
+    # Build the tool schema with site IDs as an enum — the model can only return
+    # a value from this list for site_id. Names are embedded in descriptions only.
+    def build_tool(sites)
+      site_enum = sites.map { |s| s[:id] }
+      site_descriptions = sites.map { |s| "#{s[:name]} → #{s[:id]}" }.join(", ")
 
-        Available sites:
-        #{site_list}
-
-        Valid workflow_status values: #{ALLOWED_WORKFLOW_STATUSES.join(", ")}
-        Valid priority values: #{ALLOWED_PRIORITIES.join(", ")}
-
-        Respond with ONLY a valid JSON object — no markdown, no explanation:
-        {
-          "site_id":        "<uuid from the site list above, or null>",
-          "workflow_status": "<one of the valid statuses, or null>",
-          "priority":        "<one of the valid priorities, or null>",
-          "created_after":   "<ISO 8601 datetime, or null>",
-          "created_before":  "<ISO 8601 datetime, or null>"
+      {
+        name:        TOOL_NAME,
+        description: "Apply structured filters to the task list based on the operator's query.",
+        input_schema: {
+          type:       "object",
+          properties: {
+            site_id: {
+              type:        ["string", "null"],
+              enum:        site_enum + [nil],
+              description: "UUID of the target site. Available sites: #{site_descriptions}"
+            },
+            workflow_status: {
+              type:        ["string", "null"],
+              enum:        ALLOWED_WORKFLOW_STATUSES + [nil],
+              description: "Task workflow status"
+            },
+            priority: {
+              type:        ["string", "null"],
+              enum:        ALLOWED_PRIORITIES + [nil],
+              description: "Task priority level"
+            },
+            created_after: {
+              type:        ["string", "null"],
+              description: "ISO 8601 datetime — only return tasks created after this time"
+            },
+            created_before: {
+              type:        ["string", "null"],
+              description: "ISO 8601 datetime — only return tasks created before this time"
+            }
+          },
+          required: []
         }
-
-        Rules:
-        - site_id must be an exact UUID from the list above, or null.
-        - workflow_status and priority must be exact string matches, or null.
-        - If something is not mentioned or unclear, use null.
-      PROMPT
+      }
     end
 
-    def validate_filters(parsed, sites)
+    # Secondary validation layer — belt and suspenders even though the schema
+    # already constrains values. Never trust model output without validation.
+    def validate_filters(input, sites)
       valid_site_ids = sites.map { |s| s[:id] }
 
-      site_id        = parsed["site_id"].in?(valid_site_ids)          ? parsed["site_id"]        : nil
-      workflow_status = parsed["workflow_status"].in?(ALLOWED_WORKFLOW_STATUSES) ? parsed["workflow_status"] : nil
-      priority        = parsed["priority"].in?(ALLOWED_PRIORITIES)              ? parsed["priority"]        : nil
-      created_after   = safe_parse_datetime(parsed["created_after"])
-      created_before  = safe_parse_datetime(parsed["created_before"])
+      site_id         = input["site_id"].in?(valid_site_ids)              ? input["site_id"]         : nil
+      workflow_status = input["workflow_status"].in?(ALLOWED_WORKFLOW_STATUSES) ? input["workflow_status"] : nil
+      priority        = input["priority"].in?(ALLOWED_PRIORITIES)              ? input["priority"]        : nil
+      created_after   = safe_parse_datetime(input["created_after"])
+      created_before  = safe_parse_datetime(input["created_before"])
 
       { site_id:, workflow_status:, priority:, created_after:, created_before: }
     end

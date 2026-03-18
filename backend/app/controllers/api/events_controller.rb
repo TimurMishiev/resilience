@@ -45,6 +45,13 @@ module Api
 
     private
 
+    # Mark this controller as an SSE endpoint so the auth concern:
+    # 1. Accepts the JWT from ?token= query param (EventSource limitation)
+    # 2. Accepts short-lived SSE-only tokens issued by SseTokensController
+    def sse_endpoint?
+      true
+    end
+
     def sse_write(stream, event:, data:)
       stream.write("event: #{event}\n")
       stream.write("data: #{data.to_json}\n\n")

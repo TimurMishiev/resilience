@@ -3,14 +3,22 @@ module JwtAuthenticatable
 
   class AuthenticationError < StandardError; end
 
-  SECRET    = Rails.application.secret_key_base
-  ALGORITHM = "HS256"
-  TTL       = 24.hours
+  SECRET      = Rails.application.secret_key_base
+  ALGORITHM   = "HS256"
+  TTL         = 24.hours
+  SSE_TTL     = 60.seconds   # short-lived token issued for SSE connections only
 
   module_function
 
   def encode(payload)
     payload = payload.merge(exp: TTL.from_now.to_i, iat: Time.current.to_i)
+    JWT.encode(payload, SECRET, ALGORITHM)
+  end
+
+  # Issues a short-lived (60s) SSE-only token.
+  # Tokens carry sse_only: true so regular API endpoints can reject them.
+  def encode_sse(user_id)
+    payload = { sub: user_id, sse_only: true, exp: SSE_TTL.from_now.to_i, iat: Time.current.to_i }
     JWT.encode(payload, SECRET, ALGORITHM)
   end
 
@@ -32,15 +40,33 @@ module JwtAuthenticatable
     private
 
     def authenticate_request!
-      token = request.headers["Authorization"]&.delete_prefix("Bearer ")&.strip
-      # SSE clients cannot send custom headers — fall back to query param
-      token = params[:token]&.strip if token.blank?
+      token = extract_token
       raise JwtAuthenticatable::AuthenticationError, "Missing token" if token.blank?
 
       payload = JwtAuthenticatable.decode(token)
+
+      # SSE-only tokens must not be accepted by regular API endpoints.
+      # Only EventsController explicitly permits them.
+      if payload[:sse_only] && !sse_endpoint?
+        raise JwtAuthenticatable::AuthenticationError, "SSE token cannot be used for API requests"
+      end
+
       @current_user = User.find(payload[:sub])
     rescue ActiveRecord::RecordNotFound
       raise JwtAuthenticatable::AuthenticationError, "User not found"
+    end
+
+    def extract_token
+      token = request.headers["Authorization"]&.delete_prefix("Bearer ")&.strip
+      # SSE clients (EventSource) cannot send custom headers — fall back to query param.
+      # The query-param path is only acceptable for SSE endpoints where it's unavoidable.
+      token = params[:token]&.strip if token.blank? && sse_endpoint?
+      token
+    end
+
+    # Override in EventsController to mark it as an SSE endpoint.
+    def sse_endpoint?
+      false
     end
 
     def current_user
