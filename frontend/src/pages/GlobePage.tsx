@@ -114,11 +114,11 @@ export default function GlobePage() {
   useEffect(() => {
     if (!containerRef.current || viewerRef.current) return
 
-    // OSM imagery layer — constructor API works in all Cesium versions
+    // ESRI World Imagery — satellite basemap, no API key required
     const osmProvider = new Cesium.UrlTemplateImageryProvider({
-      url:          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+      url:          'https://server.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
       maximumLevel: 19,
-      credit:       new Cesium.Credit('© OpenStreetMap contributors'),
+      credit:       new Cesium.Credit('© Esri, Maxar, Earthstar Geographics'),
     })
 
     const viewer = new Cesium.Viewer(containerRef.current, {
@@ -142,10 +142,18 @@ export default function GlobePage() {
     })
 
     // Dark scene settings — no Ion-dependent features
-    viewer.scene.backgroundColor    = Cesium.Color.BLACK
+    viewer.scene.backgroundColor = Cesium.Color.BLACK
     viewer.scene.globe.enableLighting = true
     viewer.scene.globe.showGroundAtmosphere = true
-    viewer.scene.globe.baseColor    = Cesium.Color.fromCssColorString('#1a2233')
+    viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#0a0f1a')
+    // Atmosphere glow for realism
+    viewer.scene.skyAtmosphere.show = true
+    viewer.scene.skyAtmosphere.atmosphereLightIntensity = 20.0
+    viewer.scene.skyAtmosphere.atmosphereRayleighScaleHeight = 12000
+    // Soft fog for depth
+    viewer.scene.fog.enabled = false
+    // Deeper space background
+    viewer.scene.skyBox.show = true
 
     // Start with a full-Earth view looking straight down
     viewer.camera.setView({
@@ -221,12 +229,13 @@ export default function GlobePage() {
           Number(site.latitude),
         ),
         point: {
-          pixelSize:        14,
+          pixelSize:        16,
           color:            color,
-          outlineColor:     Cesium.Color.WHITE.withAlpha(0.6),
-          outlineWidth:     1.5,
+          outlineColor:     Cesium.Color.WHITE.withAlpha(0.8),
+          outlineWidth:     2,
           heightReference:  Cesium.HeightReference.CLAMP_TO_GROUND,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          scaleByDistance:  new Cesium.NearFarScalar(1e5, 1.5, 8e6, 0.8),
         },
         label: {
           text:              site.name,
@@ -265,13 +274,13 @@ export default function GlobePage() {
       const entity = viewer.entities.add({
         id:       key,
         name:     asset.name,
-        position: Cesium.Cartesian3.fromDegrees(lng, lat, 1000),
+        position: Cesium.Cartesian3.fromDegrees(lng, lat),
         point: {
-          pixelSize:       8,
-          color:           Cesium.Color.CYAN.withAlpha(0.9),
-          outlineColor:    Cesium.Color.WHITE.withAlpha(0.4),
-          outlineWidth:    1,
-          heightReference: Cesium.HeightReference.NONE,
+          pixelSize:       10,
+          color:           Cesium.Color.CYAN.withAlpha(0.95),
+          outlineColor:    Cesium.Color.WHITE.withAlpha(0.7),
+          outlineWidth:    2,
+          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
         label: {
@@ -354,12 +363,13 @@ export default function GlobePage() {
       const entity = viewer.entities.add({
         position: Cesium.Cartesian3.fromDegrees(Number(signal.lng), Number(signal.lat)),
         point: {
-          pixelSize:       6,
-          color:           color.withAlpha(0.9),
-          outlineColor:    color.withAlpha(0.3),
-          outlineWidth:    4,
+          pixelSize:       7,
+          color:           color.withAlpha(0.95),
+          outlineColor:    color.withAlpha(0.35),
+          outlineWidth:    5,
           heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          scaleByDistance: new Cesium.NearFarScalar(5e4, 1.4, 6e6, 0.6),
         },
       })
       signalEntitiesRef.current.push(entity)
@@ -374,7 +384,7 @@ export default function GlobePage() {
       const entity = assetEntitiesRef.current.get(`asset-${assetId}`)
       if (entity) {
         entity.position = new Cesium.ConstantPositionProperty(
-          Cesium.Cartesian3.fromDegrees(reading.lng, reading.lat, 1000)
+          Cesium.Cartesian3.fromDegrees(reading.lng, reading.lat)
         )
       }
     }
