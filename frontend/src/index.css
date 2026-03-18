@@ -2004,3 +2004,40 @@ body {
 .briefing-access-denied {
   max-width: 520px;
 }
+
+/* ── Site detail page ──────────────────────────────────────── */
+
+.site-detail {
+  max-width: 1040px;
+}
+
+.site-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.site-detail-meta {
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.site-readiness-row {
+  margin-top: 2px;
+}
+
+.site-detail-tabs {
+  margin-top: 4px;
+}
+
+.site-detail-tabs .bp6-tab-panel {
+  padding-top: 12px;
+}
+
+.tab-empty-state {
+  padding: 40px 0;
+}

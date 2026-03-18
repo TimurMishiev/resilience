@@ -13,6 +13,7 @@ import DashboardPage from './pages/DashboardPage'
 import LoginPage from './pages/LoginPage'
 import MapPage from './pages/MapPage'
 import SignalFeedPage from './pages/SignalFeedPage'
+import SiteDetailPage from './pages/SiteDetailPage'
 import SitesPage from './pages/SitesPage'
 import TasksPage from './pages/TasksPage'
 
@@ -27,6 +28,7 @@ export default function App() {
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="dashboard" element={<DashboardPage />} />
               <Route path="sites" element={<SitesPage />} />
+              <Route path="sites/:id" element={<SiteDetailPage />} />
               <Route path="tasks" element={<TasksPage />} />
               <Route path="assets" element={<AssetsPage />} />
               <Route path="map" element={<MapPage />} />

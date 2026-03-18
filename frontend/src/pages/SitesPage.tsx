@@ -1,10 +1,12 @@
 import { Callout, Classes, HTMLTable, NonIdealState, Tag } from '@blueprintjs/core'
+import { useNavigate } from 'react-router-dom'
 import { useSites } from '../hooks/useSites'
 import { useReplay } from '../context/ReplayContext'
 
 const SKELETON_ROWS = 7
 
 export default function SitesPage() {
+  const navigate = useNavigate()
   const { asOf } = useReplay()
   const { data, error, isPending } = useSites({ per_page: 100, ...(asOf ? { as_of: asOf } : {}) })
 
@@ -62,7 +64,7 @@ export default function SitesPage() {
                 </tr>
               ))
             : sites.map((site) => (
-                <tr key={site.id}>
+                <tr key={site.id} className="clickable-row" onClick={() => navigate(`/sites/${site.id}`)}>
                   <td>
                     {site.name}
                     {site.flagged_at && (
