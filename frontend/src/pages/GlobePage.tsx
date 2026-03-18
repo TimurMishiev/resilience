@@ -234,7 +234,7 @@ export default function GlobePage() {
           outlineColor:     Cesium.Color.WHITE.withAlpha(0.8),
           outlineWidth:     2,
           heightReference:  Cesium.HeightReference.CLAMP_TO_GROUND,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          disableDepthTestDistance: 1e7,
           scaleByDistance:  new Cesium.NearFarScalar(1e5, 1.5, 8e6, 0.8),
         },
         label: {
@@ -246,7 +246,7 @@ export default function GlobePage() {
           style:             Cesium.LabelStyle.FILL_AND_OUTLINE,
           pixelOffset:       new Cesium.Cartesian2(0, -22),
           heightReference:   Cesium.HeightReference.CLAMP_TO_GROUND,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          disableDepthTestDistance: 1e7,
           translucencyByDistance: new Cesium.NearFarScalar(1e6, 1.0, 8e6, 0.0),
         },
       })
@@ -281,7 +281,7 @@ export default function GlobePage() {
           outlineColor:    Cesium.Color.WHITE.withAlpha(0.7),
           outlineWidth:    2,
           heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          disableDepthTestDistance: 1e7,
         },
         label: {
           text:              asset.name,
@@ -291,7 +291,7 @@ export default function GlobePage() {
           outlineWidth:      2,
           style:             Cesium.LabelStyle.FILL_AND_OUTLINE,
           pixelOffset:       new Cesium.Cartesian2(0, -16),
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          disableDepthTestDistance: 1e7,
           translucencyByDistance: new Cesium.NearFarScalar(5e5, 1.0, 3e6, 0.0),
         },
       })
@@ -368,7 +368,7 @@ export default function GlobePage() {
           outlineColor:    color.withAlpha(0.35),
           outlineWidth:    5,
           heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          disableDepthTestDistance: 1e7,
           scaleByDistance: new Cesium.NearFarScalar(5e4, 1.4, 6e6, 0.6),
         },
       })
