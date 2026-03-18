@@ -14,6 +14,9 @@
 #   SECRET_KEY_BASE     — output of `rails secret`
 #   ANTHROPIC_API_KEY   — Claude API key
 
+# Declare before the first FROM so it's available in all subsequent FROM lines.
+ARG RUBY_VERSION=3.4.7
+
 # ──── Stage 1: Build the React/Vite frontend ─────────────────────────────────
 FROM node:22-slim AS frontend-build
 
@@ -27,7 +30,6 @@ COPY frontend/ .
 RUN yarn build
 
 # ──── Stage 2: Ruby base (shared between build and final) ────────────────────
-ARG RUBY_VERSION=3.4.7
 FROM docker.io/library/ruby:$RUBY_VERSION-slim AS base
 
 WORKDIR /rails
