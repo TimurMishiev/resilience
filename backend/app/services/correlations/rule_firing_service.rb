@@ -17,46 +17,65 @@ module Correlations
       @site   = site
     end
 
+    # Raised inside the transaction to abort when the cooldown slot is already claimed.
+    CooldownActive = Class.new(StandardError)
+
     def call
       task          = nil
       actions_taken = []
+      match         = nil
 
-      if @rule.actions.key?("create_task")
-        result = execute_create_task
-        return result unless result.success
-        task = result.payload[:task]
-        actions_taken << "create_task"
+      # ── Atomic transaction: cooldown claim + all actions ─────────────────────
+      # The cooldown UPDATE and all side-effects run in one transaction.
+      # If any action fails the whole transaction rolls back, including the
+      # last_fired_at write, so retries are not blocked by a consumed cooldown.
+      # Only the first of N concurrent jobs to execute the UPDATE wins the lock;
+      # the rest see rows_updated == 0 and raise CooldownActive (caught below).
+      ActiveRecord::Base.transaction do
+        cooldown_cutoff = @rule.cooldown_minutes.minutes.ago
+        rows_updated = CorrelationRule
+          .where(id: @rule.id)
+          .where("last_fired_at IS NULL OR last_fired_at <= ?", cooldown_cutoff)
+          .update_all(last_fired_at: Time.current)
+
+        raise CooldownActive if rows_updated == 0
+
+        if @rule.actions.key?("create_task")
+          result = execute_create_task
+          raise result.errors.first unless result.success
+          task = result.payload[:task]
+          actions_taken << "create_task"
+        end
+
+        if @rule.actions.key?("escalate_task")
+          result = execute_escalate_task
+          raise result.errors.first unless result.success
+          task ||= result.payload[:task]
+          actions_taken << "escalate_task"
+        end
+
+        if @rule.actions.key?("flag_site")
+          result = execute_flag_site
+          raise result.errors.first unless result.success
+          actions_taken << "flag_site"
+        end
+
+        match = SignalRuleMatch.create!(
+          signal:           @signal,
+          correlation_rule: @rule,
+          site:             @site,
+          task_id:          task&.id,
+          fired_at:         Time.current,
+          metadata: {
+            distance_km:   distance_to_site.round(2),
+            signal_type:   @signal.signal_type,
+            signal_source: @signal.source,
+            actions_taken: actions_taken
+          }
+        )
       end
 
-      if @rule.actions.key?("escalate_task")
-        result = execute_escalate_task
-        return result unless result.success
-        task ||= result.payload[:task]
-        actions_taken << "escalate_task"
-      end
-
-      if @rule.actions.key?("flag_site")
-        result = execute_flag_site
-        return result unless result.success
-        actions_taken << "flag_site"
-      end
-
-      match = SignalRuleMatch.create!(
-        signal:           @signal,
-        correlation_rule: @rule,
-        site:             @site,
-        task_id:          task&.id,
-        fired_at:         Time.current,
-        metadata: {
-          distance_km:   distance_to_site.round(2),
-          signal_type:   @signal.signal_type,
-          signal_source: @signal.source,
-          actions_taken: actions_taken
-        }
-      )
-
-      @rule.update_column(:last_fired_at, Time.current)
-
+      # SSE broadcast is a non-transactional side-effect — runs after commit.
       Sse::Broadcaster.instance.publish(
         event: "rule_fired",
         data: {
@@ -76,6 +95,9 @@ module Correlations
       )
 
       ServiceResult.success(match: match, task: task, actions_taken: actions_taken)
+    rescue CooldownActive
+      Rails.logger.info "[RuleFiringService] cooldown active (concurrent claim) rule=#{@rule.id} site=#{@site.id}"
+      ServiceResult.failure(errors: ["cooldown"])
     rescue StandardError => e
       Rails.logger.error "[RuleFiringService] rule=#{@rule.id} signal=#{@signal.id} site=#{@site.id} error=#{e.class}: #{e.message}"
       ServiceResult.failure(errors: [e.message])

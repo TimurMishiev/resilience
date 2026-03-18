@@ -29,6 +29,14 @@ module Correlations
       result = Correlations::RuleFiringService.call(rule: rule, signal: signal, site: site)
 
       unless result.success
+        # Cooldown skip is expected — another concurrent job already claimed this
+        # firing window. Log at info level and return without raising.
+        if result.errors == ["cooldown"]
+          Rails.logger.info "[RuleFiringJob] skipped (cooldown claimed by concurrent job) rule=#{rule_id} site=#{site_id}"
+          return
+        end
+
+        # All other failures are unexpected — raise so SolidQueue retries.
         error_msg = result.errors.join(", ")
         Rails.logger.error "[RuleFiringJob] FAILED rule_id=#{rule_id} signal_id=#{signal_id} site_id=#{site_id} errors=#{error_msg}"
         raise "[RuleFiringJob] Rule firing failed: #{error_msg}"
