@@ -17,12 +17,17 @@ test:
 production:
   primary: &primary_production
     <<: *default
+    # DATABASE_URL takes full precedence when set (Fly.io / Heroku / Render).
+    # Falls back to individual vars for local production-mode testing.
+    url:      <%= ENV["DATABASE_URL"] %>
     database: resilience_production
     username: <%= ENV["DATABASE_USERNAME"] %>
     password: <%= ENV["DATABASE_PASSWORD"] %>
-    host: <%= ENV.fetch("DATABASE_HOST") { "localhost" } %>
+    host:     <%= ENV.fetch("DATABASE_HOST") { "localhost" } %>
   cache:
     <<: *primary_production
+    # When DATABASE_URL is set all three databases share the same instance;
+    # Solid Cache tables live alongside app tables. Fine for a single-server deploy.
     database: resilience_production_cache
     migrations_paths: db/cache_migrate
   queue:

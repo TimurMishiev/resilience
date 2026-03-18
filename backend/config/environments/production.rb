@@ -18,10 +18,13 @@ Rails.application.configure do
   # Enable serving of images, stylesheets, and JavaScripts from an asset server.
   # config.asset_host = "http://assets.example.com"
 
-  # Assume all access to the app is happening through a SSL-terminating reverse proxy.
-  # config.assume_ssl = true
+  # Fly.io terminates TLS at the edge and forwards plain HTTP internally.
+  # Telling Rails to assume SSL ensures cookies and redirects use https://.
+  config.assume_ssl = true
 
   # Force all access to the app over SSL, use Strict-Transport-Security, and use secure cookies.
+  # Fly handles the HTTP→HTTPS redirect at the proxy layer, so we leave this off
+  # to avoid a double-redirect loop.
   # config.force_ssl = true
 
   # Skip http-to-https redirect for the default health check endpoint.

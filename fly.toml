@@ -1,0 +1,48 @@
+# Fly.io configuration for Resilience — Mission Operations Console
+# Docs: https://fly.io/docs/reference/configuration/
+#
+# First-time setup:
+#   brew install flyctl
+#   flyctl auth login
+#   flyctl launch --no-deploy          # creates the app, skip if already created
+#   flyctl postgres create --name resilience-db
+#   flyctl postgres attach resilience-db
+#   flyctl secrets set RAILS_MASTER_KEY=$(cat backend/config/master.key)
+#   flyctl secrets set SECRET_KEY_BASE=$(cd backend && bundle exec rails secret)
+#   flyctl secrets set ANTHROPIC_API_KEY=sk-ant-...
+#   flyctl deploy
+
+app            = "resilience-ops"
+primary_region = "iad"
+
+[build]
+  # Build from the repo root using the combined Dockerfile
+  dockerfile = "Dockerfile"
+
+[env]
+  RAILS_ENV                = "production"
+  RAILS_LOG_TO_STDOUT      = "true"
+  # Serve the pre-built frontend from Rails' public/ directory
+  RAILS_SERVE_STATIC_FILES = "true"
+  # Run Solid Queue supervisor inside the Puma process (single-machine deploy)
+  SOLID_QUEUE_IN_PUMA      = "true"
+  # Conservative thread count for 1 GB machine; raise if you upgrade the VM
+  RAILS_MAX_THREADS        = "10"
+
+[http_service]
+  internal_port       = 80
+  force_https         = true
+  auto_stop_machines  = "stop"
+  auto_start_machines = true
+  # Keep one machine warm so SSE feeds and signal threads start immediately.
+  # Set to 0 to save cost (machine spins up on first request, ~3s cold start).
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type       = "connections"
+    hard_limit = 50
+    soft_limit = 40
+
+[[vm]]
+  size   = "shared-cpu-1x"
+  memory = "1gb"

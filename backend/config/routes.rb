@@ -1,6 +1,19 @@
 Rails.application.routes.draw do
   get "up" => "rails/health#show", as: :rails_health_check
 
+  # SPA catch-all — return index.html for all non-API, non-asset routes so
+  # that React Router handles deep links (/map, /signals, etc.) correctly.
+  # Only active when public/index.html exists (i.e. in the production Docker image).
+  if File.exist?(Rails.root.join("public/index.html"))
+    get "*path",
+        to:          "static#index",
+        constraints: ->(req) {
+          !req.path.start_with?("/api/", "/up") &&
+            !req.path.match?(/\.\w+$/)
+        },
+        format: false
+  end
+
   namespace :api do
     namespace :auth do
       post :login, to: "sessions#create"

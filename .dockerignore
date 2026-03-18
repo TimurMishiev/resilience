@@ -1,0 +1,33 @@
+# Git
+.git/
+.gitignore
+
+# CI / editor / OS
+.github/
+.claude/
+.vscode/
+.idea/
+**/.DS_Store
+
+# Frontend — dev artifacts (dist is rebuilt inside Docker)
+frontend/node_modules/
+frontend/dist/
+frontend/.env*
+
+# Backend — secrets and local config
+backend/.env*
+backend/config/master.key
+backend/config/credentials/*.key
+backend/.kamal/
+backend/config/deploy*.yml
+
+# Backend — dev/test artifacts
+backend/.bundle/
+backend/log/*
+backend/tmp/*
+backend/spec/
+backend/vendor/bundle/
+
+# Backend — Docker-related (not needed in build context)
+backend/.dockerignore
+backend/Dockerfile
