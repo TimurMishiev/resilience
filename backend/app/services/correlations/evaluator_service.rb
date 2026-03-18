@@ -34,12 +34,8 @@ module Correlations
           next unless count_threshold_met?(rule, site)
           next unless magnitude_threshold_met?(rule)
 
-          result = Correlations::RuleFiringService.call(
-            rule:   rule,
-            signal: @signal,
-            site:   site
-          )
-          fired << result.payload if result.success
+          Correlations::RuleFiringJob.perform_later(rule.id, @signal.id, site.id)
+          fired << { rule_id: rule.id, site_id: site.id }
         end
       end
 

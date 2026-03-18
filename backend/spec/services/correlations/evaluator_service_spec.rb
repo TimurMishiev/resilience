@@ -1,6 +1,8 @@
 require "rails_helper"
 
 RSpec.describe Correlations::EvaluatorService do
+  include ActiveJob::TestHelper
+
   # Stub SSE broadcasts so tests don't require live streams
   before do
     allow(Sse::Broadcaster.instance).to receive(:publish)
@@ -46,7 +48,11 @@ RSpec.describe Correlations::EvaluatorService do
                actions:    { "create_task" => { "title" => "Alert", "priority" => "high" } })
       end
 
-      it "returns fired_count of 1 and creates a Task and SignalRuleMatch" do
+      # Use inline adapter so RuleFiringJob executes synchronously in these tests,
+      # allowing us to assert on the Task/SignalRuleMatch side-effects.
+      around { |ex| perform_enqueued_jobs { ex.run } }
+
+      it "returns fired_count of 1 and enqueues a RuleFiringJob that creates a Task and SignalRuleMatch" do
         expect {
           result = described_class.call(signal: signal)
           expect(result.success).to be true
@@ -55,7 +61,7 @@ RSpec.describe Correlations::EvaluatorService do
          .and change(SignalRuleMatch, :count).by(1)
       end
 
-      it "updates the rule's last_fired_at" do
+      it "updates the rule's last_fired_at via the enqueued job" do
         expect { described_class.call(signal: signal) }
           .to change { rule.reload.last_fired_at }.from(nil)
       end
