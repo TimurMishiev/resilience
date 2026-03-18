@@ -14,7 +14,7 @@ Rails.application.configure do
   # Include request_id for correlating logs across distributed traces
   config.lograge.custom_options = lambda do |event|
     {
-      request_id: event.payload[:headers]&.dig("X-Request-Id") ||
+      request_id: event.payload[:headers]&.[]("X-Request-Id") ||
                   event.payload[:request_id],
       ip:         event.payload[:remote_ip],
       user_id:    event.payload[:user_id],
