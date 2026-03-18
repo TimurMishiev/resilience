@@ -49,12 +49,12 @@ export default function AppShell() {
 
       if (e.event === 'rule_fired') {
         const d = e.data as {
-          rule_name:    string
-          site_name:    string
-          task_title:   string | null
-          priority:     string | null
-          signal_type:  string
-          distance_km:  number
+          rule_name:     string
+          site_name:     string
+          task_title:    string | null
+          priority:      string | null
+          signal_type:   string
+          distance_km:   number
           actions_taken: string[]
         }
         queryClient.invalidateQueries({ queryKey: ['signal_rule_matches'] })
@@ -65,6 +65,29 @@ export default function AppShell() {
           intent:  'warning',
           icon:    'lightning',
           timeout: 10_000,
+        }))
+      }
+
+      if (e.event === 'task_created') {
+        const d = e.data as { title: string; priority: string; site_name: string | null }
+        AppToaster.then(t => t.show({
+          message: `✚ Task created: "${d.title}"${d.site_name ? ` @ ${d.site_name}` : ''} [${d.priority}]`,
+          intent:  'success',
+          icon:    'tick-circle',
+          timeout: 6_000,
+        }))
+      }
+
+      if (e.event === 'task_transitioned') {
+        const d = e.data as { title: string; workflow_status: string; site_name: string | null }
+        const STATUS_ICON: Record<string, string> = {
+          resolved: '✔', blocked: '⛔', in_progress: '▶', triaged: '🔍', new: '•',
+        }
+        AppToaster.then(t => t.show({
+          message: `${STATUS_ICON[d.workflow_status] ?? '•'} "${d.title}" → ${d.workflow_status.replace('_', ' ')}${d.site_name ? ` @ ${d.site_name}` : ''}`,
+          intent:  d.workflow_status === 'resolved' ? 'success' : d.workflow_status === 'blocked' ? 'danger' : 'none',
+          icon:    d.workflow_status === 'resolved' ? 'tick' : d.workflow_status === 'blocked' ? 'ban-circle' : 'refresh',
+          timeout: 6_000,
         }))
       }
     },

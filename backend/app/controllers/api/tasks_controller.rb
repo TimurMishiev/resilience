@@ -119,7 +119,14 @@ module Api
     def broadcast(event, task)
       Sse::Broadcaster.instance.publish(
         event: event,
-        data:  { id: task.id, site_id: task.site_id, workflow_status: task.workflow_status }
+        data:  {
+          id:              task.id,
+          site_id:         task.site_id,
+          site_name:       task.site&.name,
+          title:           task.title,
+          priority:        task.priority,
+          workflow_status: task.workflow_status
+        }
       )
     rescue StandardError
       # Never let a broadcast failure affect the HTTP response
