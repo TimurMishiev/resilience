@@ -6,6 +6,12 @@
       "runtimeExecutable": "yarn",
       "runtimeArgs": ["--cwd", "frontend", "dev", "--port", "5176"],
       "port": 5176
+    },
+    {
+      "name": "resilience-backend",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd backend && RAILS_MAX_THREADS=48 bundle exec rails server -p 3000"],
+      "port": 3000
     }
   ]
 }

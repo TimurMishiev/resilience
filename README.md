@@ -4,10 +4,38 @@
 
 ---
 
-## Demo
+## Live Demo
 
-<!-- demo.gif -->
-> **Live demo:** _deploy in progress_
+**[https://resilience-ops.fly.dev](https://resilience-ops.fly.dev)**
+
+| Role | Email | Password |
+|---|---|---|
+| Commander | commander@resilience.mil | password |
+| Operator | operator@resilience.mil | password |
+
+---
+
+## Screenshots
+
+**Dashboard** — KPI row, per-site readiness bars, task status/priority charts
+
+![Dashboard](docs/screenshots/dashboard.png)
+
+**Object Graph** — D3 force-directed graph of site → task → asset dependency chains
+
+![Graph](docs/screenshots/graph.png)
+
+**Signal Feed** — live intelligence fusion from OpenSky, USGS, GPSJam, AIS, and FIRMS
+
+![Signals](docs/screenshots/signals.png)
+
+**Correlation Rules** — auto-task creation engine with recent firing history
+
+![Rules](docs/screenshots/rules.png)
+
+**AI Briefing** — Claude-powered operational summary grounded in real audit events, with citation validation
+
+![Briefing](docs/screenshots/briefing.png)
 
 ---
 
