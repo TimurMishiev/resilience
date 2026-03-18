@@ -88,7 +88,8 @@ CREATE TABLE public.audit_events (
     after_snapshot jsonb NOT NULL,
     metadata jsonb,
     correlation_id uuid NOT NULL,
-    occurred_at timestamp(6) without time zone DEFAULT now() NOT NULL
+    occurred_at timestamp(6) without time zone DEFAULT now() NOT NULL,
+    after_workflow_status text GENERATED ALWAYS AS ((after_snapshot ->> 'workflow_status'::text)) STORED
 );
 
 
@@ -193,7 +194,9 @@ CREATE TABLE public.tasks (
     resolved_at timestamp(6) without time zone,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    CONSTRAINT blocked_reason_consistency CHECK ((((workflow_status = 'blocked'::text) AND (blocked_reason IS NOT NULL)) OR ((workflow_status <> 'blocked'::text) AND (blocked_reason IS NULL))))
+    CONSTRAINT blocked_reason_consistency CHECK ((((workflow_status = 'blocked'::text) AND (blocked_reason IS NOT NULL)) OR ((workflow_status <> 'blocked'::text) AND (blocked_reason IS NULL)))),
+    CONSTRAINT resolved_at_only_when_resolved CHECK (((resolved_at IS NULL) OR (workflow_status = 'resolved'::text))),
+    CONSTRAINT resolved_at_required_when_resolved CHECK (((workflow_status <> 'resolved'::text) OR (resolved_at IS NOT NULL)))
 );
 
 
@@ -326,6 +329,20 @@ CREATE INDEX index_areas_of_operation_on_created_by_id ON public.areas_of_operat
 --
 
 CREATE INDEX index_assets_on_home_site_id ON public.assets USING btree (home_site_id);
+
+
+--
+-- Name: index_audit_events_analytics; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_audit_events_analytics ON public.audit_events USING btree (entity_type, after_workflow_status, occurred_at);
+
+
+--
+-- Name: index_audit_events_on_after_workflow_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_audit_events_on_after_workflow_status ON public.audit_events USING btree (after_workflow_status) WHERE (after_workflow_status IS NOT NULL);
 
 
 --
@@ -466,7 +483,7 @@ CREATE UNIQUE INDEX index_users_on_email ON public.users USING btree (email);
 --
 
 ALTER TABLE ONLY public.areas_of_operation
-    ADD CONSTRAINT fk_rails_0bd4a97ef0 FOREIGN KEY (created_by_id) REFERENCES public.users(id);
+    ADD CONSTRAINT fk_rails_0bd4a97ef0 FOREIGN KEY (created_by_id) REFERENCES public.users(id) ON DELETE SET NULL;
 
 
 --
@@ -498,7 +515,7 @@ ALTER TABLE ONLY public.assets
 --
 
 ALTER TABLE ONLY public.tasks
-    ADD CONSTRAINT fk_rails_a53067c46b FOREIGN KEY (site_id) REFERENCES public.sites(id);
+    ADD CONSTRAINT fk_rails_a53067c46b FOREIGN KEY (site_id) REFERENCES public.sites(id) ON DELETE RESTRICT;
 
 
 --
@@ -530,7 +547,7 @@ ALTER TABLE ONLY public.signal_rule_matches
 --
 
 ALTER TABLE ONLY public.correlation_rules
-    ADD CONSTRAINT fk_rails_df82305965 FOREIGN KEY (created_by_id) REFERENCES public.users(id);
+    ADD CONSTRAINT fk_rails_df82305965 FOREIGN KEY (created_by_id) REFERENCES public.users(id) ON DELETE SET NULL;
 
 
 --
@@ -538,7 +555,7 @@ ALTER TABLE ONLY public.correlation_rules
 --
 
 ALTER TABLE ONLY public.signal_rule_matches
-    ADD CONSTRAINT fk_rails_e7bfadaf05 FOREIGN KEY (correlation_rule_id) REFERENCES public.correlation_rules(id);
+    ADD CONSTRAINT fk_rails_e7bfadaf05 FOREIGN KEY (correlation_rule_id) REFERENCES public.correlation_rules(id) ON DELETE CASCADE;
 
 
 --
@@ -556,6 +573,9 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260318020001'),
+('20260318020000'),
+('20260318011248'),
 ('20260317232051'),
 ('20260315061734'),
 ('20260315000006'),

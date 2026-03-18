@@ -76,8 +76,10 @@ module Api
       tasks
     end
 
+    REPLAY_LIMIT = 500
+
     def replayed_tasks
-      task_ids = scoped_tasks.pluck(:id)
+      task_ids = scoped_tasks.limit(REPLAY_LIMIT).pluck(:id)
       result = Replay::ProjectionService.call(
         entity_type: "Task",
         entity_ids: task_ids,

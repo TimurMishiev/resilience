@@ -159,11 +159,12 @@ module Correlations
 
     def interpolate(str)
       str
-        .gsub("{{site_name}}",    @site.name)
+        .gsub("{{site_name}}",    @site.name.to_s.truncate(100))
         .gsub("{{proximity_km}}", @rule.conditions["proximity_km"].to_s)
         .gsub("{{count}}",        @rule.conditions["count_threshold"].to_s)
-        .gsub("{{signal_type}}",  @signal.signal_type)
-        .gsub("{{source}}",       @signal.source)
+        .gsub("{{signal_type}}",  @signal.signal_type.to_s.truncate(50))
+        .gsub("{{source}}",       @signal.source.to_s.truncate(50))
+        .truncate(500)
     end
 
     def distance_to_site
