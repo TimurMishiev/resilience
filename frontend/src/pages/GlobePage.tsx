@@ -77,13 +77,30 @@ export default function GlobePage() {
   const tasksQuery  = useTasks({ per_page: 200, ...asOfParam })
   const assetsQuery = useAssets({ per_page: 200, ...asOfParam })
   const { data: areasRes } = useAreasOfOperation({ per_page: 200 })
-  const { data: signalsRes } = useSignals({ per_page: 200 })
+  const { data: aircraftRes }  = useSignals({ signal_type: 'aircraft_position', per_page: 150 })
+  const { data: vesselRes }    = useSignals({ signal_type: 'vessel_position',   per_page: 50  })
+  const { data: seismicRes }   = useSignals({ signal_type: 'seismic_event',     per_page: 50  })
+  const { data: gpsJamRes }    = useSignals({ signal_type: 'gps_jamming',       per_page: 50  })
+  const { data: wildfireRes }  = useSignals({ signal_type: 'wildfire',          per_page: 50  })
+  const { data: manualRes }    = useSignals({ signal_type: 'manual',            per_page: 20  })
+  const { data: aisGapRes }    = useSignals({ signal_type: 'ais_gap',           per_page: 20  })
 
   const sites  = useMemo(() => sitesQuery.data?.data  ?? [], [sitesQuery.data?.data])
   const tasks  = useMemo(() => tasksQuery.data?.data  ?? [], [tasksQuery.data?.data])
   const assets = useMemo(() => assetsQuery.data?.data ?? [], [assetsQuery.data?.data])
   const areaOfOperations = useMemo(() => areasRes?.data ?? [], [areasRes?.data])
-  const signals = useMemo(() => signalsRes?.data ?? [], [signalsRes?.data])
+  const signals = useMemo(() => [
+    ...(aircraftRes?.data  ?? []),
+    ...(vesselRes?.data    ?? []),
+    ...(seismicRes?.data   ?? []),
+    ...(gpsJamRes?.data    ?? []),
+    ...(wildfireRes?.data  ?? []),
+    ...(manualRes?.data    ?? []),
+    ...(aisGapRes?.data    ?? []),
+  ], [
+    aircraftRes?.data, vesselRes?.data, seismicRes?.data,
+    gpsJamRes?.data, wildfireRes?.data, manualRes?.data, aisGapRes?.data,
+  ])
   const loading = sitesQuery.isLoading || tasksQuery.isLoading
 
   const { readings } = useTelemetryStream(!isReplaying)
