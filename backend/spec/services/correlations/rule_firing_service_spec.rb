@@ -227,6 +227,141 @@ RSpec.describe Correlations::RuleFiringService do
   end
 
   # ---------------------------------------------------------------------------
+  # Confidence scoring
+  # ---------------------------------------------------------------------------
+  #
+  # confidence is a 0.0–1.0 score stored on the SignalRuleMatch:
+  #   proximity_score = 1 - (distance_km / proximity_km)
+  #   AND rule → mean of per-condition scores
+  #   OR  rule → max  of per-condition scores
+  # ---------------------------------------------------------------------------
+  describe "confidence scoring" do
+    # site at (51.5, 0.0).  1 degree of longitude at 51.5° ≈ 69 km.
+    # signal at (51.5, 0.1) → distance ≈ 6.9 km.
+    # proximity_km = 100 → proximity_score = 1 - 6.9/100 ≈ 0.93
+
+    it "stores a confidence float between 0 and 1 on the match" do
+      expect(result.payload[:match].confidence).to be_between(0.0, 1.0)
+    end
+
+    it "produces higher confidence when the signal is closer to the site" do
+      # Two separate rule instances so neither cooldown blocks the other.
+      # signal A: ~6.9 km away (lng 0.1)  → lower proximity score
+      # signal B: ~3.5 km away (lng 0.05) → higher proximity score
+      far_rule = create(:correlation_rule,
+                        conditions: { "signal_type" => "seismic_event", "proximity_km" => 100 },
+                        actions:    { "create_task" => { "priority" => "normal" } })
+      close_rule = create(:correlation_rule,
+                          conditions: { "signal_type" => "seismic_event", "proximity_km" => 100 },
+                          actions:    { "create_task" => { "priority" => "normal" } })
+
+      close_signal = create(:external_signal,
+                            lat: 51.5, lng: 0.05,
+                            signal_type: "seismic_event",
+                            source: "usgs_seismic")
+
+      far_result   = described_class.call(rule: far_rule,   signal: signal,       site: site)
+      close_result = described_class.call(rule: close_rule, signal: close_signal, site: site)
+
+      expect(close_result.payload[:match].confidence).to be > far_result.payload[:match].confidence
+    end
+
+    it "produces near-zero confidence for a signal right at the proximity boundary" do
+      # proximity_km = 100; place signal ~99 km away
+      # 1 degree latitude ≈ 111 km → 0.89° ≈ 99 km
+      boundary_signal = create(:external_signal,
+                               lat: 52.39, lng: 0.0,
+                               signal_type: "seismic_event",
+                               source: "usgs_seismic")
+      boundary_result = described_class.call(rule: rule, signal: boundary_signal, site: site)
+
+      expect(boundary_result.payload[:match].confidence).to be < 0.05
+    end
+
+    it "produces confidence of 1.0 when there is no proximity constraint" do
+      unconstrained_rule = create(:correlation_rule,
+                                  conditions: { "signal_type" => "seismic_event" },
+                                  actions: { "create_task" => { "priority" => "normal" } })
+      r = described_class.call(rule: unconstrained_rule, signal: signal, site: site)
+      expect(r.payload[:match].confidence).to eq(1.0)
+    end
+
+    it "includes confidence in the SSE broadcast payload" do
+      result
+      expect(Sse::Broadcaster.instance).to have_received(:publish).with(
+        hash_including(event: "rule_fired", data: hash_including(:confidence))
+      )
+    end
+
+    context "compound AND rule" do
+      # Both conditions: ais_gap (direct) + gps_jamming (corroboration, 30 min old)
+      let(:ais_signal) do
+        create(:external_signal,
+               signal_type: "ais_gap",
+               source:      "derived",
+               lat:         51.5, lng: 0.05)  # ~3.5 km from site
+      end
+
+      let!(:compound_and_rule) do
+        create(:correlation_rule,
+               conditions: {
+                 "operator"   => "AND",
+                 "conditions" => [
+                   { "signal_type" => "ais_gap",     "proximity_km" => 100 },
+                   { "signal_type" => "gps_jamming", "proximity_km" => 50, "time_window_minutes" => 60 }
+                 ]
+               })
+      end
+
+      before do
+        # Corroborating GPS jamming signal: very close and recent → high freshness
+        create(:external_signal,
+               signal_type: "gps_jamming",
+               source:      "gpsjam",
+               lat:         51.5, lng: 0.02,  # ~1.4 km from site
+               occurred_at: 5.minutes.ago)
+      end
+
+      it "confidence is the mean of both sub-condition scores" do
+        r = described_class.call(rule: compound_and_rule, signal: ais_signal, site: site)
+        c = r.payload[:match].confidence
+        # Both sub-conditions are strong → confidence should be well above 0.5
+        expect(c).to be > 0.5
+        expect(c).to be_between(0.0, 1.0)
+      end
+    end
+
+    context "compound OR rule" do
+      let(:ais_signal) do
+        create(:external_signal,
+               signal_type: "ais_gap",
+               source:      "derived",
+               lat:         51.5, lng: 0.1)  # 6.9 km from site
+      end
+
+      let!(:compound_or_rule) do
+        create(:correlation_rule,
+               conditions: {
+                 "operator"   => "OR",
+                 "conditions" => [
+                   { "signal_type" => "ais_gap",     "proximity_km" => 100 },
+                   { "signal_type" => "gps_jamming", "proximity_km" => 50 }
+                 ]
+               })
+      end
+
+      it "confidence is the max of the per-condition scores" do
+        r = described_class.call(rule: compound_or_rule, signal: ais_signal, site: site)
+        c = r.payload[:match].confidence
+        # ais_gap condition scores ~0.93; gps_jamming corroboration has no signals → 0.0
+        # OR max → 0.93
+        expect(c).to be > 0.8
+        expect(c).to be_between(0.0, 1.0)
+      end
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # combined actions
   # ---------------------------------------------------------------------------
   describe "combined create_task + flag_site" do

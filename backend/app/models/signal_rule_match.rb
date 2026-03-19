@@ -6,12 +6,15 @@ class SignalRuleMatch < ApplicationRecord
   belongs_to :site,  optional: true
   belongs_to :task,  optional: true
 
-  validates :fired_at, presence: true
+  validates :fired_at,   presence: true
+  validates :confidence, numericality: { greater_than_or_equal_to: 0.0, less_than_or_equal_to: 1.0 }
   validate  :metadata_schema
 
-  scope :recent, ->(hours = 24) { where(fired_at: hours.hours.ago..Time.current) }
-  scope :for_rule, ->(rule_id)  { where(correlation_rule_id: rule_id) }
-  scope :for_site, ->(site_id)  { where(site_id: site_id) }
+  scope :recent,          ->(hours = 24) { where(fired_at: hours.hours.ago..Time.current) }
+  scope :for_rule,        ->(rule_id)    { where(correlation_rule_id: rule_id) }
+  scope :for_site,        ->(site_id)    { where(site_id: site_id) }
+  scope :high_confidence, ->             { where("confidence >= ?", 0.7) }
+  scope :by_confidence,   ->             { order(confidence: :desc) }
 
   private
 

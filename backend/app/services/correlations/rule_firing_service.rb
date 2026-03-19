@@ -66,6 +66,7 @@ module Correlations
           site:             @site,
           task_id:          task&.id,
           fired_at:         Time.current,
+          confidence:       compute_confidence,
           metadata: {
             distance_km:   distance_to_site.round(2),
             signal_type:   @signal.signal_type,
@@ -89,6 +90,7 @@ module Correlations
           signal_type:   @signal.signal_type,
           source:        @signal.source,
           distance_km:   distance_to_site.round(1),
+          confidence:    match&.confidence,
           fired_at:      Time.current.iso8601,
           actions_taken: actions_taken
         }
@@ -195,6 +197,86 @@ module Correlations
         @site.latitude.to_f,  @site.longitude.to_f,
         @signal.lat.to_f, @signal.lng.to_f
       )
+    end
+
+    # ── Confidence scoring ─────────────────────────────────────────────────────
+    #
+    # Produces a 0.0–1.0 score reflecting how strongly the rule matched.
+    # Each sub-condition is scored independently, then aggregated:
+    #   AND rule → mean  (all conditions contribute equally; weakest link matters)
+    #   OR  rule → max   (best matching condition wins)
+    #
+    # Direct sub-condition (signal_type matches incoming signal):
+    #   proximity_score = 1 - (distance_km / proximity_km), clamped to [0, 1]
+    #   No proximity filter → 1.0
+    #
+    # Corroboration sub-condition (signal_type differs):
+    #   Finds the most recent nearby qualifying signal in the DB, then averages
+    #   its proximity score with a freshness score:
+    #     freshness = 1 - (age_seconds / window_seconds), clamped to [0, 1]
+    #   No nearby signals found → 0.0
+    #
+    def compute_confidence
+      norm     = @rule.normalized_conditions
+      operator = norm["operator"]
+      conds    = norm["conditions"]
+
+      scores = conds.map { |cond| condition_confidence(cond) }
+
+      raw = operator == "OR" ? scores.max : scores.sum / scores.size.to_f
+      raw.clamp(0.0, 1.0).round(2)
+    end
+
+    def condition_confidence(cond)
+      signal_type  = cond["signal_type"]
+      proximity_km = cond["proximity_km"].to_f
+
+      if signal_type.present? && signal_type != @signal.signal_type
+        corroboration_confidence(cond)
+      else
+        proximity_confidence(proximity_km, distance_to_site)
+      end
+    end
+
+    # 1.0 at the site, 0.0 at the proximity boundary, clamped below zero.
+    def proximity_confidence(proximity_km, actual_km)
+      return 1.0 if proximity_km.zero?
+      (1.0 - actual_km / proximity_km).clamp(0.0, 1.0)
+    end
+
+    # Finds the best (most recent, closest) corroborating signal and combines
+    # its proximity score with its freshness within the time window.
+    def corroboration_confidence(cond)
+      proximity_km   = cond["proximity_km"].to_f
+      window_min     = cond["time_window_minutes"].to_i
+      window_min     = 60 if window_min.zero?
+      window_seconds = window_min * 60.0
+
+      candidates = ExternalSignal.where(
+        signal_type: cond["signal_type"],
+        occurred_at: window_min.minutes.ago..Time.current
+      )
+
+      nearby = candidates.select do |s|
+        proximity_km.zero? || Correlations::EvaluatorService.haversine_km(
+          @site.latitude.to_f, @site.longitude.to_f,
+          s.lat.to_f,          s.lng.to_f
+        ) <= proximity_km
+      end
+
+      return 0.0 if nearby.empty?
+
+      best = nearby.max_by(&:occurred_at)
+      dist = Correlations::EvaluatorService.haversine_km(
+        @site.latitude.to_f, @site.longitude.to_f,
+        best.lat.to_f,        best.lng.to_f
+      )
+
+      prox_score = proximity_confidence(proximity_km, dist)
+      age_seconds = (Time.current - best.occurred_at).to_f
+      freshness   = (1.0 - age_seconds / window_seconds).clamp(0.0, 1.0)
+
+      (prox_score + freshness) / 2.0
     end
   end
 end
