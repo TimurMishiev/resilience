@@ -22,12 +22,12 @@ import {
 import { useSite, useUnflagSite, useToggleSiteStatus } from '../hooks/useSite'
 import { useTasks, useCreateTask } from '../hooks/useTasks'
 import { useSignals } from '../hooks/useSignals'
-import { useSignalRuleMatches } from '../hooks/useSignalRuleMatches'
+import { useSignalRuleMatches, useTransitionAlert } from '../hooks/useSignalRuleMatches'
 import { useAssets } from '../hooks/useAssets'
 import { useReadiness } from '../hooks/useReadiness'
 import AuditTimeline from '../components/AuditTimeline'
 import { SIGNAL_ICON_NAME } from '../lib/signalIcons'
-import type { TaskPriority } from '../api/types'
+import type { TaskPriority, AlertStatus } from '../api/types'
 import type { Task, Signal, SignalRuleMatch, Asset } from '../api/types'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -151,8 +151,46 @@ function SignalsTab({ siteId }: { siteId: string }) {
   )
 }
 
+type RuleFireTransition = { label: string; to: AlertStatus; intent: 'primary' | 'warning' | 'none' | 'danger' }
+
+const RULE_FIRE_TRANSITIONS: Record<AlertStatus, RuleFireTransition[]> = {
+  unacknowledged: [
+    { label: 'Acknowledge', to: 'acknowledged',   intent: 'primary' },
+    { label: 'Investigate', to: 'investigating',  intent: 'warning' },
+    { label: 'Close',       to: 'closed',         intent: 'none'    },
+  ],
+  acknowledged: [
+    { label: 'Investigate', to: 'investigating',  intent: 'warning' },
+    { label: 'Close',       to: 'closed',         intent: 'none'    },
+    { label: 'Reopen',      to: 'unacknowledged', intent: 'none'    },
+  ],
+  investigating: [
+    { label: 'Close',       to: 'closed',         intent: 'none'    },
+    { label: 'Acknowledge', to: 'acknowledged',   intent: 'primary' },
+  ],
+  closed: [
+    { label: 'Reopen',      to: 'unacknowledged', intent: 'none'    },
+    { label: 'Investigate', to: 'investigating',  intent: 'warning' },
+  ],
+}
+
+const ALERT_STATUS_INTENT_SITE: Record<AlertStatus, 'danger' | 'warning' | 'primary' | 'success'> = {
+  unacknowledged: 'danger',
+  acknowledged:   'warning',
+  investigating:  'primary',
+  closed:         'success',
+}
+
+const ALERT_STATUS_LABEL_SITE: Record<AlertStatus, string> = {
+  unacknowledged: 'New',
+  acknowledged:   'Ack',
+  investigating:  'Inv',
+  closed:         'Done',
+}
+
 function RuleFiresTab({ siteId }: { siteId: string }) {
   const { data, isPending, error } = useSignalRuleMatches({ site_id: siteId, per_page: 50 })
+  const transition = useTransitionAlert()
 
   if (isPending) return <Spinner size={20} style={{ marginTop: 24 }} />
   if (error) return <Callout intent="danger" compact>{error.message}</Callout>
@@ -176,6 +214,7 @@ function RuleFiresTab({ siteId }: { siteId: string }) {
         <tr>
           <th>Rule</th>
           <th>Signal</th>
+          <th>Status</th>
           <th>Actions</th>
           <th>Distance</th>
           <th>Fired</th>
@@ -183,30 +222,60 @@ function RuleFiresTab({ siteId }: { siteId: string }) {
       </thead>
       <tbody>
         {matches.map((m: SignalRuleMatch) => {
-          const actions = (m.metadata?.actions_taken as string[] | undefined) ?? []
-          const distKm = m.metadata?.distance_km as number | undefined
+          const actions  = (m.metadata?.actions_taken as string[] | undefined) ?? []
+          const distKm   = m.metadata?.distance_km as number | undefined
+          const status   = (m.workflow_status ?? 'unacknowledged') as AlertStatus
+          const txBtns   = RULE_FIRE_TRANSITIONS[status] ?? []
           return (
-            <tr key={m.id}>
-              <td>{m.correlation_rule?.name ?? <span className="bp6-text-muted">—</span>}</td>
-              <td className="mono">
-                {m.signal
-                  ? <><Icon icon={SIGNAL_ICON_NAME[m.signal.signal_type] ?? 'dot'} size={12} style={{ marginRight: 5 }} />{m.signal.signal_type.replace(/_/g, ' ')}</>
-                  : <span className="bp6-text-muted">—</span>}
-              </td>
-              <td>
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                  {actions.length > 0
-                    ? actions.map((a) => (
-                        <Tag key={a} minimal intent="warning" style={{ fontSize: 11 }}>
-                          {a.replace(/_/g, ' ')}
-                        </Tag>
-                      ))
+            <>
+              <tr key={m.id}>
+                <td>{m.correlation_rule?.name ?? <span className="bp6-text-muted">—</span>}</td>
+                <td className="mono">
+                  {m.signal
+                    ? <><Icon icon={SIGNAL_ICON_NAME[m.signal.signal_type] ?? 'dot'} size={12} style={{ marginRight: 5 }} />{m.signal.signal_type.replace(/_/g, ' ')}</>
                     : <span className="bp6-text-muted">—</span>}
-                </div>
-              </td>
-              <td className="mono">{distKm != null ? `${Number(distKm).toFixed(1)} km` : '—'}</td>
-              <td className="mono">{fmt(m.fired_at)}</td>
-            </tr>
+                </td>
+                <td>
+                  <Tag minimal intent={ALERT_STATUS_INTENT_SITE[status] ?? 'none'} style={{ fontSize: 10, fontWeight: 600 }}>
+                    {ALERT_STATUS_LABEL_SITE[status] ?? status}
+                  </Tag>
+                </td>
+                <td>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    {actions.length > 0
+                      ? actions.map((a) => (
+                          <Tag key={a} minimal intent="warning" style={{ fontSize: 11 }}>
+                            {a.replace(/_/g, ' ')}
+                          </Tag>
+                        ))
+                      : <span className="bp6-text-muted">—</span>}
+                  </div>
+                </td>
+                <td className="mono">{distKm != null ? `${Number(distKm).toFixed(1)} km` : '—'}</td>
+                <td className="mono">{fmt(m.fired_at)}</td>
+              </tr>
+              {txBtns.length > 0 && (
+                <tr key={`${m.id}-tx`} style={{ background: 'transparent' }}>
+                  <td colSpan={6} style={{ paddingTop: 2, paddingBottom: 6, border: 'none' }}>
+                    <div style={{ display: 'flex', gap: 4 }} onClick={(e) => e.stopPropagation()}>
+                      {txBtns.map((btn) => (
+                        <Button
+                          key={btn.to}
+                          small
+                          minimal
+                          intent={btn.intent}
+                          disabled={transition.isPending}
+                          onClick={() => transition.mutate({ id: m.id, body: { to_status: btn.to } })}
+                          style={{ fontSize: 11 }}
+                        >
+                          {btn.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </>
           )
         })}
       </tbody>

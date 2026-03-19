@@ -1,4 +1,4 @@
-import { Callout, Classes, Icon, Tag, Tooltip } from '@blueprintjs/core'
+import { Button, Callout, Classes, Icon, Tag, Tooltip } from '@blueprintjs/core'
 import { useNavigate } from 'react-router-dom'
 import {
   BarChart,
@@ -14,7 +14,7 @@ import {
 } from 'recharts'
 import { useReadiness, useThroughput } from '../hooks/useReadiness'
 import { useTasks } from '../hooks/useTasks'
-import { useSignalRuleMatches } from '../hooks/useSignalRuleMatches'
+import { useSignalRuleMatches, useTransitionAlert } from '../hooks/useSignalRuleMatches'
 import { useReplay } from '../context/ReplayContext'
 import type { WorkflowStatus, TaskPriority, SignalRuleMatch, AlertStatus } from '../api/types'
 import { SIGNAL_ICON_NAME } from '../lib/signalIcons'
@@ -77,8 +77,32 @@ function fmtTime(iso: string) {
   })
 }
 
+type AlertTransition = { label: string; to: AlertStatus; intent: 'primary' | 'warning' | 'none' | 'danger' }
+
+const ALERT_TRANSITIONS: Record<AlertStatus, AlertTransition[]> = {
+  unacknowledged: [
+    { label: 'Acknowledge', to: 'acknowledged',  intent: 'primary' },
+    { label: 'Investigate', to: 'investigating', intent: 'warning' },
+    { label: 'Close',       to: 'closed',        intent: 'none'    },
+  ],
+  acknowledged: [
+    { label: 'Investigate', to: 'investigating', intent: 'warning' },
+    { label: 'Close',       to: 'closed',        intent: 'none'    },
+    { label: 'Reopen',      to: 'unacknowledged', intent: 'none'   },
+  ],
+  investigating: [
+    { label: 'Close',       to: 'closed',        intent: 'none'    },
+    { label: 'Acknowledge', to: 'acknowledged',  intent: 'primary' },
+  ],
+  closed: [
+    { label: 'Reopen',      to: 'unacknowledged', intent: 'none'   },
+    { label: 'Investigate', to: 'investigating', intent: 'warning' },
+  ],
+}
+
 function AlertsPanel({ matches }: { matches: SignalRuleMatch[] }) {
-  const navigate = useNavigate()
+  const navigate   = useNavigate()
+  const transition = useTransitionAlert()
 
   if (matches.length === 0) {
     return <p className="bp6-text-muted" style={{ fontSize: 13, margin: 0 }}>No rule fires recorded yet.</p>
@@ -92,68 +116,94 @@ function AlertsPanel({ matches }: { matches: SignalRuleMatch[] }) {
         const hasTask = actions.some((a) => a.includes('task'))
         const distKm  = m.metadata?.distance_km as number | undefined
         const intent  = hasFlag ? 'danger' : hasTask ? 'warning' : 'none'
-        const status  = m.workflow_status ?? 'unacknowledged'
+        const status  = (m.workflow_status ?? 'unacknowledged') as AlertStatus
         const conf    = typeof m.confidence === 'number' ? m.confidence : null
+        const txBtns  = ALERT_TRANSITIONS[status] ?? []
 
         return (
-          <div
-            key={m.id}
-            className={`alert-row alert-row--${intent}`}
-            onClick={() => m.site?.id && navigate(`/sites/${m.site.id}`)}
-            style={{ cursor: m.site?.id ? 'pointer' : 'default' }}
-          >
-            <div className="alert-row-left">
-              <span className="alert-signal-icon">
-                {m.signal
-                  ? <Icon icon={SIGNAL_ICON_NAME[m.signal.signal_type] ?? 'dot'} size={14} />
-                  : <Icon icon="dot" size={14} />}
-              </span>
-              <div className="alert-body">
-                <span className="alert-rule-name">{m.correlation_rule?.name ?? 'Unknown rule'}</span>
-                {m.site && (
-                  <span className="alert-site bp6-text-muted">@ {m.site.name}</span>
-                )}
+          <div key={m.id} className={`alert-row alert-row--${intent}`}>
+            {/* Main card body — navigates to site */}
+            <div
+              className="alert-row-main"
+              onClick={() => m.site?.id && navigate(`/sites/${m.site.id}`)}
+              style={{ cursor: m.site?.id ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+            >
+              <div className="alert-row-left">
+                <span className="alert-signal-icon">
+                  {m.signal
+                    ? <Icon icon={SIGNAL_ICON_NAME[m.signal.signal_type] ?? 'dot'} size={14} />
+                    : <Icon icon="dot" size={14} />}
+                </span>
+                <div className="alert-body">
+                  <span className="alert-rule-name">{m.correlation_rule?.name ?? 'Unknown rule'}</span>
+                  {m.site && (
+                    <span className="alert-site bp6-text-muted">@ {m.site.name}</span>
+                  )}
+                </div>
               </div>
-            </div>
-            <div className="alert-row-right">
-              <div className="alert-actions">
-                {/* Workflow status chip */}
-                <Tag
-                  minimal
-                  intent={ALERT_STATUS_INTENT[status as AlertStatus] ?? 'none'}
-                  style={{ fontSize: 10, fontWeight: 600 }}
-                >
-                  {ALERT_STATUS_LABEL[status as AlertStatus] ?? status}
-                </Tag>
-
-                {/* Confidence badge */}
-                {conf != null && (
-                  <Tooltip
-                    content={`Match confidence: ${Math.round(conf * 100)}%`}
-                    placement="top"
+              <div className="alert-row-right">
+                <div className="alert-actions">
+                  {/* Workflow status chip */}
+                  <Tag
+                    minimal
+                    intent={ALERT_STATUS_INTENT[status] ?? 'none'}
+                    style={{ fontSize: 10, fontWeight: 600 }}
                   >
-                    <span
-                      className="alert-confidence"
-                      style={{ color: confidenceColor(conf), fontSize: 11, fontWeight: 600, cursor: 'default' }}
-                    >
-                      {Math.round(conf * 100)}%
-                    </span>
-                  </Tooltip>
-                )}
-
-                {/* Action tags */}
-                {actions.map((a) => (
-                  <Tag key={a} minimal intent={hasFlag ? 'danger' : 'warning'} style={{ fontSize: 10 }}>
-                    {a.replace(/_/g, ' ')}
+                    {ALERT_STATUS_LABEL[status] ?? status}
                   </Tag>
-                ))}
 
-                {distKm != null && (
-                  <span className="bp6-text-muted" style={{ fontSize: 11 }}>{Number(distKm).toFixed(0)} km</span>
-                )}
+                  {/* Confidence badge */}
+                  {conf != null && (
+                    <Tooltip
+                      content={`Match confidence: ${Math.round(conf * 100)}%`}
+                      placement="top"
+                    >
+                      <span
+                        className="alert-confidence"
+                        style={{ color: confidenceColor(conf), fontSize: 11, fontWeight: 600, cursor: 'default' }}
+                      >
+                        {Math.round(conf * 100)}%
+                      </span>
+                    </Tooltip>
+                  )}
+
+                  {/* Action tags */}
+                  {actions.map((a) => (
+                    <Tag key={a} minimal intent={hasFlag ? 'danger' : 'warning'} style={{ fontSize: 10 }}>
+                      {a.replace(/_/g, ' ')}
+                    </Tag>
+                  ))}
+
+                  {distKm != null && (
+                    <span className="bp6-text-muted" style={{ fontSize: 11 }}>{Number(distKm).toFixed(0)} km</span>
+                  )}
+                </div>
+                <span className="alert-time bp6-text-muted">{fmtTime(m.fired_at)}</span>
               </div>
-              <span className="alert-time bp6-text-muted">{fmtTime(m.fired_at)}</span>
             </div>
+
+            {/* Inline transition row */}
+            {txBtns.length > 0 && (
+              <div
+                className="alert-row-transitions"
+                onClick={(e) => e.stopPropagation()}
+                style={{ display: 'flex', gap: 4, padding: '4px 8px 6px 30px' }}
+              >
+                {txBtns.map((btn) => (
+                  <Button
+                    key={btn.to}
+                    small
+                    minimal
+                    intent={btn.intent}
+                    disabled={transition.isPending}
+                    onClick={() => transition.mutate({ id: m.id, body: { to_status: btn.to } })}
+                    style={{ fontSize: 11 }}
+                  >
+                    {btn.label}
+                  </Button>
+                ))}
+              </div>
+            )}
           </div>
         )
       })}

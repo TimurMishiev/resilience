@@ -694,6 +694,8 @@ vessel_signals = [
   { external_id: "DEMO-AIS-006", lat:  13.15, lng: 144.32, speed: 11.7, heading: 85,  raw_payload: { mmsi: "123456006", vessel_name: "PACIFIC VOYAGER",  flag: "MH", vessel_type: "Container" } },
 ]
 
+demo_base_time = Time.zone.parse("2026-01-01T00:00:00Z")
+
 vessel_signals.each_with_index do |attrs, i|
   ExternalSignal.upsert(
     {
@@ -704,13 +706,30 @@ vessel_signals.each_with_index do |attrs, i|
       lng:         attrs[:lng],
       speed:       attrs[:speed],
       heading:     attrs[:heading],
-      occurred_at: Time.current - i.minutes,
+      occurred_at: demo_base_time - i.minutes,
       ingested_at: Time.current,
       raw_payload: attrs[:raw_payload],
     },
-    unique_by: :external_id
+    unique_by: %i[source external_id occurred_at]
   )
   puts "  Vessel: #{attrs[:raw_payload][:vessel_name]} (#{attrs[:lat]}, #{attrs[:lng]})"
+end
+
+puts "  Seeding Vessel records from demo AIS signals..."
+ExternalSignal.where(signal_type: "vessel_position", source: "ais")
+              .where("external_id LIKE 'DEMO-AIS-%'")
+              .each_with_index do |signal, i|
+  vessel, = Vessel.upsert_from_signal!(signal)
+  # Seed a few historical track points per vessel
+  3.times do |j|
+    VesselTrack.find_or_create_by(vessel: vessel, occurred_at: signal.occurred_at - (j + 1).hours) do |t|
+      t.lat     = (signal.lat.to_f + (rand * 0.1 - 0.05)).round(4)
+      t.lng     = (signal.lng.to_f + (rand * 0.1 - 0.05)).round(4)
+      t.speed   = signal.speed
+      t.heading = signal.heading
+    end
+  end
+  puts "  Vessel seeded: #{signal.raw_payload["vessel_name"] || signal.raw_payload[:vessel_name]} (#{vessel.mmsi})"
 end
 
 wildfire_signals = [
@@ -742,11 +761,11 @@ gps_jam_signals.each_with_index do |attrs, i|
       lat:         attrs[:lat],
       lng:         attrs[:lng],
       magnitude:   attrs[:magnitude],
-      occurred_at: Time.current - i.minutes,
+      occurred_at: demo_base_time - i.minutes,
       ingested_at: Time.current,
       raw_payload: attrs[:raw_payload],
     },
-    unique_by: :external_id
+    unique_by: %i[source external_id occurred_at]
   )
   puts "  GPS Jam: #{(attrs[:magnitude] * 100).round}% intensity (#{attrs[:lat]}, #{attrs[:lng]})"
 end
@@ -760,11 +779,11 @@ wildfire_signals.each_with_index do |attrs, i|
       lat:         attrs[:lat],
       lng:         attrs[:lng],
       magnitude:   attrs[:magnitude],
-      occurred_at: Time.current - i.minutes,
+      occurred_at: demo_base_time - i.minutes,
       ingested_at: Time.current,
       raw_payload: attrs[:raw_payload],
     },
-    unique_by: :external_id
+    unique_by: %i[source external_id occurred_at]
   )
   puts "  Wildfire: FRP #{attrs[:magnitude]} MW (#{attrs[:lat]}, #{attrs[:lng]})"
 end

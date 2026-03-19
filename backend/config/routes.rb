@@ -67,5 +67,11 @@ Rails.application.routes.draw do
       end
     end
     resources :areas_of_operation,    only: %i[index show create update destroy]
+
+    resources :vessels, only: %i[index show] do
+      member do
+        get :tracks
+      end
+    end
   end
 end

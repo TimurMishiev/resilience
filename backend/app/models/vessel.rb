@@ -1,6 +1,7 @@
 class Vessel < ApplicationRecord
   # ── Associations ────────────────────────────────────────────────────────────
   belongs_to :last_signal, class_name: "ExternalSignal", optional: true
+  has_many   :vessel_tracks, dependent: :destroy
 
   # ── Validations ─────────────────────────────────────────────────────────────
   validates :mmsi,          presence: true, uniqueness: true
