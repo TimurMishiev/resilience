@@ -2,8 +2,26 @@ module Correlations
   # Evaluates all active CorrelationRules against a newly ingested Signal.
   # For each matching rule/site pair, delegates to RuleFiringService.
   #
-  # Haversine formula is implemented here and exposed as a module method so
-  # RuleFiringService can reuse it without an extra dependency.
+  # Compound rule evaluation
+  # ------------------------
+  # Rules are always evaluated through normalized_conditions, which coerces
+  # legacy flat rules into the canonical { "operator", "conditions" => [...] }
+  # form. This means the evaluator never has to special-case the two formats.
+  #
+  # For each sub-condition in a compound rule:
+  #   Direct path      — signal_type matches the incoming signal:
+  #                      proximity, magnitude, and count_threshold are checked
+  #                      against the incoming signal and recent DB history.
+  #   Corroboration path — signal_type does NOT match the incoming signal:
+  #                      the DB is queried for a recent signal of the required
+  #                      type near the site. This is how compound rules fuse
+  #                      cross-stream intelligence (e.g. AIS gap + GPS jamming).
+  #
+  # The operator (AND / OR) then determines whether all or any sub-conditions
+  # must be satisfied before the rule fires.
+  #
+  # Haversine formula is exposed as a class method so RuleFiringService can
+  # reuse it without an extra dependency.
   class EvaluatorService < ApplicationService
     EARTH_RADIUS_KM = 6371.0
 
@@ -22,17 +40,21 @@ module Correlations
     end
 
     def call
-      rules  = CorrelationRule.active
-      fired  = []
+      rules = CorrelationRule.active
+      fired = []
 
       rules.each do |rule|
         next if rule.on_cooldown?
-        next unless signal_type_matches?(rule)
+
+        norm     = rule.normalized_conditions
+        operator = norm["operator"]   # "AND" or "OR"
+        conds    = norm["conditions"]
 
         target_sites(rule).each do |site|
-          next unless within_proximity?(site, rule)
-          next unless count_threshold_met?(rule, site)
-          next unless magnitude_threshold_met?(rule)
+          results = conds.map { |cond| evaluate_single_condition(cond, site) }
+          match   = operator == "OR" ? results.any? : results.all?
+
+          next unless match
 
           Correlations::RuleFiringJob.perform_later(rule.id, @signal.id, site.id)
           fired << { rule_id: rule.id, site_id: site.id }
@@ -44,38 +66,79 @@ module Correlations
 
     private
 
-    def signal_type_matches?(rule)
-      expected = rule.conditions["signal_type"]
-      expected.blank? || expected == @signal.signal_type
+    # ── Per-condition evaluation ───────────────────────────────────────────────
+
+    # Returns true if this single condition is satisfied given the incoming
+    # signal and the current site.
+    def evaluate_single_condition(cond, site)
+      signal_type = cond["signal_type"]
+
+      # Corroboration path — this condition requires a *different* signal type.
+      # Look for a recent signal of that type near the site in the DB.
+      if signal_type.present? && signal_type != @signal.signal_type
+        return corroborating_signal_exists?(cond, site)
+      end
+
+      # Direct path — the incoming signal satisfies the required type (or the
+      # condition has no signal_type filter at all).
+      proximity_ok?(cond, site) &&
+        magnitude_ok?(cond)     &&
+        count_ok?(cond, site)
     end
 
-    def target_sites(rule)
-      site_id = rule.conditions["site_id"]
-      return Site.where(id: site_id) if site_id.present?
+    # Query the DB for at least one (or count_threshold) recent signals of the
+    # required type near the site. Called when a sub-condition targets a
+    # signal type different from the one that triggered the evaluator.
+    def corroborating_signal_exists?(cond, site)
+      window_min   = cond["time_window_minutes"].to_i
+      window_min   = 60 if window_min.zero?
+      proximity_km = cond["proximity_km"].to_f
+      threshold    = [ cond["count_threshold"].to_i, 1 ].max
 
-      base = Site.active
-      base = base.where(area_of_operation_id: rule.area_of_operation_id) if rule.area_of_operation_id.present?
-      base
+      candidates = ExternalSignal.where(
+        signal_type: cond["signal_type"],
+        occurred_at: window_min.minutes.ago..Time.current
+      )
+
+      if proximity_km > 0
+        nearby = candidates.select do |s|
+          self.class.haversine_km(
+            site.latitude.to_f, site.longitude.to_f,
+            s.lat.to_f,         s.lng.to_f
+          ) <= proximity_km
+        end
+        nearby.size >= threshold
+      else
+        candidates.count >= threshold
+      end
     end
 
-    def within_proximity?(site, rule)
-      km = rule.conditions["proximity_km"].to_f
+    # ── Shared helpers (direct path) ───────────────────────────────────────────
+
+    def proximity_ok?(cond, site)
+      km = cond["proximity_km"].to_f
       return true if km.zero?
 
       distance = self.class.haversine_km(
         site.latitude.to_f,  site.longitude.to_f,
-        @signal.lat.to_f, @signal.lng.to_f
+        @signal.lat.to_f,    @signal.lng.to_f
       )
       distance <= km
     end
 
-    def count_threshold_met?(rule, site)
-      threshold = rule.conditions["count_threshold"].to_i
+    def magnitude_ok?(cond)
+      min = cond["magnitude_min"]
+      return true if min.blank?
+      @signal.magnitude.to_f >= min.to_f
+    end
+
+    def count_ok?(cond, site)
+      threshold = cond["count_threshold"].to_i
       return true if threshold <= 1
 
-      window_min   = rule.conditions["time_window_minutes"].to_i
+      window_min   = cond["time_window_minutes"].to_i
       window_min   = 60 if window_min.zero?
-      proximity_km = rule.conditions["proximity_km"].to_f
+      proximity_km = cond["proximity_km"].to_f
 
       recent_signals = ExternalSignal.where(
         signal_type: @signal.signal_type,
@@ -85,17 +148,25 @@ module Correlations
       nearby_count = recent_signals.count do |s|
         self.class.haversine_km(
           site.latitude.to_f, site.longitude.to_f,
-          s.lat.to_f, s.lng.to_f
+          s.lat.to_f,         s.lng.to_f
         ) <= proximity_km
       end
 
       nearby_count >= threshold
     end
 
-    def magnitude_threshold_met?(rule)
-      min = rule.conditions["magnitude_min"]
-      return true if min.blank?
-      @signal.magnitude.to_f >= min.to_f
+    # ── Site targeting ─────────────────────────────────────────────────────────
+
+    # Returns the set of sites this rule should be evaluated against.
+    # Legacy flat rules can carry a site_id filter; compound rules scope via
+    # area_of_operation_id (a model attribute) or default to all active sites.
+    def target_sites(rule)
+      site_id = rule.conditions["site_id"]
+      return Site.where(id: site_id) if site_id.present?
+
+      base = Site.active
+      base = base.where(area_of_operation_id: rule.area_of_operation_id) if rule.area_of_operation_id.present?
+      base
     end
   end
 end

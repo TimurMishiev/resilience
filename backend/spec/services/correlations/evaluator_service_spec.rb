@@ -209,5 +209,125 @@ RSpec.describe Correlations::EvaluatorService do
         expect(result.payload[:fired_count]).to eq(1)
       end
     end
+
+    # -------------------------------------------------------------------------
+    # Compound AND / OR rules
+    # -------------------------------------------------------------------------
+    #
+    # Compound rules require two or more sub-conditions evaluated via
+    # normalized_conditions. Each sub-condition either:
+    #   - matches the incoming signal's type (direct path), or
+    #   - requires a corroborating DB signal of a different type (corroboration path).
+    #
+    # The operator (AND / OR) determines whether all or any must be satisfied.
+    # -------------------------------------------------------------------------
+
+    context "compound AND rule" do
+      # Signal that triggers evaluation
+      let(:ais_gap_signal) do
+        create(:external_signal,
+               signal_type: "ais_gap",
+               source:      "derived",
+               lat:         51.5,
+               lng:         0.1,
+               occurred_at: Time.current)
+      end
+
+      # Rule: AIS gap AND GPS jamming must both be present near the site
+      let!(:compound_and_rule) do
+        create(:correlation_rule,
+               conditions: {
+                 "operator"   => "AND",
+                 "conditions" => [
+                   { "signal_type" => "ais_gap",     "proximity_km" => 50 },
+                   { "signal_type" => "gps_jamming", "proximity_km" => 50 }
+                 ]
+               })
+      end
+
+      it "does not fire when the corroborating gps_jamming signal is absent" do
+        result = described_class.call(signal: ais_gap_signal)
+        expect(result.payload[:fired_count]).to eq(0)
+      end
+
+      context "when a corroborating gps_jamming signal exists near the site" do
+        before do
+          # Place a GPS jamming signal within 50 km of the site at (51.5, 0.0)
+          create(:external_signal,
+                 signal_type: "gps_jamming",
+                 source:      "gpsjam",
+                 lat:         51.5,
+                 lng:         0.05,   # ~4 km from site
+                 occurred_at: 30.minutes.ago)
+        end
+
+        it "fires when both conditions are satisfied" do
+          result = described_class.call(signal: ais_gap_signal)
+          expect(result.payload[:fired_count]).to eq(1)
+        end
+      end
+
+      context "when the corroborating gps_jamming signal is outside the proximity radius" do
+        before do
+          # GPS jamming signal far from the site — beyond 50 km
+          create(:external_signal,
+                 signal_type: "gps_jamming",
+                 source:      "gpsjam",
+                 lat:         52.5,   # ~111 km north of site
+                 lng:         0.0,
+                 occurred_at: 30.minutes.ago)
+        end
+
+        it "does not fire when corroborating signal is out of range" do
+          result = described_class.call(signal: ais_gap_signal)
+          expect(result.payload[:fired_count]).to eq(0)
+        end
+      end
+    end
+
+    context "compound OR rule" do
+      # Rule: AIS gap OR GPS jamming — either signal alone is sufficient
+      let!(:compound_or_rule) do
+        create(:correlation_rule,
+               conditions: {
+                 "operator"   => "OR",
+                 "conditions" => [
+                   { "signal_type" => "ais_gap",     "proximity_km" => 50 },
+                   { "signal_type" => "gps_jamming", "proximity_km" => 50 }
+                 ]
+               })
+      end
+
+      it "fires when only the first condition is met (ais_gap incoming signal)" do
+        ais_gap_signal = create(:external_signal,
+                                signal_type: "ais_gap",
+                                source:      "derived",
+                                lat:         51.5,
+                                lng:         0.1)
+        result = described_class.call(signal: ais_gap_signal)
+        expect(result.payload[:fired_count]).to eq(1)
+      end
+
+      it "fires when only the second condition is met (gps_jamming incoming signal)" do
+        gps_signal = create(:external_signal,
+                            signal_type: "gps_jamming",
+                            source:      "gpsjam",
+                            lat:         51.5,
+                            lng:         0.1)
+        result = described_class.call(signal: gps_signal)
+        expect(result.payload[:fired_count]).to eq(1)
+      end
+
+      it "does not fire when neither condition is met" do
+        # seismic_event matches neither ais_gap nor gps_jamming, and no
+        # corroborating signals of either type exist in the DB
+        seismic_signal = create(:external_signal,
+                                signal_type: "seismic_event",
+                                lat:         51.5,
+                                lng:         0.1)
+        result = described_class.call(signal: seismic_signal)
+        expect(result.payload[:fired_count]).to eq(0)
+      end
+    end
   end
 end
