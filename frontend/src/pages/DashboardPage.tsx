@@ -1,4 +1,4 @@
-import { Callout, Classes, Tag, Tooltip } from '@blueprintjs/core'
+import { Callout, Classes, Icon, Tag, Tooltip } from '@blueprintjs/core'
 import { useNavigate } from 'react-router-dom'
 import {
   BarChart,
@@ -17,6 +17,7 @@ import { useTasks } from '../hooks/useTasks'
 import { useSignalRuleMatches } from '../hooks/useSignalRuleMatches'
 import { useReplay } from '../context/ReplayContext'
 import type { WorkflowStatus, TaskPriority, SignalRuleMatch, AlertStatus } from '../api/types'
+import { SIGNAL_ICON_NAME } from '../lib/signalIcons'
 
 const STATUS_ORDER: WorkflowStatus[] = ['new', 'triaged', 'in_progress', 'blocked', 'resolved']
 const PRIORITY_ORDER: TaskPriority[] = ['critical', 'high', 'normal', 'low']
@@ -46,16 +47,6 @@ function scoreIntent(score: number | null) {
 function pct(n: number | null): string {
   if (n === null) return '—'
   return `${Math.round(n * 100)}%`
-}
-
-const SIGNAL_ICON: Record<string, string> = {
-  aircraft_position: '✈',
-  vessel_position:   '⛵',
-  seismic_event:     '🌊',
-  gps_jamming:       '📡',
-  wildfire:          '🔥',
-  ais_gap:           '🚢',
-  manual:            '⚡',
 }
 
 const ALERT_STATUS_LABEL: Record<AlertStatus, string> = {
@@ -113,7 +104,9 @@ function AlertsPanel({ matches }: { matches: SignalRuleMatch[] }) {
           >
             <div className="alert-row-left">
               <span className="alert-signal-icon">
-                {m.signal ? (SIGNAL_ICON[m.signal.signal_type] ?? '•') : '•'}
+                {m.signal
+                  ? <Icon icon={SIGNAL_ICON_NAME[m.signal.signal_type] ?? 'dot'} size={14} />
+                  : <Icon icon="dot" size={14} />}
               </span>
               <div className="alert-body">
                 <span className="alert-rule-name">{m.correlation_rule?.name ?? 'Unknown rule'}</span>

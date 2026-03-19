@@ -19,6 +19,8 @@ import { useSignals } from '../hooks/useSignals'
 import { useReplay } from '../context/ReplayContext'
 import type { Site, Task, Asset, WorkflowStatus, Signal } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
+import { Icon } from '@blueprintjs/core'
+import { SIGNAL_ICON_NAME, SIGNAL_ICON_CHAR } from '../lib/signalIcons'
 
 // ---------------------------------------------------------------------------
 // Signal layer config
@@ -41,14 +43,8 @@ const SIGNAL_LABELS: Record<string, string> = {
   manual:            'Manual',
 }
 
-const SIGNAL_ICONS: Record<string, string> = {
-  aircraft_position: '✈',
-  vessel_position:   '⛴',
-  seismic_event:     '⚡',
-  gps_jamming:       '⚠',
-  wildfire:          '🔥',
-  manual:            '●',
-}
+// SIGNAL_ICON_CHAR used for MapLibre HTML string contexts (popup setHTML)
+// SIGNAL_ICON_NAME used in JSX contexts (<Icon> component)
 
 const SOURCE_LABELS: Record<string, string> = {
   opensky:        'OpenSky',
@@ -631,7 +627,7 @@ export default function MapPage() {
       const props = e.features[0].properties as Record<string, string>
       const coords = (e.features[0].geometry as unknown as { coordinates: [number, number] }).coordinates
       const label  = SIGNAL_LABELS[props.signal_type] ?? props.signal_type
-      const icon   = SIGNAL_ICONS[props.signal_type] ?? '●'
+      const icon   = SIGNAL_ICON_CHAR[props.signal_type] ?? '●'
       const color  = SIGNAL_COLORS[props.signal_type] ?? '#8f99a8'
       const mag    = props.magnitude ? `<span class="sp-row"><span>Magnitude</span><b>${Number(props.magnitude).toFixed(1)}</b></span>` : ''
       const alt    = props.altitude  ? `<span class="sp-row"><span>Altitude</span><b>${Number(props.altitude).toFixed(0)} m</b></span>` : ''
@@ -882,7 +878,7 @@ export default function MapPage() {
         <div className="map-panel bp6-dark">
           <div className="map-panel-header">
             <span className="map-panel-title">
-              {SIGNAL_ICONS[selectedSignal.signal_type]}{' '}
+              <Icon icon={SIGNAL_ICON_NAME[selectedSignal.signal_type] ?? 'dot'} size={14} style={{ marginRight: 6 }} />
               {SIGNAL_LABELS[selectedSignal.signal_type] ?? selectedSignal.signal_type}
             </span>
             <button

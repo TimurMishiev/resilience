@@ -10,6 +10,7 @@ import {
   FormGroup,
   HTMLSelect,
   HTMLTable,
+  Icon,
   InputGroup,
   NonIdealState,
   Spinner,
@@ -25,6 +26,7 @@ import { useSignalRuleMatches } from '../hooks/useSignalRuleMatches'
 import { useAssets } from '../hooks/useAssets'
 import { useReadiness } from '../hooks/useReadiness'
 import AuditTimeline from '../components/AuditTimeline'
+import { SIGNAL_ICON_NAME } from '../lib/signalIcons'
 import type { TaskPriority } from '../api/types'
 import type { Task, Signal, SignalRuleMatch, Asset } from '../api/types'
 
@@ -45,14 +47,6 @@ const STATUS_INTENT: Record<string, 'success' | 'warning' | 'danger' | 'none' | 
   resolved: 'success', blocked: 'danger', in_progress: 'primary', triaged: 'warning', new: 'none',
 }
 
-const SIGNAL_ICON: Record<string, string> = {
-  aircraft_position: '✈',
-  vessel_position: '⛵',
-  seismic_event: '🌊',
-  gps_jamming: '📡',
-  wildfire: '🔥',
-  manual: '⚡',
-}
 
 // ── sub-panels ────────────────────────────────────────────────────────────────
 
@@ -141,7 +135,7 @@ function SignalsTab({ siteId }: { siteId: string }) {
         {signals.map((s: Signal) => (
           <tr key={s.id}>
             <td>
-              <span style={{ marginRight: 6 }}>{SIGNAL_ICON[s.signal_type] ?? '•'}</span>
+              <Icon icon={SIGNAL_ICON_NAME[s.signal_type] ?? 'dot'} size={12} style={{ marginRight: 6 }} />
               {s.signal_type.replace(/_/g, ' ')}
             </td>
             <td className="mono">{s.source}</td>
@@ -196,7 +190,7 @@ function RuleFiresTab({ siteId }: { siteId: string }) {
               <td>{m.correlation_rule?.name ?? <span className="bp6-text-muted">—</span>}</td>
               <td className="mono">
                 {m.signal
-                  ? `${SIGNAL_ICON[m.signal.signal_type] ?? ''} ${m.signal.signal_type.replace(/_/g, ' ')}`
+                  ? <><Icon icon={SIGNAL_ICON_NAME[m.signal.signal_type] ?? 'dot'} size={12} style={{ marginRight: 5 }} />{m.signal.signal_type.replace(/_/g, ' ')}</>
                   : <span className="bp6-text-muted">—</span>}
               </td>
               <td>
