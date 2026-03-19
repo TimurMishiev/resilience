@@ -38,10 +38,15 @@ class Vessel < ApplicationRecord
       created = v.new_record?
 
       v.assign_attributes(
-        name:           payload["callsign"] || payload["name"],
-        vessel_type:    payload["vessel_type"],
+        # name: prefer the vessel's registered name, fall back to radio callsign.
+        # AIS stores name under "name" key, callsign under "callsign" key.
+        name:           payload["name"] || payload["callsign"],
+        # vessel_type: AIS TYPE field is a numeric code (e.g. 70=cargo, 80=tanker).
+        # Stored as-is; a lookup table can map codes to labels in the UI.
+        vessel_type:    payload["vessel_type"]&.to_s,
         flag:           payload["flag"],
-        destination:    payload["destination"],
+        # AIS service stores destination under "dest" (not "destination").
+        destination:    payload["dest"] || payload["destination"],
         lat:            signal.lat,
         lng:            signal.lng,
         speed:          signal.speed,

@@ -129,7 +129,7 @@ module Feeds
       heading = vessel["HEADING"]&.to_i
       heading = nil if heading == HEADING_UNAVAILABLE
 
-      Signals::IngestService.call(
+      result = Signals::IngestService.call(
         source:      "ais",
         signal_type: "vessel_position",
         external_id: mmsi.to_s,
@@ -150,6 +150,20 @@ module Feeds
           dest:        vessel["DEST"]&.strip.presence
         }
       )
+
+      # Update vessel entity state on every successful AIS ping — whether or not
+      # the signal was newly created. We always want the vessel's current position
+      # to reflect the latest observation.
+      #
+      # Design note: upsert lives here (not in IngestService) because IngestService
+      # is a generic signal persister. Vessel state management is AIS-specific
+      # concern. When manual injection is added, it will also call upsert — at
+      # that point we extract Vessels::StateUpdaterService (YAGNI until then).
+      if result.success
+        Vessel.upsert_from_signal!(result.payload[:signal])
+      end
+
+      result
     rescue => e
       Rails.logger.warn "[AISFeed] failed to ingest vessel #{vessel&.dig('MMSI')}: #{e.message}"
       nil
