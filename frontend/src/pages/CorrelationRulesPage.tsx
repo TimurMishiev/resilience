@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import {
   Button,
+  ButtonGroup,
   Callout,
   Classes,
   Divider,
@@ -23,23 +24,25 @@ import { useSignalRuleMatches } from '../hooks/useSignalRuleMatches'
 import { dryRunRule } from '../api/correlation_rules'
 import type { DryRunResult } from '../api/correlation_rules'
 import { useAuth } from '../context/AuthContext'
-import type { CorrelationRule, SignalType, TaskPriority } from '../api/types'
+import type { CorrelationRule, SignalType, TaskPriority, RuleConditions } from '../api/types'
+import { isCompoundRule } from '../api/types'
 
 const SKELETON_ROWS = 7
 
 const SIGNAL_TYPE_OPTIONS: { value: SignalType; label: string }[] = [
   { value: 'aircraft_position', label: 'Aircraft Position' },
-  { value: 'vessel_position',   label: 'Vessel Position' },
-  { value: 'seismic_event',     label: 'Seismic Event' },
-  { value: 'gps_jamming',       label: 'GPS Jamming' },
-  { value: 'wildfire',          label: 'Wildfire' },
-  { value: 'manual',            label: 'Manual' },
+  { value: 'vessel_position',   label: 'Vessel Position'   },
+  { value: 'seismic_event',     label: 'Seismic Event'     },
+  { value: 'gps_jamming',       label: 'GPS Jamming'       },
+  { value: 'wildfire',          label: 'Wildfire'          },
+  { value: 'ais_gap',           label: 'AIS Gap (vessel dark)' },
+  { value: 'manual',            label: 'Manual'            },
 ]
 
 const PRIORITY_OPTIONS: { value: TaskPriority; label: string }[] = [
-  { value: 'low',      label: 'Low' },
-  { value: 'normal',   label: 'Normal' },
-  { value: 'high',     label: 'High' },
+  { value: 'low',      label: 'Low'      },
+  { value: 'normal',   label: 'Normal'   },
+  { value: 'high',     label: 'High'     },
   { value: 'critical', label: 'Critical' },
 ]
 
@@ -53,60 +56,228 @@ const PRIORITY_INTENTS: Record<TaskPriority, 'none' | 'primary' | 'warning' | 'd
 function formatLastFired(iso: string | null): string {
   if (!iso) return 'Never'
   const diff = (Date.now() - new Date(iso).getTime()) / 1000
-  if (diff < 60) return `${Math.floor(diff)}s ago`
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+  if (diff < 60)    return `${Math.floor(diff)}s ago`
+  if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
   return `${Math.floor(diff / 86400)}d ago`
 }
 
-interface RuleFormState {
-  name: string
-  description: string
-  is_active: boolean
-  signal_type: SignalType | ''
-  proximity_km: number
-  magnitude_min: number | ''
-  count_threshold: number
+// ── Compound builder types ───────────────────────────────────────────────────
+
+interface ConditionRow {
+  signal_type:         SignalType | ''
+  proximity_km:        number
+  magnitude_min:       number | ''
+  count_threshold:     number
   time_window_minutes: number
-  cooldown_minutes: number
-  task_title: string
-  task_description: string
-  task_priority: TaskPriority
+}
+
+const DEFAULT_CONDITION: ConditionRow = {
+  signal_type:         '',
+  proximity_km:        50,
+  magnitude_min:       '',
+  count_threshold:     1,
+  time_window_minutes: 60,
+}
+
+// ── Form state ───────────────────────────────────────────────────────────────
+
+interface RuleFormState {
+  name:                string
+  description:         string
+  is_active:           boolean
+  cooldown_minutes:    number
+  task_title:          string
+  task_description:    string
+  task_priority:       TaskPriority
+  // Condition mode
+  condition_mode:      'simple' | 'compound'
+  // Simple-mode fields (flat condition)
+  signal_type:         SignalType | ''
+  proximity_km:        number
+  magnitude_min:       number | ''
+  count_threshold:     number
+  time_window_minutes: number
+  // Compound-mode fields
+  compound_operator:   'AND' | 'OR'
+  compound_conditions: ConditionRow[]
 }
 
 const DEFAULT_FORM: RuleFormState = {
   name:                '',
   description:         '',
   is_active:           true,
+  cooldown_minutes:    60,
+  task_title:          '',
+  task_description:    '',
+  task_priority:       'normal',
+  condition_mode:      'simple',
   signal_type:         'aircraft_position',
   proximity_km:        50,
   magnitude_min:       '',
   count_threshold:     1,
   time_window_minutes: 10,
-  cooldown_minutes:    60,
-  task_title:          '',
-  task_description:    '',
-  task_priority:       'normal',
+  compound_operator:   'AND',
+  compound_conditions: [{ ...DEFAULT_CONDITION }, { ...DEFAULT_CONDITION }],
 }
 
 function ruleToForm(rule: CorrelationRule): RuleFormState {
-  const c = rule.conditions
   const a = rule.actions.create_task ?? {}
+  const base = {
+    name:             rule.name,
+    description:      rule.description ?? '',
+    is_active:        rule.is_active,
+    cooldown_minutes: rule.cooldown_minutes,
+    task_title:       a.title       ?? '',
+    task_description: a.description ?? '',
+    task_priority:    (a.priority as TaskPriority | undefined) ?? 'normal',
+  }
+
+  if (isCompoundRule(rule.conditions)) {
+    const c = rule.conditions
+    return {
+      ...DEFAULT_FORM,
+      ...base,
+      condition_mode:      'compound',
+      compound_operator:   c.operator,
+      compound_conditions: c.conditions.map(sub => ({
+        signal_type:         (sub.signal_type as SignalType | undefined) ?? '',
+        proximity_km:        sub.proximity_km        ?? 50,
+        magnitude_min:       sub.magnitude_min       ?? '',
+        count_threshold:     sub.count_threshold     ?? 1,
+        time_window_minutes: sub.time_window_minutes ?? 60,
+      })),
+    }
+  }
+
+  const c = rule.conditions
   return {
-    name:                rule.name,
-    description:         rule.description ?? '',
-    is_active:           rule.is_active,
+    ...DEFAULT_FORM,
+    ...base,
+    condition_mode:      'simple',
     signal_type:         (c.signal_type as SignalType | undefined) ?? 'aircraft_position',
-    proximity_km:        c.proximity_km ?? 50,
-    magnitude_min:       c.magnitude_min ?? '',
-    count_threshold:     c.count_threshold ?? 1,
+    proximity_km:        c.proximity_km        ?? 50,
+    magnitude_min:       c.magnitude_min       ?? '',
+    count_threshold:     c.count_threshold     ?? 1,
     time_window_minutes: c.time_window_minutes ?? 10,
-    cooldown_minutes:    rule.cooldown_minutes,
-    task_title:          a.title ?? '',
-    task_description:    a.description ?? '',
-    task_priority:       (a.priority as TaskPriority | undefined) ?? 'normal',
   }
 }
+
+// ── CompoundBuilder sub-component ────────────────────────────────────────────
+
+interface CompoundBuilderProps {
+  operator:   'AND' | 'OR'
+  conditions: ConditionRow[]
+  onOperatorChange: (op: 'AND' | 'OR') => void
+  onConditionChange: (index: number, field: keyof ConditionRow, value: unknown) => void
+  onAddCondition:    () => void
+  onRemoveCondition: (index: number) => void
+}
+
+function CompoundBuilder({
+  operator, conditions,
+  onOperatorChange, onConditionChange, onAddCondition, onRemoveCondition,
+}: CompoundBuilderProps) {
+  return (
+    <div className="compound-builder">
+      {/* Operator toggle */}
+      <div className="compound-operator-row">
+        <span className="bp6-text-muted" style={{ fontSize: 11, marginRight: 8 }}>MATCH</span>
+        <ButtonGroup>
+          <Button
+            small
+            active={operator === 'AND'}
+            intent={operator === 'AND' ? 'primary' : 'none'}
+            onClick={() => onOperatorChange('AND')}
+          >
+            ALL of (AND)
+          </Button>
+          <Button
+            small
+            active={operator === 'OR'}
+            intent={operator === 'OR' ? 'warning' : 'none'}
+            onClick={() => onOperatorChange('OR')}
+          >
+            ANY of (OR)
+          </Button>
+        </ButtonGroup>
+        <span className="bp6-text-muted" style={{ fontSize: 11, marginLeft: 8 }}>
+          these conditions
+        </span>
+      </div>
+
+      {/* Condition rows */}
+      {conditions.map((cond, i) => (
+        <div key={i} className="compound-condition-row">
+          <div className="compound-condition-header">
+            <span className="bp6-text-muted" style={{ fontSize: 10, fontWeight: 600 }}>
+              CONDITION {i + 1}
+            </span>
+            <Button
+              icon="cross"
+              minimal
+              small
+              disabled={conditions.length <= 2}
+              onClick={() => onRemoveCondition(i)}
+              title={conditions.length <= 2 ? 'Compound rules need at least 2 conditions' : 'Remove condition'}
+            />
+          </div>
+
+          <FormGroup label="Signal Type" style={{ marginBottom: 6 }}>
+            <HTMLSelect
+              value={cond.signal_type}
+              onChange={e => onConditionChange(i, 'signal_type', e.target.value)}
+              fill
+            >
+              <option value="">Any signal type</option>
+              {SIGNAL_TYPE_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </HTMLSelect>
+          </FormGroup>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <FormGroup label="Proximity (km)" style={{ marginBottom: 6 }}>
+              <NumericInput
+                value={cond.proximity_km}
+                onValueChange={v => onConditionChange(i, 'proximity_km', v)}
+                min={1} max={5000} fill
+              />
+            </FormGroup>
+
+            <FormGroup label="Min Magnitude" style={{ marginBottom: 6 }}>
+              <NumericInput
+                value={cond.magnitude_min === '' ? '' : cond.magnitude_min}
+                onValueChange={(v, s) => onConditionChange(i, 'magnitude_min', s === '' ? '' : v)}
+                min={0} max={10} fill placeholder="—"
+              />
+            </FormGroup>
+          </div>
+        </div>
+      ))}
+
+      <Button
+        icon="plus"
+        minimal
+        small
+        intent="primary"
+        onClick={onAddCondition}
+        style={{ marginTop: 4 }}
+      >
+        Add condition
+      </Button>
+
+      <Callout intent="primary" compact style={{ marginTop: 12, fontSize: 12 }}>
+        {operator === 'AND'
+          ? 'All conditions must be met. Non-matching signal types will be looked up from recent DB history.'
+          : 'Any single condition is sufficient to fire the rule.'
+        }
+      </Callout>
+    </div>
+  )
+}
+
+// ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CorrelationRulesPage() {
   const { currentUser } = useAuth()
@@ -171,19 +342,37 @@ export default function CorrelationRulesPage() {
   }
 
   function handleSave() {
-    const payload = {
-      name:             form.name,
-      description:      form.description || null,
-      is_active:        form.is_active,
-      cooldown_minutes: form.cooldown_minutes,
-      conditions: {
-        signal_type:         form.signal_type || null,
+    let conditions: RuleConditions
+
+    if (form.condition_mode === 'compound') {
+      conditions = {
+        operator:   form.compound_operator,
+        conditions: form.compound_conditions.map(c => ({
+          signal_type:         c.signal_type         || null,
+          proximity_km:        c.proximity_km,
+          magnitude_min:       c.magnitude_min === '' ? null : c.magnitude_min,
+          count_threshold:     c.count_threshold,
+          time_window_minutes: c.time_window_minutes,
+          site_id:             null,
+        })),
+      }
+    } else {
+      conditions = {
+        signal_type:         form.signal_type         || null,
         proximity_km:        form.proximity_km,
         magnitude_min:       form.magnitude_min === '' ? null : form.magnitude_min,
         count_threshold:     form.count_threshold,
         time_window_minutes: form.time_window_minutes,
         site_id:             null,
-      },
+      }
+    }
+
+    const payload = {
+      name:             form.name,
+      description:      form.description || null,
+      is_active:        form.is_active,
+      cooldown_minutes: form.cooldown_minutes,
+      conditions,
       actions: {
         create_task: {
           title:       form.task_title,
@@ -207,6 +396,29 @@ export default function CorrelationRulesPage() {
   function handleDelete(rule: CorrelationRule) {
     if (!window.confirm(`Delete rule "${rule.name}"? This cannot be undone.`)) return
     deleteMutation.mutate(rule.id)
+  }
+
+  function updateCompoundCondition(index: number, field: keyof ConditionRow, value: unknown) {
+    setForm(f => {
+      const updated = f.compound_conditions.map((c, i) =>
+        i === index ? { ...c, [field]: value } : c
+      )
+      return { ...f, compound_conditions: updated }
+    })
+  }
+
+  function addCompoundCondition() {
+    setForm(f => ({
+      ...f,
+      compound_conditions: [...f.compound_conditions, { ...DEFAULT_CONDITION }],
+    }))
+  }
+
+  function removeCompoundCondition(index: number) {
+    setForm(f => ({
+      ...f,
+      compound_conditions: f.compound_conditions.filter((_, i) => i !== index),
+    }))
   }
 
   const isSaving = createMutation.isPending || updateMutation.isPending
@@ -244,6 +456,11 @@ export default function CorrelationRulesPage() {
                 <strong>{m.correlation_rule?.name ?? 'Unknown rule'}</strong>
                 {m.site && <> → {m.site.name}</>}
                 {m.task && <> · Task: {m.task.title}</>}
+                {typeof m.confidence === 'number' && (
+                  <Tag minimal style={{ marginLeft: 6, fontSize: 10 }}>
+                    {Math.round(m.confidence * 100)}%
+                  </Tag>
+                )}
                 <span className="bp6-text-muted" style={{ marginLeft: 8 }}>
                   {formatLastFired(m.fired_at)}
                 </span>
@@ -258,7 +475,7 @@ export default function CorrelationRulesPage() {
           <thead>
             <tr>
               <th>Name</th>
-              <th>Signal Type</th>
+              <th>Conditions</th>
               <th>Proximity</th>
               <th>Triggers</th>
               <th>Active</th>
@@ -283,6 +500,7 @@ export default function CorrelationRulesPage() {
                 ))
               : rules.map(rule => {
                   const actionPriority = (rule.actions.create_task?.priority ?? 'normal') as TaskPriority
+                  const isCompound = isCompoundRule(rule.conditions)
                   return (
                     <tr key={rule.id} onClick={() => isCommander && openEdit(rule)}
                         style={{ cursor: isCommander ? 'pointer' : 'default' }}>
@@ -295,12 +513,20 @@ export default function CorrelationRulesPage() {
                         )}
                       </td>
                       <td>
-                        <Tag minimal intent="primary">
-                          {rule.conditions.signal_type ?? 'any'}
-                        </Tag>
+                        {isCompound ? (
+                          <Tag minimal intent="warning">
+                            {rule.conditions.operator} · {rule.conditions.conditions.length} signals
+                          </Tag>
+                        ) : (
+                          <Tag minimal intent="primary">
+                            {rule.conditions.signal_type?.replace(/_/g, ' ') ?? 'any'}
+                          </Tag>
+                        )}
                       </td>
                       <td className="mono">
-                        {rule.conditions.proximity_km ? `${rule.conditions.proximity_km}km` : '—'}
+                        {!isCompound && rule.conditions.proximity_km
+                          ? `${rule.conditions.proximity_km}km`
+                          : isCompound ? '—' : '—'}
                       </td>
                       <td>
                         <Tag minimal intent={PRIORITY_INTENTS[actionPriority]}>
@@ -317,9 +543,7 @@ export default function CorrelationRulesPage() {
                       <td onClick={e => e.stopPropagation()}>
                         <Button
                           icon="lab-test"
-                          minimal
-                          small
-                          intent="primary"
+                          minimal small intent="primary"
                           title="Dry run — test against recent signals"
                           onClick={() => {
                             setDryRunRule(rule)
@@ -332,10 +556,7 @@ export default function CorrelationRulesPage() {
                       {isCommander && (
                         <td onClick={e => e.stopPropagation()}>
                           <Button
-                            icon="trash"
-                            minimal
-                            small
-                            intent="danger"
+                            icon="trash" minimal small intent="danger"
                             onClick={() => handleDelete(rule)}
                             loading={deleteMutation.isPending}
                           />
@@ -366,14 +587,11 @@ export default function CorrelationRulesPage() {
               <NumericInput
                 value={dryRunHours}
                 onValueChange={v => setDryRunHours(Math.max(1, Math.min(168, v)))}
-                min={1}
-                max={168}
-                style={{ width: 100 }}
+                min={1} max={168} style={{ width: 100 }}
               />
             </FormGroup>
             <Button
-              intent="primary"
-              icon="play"
+              intent="primary" icon="play"
               loading={dryRunMutation.isPending}
               onClick={() => dryRunRule_ && dryRunMutation.mutate({ id: dryRunRule_.id, hours: dryRunHours })}
             >
@@ -384,9 +602,7 @@ export default function CorrelationRulesPage() {
           {dryRunMutation.isPending && <Spinner size={20} />}
 
           {dryRunError && (
-            <Callout intent="danger" compact style={{ marginBottom: 12 }}>
-              {dryRunError}
-            </Callout>
+            <Callout intent="danger" compact style={{ marginBottom: 12 }}>{dryRunError}</Callout>
           )}
 
           {dryRunResult && (
@@ -404,13 +620,8 @@ export default function CorrelationRulesPage() {
                 <HTMLTable className="data-table" striped style={{ fontSize: 12 }}>
                   <thead>
                     <tr>
-                      <th>Signal Type</th>
-                      <th>Source</th>
-                      <th>Site</th>
-                      <th>Distance</th>
-                      <th>Magnitude</th>
-                      <th>Would Fire</th>
-                      <th>Occurred</th>
+                      <th>Signal Type</th><th>Source</th><th>Site</th>
+                      <th>Distance</th><th>Magnitude</th><th>Would Fire</th><th>Occurred</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -429,7 +640,9 @@ export default function CorrelationRulesPage() {
                           ))}
                         </td>
                         <td className="mono">
-                          {new Date(m.occurred_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          {new Date(m.occurred_at).toLocaleString(undefined, {
+                            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+                          })}
                         </td>
                       </tr>
                     ))}
@@ -462,9 +675,7 @@ export default function CorrelationRulesPage() {
             <TextArea
               value={form.description}
               onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-              fill
-              rows={2}
-              placeholder="Optional description..."
+              fill rows={2} placeholder="Optional description..."
             />
           </FormGroup>
 
@@ -474,56 +685,90 @@ export default function CorrelationRulesPage() {
             label="Active"
           />
 
+          {/* ── CONDITIONS ──────────────────────────────────────────── */}
           <Divider style={{ margin: '16px 0 12px' }} />
-          <p className="bp6-text-muted" style={{ fontSize: 12, marginBottom: 12 }}>CONDITIONS</p>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <p className="bp6-text-muted" style={{ fontSize: 12, margin: 0 }}>CONDITIONS</p>
+            <ButtonGroup>
+              <Button
+                small
+                active={form.condition_mode === 'simple'}
+                onClick={() => setForm(f => ({ ...f, condition_mode: 'simple' }))}
+              >
+                Simple
+              </Button>
+              <Button
+                small
+                active={form.condition_mode === 'compound'}
+                intent={form.condition_mode === 'compound' ? 'warning' : 'none'}
+                onClick={() => setForm(f => ({ ...f, condition_mode: 'compound' }))}
+              >
+                Compound
+              </Button>
+            </ButtonGroup>
+          </div>
 
-          <FormGroup label="Signal Type">
-            <HTMLSelect
-              value={form.signal_type}
-              onChange={e => setForm(f => ({ ...f, signal_type: e.target.value as SignalType }))}
-              fill
-            >
-              <option value="">Any signal type</option>
-              {SIGNAL_TYPE_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </HTMLSelect>
-          </FormGroup>
+          {form.condition_mode === 'simple' ? (
+            <>
+              <FormGroup label="Signal Type">
+                <HTMLSelect
+                  value={form.signal_type}
+                  onChange={e => setForm(f => ({ ...f, signal_type: e.target.value as SignalType }))}
+                  fill
+                >
+                  <option value="">Any signal type</option>
+                  {SIGNAL_TYPE_OPTIONS.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </HTMLSelect>
+              </FormGroup>
 
-          <FormGroup label="Proximity (km)" helperText="Fire when signal is within this distance of a site">
-            <NumericInput
-              value={form.proximity_km}
-              onValueChange={val => setForm(f => ({ ...f, proximity_km: val }))}
-              min={1} max={5000} fill
+              <FormGroup label="Proximity (km)" helperText="Fire when signal is within this distance of a site">
+                <NumericInput
+                  value={form.proximity_km}
+                  onValueChange={val => setForm(f => ({ ...f, proximity_km: val }))}
+                  min={1} max={5000} fill
+                />
+              </FormGroup>
+
+              <FormGroup label="Min Magnitude" helperText="Leave blank for non-seismic rules">
+                <NumericInput
+                  value={form.magnitude_min === '' ? '' : form.magnitude_min}
+                  onValueChange={(val, str) => setForm(f => ({
+                    ...f, magnitude_min: str === '' ? '' : val
+                  }))}
+                  min={0} max={10} fill placeholder="e.g. 4.5"
+                />
+              </FormGroup>
+
+              <FormGroup label="Count Threshold" helperText="Number of signals needed to trigger (1 = any single signal)">
+                <NumericInput
+                  value={form.count_threshold}
+                  onValueChange={val => setForm(f => ({ ...f, count_threshold: val }))}
+                  min={1} max={100} fill
+                />
+              </FormGroup>
+
+              <FormGroup label="Time Window (minutes)" helperText="Window for count threshold evaluation">
+                <NumericInput
+                  value={form.time_window_minutes}
+                  onValueChange={val => setForm(f => ({ ...f, time_window_minutes: val }))}
+                  min={1} max={1440} fill
+                />
+              </FormGroup>
+            </>
+          ) : (
+            <CompoundBuilder
+              operator={form.compound_operator}
+              conditions={form.compound_conditions}
+              onOperatorChange={op => setForm(f => ({ ...f, compound_operator: op }))}
+              onConditionChange={updateCompoundCondition}
+              onAddCondition={addCompoundCondition}
+              onRemoveCondition={removeCompoundCondition}
             />
-          </FormGroup>
+          )}
 
-          <FormGroup label="Min Magnitude" helperText="Leave blank for non-seismic rules">
-            <NumericInput
-              value={form.magnitude_min === '' ? '' : form.magnitude_min}
-              onValueChange={(val, str) => setForm(f => ({
-                ...f, magnitude_min: str === '' ? '' : val
-              }))}
-              min={0} max={10} fill placeholder="e.g. 4.5"
-            />
-          </FormGroup>
-
-          <FormGroup label="Count Threshold" helperText="Number of signals needed to trigger (1 = any single signal)">
-            <NumericInput
-              value={form.count_threshold}
-              onValueChange={val => setForm(f => ({ ...f, count_threshold: val }))}
-              min={1} max={100} fill
-            />
-          </FormGroup>
-
-          <FormGroup label="Time Window (minutes)" helperText="Window for count threshold evaluation">
-            <NumericInput
-              value={form.time_window_minutes}
-              onValueChange={val => setForm(f => ({ ...f, time_window_minutes: val }))}
-              min={1} max={1440} fill
-            />
-          </FormGroup>
-
+          {/* ── ACTION ──────────────────────────────────────────────── */}
           <Divider style={{ margin: '16px 0 12px' }} />
           <p className="bp6-text-muted" style={{ fontSize: 12, marginBottom: 12 }}>ACTION — CREATE TASK</p>
 

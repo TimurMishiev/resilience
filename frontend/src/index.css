@@ -2135,3 +2135,33 @@ body {
 .tab-empty-state {
   padding: 40px 0;
 }
+
+/* ── Compound rule builder ─────────────────────────────────── */
+
+.compound-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.compound-operator-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.compound-condition-row {
+  border: 1px solid #383e47;
+  border-radius: 4px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.compound-condition-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}

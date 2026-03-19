@@ -131,8 +131,8 @@ CREATE TABLE public.external_signals (
     raw_payload jsonb DEFAULT '{}'::jsonb NOT NULL,
     occurred_at timestamp(6) without time zone NOT NULL,
     ingested_at timestamp(6) without time zone DEFAULT now() NOT NULL,
-    CONSTRAINT signals_signal_type_check CHECK ((signal_type = ANY (ARRAY['aircraft_position'::text, 'vessel_position'::text, 'seismic_event'::text, 'gps_jamming'::text, 'wildfire'::text, 'manual'::text]))),
-    CONSTRAINT signals_source_check CHECK ((source = ANY (ARRAY['opensky'::text, 'ais'::text, 'usgs_seismic'::text, 'gpsjam'::text, 'firms_wildfire'::text, 'manual'::text])))
+    CONSTRAINT signals_signal_type_check CHECK ((signal_type = ANY (ARRAY['aircraft_position'::text, 'vessel_position'::text, 'seismic_event'::text, 'gps_jamming'::text, 'wildfire'::text, 'manual'::text, 'ais_gap'::text]))),
+    CONSTRAINT signals_source_check CHECK ((source = ANY (ARRAY['opensky'::text, 'ais'::text, 'usgs_seismic'::text, 'gpsjam'::text, 'firms_wildfire'::text, 'manual'::text, 'derived'::text])))
 );
 
 
@@ -156,7 +156,12 @@ CREATE TABLE public.signal_rule_matches (
     site_id uuid,
     task_id uuid,
     fired_at timestamp(6) without time zone DEFAULT now() NOT NULL,
-    metadata jsonb DEFAULT '{}'::jsonb NOT NULL
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    confidence double precision DEFAULT 0.0 NOT NULL,
+    workflow_status character varying DEFAULT 'unacknowledged'::character varying NOT NULL,
+    acknowledged_at timestamp(6) without time zone,
+    notes text,
+    acknowledged_by_id uuid
 );
 
 
@@ -212,6 +217,46 @@ CREATE TABLE public.users (
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
     CONSTRAINT users_role_check CHECK (((role)::text = ANY ((ARRAY['operator'::character varying, 'commander'::character varying])::text[])))
+);
+
+
+--
+-- Name: vessel_tracks; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.vessel_tracks (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    vessel_id uuid NOT NULL,
+    lat double precision NOT NULL,
+    lng double precision NOT NULL,
+    speed double precision,
+    heading double precision,
+    occurred_at timestamp(6) without time zone NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: vessels; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.vessels (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    mmsi character varying NOT NULL,
+    name character varying,
+    vessel_type character varying,
+    flag character varying,
+    destination character varying,
+    lat double precision NOT NULL,
+    lng double precision NOT NULL,
+    speed double precision,
+    heading double precision,
+    first_seen_at timestamp(6) without time zone NOT NULL,
+    last_seen_at timestamp(6) without time zone NOT NULL,
+    last_signal_id uuid,
+    loitering_since timestamp(6) without time zone,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
 );
 
 
@@ -301,6 +346,22 @@ ALTER TABLE ONLY public.tasks
 
 ALTER TABLE ONLY public.users
     ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: vessel_tracks vessel_tracks_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.vessel_tracks
+    ADD CONSTRAINT vessel_tracks_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: vessels vessels_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.vessels
+    ADD CONSTRAINT vessels_pkey PRIMARY KEY (id);
 
 
 --
@@ -402,6 +463,20 @@ CREATE INDEX index_external_signals_on_source ON public.external_signals USING b
 
 
 --
+-- Name: index_signal_rule_matches_on_acknowledged_by_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_signal_rule_matches_on_acknowledged_by_id ON public.signal_rule_matches USING btree (acknowledged_by_id);
+
+
+--
+-- Name: index_signal_rule_matches_on_confidence; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_signal_rule_matches_on_confidence ON public.signal_rule_matches USING btree (confidence);
+
+
+--
 -- Name: index_signal_rule_matches_on_correlation_rule_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -434,6 +509,13 @@ CREATE INDEX index_signal_rule_matches_on_site_id ON public.signal_rule_matches 
 --
 
 CREATE INDEX index_signal_rule_matches_on_task_id ON public.signal_rule_matches USING btree (task_id);
+
+
+--
+-- Name: index_signal_rule_matches_on_workflow_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_signal_rule_matches_on_workflow_status ON public.signal_rule_matches USING btree (workflow_status);
 
 
 --
@@ -479,11 +561,68 @@ CREATE UNIQUE INDEX index_users_on_email ON public.users USING btree (email);
 
 
 --
+-- Name: index_vessel_tracks_on_occurred_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_vessel_tracks_on_occurred_at ON public.vessel_tracks USING btree (occurred_at);
+
+
+--
+-- Name: index_vessel_tracks_on_vessel_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_vessel_tracks_on_vessel_id ON public.vessel_tracks USING btree (vessel_id);
+
+
+--
+-- Name: index_vessel_tracks_on_vessel_id_and_occurred_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_vessel_tracks_on_vessel_id_and_occurred_at ON public.vessel_tracks USING btree (vessel_id, occurred_at);
+
+
+--
+-- Name: index_vessels_on_last_seen_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_vessels_on_last_seen_at ON public.vessels USING btree (last_seen_at);
+
+
+--
+-- Name: index_vessels_on_last_signal_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_vessels_on_last_signal_id ON public.vessels USING btree (last_signal_id);
+
+
+--
+-- Name: index_vessels_on_loitering_since; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_vessels_on_loitering_since ON public.vessels USING btree (loitering_since) WHERE (loitering_since IS NOT NULL);
+
+
+--
+-- Name: index_vessels_on_mmsi; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_vessels_on_mmsi ON public.vessels USING btree (mmsi);
+
+
+--
 -- Name: areas_of_operation fk_rails_0bd4a97ef0; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.areas_of_operation
     ADD CONSTRAINT fk_rails_0bd4a97ef0 FOREIGN KEY (created_by_id) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: vessel_tracks fk_rails_28041b5ea5; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.vessel_tracks
+    ADD CONSTRAINT fk_rails_28041b5ea5 FOREIGN KEY (vessel_id) REFERENCES public.vessels(id) ON DELETE CASCADE;
 
 
 --
@@ -527,6 +666,14 @@ ALTER TABLE ONLY public.sites
 
 
 --
+-- Name: signal_rule_matches fk_rails_b85002b8dc; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.signal_rule_matches
+    ADD CONSTRAINT fk_rails_b85002b8dc FOREIGN KEY (acknowledged_by_id) REFERENCES public.users(id);
+
+
+--
 -- Name: correlation_rules fk_rails_b88d28d836; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -559,6 +706,14 @@ ALTER TABLE ONLY public.signal_rule_matches
 
 
 --
+-- Name: vessels fk_rails_f4b4982a14; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.vessels
+    ADD CONSTRAINT fk_rails_f4b4982a14 FOREIGN KEY (last_signal_id) REFERENCES public.external_signals(id);
+
+
+--
 -- Name: signal_rule_matches fk_rails_f6fa1e442c; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -573,6 +728,11 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260318030004'),
+('20260318030003'),
+('20260318030002'),
+('20260318030001'),
+('20260318030000'),
 ('20260318020001'),
 ('20260318020000'),
 ('20260318011248'),

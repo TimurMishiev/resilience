@@ -219,6 +219,20 @@ export interface CorrelationConditions {
   time_window_minutes?: number | null
 }
 
+// Compound (AND/OR) conditions — 2+ sub-conditions fused across signal types
+export interface CompoundConditions {
+  operator: 'AND' | 'OR'
+  conditions: CorrelationConditions[]
+}
+
+// Wire type — either flat or compound; the backend accepts both
+export type RuleConditions = CorrelationConditions | CompoundConditions
+
+// Type guard — narrows RuleConditions to CompoundConditions
+export function isCompoundRule(c: RuleConditions): c is CompoundConditions {
+  return 'operator' in c && c.operator != null
+}
+
 export interface CorrelationActions {
   create_task?: {
     title?: string
@@ -239,7 +253,7 @@ export interface CorrelationRule {
   name: string
   description: string | null
   is_active: boolean
-  conditions: CorrelationConditions
+  conditions: RuleConditions
   actions: CorrelationActions
   created_by: string
   area_of_operation_id: string | null
@@ -289,7 +303,7 @@ export interface CreateCorrelationRuleBody {
   name: string
   description?: string | null
   is_active?: boolean
-  conditions: CorrelationConditions
+  conditions: RuleConditions
   actions: CorrelationActions
   cooldown_minutes?: number
 }
@@ -298,7 +312,7 @@ export interface UpdateCorrelationRuleBody {
   name?: string
   description?: string | null
   is_active?: boolean
-  conditions?: CorrelationConditions
+  conditions?: RuleConditions
   actions?: CorrelationActions
   cooldown_minutes?: number
 }
