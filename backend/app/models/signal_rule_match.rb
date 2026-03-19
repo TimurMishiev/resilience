@@ -1,13 +1,25 @@
 class SignalRuleMatch < ApplicationRecord
-  VALID_ACTIONS = %w[create_task escalate_task flag_site].freeze
+  VALID_ACTIONS  = %w[create_task escalate_task flag_site].freeze
+  VALID_STATUSES = %w[unacknowledged acknowledged investigating closed].freeze
 
-  belongs_to :signal, class_name: "ExternalSignal", foreign_key: :signal_id
+  # Valid forward-only transitions (with strategic re-opens).
+  # Any → any would allow nonsensical jumps; this table models realistic ops triage.
+  TRANSITIONS = {
+    "unacknowledged" => %w[acknowledged investigating closed],
+    "acknowledged"   => %w[investigating closed unacknowledged],
+    "investigating"  => %w[closed acknowledged],
+    "closed"         => %w[investigating unacknowledged]
+  }.freeze
+
+  belongs_to :signal,           class_name: "ExternalSignal", foreign_key: :signal_id
   belongs_to :correlation_rule
-  belongs_to :site,  optional: true
-  belongs_to :task,  optional: true
+  belongs_to :site,             optional: true
+  belongs_to :task,             optional: true
+  belongs_to :acknowledged_by,  class_name: "User", optional: true
 
-  validates :fired_at,   presence: true
-  validates :confidence, numericality: { greater_than_or_equal_to: 0.0, less_than_or_equal_to: 1.0 }
+  validates :fired_at,       presence: true
+  validates :confidence,     numericality: { greater_than_or_equal_to: 0.0, less_than_or_equal_to: 1.0 }
+  validates :workflow_status, inclusion: { in: VALID_STATUSES }
   validate  :metadata_schema
 
   scope :recent,          ->(hours = 24) { where(fired_at: hours.hours.ago..Time.current) }
@@ -15,6 +27,8 @@ class SignalRuleMatch < ApplicationRecord
   scope :for_site,        ->(site_id)    { where(site_id: site_id) }
   scope :high_confidence, ->             { where("confidence >= ?", 0.7) }
   scope :by_confidence,   ->             { order(confidence: :desc) }
+  scope :by_status,       ->(s)          { where(workflow_status: s) }
+  scope :unacknowledged,  ->             { where(workflow_status: "unacknowledged") }
 
   private
 

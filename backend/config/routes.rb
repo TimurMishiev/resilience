@@ -60,7 +60,12 @@ Rails.application.routes.draw do
         post :dry_run
       end
     end
-    resources :signal_rule_matches,   only: %i[index show]
+    resources :signal_rule_matches, only: %i[index show] do
+      member do
+        post :transition
+        get  :allowed_transitions
+      end
+    end
     resources :areas_of_operation,    only: %i[index show create update destroy]
   end
 end
