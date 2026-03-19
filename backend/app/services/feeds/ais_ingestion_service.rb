@@ -160,7 +160,22 @@ module Feeds
       # concern. When manual injection is added, it will also call upsert — at
       # that point we extract Vessels::StateUpdaterService (YAGNI until then).
       if result.success
-        Vessel.upsert_from_signal!(result.payload[:signal])
+        signal  = result.payload[:signal]
+        vessel, = Vessel.upsert_from_signal!(signal)
+
+        # Append a track point only for newly created signals — not replays.
+        # This prevents duplicate track points when the same (mmsi, occurred_at)
+        # comes back on a re-poll within the same AIS Hub 30-min window.
+        if result.payload[:created] && vessel
+          VesselTrack.create!(
+            vessel:     vessel,
+            lat:        signal.lat,
+            lng:        signal.lng,
+            speed:      signal.speed,
+            heading:    signal.heading,
+            occurred_at: signal.occurred_at
+          )
+        end
       end
 
       result
