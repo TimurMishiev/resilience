@@ -6,7 +6,7 @@ import {
   Cell,
   XAxis,
   YAxis,
-  Tooltip,
+  Tooltip as ChartTooltip,
   ResponsiveContainer,
   LineChart,
   Line,
@@ -316,7 +316,7 @@ export default function DashboardPage() {
               <BarChart data={statusCounts} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
                 <XAxis dataKey="status" tick={{ fill: '#8a9ba8', fontSize: 11 }} />
                 <YAxis tick={{ fill: '#8a9ba8', fontSize: 11 }} allowDecimals={false} />
-                <Tooltip
+                <ChartTooltip
                   contentStyle={{ background: '#252c35', border: '1px solid #383e47', fontSize: 12 }}
                   cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                 />
@@ -340,7 +340,7 @@ export default function DashboardPage() {
               <BarChart data={priorityCounts} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
                 <XAxis dataKey="priority" tick={{ fill: '#8a9ba8', fontSize: 11 }} />
                 <YAxis tick={{ fill: '#8a9ba8', fontSize: 11 }} allowDecimals={false} />
-                <Tooltip
+                <ChartTooltip
                   contentStyle={{ background: '#252c35', border: '1px solid #383e47', fontSize: 12 }}
                   cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                 />
@@ -379,7 +379,7 @@ export default function DashboardPage() {
                   interval={4}
                 />
                 <YAxis tick={{ fill: '#8a9ba8', fontSize: 11 }} allowDecimals={false} />
-                <Tooltip
+                <ChartTooltip
                   contentStyle={{ background: '#252c35', border: '1px solid #383e47', fontSize: 12 }}
                   labelFormatter={(d) => String(d)}
                 />
