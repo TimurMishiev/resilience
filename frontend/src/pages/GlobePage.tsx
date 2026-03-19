@@ -11,6 +11,7 @@ import { useSignals } from '../hooks/useSignals'
 import { useReplay } from '../context/ReplayContext'
 import type { Site, Task, WorkflowStatus } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
+import { SIGNAL_ICON_CHAR } from '../lib/signalIcons'
 
 // Only set Ion token if explicitly provided — never set to empty string
 // which blocks all rendering in Cesium 1.100+
@@ -374,6 +375,20 @@ export default function GlobePage() {
           heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
           disableDepthTestDistance: 1e7,
           scaleByDistance: new Cesium.NearFarScalar(5e4, 1.4, 6e6, 0.6),
+        },
+        label: {
+          text:             SIGNAL_ICON_CHAR[signal.signal_type] ?? '●',
+          font:             '11px sans-serif',
+          fillColor:        Cesium.Color.WHITE,
+          outlineColor:     Cesium.Color.BLACK,
+          outlineWidth:     2,
+          style:            Cesium.LabelStyle.FILL_AND_OUTLINE,
+          verticalOrigin:   Cesium.VerticalOrigin.CENTER,
+          horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+          pixelOffset:      new Cesium.Cartesian2(0, 0),
+          disableDepthTestDistance: 1e7,
+          scaleByDistance:  new Cesium.NearFarScalar(5e4, 1.0, 4e6, 0.4),
+          showBackground:   false,
         },
       })
       signalEntitiesRef.current.push(entity)

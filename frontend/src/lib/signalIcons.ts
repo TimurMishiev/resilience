@@ -16,14 +16,18 @@ export const SIGNAL_ICON_NAME: Record<string, IconName> = {
 }
 
 /**
- * Plain unicode/text fallbacks for HTML string contexts (e.g. MapLibre setHTML).
+ * Unicode characters for canvas/WebGL rendering contexts:
+ * - MapLibre symbol layer text-field expressions
+ * - Cesium label entities
+ * - MapLibre hover popup setHTML strings
+ * Characters chosen for broad font coverage in system fonts.
  */
 export const SIGNAL_ICON_CHAR: Record<string, string> = {
-  aircraft_position: '✈',
-  vessel_position:   '⚓',
-  seismic_event:     '≋',
-  gps_jamming:       '◌',
-  wildfire:          '▲',
-  ais_gap:           '◎',
-  manual:            '◆',
+  aircraft_position: '✈',   // U+2708 AIRPLANE
+  vessel_position:   '⚓',   // U+2693 ANCHOR
+  seismic_event:     '≈',   // U+2248 ALMOST EQUAL (wave-like, universal)
+  gps_jamming:       '⊗',   // U+2297 CIRCLED TIMES (disruption)
+  wildfire:          '△',   // U+25B3 WHITE TRIANGLE (flame silhouette)
+  ais_gap:           '⊙',   // U+2299 CIRCLED DOT (eye-like, vessel went dark)
+  manual:            '+',   // U+002B PLUS (injected manually)
 }

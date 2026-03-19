@@ -604,7 +604,35 @@ export default function MapPage() {
       },
     })
 
-    map.on('click', 'signal-circles', e => {
+    // Symbol layer — unicode char centered on each signal dot
+    map.addLayer({
+      id:     'signal-symbols',
+      type:   'symbol',
+      source: 'signal-points',
+      layout: {
+        'text-field': ['match', ['get', 'signal_type'],
+          'aircraft_position', '✈',
+          'vessel_position',   '⚓',
+          'seismic_event',     '≈',
+          'gps_jamming',       '⊗',
+          'wildfire',          '△',
+          'ais_gap',           '⊙',
+          'manual',            '+',
+          '●',
+        ],
+        'text-size':             11,
+        'text-anchor':           'center',
+        'text-allow-overlap':    true,
+        'text-ignore-placement': true,
+      },
+      paint: {
+        'text-color':       '#ffffff',
+        'text-halo-color':  'rgba(0,0,0,0.45)',
+        'text-halo-width':  1,
+      },
+    })
+
+    const handleSignalClick = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
       if (!e.features?.length) return
       const props = e.features[0].properties
       const sig   = signalsRef.current.find(s => s.id === props.id)
@@ -612,7 +640,10 @@ export default function MapPage() {
       setSelectedSiteId(null)
       setSelectedAssetId(null)
       setSelectedSignal(prev => prev?.id === sig.id ? null : sig)
-    })
+    }
+
+    map.on('click', 'signal-circles', handleSignalClick)
+    map.on('click', 'signal-symbols', handleSignalClick)
 
     const popup = new maplibregl.Popup({
       closeButton: false,
@@ -621,7 +652,7 @@ export default function MapPage() {
       className: 'signal-popup-container',
     })
 
-    map.on('mouseenter', 'signal-circles', e => {
+    const handleMouseEnter = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
       map.getCanvas().style.cursor = 'pointer'
       if (!e.features?.length) return
       const props = e.features[0].properties as Record<string, string>
@@ -649,12 +680,17 @@ export default function MapPage() {
             </div>
           </div>`)
         .addTo(map)
-    })
+    }
 
-    map.on('mouseleave', 'signal-circles', () => {
+    const handleMouseLeave = () => {
       map.getCanvas().style.cursor = ''
       popup.remove()
-    })
+    }
+
+    map.on('mouseenter', 'signal-circles', handleMouseEnter)
+    map.on('mouseenter', 'signal-symbols', handleMouseEnter)
+    map.on('mouseleave', 'signal-circles', handleMouseLeave)
+    map.on('mouseleave', 'signal-symbols', handleMouseLeave)
   }, [mapLoaded, signals])
 
   // -------------------------------------------------------------------------
@@ -666,6 +702,9 @@ export default function MapPage() {
     map.setLayoutProperty('signal-circles', 'visibility', showSignals ? 'visible' : 'none')
     if (map.getLayer('signal-glow')) {
       map.setLayoutProperty('signal-glow', 'visibility', showSignals ? 'visible' : 'none')
+    }
+    if (map.getLayer('signal-symbols')) {
+      map.setLayoutProperty('signal-symbols', 'visibility', showSignals ? 'visible' : 'none')
     }
     if (!showSignals) setSelectedSignal(null)
   }, [showSignals, mapLoaded])
