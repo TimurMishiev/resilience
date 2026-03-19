@@ -44,5 +44,17 @@ FactoryBot.define do
     trait :flag_site do
       actions { { "flag_site" => { "reason" => "Rule '{{site_name}}' triggered by {{signal_type}}" } } }
     end
+
+    trait :compound do
+      conditions do
+        {
+          "operator" => "AND",
+          "conditions" => [
+            { "signal_type" => "ais_gap",    "proximity_km" => 100, "magnitude_min" => 0.6 },
+            { "signal_type" => "gps_jamming","proximity_km" => 50                           }
+          ]
+        }
+      end
+    end
   end
 end
