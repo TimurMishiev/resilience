@@ -1,6 +1,6 @@
 class ExternalSignal < ApplicationRecord
-  SOURCES = %w[opensky ais usgs_seismic gpsjam firms_wildfire manual].freeze
-  SIGNAL_TYPES = %w[aircraft_position vessel_position seismic_event gps_jamming wildfire manual].freeze
+  SOURCES = %w[opensky ais usgs_seismic gpsjam firms_wildfire manual derived].freeze
+  SIGNAL_TYPES = %w[aircraft_position vessel_position seismic_event gps_jamming wildfire manual ais_gap].freeze
 
   has_many :signal_rule_matches, foreign_key: :signal_id, dependent: :destroy
 

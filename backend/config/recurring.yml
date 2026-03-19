@@ -18,3 +18,8 @@ production:
     class: Vessels::TrackRetentionJob
     queue: background
     schedule: every day at 3am
+
+  vessel_gap_detection:
+    class: Vessels::GapDetectionJob
+    queue: background
+    schedule: every 5 minutes
