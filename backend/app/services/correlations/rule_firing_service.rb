@@ -90,8 +90,9 @@ module Correlations
           signal_type:   @signal.signal_type,
           source:        @signal.source,
           distance_km:   distance_to_site.round(1),
-          confidence:    match&.confidence,
-          fired_at:      Time.current.iso8601,
+          confidence:      match&.confidence,
+          workflow_status: match&.workflow_status,
+          fired_at:        Time.current.iso8601,
           actions_taken: actions_taken
         }
       )

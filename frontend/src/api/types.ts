@@ -189,8 +189,10 @@ export interface AiSummaryResult {
 // Signal types
 // ---------------------------------------------------------------------------
 
-export type SignalSource = 'opensky' | 'ais' | 'usgs_seismic' | 'gpsjam' | 'firms_wildfire' | 'manual'
-export type SignalType = 'aircraft_position' | 'vessel_position' | 'seismic_event' | 'gps_jamming' | 'wildfire' | 'manual'
+export type SignalSource = 'opensky' | 'ais' | 'usgs_seismic' | 'gpsjam' | 'firms_wildfire' | 'manual' | 'derived'
+export type SignalType = 'aircraft_position' | 'vessel_position' | 'seismic_event' | 'gps_jamming' | 'wildfire' | 'ais_gap' | 'manual'
+
+export type AlertStatus = 'unacknowledged' | 'acknowledged' | 'investigating' | 'closed'
 
 export interface Signal {
   id: string
@@ -250,6 +252,11 @@ export interface CorrelationRule {
 export interface SignalRuleMatch {
   id: string
   fired_at: string
+  confidence: number
+  workflow_status: AlertStatus
+  acknowledged_at: string | null
+  acknowledged_by: { id: string; email: string } | null
+  notes: string | null
   metadata: Record<string, unknown>
   signal: {
     id: string
@@ -267,6 +274,15 @@ export interface SignalRuleMatch {
     workflow_status: WorkflowStatus
     priority: TaskPriority
   } | null
+}
+
+export interface TransitionAlertBody {
+  to_status: AlertStatus
+  notes?: string | null
+}
+
+export interface AllowedTransitionsResponse {
+  allowed: AlertStatus[]
 }
 
 export interface CreateCorrelationRuleBody {
@@ -298,6 +314,7 @@ export interface SignalsParams extends PaginationParams {
 export interface SignalRuleMatchesParams extends PaginationParams {
   rule_id?: string
   site_id?: string
+  workflow_status?: AlertStatus
   from?: string
   to?: string
 }

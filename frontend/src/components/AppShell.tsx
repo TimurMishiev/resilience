@@ -49,22 +49,51 @@ export default function AppShell() {
 
       if (e.event === 'rule_fired') {
         const d = e.data as {
-          rule_name:     string
-          site_name:     string
-          task_title:    string | null
-          priority:      string | null
-          signal_type:   string
-          distance_km:   number
-          actions_taken: string[]
+          rule_name:       string
+          site_name:       string
+          task_title:      string | null
+          priority:        string | null
+          signal_type:     string
+          distance_km:     number
+          confidence:      number | null
+          actions_taken:   string[]
         }
         queryClient.invalidateQueries({ queryKey: ['signal_rule_matches'] })
         queryClient.invalidateQueries({ queryKey: ['correlation_rules'] })
         queryClient.invalidateQueries({ queryKey: ['sites'] })
+        const confPct = d.confidence != null ? ` · ${Math.round(d.confidence * 100)}% conf` : ''
         AppToaster.then(t => t.show({
-          message: `⚡ ${d.rule_name} fired near ${d.site_name} — "${d.task_title ?? d.actions_taken?.join(', ')}" (${d.signal_type}, ${d.distance_km} km)`,
+          message: `⚡ ${d.rule_name} fired near ${d.site_name} — ${d.signal_type}, ${d.distance_km} km${confPct}`,
           intent:  'warning',
           icon:    'lightning',
           timeout: 10_000,
+        }))
+      }
+
+      if (e.event === 'alert_transitioned') {
+        const d = e.data as {
+          workflow_status: string
+          acknowledged_by: string
+          rule_name:       string | null
+          site_name:       string | null
+          notes:           string | null
+        }
+        queryClient.invalidateQueries({ queryKey: ['signal_rule_matches'] })
+        const STATUS_ICON: Record<string, string> = {
+          acknowledged: '👁',
+          investigating: '🔍',
+          closed: '✔',
+          unacknowledged: '⚠',
+        }
+        const label = d.workflow_status.replace(/_/g, ' ')
+        const context = d.rule_name ?? 'alert'
+        const site = d.site_name ? ` @ ${d.site_name}` : ''
+        const notes = d.notes ? ` — "${d.notes}"` : ''
+        AppToaster.then(t => t.show({
+          message: `${STATUS_ICON[d.workflow_status] ?? '•'} ${context}${site} → ${label}${notes}`,
+          intent:  d.workflow_status === 'closed' ? 'success' : d.workflow_status === 'investigating' ? 'primary' : 'none',
+          icon:    d.workflow_status === 'closed' ? 'tick' : d.workflow_status === 'investigating' ? 'search' : 'eye-open',
+          timeout: 6_000,
         }))
       }
 

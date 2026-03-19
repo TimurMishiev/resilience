@@ -1,4 +1,4 @@
-import { Callout, Classes, Tag } from '@blueprintjs/core'
+import { Callout, Classes, Tag, Tooltip } from '@blueprintjs/core'
 import { useNavigate } from 'react-router-dom'
 import {
   BarChart,
@@ -16,7 +16,7 @@ import { useReadiness, useThroughput } from '../hooks/useReadiness'
 import { useTasks } from '../hooks/useTasks'
 import { useSignalRuleMatches } from '../hooks/useSignalRuleMatches'
 import { useReplay } from '../context/ReplayContext'
-import type { WorkflowStatus, TaskPriority, SignalRuleMatch } from '../api/types'
+import type { WorkflowStatus, TaskPriority, SignalRuleMatch, AlertStatus } from '../api/types'
 
 const STATUS_ORDER: WorkflowStatus[] = ['new', 'triaged', 'in_progress', 'blocked', 'resolved']
 const PRIORITY_ORDER: TaskPriority[] = ['critical', 'high', 'normal', 'low']
@@ -50,11 +50,33 @@ function pct(n: number | null): string {
 
 const SIGNAL_ICON: Record<string, string> = {
   aircraft_position: '✈',
-  vessel_position: '⛵',
-  seismic_event: '🌊',
-  gps_jamming: '📡',
-  wildfire: '🔥',
-  manual: '⚡',
+  vessel_position:   '⛵',
+  seismic_event:     '🌊',
+  gps_jamming:       '📡',
+  wildfire:          '🔥',
+  ais_gap:           '🚢',
+  manual:            '⚡',
+}
+
+const ALERT_STATUS_LABEL: Record<AlertStatus, string> = {
+  unacknowledged: 'New',
+  acknowledged:   'Ack',
+  investigating:  'Inv',
+  closed:         'Done',
+}
+
+const ALERT_STATUS_INTENT: Record<AlertStatus, 'danger' | 'warning' | 'primary' | 'success'> = {
+  unacknowledged: 'danger',
+  acknowledged:   'warning',
+  investigating:  'primary',
+  closed:         'success',
+}
+
+function confidenceColor(c: number): string {
+  if (c >= 0.85) return '#23a26d'   // green
+  if (c >= 0.65) return '#f0b726'   // yellow
+  if (c >= 0.40) return '#e67e22'   // orange
+  return '#cd4246'                  // red
 }
 
 function fmtTime(iso: string) {
@@ -77,8 +99,10 @@ function AlertsPanel({ matches }: { matches: SignalRuleMatch[] }) {
         const actions = (m.metadata?.actions_taken as string[] | undefined) ?? []
         const hasFlag = actions.some((a) => a.includes('flag'))
         const hasTask = actions.some((a) => a.includes('task'))
-        const distKm = m.metadata?.distance_km as number | undefined
-        const intent = hasFlag ? 'danger' : hasTask ? 'warning' : 'none'
+        const distKm  = m.metadata?.distance_km as number | undefined
+        const intent  = hasFlag ? 'danger' : hasTask ? 'warning' : 'none'
+        const status  = m.workflow_status ?? 'unacknowledged'
+        const conf    = typeof m.confidence === 'number' ? m.confidence : null
 
         return (
           <div
@@ -100,11 +124,37 @@ function AlertsPanel({ matches }: { matches: SignalRuleMatch[] }) {
             </div>
             <div className="alert-row-right">
               <div className="alert-actions">
+                {/* Workflow status chip */}
+                <Tag
+                  minimal
+                  intent={ALERT_STATUS_INTENT[status as AlertStatus] ?? 'none'}
+                  style={{ fontSize: 10, fontWeight: 600 }}
+                >
+                  {ALERT_STATUS_LABEL[status as AlertStatus] ?? status}
+                </Tag>
+
+                {/* Confidence badge */}
+                {conf != null && (
+                  <Tooltip
+                    content={`Match confidence: ${Math.round(conf * 100)}%`}
+                    placement="top"
+                  >
+                    <span
+                      className="alert-confidence"
+                      style={{ color: confidenceColor(conf), fontSize: 11, fontWeight: 600, cursor: 'default' }}
+                    >
+                      {Math.round(conf * 100)}%
+                    </span>
+                  </Tooltip>
+                )}
+
+                {/* Action tags */}
                 {actions.map((a) => (
                   <Tag key={a} minimal intent={hasFlag ? 'danger' : 'warning'} style={{ fontSize: 10 }}>
                     {a.replace(/_/g, ' ')}
                   </Tag>
                 ))}
+
                 {distKm != null && (
                   <span className="bp6-text-muted" style={{ fontSize: 11 }}>{Number(distKm).toFixed(0)} km</span>
                 )}
