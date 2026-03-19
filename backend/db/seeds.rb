@@ -51,6 +51,8 @@ SignalRuleMatch.delete_all
 AuditEvent.delete_all
 Task.delete_all
 Asset.delete_all
+VesselTrack.delete_all
+Vessel.delete_all          # must precede ExternalSignal (FK: vessels.last_signal_id)
 ExternalSignal.delete_all
 CorrelationRule.delete_all
 Site.delete_all
@@ -100,7 +102,7 @@ alpha, bravo, charlie, delta, echo, foxtrot, golf, hotel, india = sites
 puts "\nSeeding areas of operation..."
 
 commander_for_ao = User.find_or_create_by!(email: "commander@resilience.mil") do |u|
-  u.password = "password"
+  u.password = "password123"
   u.role     = "commander"
 end
 
@@ -513,8 +515,8 @@ puts "    #{t.title} [#{t.workflow_status}]"
 puts "  Seeding users..."
 
 [
-  { email: "commander@resilience.mil", password: "password", role: "commander" },
-  { email: "operator@resilience.mil",  password: "password", role: "operator"  }
+  { email: "commander@resilience.mil", password: "password123", role: "commander" },
+  { email: "operator@resilience.mil",  password: "password123", role: "operator"  }
 ].each do |attrs|
   user = User.find_or_initialize_by(email: attrs[:email])
   user.assign_attributes(password: attrs[:password], role: attrs[:role])
