@@ -245,7 +245,7 @@ Resolved tasks carry more weight than merely non-blocked ones. Returns `null` fo
 | Cache | SolidCache |
 | Auth | JWT (24h TTL), Rack::Attack (5 login/min, auto-ban on violations), SSE tokens (60s TTL, sse_only claim) |
 | Build | Vite 6, vite-plugin-cesium |
-| Testing | RSpec (324 examples, 0 failures), FactoryBot, Brakeman (0 warnings), bundler-audit (0 CVEs) |
+| Testing | RSpec (339 examples, 0 failures), FactoryBot, Brakeman (0 warnings), bundler-audit (0 CVEs) |
 | CI | GitHub Actions — typecheck, RSpec, Brakeman, bundler-audit, yarn audit, Fly.io deploy |
 | Deploy | Fly.io — combined Docker image (SPA built into Rails public/), single origin, no CORS |
 
@@ -408,46 +408,97 @@ All SSE streams require a short-lived SSE token (`GET /api/auth/sse_token`, 60s 
 
 ### Prerequisites
 
-- Ruby 3.4+, Bundler 2
-- PostgreSQL 16
-- Node 22+, Yarn
+| Tool | Version | Install |
+|---|---|---|
+| Ruby | 3.4+ | [rbenv](https://github.com/rbenv/rbenv) or [mise](https://mise.jdx.dev/) |
+| Bundler | 2+ | `gem install bundler` |
+| PostgreSQL | 16+ | `brew install postgresql@16` |
+| Node.js | 22+ | [nvm](https://github.com/nvm-sh/nvm) or [mise](https://mise.jdx.dev/) |
+| Yarn | 1.x | `npm install -g yarn` |
 
-### Backend
+### 1 — Clone
+
+```bash
+git clone https://github.com/YOUR_USERNAME/resilience.git
+cd resilience
+```
+
+### 2 — Backend
 
 ```bash
 cd backend
 bundle install
-cp .env.example .env        # set DATABASE_URL, JWT_SECRET, ANTHROPIC_API_KEY
+
+# Create your local env file
+cp .env.example .env
+
+# Generate a secret key and paste it into .env as SECRET_KEY_BASE
+bin/rails secret
+
+# Create, migrate, and seed the database
+# (seeds everything — sites, tasks, assets, vessels, signals, rules, areas)
 rails db:create db:migrate db:seed
-RAILS_MAX_THREADS=48 DB_POOL=70 rails server
+
+# Start the server
+RAILS_MAX_THREADS=48 DB_POOL=70 rails server -p 3000
 ```
 
-### Frontend
+> **PostgreSQL note:** The app connects to `localhost:5432` with your system user by default.
+> If your local Postgres requires a password, set `DATABASE_URL=postgres://user:pass@localhost/resilience_development` in `.env`.
+
+### 3 — Frontend
+
+Open a second terminal:
 
 ```bash
 cd frontend
 yarn install
-yarn dev                    # → http://localhost:5176 (proxies /api/* to :3000)
+yarn dev
+# → http://localhost:5176
 ```
 
-### Credentials
+The Vite dev server proxies all `/api/*` requests to `:3000` — no CORS configuration needed.
 
-| Role | Email | Password |
+### 4 — Log in
+
+Open **http://localhost:5176** in your browser.
+
+| Role | Email | Password | Access |
+|---|---|---|---|
+| Commander | commander@resilience.mil | password123 | Full write access — create rules, inject signals, manage all entities |
+| Operator | operator@resilience.mil | password123 | Read + triage — view everything, transition tasks and alerts, no destructive actions |
+
+### What you'll see after seed
+
+- **9 sites** across 4 theaters (CENTCOM, INDOPACOM, EUCOM, AFRICOM)
+- **5 Areas of Operation** with threat-level polygon overlays
+- **19 tasks** in various workflow states
+- **7 assets** with live simulated telemetry (visible on Globe page)
+- **5 correlation rules** (flat and compound AND/OR)
+- **Live signals** on the map — aircraft, vessel, seismic, GPS jamming, wildfire
+- **6 demo vessels** with track history — click any vessel dot on the map to open the intel panel
+
+### AI Briefing (optional)
+
+The Briefing page requires an Anthropic API key. Get one free at [console.anthropic.com](https://console.anthropic.com/) and add it to `.env`:
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Everything else — map, signals, rules, alerts, replay, graph, globe — works without it.
+
+### Optional: Real-time external feeds
+
+Demo seed data covers all 5 signal types out of the box. Add these to `.env` to enable live external ingestion:
+
+| Feed | Env var | Notes |
 |---|---|---|
-| Commander | commander@resilience.mil | password123 |
-| Operator | operator@resilience.mil | password123 |
-
-### Optional feed credentials
-
-All five signal types are visible immediately after `db:seed` via demo seeded records. External feeds activate automatically when credentials are present.
-
-| Feed | Env var(s) | Notes |
-|---|---|---|
-| USGS Seismic | _(none)_ | Always active, public |
-| GPSJam | _(none)_ | Always active, public |
-| OpenSky (aircraft) | `OPENSKY_USERNAME`, `OPENSKY_PASSWORD` | Optional — runs anonymously with 300s startup delay |
-| AIS (vessels) | `AISHUB_USERNAME` | AISHub account |
-| FIRMS (wildfire) | `NASA_FIRMS_MAP_KEY` | Free NASA Earthdata key |
+| USGS Seismic | _(none)_ | Always live, no key needed |
+| GPSJam | _(none)_ | Always live, no key needed |
+| OpenSky aircraft | `OPENSKY_USERNAME` + `OPENSKY_PASSWORD` | Runs anonymously without credentials (300s startup delay) |
+| AIS vessels | `AISHUB_USERNAME` | Free account at aishub.net |
+| NASA wildfire | `NASA_FIRMS_MAP_KEY` | Free NASA EarthData key |
 
 ---
 
@@ -455,7 +506,7 @@ All five signal types are visible immediately after `db:seed` via demo seeded re
 
 ```bash
 cd backend
-bundle exec rspec --format documentation      # 324 examples, 0 failures
+bundle exec rspec --format documentation      # 339 examples, 0 failures
 bundle exec brakeman --no-progress -q         # 0 security warnings
 bundle exec bundler-audit check               # 0 CVEs
 
