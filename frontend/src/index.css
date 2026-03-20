@@ -115,6 +115,81 @@ body {
   width: 100%;
 }
 
+/* ── Signal feed virtual list ──────────────────────────────── */
+
+.signal-feed-page {
+  max-width: 1100px;
+}
+
+.signal-feed-table-wrap {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+/* Sticky header table — no scroll, just the <thead> */
+.signal-feed-table thead th {
+  position: sticky;
+  top: 0;
+  background: #252c35;
+  z-index: 1;
+  font-size: 12px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Body rows inside the virtualizer */
+.signal-feed-table tbody tr {
+  height: 40px;
+}
+
+.signal-feed-table tbody td {
+  padding: 0 10px;
+  vertical-align: middle;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.signal-feed-table tbody tr.row-even {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.signal-feed-table tbody tr.row-odd {
+  background: transparent;
+}
+
+/* Scroll container — fixed height, scrollable */
+.signal-feed-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.signal-feed-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.signal-feed-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+/* Footer below scroll area */
+.signal-feed-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  min-height: 32px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
 .mono {
   font-family: monospace;
   font-size: 12px;
