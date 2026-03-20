@@ -8,10 +8,11 @@ class CorrelationRule < ApplicationRecord
   belongs_to :area_of_operation, optional: true
   has_many :signal_rule_matches, dependent: :destroy
 
-  validates :name,             presence: true
-  validates :cooldown_minutes, presence: true, numericality: { greater_than_or_equal_to: 0 }
-  validates :conditions,       presence: true
-  validates :actions,          presence: true
+  validates :name,              presence: true
+  validates :cooldown_minutes,  presence: true, numericality: { greater_than_or_equal_to: 0 }
+  validates :conditions,        presence: true
+  validates :actions,           presence: true
+  validates :area_of_operation, presence: true, if: -> { area_of_operation_id.present? }
   validate  :conditions_schema
   validate  :actions_schema
 

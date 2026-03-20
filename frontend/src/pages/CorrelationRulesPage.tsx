@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import {
   Button,
   ButtonGroup,
@@ -296,8 +296,11 @@ export default function CorrelationRulesPage() {
   const deleteMutation = useDeleteCorrelationRule()
 
   const { data: aosData } = useAreasOfOperation()
-  const aoList   = aosData?.data ?? []
-  const aoByIdMap = new Map(aoList.map(ao => [ao.id, ao.name]))
+  const aoList    = aosData?.data ?? []
+  const aoByIdMap = useMemo(
+    () => new Map((aosData?.data ?? []).map(ao => [ao.id, ao.name])),
+    [aosData?.data],
+  )
 
   const [drawerOpen, setDrawerOpen]     = useState(false)
   const [editingRule, setEditingRule]   = useState<CorrelationRule | null>(null)
