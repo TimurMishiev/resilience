@@ -25,7 +25,7 @@ Resilience is not a CRUD app dressed up with a dark theme. It is an **operationa
 - **Controlled workflow state machines** — task and alert transitions are enforced exclusively server-side with an allowed-transitions table. The frontend fetches valid next states and renders only those. No business logic lives in the UI.
 - **Immutable audit log** — every mutation writes a before/after snapshot `AuditEvent` inside the same database transaction. The audit log is never stale or inconsistent.
 - **Deterministic server-side replay** — any read endpoint accepts `?as_of=<ISO>` and reconstructs past state from the audit log. Time travel is semantically consistent because it uses the same data the mutations wrote.
-- **Intelligence fusion pipeline** — five live external feeds (aircraft, seismic, vessel, GPS jamming, wildfire) are ingested by background threads, stored as `ExternalSignal` records, and evaluated against a rules engine every 10 seconds.
+- **Intelligence fusion pipeline** — seven live signal feeds (aircraft, seismic, vessel, GPS jamming, wildfire, conflict events via ACLED, disaster alerts via GDACS) are ingested by background threads, stored as `ExternalSignal` records, and evaluated against a rules engine every 10 seconds.
 - **Compound correlation engine** — rules support simple flat conditions or compound AND/OR logic across multiple signal types, with per-condition confidence scoring, atomic cooldown enforcement, AO-scoped evaluation, and SSE broadcast on fire.
 - **Alert acknowledgment workflow** — every rule firing is a trackable `SignalRuleMatch` entity with its own state machine (UNACKNOWLEDGED → ACKNOWLEDGED → INVESTIGATING → CLOSED), actor recording, notes, and transition history.
 - **Vessel intelligence** — AIS vessel entities are upserted from every ping, accumulate immutable track history with 7-day retention, generate derived `ais_gap` signals when vessels go dark, and render a full track polyline on the map.
@@ -44,10 +44,10 @@ Resilience is not a CRUD app dressed up with a dark theme. It is an **operationa
 | **Site Detail** | 5-tab detail view: Tasks (with inline create), Signals (proximity-filtered), Rule Fires, Assets, Audit Trail — plus Activate/Deactivate and Unflag actions |
 | **Tasks** | Full task management with controlled workflow transitions, blocked-reason enforcement, AI natural-language filter (`find all high-priority blocked tasks`), and per-task audit timeline |
 | **Assets** | Asset inventory with type, status, and home site linkage |
-| **Map** | MapLibre GL interactive map — site health markers, AoO polygon overlays, live signal layer (color-coded by type and recency), vessel track polyline with intel panel (name, flag, type, dark/loitering status, track history), risk badge with score in site panel, task transitions directly from map popups |
+| **Map** | MapLibre GL interactive map — site health markers, AoO polygon overlays, live signal layer (color-coded by type and recency, 7 signal types), vessel track polyline with intel panel, enriched signal detail panel (conflict: country/actor/fatalities; disaster: event type/alert level/severity), risk badge in site panel, task transitions directly from map popups |
 | **Globe** | CesiumJS 3D globe with live asset telemetry — asset markers move in real time via SSE |
 | **Graph** | D3 force-directed object graph showing site → task → asset dependency chains (Palantir ontology pattern) |
-| **Signal Feed** | Infinite-scroll virtual list ([@tanstack/react-virtual](https://tanstack.com/virtual)) — only visible rows rendered regardless of total count; loads next page as you scroll; filterable by source and type; Commander inject-signal dialog that runs the correlation engine immediately |
+| **Signal Feed** | Infinite-scroll virtual list ([@tanstack/react-virtual](https://tanstack.com/virtual)) — only visible rows rendered regardless of total count; loads next page as you scroll; filterable by all 7 signal sources and types; speed/mag column shows fatalities for conflict events and alert score for disaster alerts; Commander inject-signal dialog runs correlation engine immediately |
 | **Correlation Rules** | Visual rule builder — Simple mode (flat condition) or Compound mode (AND/OR multi-signal); AO scope selector limits rule evaluation to one Area of Operation; dry-run against historical signals before activating; firing history with confidence scores |
 | **Areas of Operation** | Geofenced GeoJSON polygon AoOs with threat levels (green/amber/red/black) overlaid on map and globe, color-coded by threat |
 | **Briefing** | Claude-powered AI operational summaries (site activity, readiness change, leadership briefing) with citation-validated grounding to live audit events |
@@ -80,8 +80,9 @@ Resilience is not a CRUD app dressed up with a dark theme. It is an **operationa
 ┌──────────▼────────────────────────────┐  ┌──────────▼───────────┐
 │      Intelligence Fusion Pipeline     │  │   Sse::Broadcaster    │
 │  OpenSky · USGS · AIS · GPSJam · FIRMS│  │   (singleton, thread  │
-│  → ExternalSignal · Vessel · VesselTrack│  │    safe, event typed) │
-│  → GapDetectionJob (ais_gap signals)  │  └──────────────────────┘
+│  ACLED · GDACS                        │  │    safe, event typed) │
+│  → ExternalSignal · Vessel · VesselTrack│
+│  → GapDetectionJob (ais_gap signals)  │
 │  → BackgroundEvaluator (every 10s)    │
 │  → EvaluatorService (compound AND/OR) │
 │  → RuleFiringService (atomic cooldown)│
@@ -120,6 +121,10 @@ Resilience is not a CRUD app dressed up with a dark theme. It is an **operationa
 
 **Zero Cesium Ion dependency** — The 3D globe uses OpenStreetMap tiles (`UrlTemplateImageryProvider`) and an ellipsoid terrain provider. The globe works for any developer who clones the repo without any account or token.
 
+**Signal detail panel: `p_*` property projection** — MapLibre GeoJSON features carry only JSON-serializable primitive values in their `properties` object. Rather than parsing `raw_payload` inside the hover popup (which would require a second React render or a string JSON.parse), the API serializes selected `raw_payload` keys as `p_*` prefixed properties at feature-generation time. The frontend reads `feature.properties.p_country` directly. This avoids per-hover deserialization and keeps the popup render path synchronous.
+
+**Phase 3 GDACS without credentials** — GDACS provides a public GeoJSON endpoint requiring no API key. The feed thread runs unconditionally on every Rails boot, providing live disaster alert coverage for any developer who clones the repo. ACLED requires registration credentials and is credential-guarded; the feed silently returns 0 results when keys are absent, keeping boots clean in environments without credentials.
+
 ---
 
 ## Intelligence Fusion Pipeline
@@ -131,7 +136,11 @@ External feeds — background threads in Puma
   ├── AISHub               vessel_position signals      every 15 min
   │     └── Vessel.upsert_from_signal! + VesselTrack append (immutable time-series)
   ├── GPSJam               gps_jamming signals          every 15 min
-  └── NASA FIRMS           wildfire signals             every 15 min
+  ├── NASA FIRMS           wildfire signals             every 15 min
+  ├── ACLED                conflict_event signals       every 60 min, 4 theaters, 3-day lookback
+  │     magnitude = fatalities.to_f (nil when zero)
+  └── GDACS                disaster_alert signals       every 15 min, global, no key required
+        magnitude = episodealertscore (EQ/TC/FL/VO/DR/TS event types)
 
 Derived signals — SolidQueue jobs
   └── GapDetectionJob      ais_gap signals              every 5 min
@@ -277,7 +286,7 @@ Visible on the Dashboard (badge per readiness bar), Map (site panel), and Sites 
 | Cache | SolidCache |
 | Auth | JWT (24h TTL), Rack::Attack (5 login/min, auto-ban on violations), SSE tokens (60s TTL, sse_only claim) |
 | Build | Vite 6, vite-plugin-cesium |
-| Testing | RSpec (376 examples, 0 failures), FactoryBot, Brakeman (0 warnings), bundler-audit (0 CVEs) |
+| Testing | RSpec (411 examples, 0 failures), FactoryBot, Brakeman (0 warnings), bundler-audit (0 CVEs) |
 | CI | GitHub Actions — typecheck, ESLint, RSpec, Brakeman, bundler-audit, yarn audit, Fly.io deploy |
 | Deploy | Fly.io — combined Docker image (SPA built into Rails public/), single origin, no CORS |
 
@@ -311,7 +320,8 @@ resilience/
 │   │       ├── tasks/              CreationService, TransitionService, UpdateService
 │   │       ├── signals/            IngestService
 │   │       ├── vessels/            GapDetectionJob (→ ais_gap signals)
-│   │       ├── feeds/              OpenSky, UsgsSeismic, Ais, Gpsjam, FirmsWildfire
+│   │       ├── feeds/              OpenSky, UsgsSeismic, Ais, Gpsjam, FirmsWildfire,
+  │                       AcledIngestion, GdacsIngestion
 │   │       ├── correlations/       EvaluatorService (AO-scoped), RuleFiringService,
 │   │       │                       BackgroundEvaluator, DryRunService
 │   │       ├── alerts/             TransitionService (alert acknowledgment workflow)
@@ -325,9 +335,9 @@ resilience/
 │   │   ├── structure.sql           Authoritative schema — preserves CHECK constraints,
 │   │   │                           indexes, FK cascade rules not captured by schema.rb
 │   │   └── seeds.rb                9 sites · 4 theaters · 7 assets · 19 tasks ·
-│   │                               5 Areas of Operation · 5 correlation rules ·
-│   │                               6 demo vessels with track history
-│   └── spec/                       RSpec unit + request specs (376 examples)
+│   │                               5 Areas of Operation · 8 correlation rules ·
+│   │                               6 demo vessels · demo conflict + disaster signals
+│   └── spec/                       RSpec unit + request specs (411 examples)
 ├── frontend/
 │   ├── src/
 │   │   ├── api/                    Typed fetch wrappers — all resources, all params
@@ -519,9 +529,10 @@ Open **http://localhost:5176** in your browser.
 - **5 Areas of Operation** with threat-level polygon overlays
 - **19 tasks** in various workflow states
 - **7 assets** with live simulated telemetry (visible on Globe page)
-- **5 correlation rules** (flat and compound AND/OR, some scoped to specific AOs)
-- **Live signals** on the map — aircraft, vessel, seismic, GPS jamming, wildfire
-- **6 demo vessels** with track history — click any vessel dot on the map for the full intel panel and track polyline
+- **8 correlation rules** (flat and compound AND/OR, including Phase 3 conflict/disaster rules scoped to CENTCOM/INDOPACOM)
+- **Live signals** on the map — aircraft, vessel, seismic, GPS jamming, wildfire, conflict events, disaster alerts (all 7 types)
+- **6 demo vessels** with track history — click any vessel dot for the full intel panel and track polyline
+- **Enriched signal detail panel** — conflict events show country, actor, and fatality count; disaster alerts show event type, alert level (Green/Orange/Red), and severity description
 
 ### AI Briefing (optional)
 
@@ -535,15 +546,17 @@ Everything else — map, signals, rules, alerts, replay, graph, globe — works 
 
 ### Optional: Real-time external feeds
 
-Demo seed data covers all 5 signal types out of the box. Add these to `.env` to enable live external ingestion:
+Demo seed data covers all 7 signal types out of the box. Add these to `.env` to enable live external ingestion:
 
 | Feed | Env var | Notes |
 |---|---|---|
 | USGS Seismic | _(none)_ | Always live, no key needed |
 | GPSJam | _(none)_ | Always live, no key needed |
+| GDACS Disasters | _(none)_ | Always live, no key needed — global GeoJSON endpoint |
 | OpenSky aircraft | `OPENSKY_USERNAME` + `OPENSKY_PASSWORD` | Runs anonymously without credentials (300s startup delay) |
 | AIS vessels | `AISHUB_USERNAME` | Free account at aishub.net |
 | NASA wildfire | `NASA_FIRMS_MAP_KEY` | Free NASA EarthData key |
+| ACLED conflicts | `ACLED_API_KEY` + `ACLED_EMAIL` | Register at acleddata.com (free researcher access) |
 
 ---
 
@@ -551,7 +564,7 @@ Demo seed data covers all 5 signal types out of the box. Add these to `.env` to 
 
 ```bash
 cd backend
-bundle exec rspec --format documentation      # 376 examples, 0 failures
+bundle exec rspec --format documentation      # 411 examples, 0 failures
 bundle exec brakeman --no-progress -q         # 0 security warnings
 bundle exec bundler-audit check               # 0 CVEs
 
@@ -567,6 +580,8 @@ Key spec coverage:
 - `Risk::ScoringService` — all three components, caps, thresholds, nil readiness, time windows, exact Haversine distance
 - `Alerts::TransitionService` — all valid transitions, all invalid transitions, actor recording, notes, SSE broadcast
 - `Tasks::TransitionService` — full state machine, blocked_reason enforcement, resolved_at timestamp
+- `Feeds::AcledIngestionService` — ingest, theater filter, dedup, fatality magnitude, notes truncation, date parsing, credential guard
+- `Feeds::GdacsIngestionService` — ingest, GeoJSON coordinate order, magnitude, alertscore fallback, dedup, timestamp parsing, HTTP stubs
 - Request specs — auth guards (401/403 on every protected endpoint), role enforcement, pagination, mmsi filter
 
 ---
@@ -607,6 +622,11 @@ Key spec coverage:
 | **v2-10** | **AO-scoped correlation rules** — rule builder AO selector, EvaluatorService scopes target_sites by AO, dry-run respects same scoping |
 | **v2-11** | **Risk score per site** — Risk::ScoringService (alert pressure + task health + signal density → 0–100), GET /api/risk_scores, Dashboard badges, Map panel, Sites column |
 | **v2-12** | **Virtual list + infinite scroll** — @tanstack/react-virtual with useInfiniteQuery; constant DOM node count at any signal volume; auto-fetch on scroll |
+| **v3-1** | **ACLED conflict events feed** — AcledIngestionService polls ACLED API every 60 min; 4 theater bounding boxes; fatalities → magnitude; 3-day lookback; credential-guarded (returns 0 when key absent); 18 RSpec examples |
+| **v3-2** | **GDACS disaster alerts feed** — GdacsIngestionService polls GDACS GeoJSON API every 15 min; no credentials required; episodealertscore → magnitude; EQ/TC/FL/VO/DR/TS types; stable external_id = `gdacs_{type}_{eventid}_{episodeid}`; 17 RSpec examples |
+| **v3-3** | **Phase 3 demo seeds** — 5 ACLED conflict_event + 5 GDACS disaster_alert demo signals near seeded sites; 3 new compound correlation rules (CENTCOM armed conflict, INDOPACOM major disaster, compound crisis AND rule); CorrelationRule.VALID_SIGNAL_TYPES extended to include new types |
+| **v3-4** | **Enriched signal detail panel** — MapPage hover popup + click panel extended with type-specific fields: conflict (country, actor, fatalities, sub_event_type); disaster (event type, alert level badge Green/Orange/Red, severity text, event name); TypeScript-safe IIFE pattern for unknown-typed raw_payload rendering |
+| **v3-5** | **Phase 3 signal coverage** — all 7 signal types visible on Map, Globe, Signal Feed, Correlation Rules builder; SignalFeedPage speedOrMag() shows fatalities/score; GlobePage + SignalFeedPage extended with conflict (purple) and disaster (hot-pink) color/label entries |
 
 ---
 
