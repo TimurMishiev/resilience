@@ -34,6 +34,13 @@ RSpec.describe "Api::Vessels", type: :request do
       )
     end
 
+    it "filters by mmsi" do
+      get "/api/vessels", params: { mmsi: "111000001" }, headers: auth_headers(user)
+      body = JSON.parse(response.body)
+      expect(body["data"].length).to eq(1)
+      expect(body["data"].first["id"]).to eq(vessel1.id)
+    end
+
     it "filters loitering vessels" do
       get "/api/vessels", params: { loitering: true }, headers: auth_headers(user)
       body = JSON.parse(response.body)

@@ -2,11 +2,12 @@ import { useQuery } from '@tanstack/react-query'
 import { getVessels, getVessel, getVesselTracks } from '../api/vessels'
 import type { VesselsParams } from '../api/vessels'
 
-export function useVessels(params?: VesselsParams) {
+export function useVessels(params?: VesselsParams, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['vessels', params],
     queryFn:  () => getVessels(params),
     refetchInterval: 30_000,
+    enabled:  options?.enabled ?? true,
   })
 }
 

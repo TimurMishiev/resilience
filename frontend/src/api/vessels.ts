@@ -30,6 +30,7 @@ export interface VesselTrack {
 }
 
 export interface VesselsParams extends QueryParams {
+  mmsi?: string
   loitering?: boolean
   dark_hours?: number
   per_page?: number

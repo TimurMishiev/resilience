@@ -1,9 +1,10 @@
 module Api
   class VesselsController < BaseController
-    # GET /api/vessels?loitering=true&dark_hours=N&per_page=N&page=N
+    # GET /api/vessels?mmsi=N&loitering=true&dark_hours=N&per_page=N&page=N
     def index
       vessels = Vessel.all.order(last_seen_at: :desc)
-      vessels = vessels.loitering          if params[:loitering].present?
+      vessels = vessels.where(mmsi: params[:mmsi])                 if params[:mmsi].present?
+      vessels = vessels.loitering                                   if params[:loitering].present?
       vessels = vessels.dark_since(params[:dark_hours].to_i.hours) if params[:dark_hours].present?
       records, meta = paginate(vessels)
       render json: { data: records.map { |v| serialize_vessel(v) }, meta: meta }

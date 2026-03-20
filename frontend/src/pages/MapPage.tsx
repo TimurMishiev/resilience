@@ -16,6 +16,7 @@ import { useAssets } from '../hooks/useAssets'
 import { useTelemetryStream } from '../hooks/useTelemetryStream'
 import { useAreasOfOperation } from '../hooks/useAreasOfOperation'
 import { useSignals } from '../hooks/useSignals'
+import { useVessels, useVesselTracks } from '../hooks/useVessels'
 import { useReplay } from '../context/ReplayContext'
 import type { Site, Task, Asset, WorkflowStatus, Signal } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
@@ -296,10 +297,11 @@ export default function MapPage() {
   // Ref so the signal click handler always reads fresh data without re-registering
   const signalsRef       = useRef<Signal[]>([])
 
-  const [selectedSiteId,  setSelectedSiteId]   = useState<string | null>(null)
-  const [selectedAssetId, setSelectedAssetId]  = useState<string | null>(null)
-  const [selectedSignal,  setSelectedSignal]   = useState<Signal | null>(null)
-  const [showSignals,     setShowSignals]       = useState(true)
+  const [selectedSiteId,    setSelectedSiteId]    = useState<string | null>(null)
+  const [selectedAssetId,   setSelectedAssetId]   = useState<string | null>(null)
+  const [selectedSignal,    setSelectedSignal]    = useState<Signal | null>(null)
+  const [selectedVesselMmsi, setSelectedVesselMmsi] = useState<string | null>(null)
+  const [showSignals,       setShowSignals]        = useState(true)
   const [mapLoaded,       setMapLoaded]         = useState(false)
   const [mapStyle,        setMapStyle]          = useState<MapStyleKey>('tactical')
   const mapStyleInitRef = useRef(false)
@@ -333,6 +335,17 @@ export default function MapPage() {
     aircraftRes?.data, vesselRes?.data, seismicRes?.data,
     gpsJamRes?.data, wildfireRes?.data, manualRes?.data, aisGapRes?.data,
   ])
+
+  // Vessel lookup by MMSI (only active when a vessel_position signal is selected)
+  const { data: vesselLookup } = useVessels(
+    selectedVesselMmsi ? { mmsi: selectedVesselMmsi, per_page: 1 } : undefined,
+    { enabled: !!selectedVesselMmsi },
+  )
+  const selectedVessel = vesselLookup?.data?.[0] ?? null
+
+  // Track history for the selected vessel (rendered as a polyline on the map)
+  const { data: vesselTrackRes } = useVesselTracks(selectedVessel?.id ?? null, { limit: 300 })
+  const vesselTracks = useMemo(() => vesselTrackRes?.data ?? [], [vesselTrackRes?.data])
 
   const sites    = useMemo(() => sitesQuery.data?.data  ?? [], [sitesQuery.data?.data])
   const allTasks = useMemo(() => tasksQuery.data?.data  ?? [], [tasksQuery.data?.data])
@@ -659,7 +672,14 @@ export default function MapPage() {
       if (!sig) return
       setSelectedSiteId(null)
       setSelectedAssetId(null)
-      setSelectedSignal(prev => prev?.id === sig.id ? null : sig)
+      const isSameSignal = (prev: Signal | null) => prev?.id === sig.id
+      setSelectedSignal(prev => isSameSignal(prev) ? null : sig)
+      // For vessel signals, set the MMSI so the track polyline query activates
+      if (sig.signal_type === 'vessel_position') {
+        setSelectedVesselMmsi(prev => prev === sig.external_id ? null : sig.external_id)
+      } else {
+        setSelectedVesselMmsi(null)
+      }
     }
 
     map.on('click', 'signal-circles', handleSignalClick)
@@ -714,6 +734,45 @@ export default function MapPage() {
   }, [mapLoaded, signals])
 
   // -------------------------------------------------------------------------
+  // Vessel track polyline — drawn/cleared when vesselTracks changes
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapLoaded) return
+
+    // Always remove stale layer/source first
+    if (map.getLayer('vessel-track-line')) map.removeLayer('vessel-track-line')
+    if (map.getSource('vessel-track'))     map.removeSource('vessel-track')
+
+    if (vesselTracks.length < 2) return
+
+    const coords = vesselTracks.map(t => [Number(t.lng), Number(t.lat)])
+
+    map.addSource('vessel-track', {
+      type: 'geojson',
+      data: {
+        type:       'Feature',
+        properties: {},
+        geometry:   { type: 'LineString', coordinates: coords },
+      },
+    })
+
+    // Insert behind signal dots so the track doesn't obscure other signals
+    map.addLayer({
+      id:     'vessel-track-line',
+      type:   'line',
+      source: 'vessel-track',
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint:  {
+        'line-color':     SIGNAL_COLORS.vessel_position,
+        'line-width':     2.5,
+        'line-opacity':   0.80,
+        'line-dasharray': [4, 3],
+      },
+    }, 'signal-glow')
+  }, [mapLoaded, vesselTracks])
+
+  // -------------------------------------------------------------------------
   // Toggle signal layer visibility
   // -------------------------------------------------------------------------
   useEffect(() => {
@@ -726,7 +785,7 @@ export default function MapPage() {
     if (map.getLayer('signal-symbols')) {
       map.setLayoutProperty('signal-symbols', 'visibility', showSignals ? 'visible' : 'none')
     }
-    if (!showSignals) setSelectedSignal(null)
+    if (!showSignals) { setSelectedSignal(null); setSelectedVesselMmsi(null) }
   }, [showSignals, mapLoaded])
 
   // -------------------------------------------------------------------------
@@ -938,11 +997,13 @@ export default function MapPage() {
           <div className="map-panel-header">
             <span className="map-panel-title">
               <Icon icon={SIGNAL_ICON_NAME[selectedSignal.signal_type] ?? 'dot'} size={14} style={{ marginRight: 6 }} />
-              {SIGNAL_LABELS[selectedSignal.signal_type] ?? selectedSignal.signal_type}
+              {selectedVessel?.name
+                ? selectedVessel.name
+                : (SIGNAL_LABELS[selectedSignal.signal_type] ?? selectedSignal.signal_type)}
             </span>
             <button
               className="map-panel-close bp6-button bp6-minimal bp6-icon-cross"
-              onClick={() => setSelectedSignal(null)}
+              onClick={() => { setSelectedSignal(null); setSelectedVesselMmsi(null) }}
               aria-label="Close"
             />
           </div>
@@ -958,6 +1019,12 @@ export default function MapPage() {
               {selectedSignal.signal_type.replace(/_/g, ' ')}
             </Tag>
             <Tag minimal>{SOURCE_LABELS[selectedSignal.source] ?? selectedSignal.source}</Tag>
+            {selectedVessel?.loitering && (
+              <Tag intent="warning" minimal>Loitering</Tag>
+            )}
+            {selectedVessel?.dark && (
+              <Tag intent="danger" minimal>Dark</Tag>
+            )}
           </div>
 
           <p className="map-panel-coords bp6-text-muted">
@@ -967,6 +1034,47 @@ export default function MapPage() {
           <Divider />
 
           <div className="map-telemetry-readings">
+            {/* Vessel-specific identity fields */}
+            {selectedVessel && (
+              <>
+                {selectedVessel.mmsi && (
+                  <div className="map-telemetry-row">
+                    <span className="map-telemetry-label">MMSI</span>
+                    <span className="map-telemetry-value">{selectedVessel.mmsi}</span>
+                  </div>
+                )}
+                {selectedVessel.vessel_type && (
+                  <div className="map-telemetry-row">
+                    <span className="map-telemetry-label">Type</span>
+                    <span className="map-telemetry-value">{selectedVessel.vessel_type}</span>
+                  </div>
+                )}
+                {selectedVessel.flag && (
+                  <div className="map-telemetry-row">
+                    <span className="map-telemetry-label">Flag</span>
+                    <span className="map-telemetry-value">{selectedVessel.flag}</span>
+                  </div>
+                )}
+                {selectedVessel.destination && (
+                  <div className="map-telemetry-row">
+                    <span className="map-telemetry-label">Destination</span>
+                    <span className="map-telemetry-value">{selectedVessel.destination}</span>
+                  </div>
+                )}
+                {vesselTracks.length > 1 && (
+                  <div className="map-telemetry-row">
+                    <span className="map-telemetry-label">Track</span>
+                    <span className="map-telemetry-value bp6-text-muted">
+                      {vesselTracks.length} pts · {new Date(vesselTracks[0].occurred_at).toLocaleDateString()}
+                      {' – '}
+                      {new Date(vesselTracks[vesselTracks.length - 1].occurred_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Standard signal telemetry */}
             {selectedSignal.magnitude !== null && selectedSignal.magnitude !== undefined && (
               <div className="map-telemetry-row">
                 <span className="map-telemetry-label">Magnitude</span>
