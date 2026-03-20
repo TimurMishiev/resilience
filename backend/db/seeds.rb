@@ -673,6 +673,107 @@ if commander
     )
     puts "  Created rule: Wildfire Proximity Alert"
   end
+
+  # Phase 3 — conflict event rule (CENTCOM — Middle East theater)
+  centcom_ao = AreaOfOperation.find_by(name: "Central Command (CENTCOM)")
+  unless CorrelationRule.exists?(name: "Armed Conflict Near Site")
+    CorrelationRule.create!(
+      name:              "Armed Conflict Near Site",
+      description:       "Fires when ACLED reports an armed conflict event within 100km of any active CENTCOM site. Creates a critical task for threat assessment and force protection review.",
+      is_active:         true,
+      area_of_operation: centcom_ao,
+      conditions: {
+        "signal_type"         => "conflict_event",
+        "proximity_km"        => 100,
+        "site_id"             => nil,
+        "count_threshold"     => 1,
+        "time_window_minutes" => 120
+      },
+      actions: {
+        "create_task" => {
+          "title"       => "Armed conflict detected near {{site_name}}",
+          "description" => "ACLED conflict event detected within {{proximity_km}}km of {{site_name}}. Assess threat level, review force protection posture, and coordinate with host-nation security. Signal source: ACLED.",
+          "priority"    => "critical"
+        }
+      },
+      created_by:       commander,
+      cooldown_minutes: 240
+    )
+    puts "  Created rule: Armed Conflict Near Site"
+  end
+
+  # Phase 3 — disaster alert rule (INDOPACOM — Indo-Pacific typhoon/earthquake corridor)
+  unless CorrelationRule.exists?(name: "Major Disaster Alert")
+    CorrelationRule.create!(
+      name:              "Major Disaster Alert",
+      description:       "Fires when GDACS reports an Orange or Red-level disaster (score ≥ 1.0) within 300km of any active INDOPACOM site. Creates a high-priority task and flags the site for command attention.",
+      is_active:         true,
+      area_of_operation: indopacom_ao,
+      conditions: {
+        "signal_type"         => "disaster_alert",
+        "proximity_km"        => 300,
+        "site_id"             => nil,
+        "magnitude_min"       => 1.0,   # GDACS score ≥ 1.0 = Orange or Red alert level
+        "count_threshold"     => 1,
+        "time_window_minutes" => 360
+      },
+      actions: {
+        "create_task" => {
+          "title"       => "Major disaster alert — {{site_name}} operational impact",
+          "description" => "GDACS has issued an Orange/Red disaster alert within {{proximity_km}}km of {{site_name}}. Assess personnel safety, infrastructure integrity, and supply line disruption. Signal source: GDACS.",
+          "priority"    => "high"
+        },
+        "flag_site" => {
+          "reason" => "GDACS disaster alert — impact assessment required"
+        }
+      },
+      created_by:       commander,
+      cooldown_minutes: 720
+    )
+    puts "  Created rule: Major Disaster Alert"
+  end
+
+  # Phase 3 — COMPOUND rule: conflict + disaster in same area (CENTCOM)
+  # Fires when an armed conflict AND a major disaster are both active near the same site —
+  # the compound crisis scenario that demonstrates the AND correlation engine.
+  unless CorrelationRule.exists?(name: "Compound Crisis — Conflict and Disaster")
+    CorrelationRule.create!(
+      name:              "Compound Crisis — Conflict and Disaster",
+      description:       "Fires when BOTH an armed conflict event AND a major disaster alert (Orange+) are detected near the same CENTCOM site simultaneously. Escalates an existing task and flags the site — compound crisis protocol.",
+      is_active:         true,
+      area_of_operation: centcom_ao,
+      conditions: {
+        "operator" => "AND",
+        "conditions" => [
+          {
+            "signal_type"         => "conflict_event",
+            "proximity_km"        => 150,
+            "count_threshold"     => 1,
+            "time_window_minutes" => 180
+          },
+          {
+            "signal_type"         => "disaster_alert",
+            "proximity_km"        => 200,
+            "magnitude_min"       => 1.0,
+            "count_threshold"     => 1,
+            "time_window_minutes" => 360
+          }
+        ]
+      },
+      actions: {
+        "escalate_task" => {
+          "priority"    => "critical",
+          "description" => "COMPOUND CRISIS: Armed conflict and major disaster simultaneously active near {{site_name}}. Compound crisis protocol initiated — escalate all in-progress tasks to critical priority."
+        },
+        "flag_site" => {
+          "reason" => "Compound crisis — simultaneous conflict and disaster event"
+        }
+      },
+      created_by:       commander,
+      cooldown_minutes: 480
+    )
+    puts "  Created rule: Compound Crisis — Conflict and Disaster"
+  end
 else
   puts "  WARNING: No commander user found — skipping correlation rules seed"
 end
@@ -980,7 +1081,7 @@ puts "  Areas:            #{AreaOfOperation.count}  (EUCOM amber, CENTCOM red, A
 puts "  Sites:            #{Site.count}  (#{Site.where(status: 'active').count} active, #{Site.where(status: 'inactive').count} inactive)"
 puts "  Assets:           #{Asset.count}"
 puts "  Tasks:            #{Task.count}  (#{Task.group(:workflow_status).count.map { |s, c| "#{c} #{s}" }.join(', ')})"
-puts "  Correlation Rules:#{CorrelationRule.count}  (Air/Seismic/GPS/Vessel/Wildfire)"
+puts "  Correlation Rules:#{CorrelationRule.count}  (Air/Seismic/GPS/Vessel/Wildfire/Conflict/Disaster/Compound)"
 puts "  Signals:"
 puts "    vessel_position:  #{ExternalSignal.where(signal_type: 'vessel_position').count}  (demo AIS)"
 puts "    seismic_event:    #{ExternalSignal.where(signal_type: 'seismic_event').count}  (live USGS — seeded at boot)"

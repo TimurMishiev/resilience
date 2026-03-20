@@ -1,5 +1,5 @@
 class CorrelationRule < ApplicationRecord
-  VALID_SIGNAL_TYPES = %w[aircraft_position vessel_position seismic_event gps_jamming wildfire ais_gap].freeze
+  VALID_SIGNAL_TYPES = %w[aircraft_position vessel_position seismic_event gps_jamming wildfire ais_gap conflict_event disaster_alert].freeze
   VALID_ACTION_TYPES = %w[create_task escalate_task flag_site].freeze
   VALID_PRIORITIES   = %w[low normal high critical].freeze
   VALID_OPERATORS    = %w[AND OR].freeze
