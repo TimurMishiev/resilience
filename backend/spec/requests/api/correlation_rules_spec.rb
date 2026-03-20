@@ -110,6 +110,16 @@ RSpec.describe "Api::CorrelationRules", type: :request do
       expect(response).to have_http_status(:unprocessable_content)
       expect(JSON.parse(response.body)["errors"]).not_to be_empty
     end
+
+    it "accepts and persists area_of_operation_id" do
+      ao = create(:area_of_operation)
+      post "/api/correlation_rules",
+           params:  { correlation_rule: valid_params[:correlation_rule].merge(area_of_operation_id: ao.id) },
+           headers: auth_headers(commander), as: :json
+      expect(response).to have_http_status(:created)
+      body = JSON.parse(response.body)
+      expect(body["area_of_operation_id"]).to eq(ao.id)
+    end
   end
 
   describe "PATCH /api/correlation_rules/:id" do

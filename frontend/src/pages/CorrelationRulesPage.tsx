@@ -21,6 +21,7 @@ import {
 import { useMutation } from '@tanstack/react-query'
 import { useCorrelationRules, useCreateCorrelationRule, useUpdateCorrelationRule, useDeleteCorrelationRule } from '../hooks/useCorrelationRules'
 import { useSignalRuleMatches } from '../hooks/useSignalRuleMatches'
+import { useAreasOfOperation } from '../hooks/useAreasOfOperation'
 import { dryRunRule } from '../api/correlation_rules'
 import type { DryRunResult } from '../api/correlation_rules'
 import { useAuth } from '../context/AuthContext'
@@ -101,6 +102,8 @@ interface RuleFormState {
   // Compound-mode fields
   compound_operator:   'AND' | 'OR'
   compound_conditions: ConditionRow[]
+  // Scope
+  area_of_operation_id: string | null
 }
 
 const DEFAULT_FORM: RuleFormState = {
@@ -119,18 +122,20 @@ const DEFAULT_FORM: RuleFormState = {
   time_window_minutes: 10,
   compound_operator:   'AND',
   compound_conditions: [{ ...DEFAULT_CONDITION }, { ...DEFAULT_CONDITION }],
+  area_of_operation_id: null,
 }
 
 function ruleToForm(rule: CorrelationRule): RuleFormState {
   const a = rule.actions.create_task ?? {}
   const base = {
-    name:             rule.name,
-    description:      rule.description ?? '',
-    is_active:        rule.is_active,
-    cooldown_minutes: rule.cooldown_minutes,
-    task_title:       a.title       ?? '',
-    task_description: a.description ?? '',
-    task_priority:    (a.priority as TaskPriority | undefined) ?? 'normal',
+    name:                 rule.name,
+    description:          rule.description ?? '',
+    is_active:            rule.is_active,
+    cooldown_minutes:     rule.cooldown_minutes,
+    task_title:           a.title       ?? '',
+    task_description:     a.description ?? '',
+    task_priority:        (a.priority as TaskPriority | undefined) ?? 'normal',
+    area_of_operation_id: rule.area_of_operation_id,
   }
 
   if (isCompoundRule(rule.conditions)) {
@@ -290,6 +295,10 @@ export default function CorrelationRulesPage() {
   const updateMutation = useUpdateCorrelationRule()
   const deleteMutation = useDeleteCorrelationRule()
 
+  const { data: aosData } = useAreasOfOperation()
+  const aoList   = aosData?.data ?? []
+  const aoByIdMap = new Map(aoList.map(ao => [ao.id, ao.name]))
+
   const [drawerOpen, setDrawerOpen]     = useState(false)
   const [editingRule, setEditingRule]   = useState<CorrelationRule | null>(null)
   const [form, setForm]                 = useState<RuleFormState>(DEFAULT_FORM)
@@ -368,10 +377,11 @@ export default function CorrelationRulesPage() {
     }
 
     const payload = {
-      name:             form.name,
-      description:      form.description || null,
-      is_active:        form.is_active,
-      cooldown_minutes: form.cooldown_minutes,
+      name:                 form.name,
+      description:          form.description || null,
+      is_active:            form.is_active,
+      cooldown_minutes:     form.cooldown_minutes,
+      area_of_operation_id: form.area_of_operation_id || null,
       conditions,
       actions: {
         create_task: {
@@ -509,6 +519,11 @@ export default function CorrelationRulesPage() {
                           <div className="bp6-text-muted" style={{ fontSize: 12, marginTop: 2 }}>
                             {rule.description}
                           </div>
+                        )}
+                        {rule.area_of_operation_id && (
+                          <Tag minimal style={{ marginTop: 4, fontSize: 10 }} icon="geofence">
+                            {aoByIdMap.get(rule.area_of_operation_id) ?? 'AO'}
+                          </Tag>
                         )}
                       </td>
                       <td>
@@ -683,6 +698,25 @@ export default function CorrelationRulesPage() {
             onChange={e => setForm(f => ({ ...f, is_active: (e.target as HTMLInputElement).checked }))}
             label="Active"
           />
+
+          {/* ── SCOPE ───────────────────────────────────────────────── */}
+          <Divider style={{ margin: '16px 0 12px' }} />
+          <p className="bp6-text-muted" style={{ fontSize: 12, marginBottom: 12 }}>SCOPE</p>
+          <FormGroup
+            label="Area of Operation"
+            helperText="Limit this rule to sites within one AO. Leave blank to evaluate against all active sites."
+          >
+            <HTMLSelect
+              value={form.area_of_operation_id ?? ''}
+              onChange={e => setForm(f => ({ ...f, area_of_operation_id: e.target.value || null }))}
+              fill
+            >
+              <option value="">All sites (global)</option>
+              {aoList.map(ao => (
+                <option key={ao.id} value={ao.id}>{ao.name}</option>
+              ))}
+            </HTMLSelect>
+          </FormGroup>
 
           {/* ── CONDITIONS ──────────────────────────────────────────── */}
           <Divider style={{ margin: '16px 0 12px' }} />
