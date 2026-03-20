@@ -21,14 +21,15 @@ Commanders have full write access. Operators can view and transition tasks but c
 
 Resilience is not a CRUD app dressed up with a dark theme. It is an **operational intelligence console** built around the same engineering patterns used in real mission-critical platforms:
 
-- **Ontology-first domain model** — entities (Site, Task, Asset, Vessel, Signal, CorrelationRule) are first-class with identity, state, and typed relationships. The data model is designed for a world where entities accumulate history and state transitions matter.
+- **Ontology-first domain model** — entities (Site, Task, Asset, Vessel, Signal, CorrelationRule, AreaOfOperation) are first-class with identity, state, and typed relationships. The data model is designed for a world where entities accumulate history and state transitions matter.
 - **Controlled workflow state machines** — task and alert transitions are enforced exclusively server-side with an allowed-transitions table. The frontend fetches valid next states and renders only those. No business logic lives in the UI.
 - **Immutable audit log** — every mutation writes a before/after snapshot `AuditEvent` inside the same database transaction. The audit log is never stale or inconsistent.
 - **Deterministic server-side replay** — any read endpoint accepts `?as_of=<ISO>` and reconstructs past state from the audit log. Time travel is semantically consistent because it uses the same data the mutations wrote.
 - **Intelligence fusion pipeline** — five live external feeds (aircraft, seismic, vessel, GPS jamming, wildfire) are ingested by background threads, stored as `ExternalSignal` records, and evaluated against a rules engine every 10 seconds.
-- **Compound correlation engine** — rules support simple flat conditions or compound AND/OR logic across multiple signal types, with per-condition confidence scoring, atomic cooldown enforcement, and SSE broadcast on fire.
+- **Compound correlation engine** — rules support simple flat conditions or compound AND/OR logic across multiple signal types, with per-condition confidence scoring, atomic cooldown enforcement, AO-scoped evaluation, and SSE broadcast on fire.
 - **Alert acknowledgment workflow** — every rule firing is a trackable `SignalRuleMatch` entity with its own state machine (UNACKNOWLEDGED → ACKNOWLEDGED → INVESTIGATING → CLOSED), actor recording, notes, and transition history.
-- **Vessel intelligence** — AIS vessel entities are upserted from every ping, accumulate track history with 7-day retention, and generate derived `ais_gap` signals when vessels go dark (spoofing indicator).
+- **Vessel intelligence** — AIS vessel entities are upserted from every ping, accumulate immutable track history with 7-day retention, generate derived `ais_gap` signals when vessels go dark, and render a full track polyline on the map.
+- **Risk scoring** — per-site threat-pressure score (0–100) computed from three independent components: open alert confidence, inverted task readiness, and signal density within 100 km.
 - **AI briefing grounded to real data** — Claude-powered operational summaries pass actual `AuditEvent` records as context. Every citation UUID the model returns is validated against the provided IDs — hallucinated events are stripped.
 - **Role-based security throughout** — JWT auth with Commander/Operator roles, rate limiting on every sensitive endpoint, Rack::Attack auto-ban on violation accumulation, SSE tokens with 60s TTL and `sse_only` claim.
 
@@ -38,16 +39,16 @@ Resilience is not a CRUD app dressed up with a dark theme. It is an **operationa
 
 | Feature | Description |
 |---|---|
-| **Dashboard** | Live KPI row (total/resolved/blocked/avg readiness), per-site readiness bars with color-coded scores, task status and priority bar charts, 30-day resolution throughput line chart, Recent Alerts panel with confidence badges and workflow status chips |
-| **Sites** | Site inventory with status tags, readiness scores, and one-click detail navigation |
+| **Dashboard** | Live KPI row (total/resolved/blocked/avg readiness), per-site readiness bars with color-coded scores and risk badges (LOW/MOD/HIGH/CRIT with breakdown tooltip), task status and priority bar charts, 30-day resolution throughput line chart, Recent Alerts panel with confidence badges and workflow status chips |
+| **Sites** | Site inventory with status tags, readiness scores, risk score column (color-coded by level, hover for component breakdown) |
 | **Site Detail** | 5-tab detail view: Tasks (with inline create), Signals (proximity-filtered), Rule Fires, Assets, Audit Trail — plus Activate/Deactivate and Unflag actions |
 | **Tasks** | Full task management with controlled workflow transitions, blocked-reason enforcement, AI natural-language filter (`find all high-priority blocked tasks`), and per-task audit timeline |
 | **Assets** | Asset inventory with type, status, and home site linkage |
-| **Map** | MapLibre GL interactive map — site health markers, AoO polygon overlays, live signal layer (color-coded by type and recency), transition tasks directly from map popups |
+| **Map** | MapLibre GL interactive map — site health markers, AoO polygon overlays, live signal layer (color-coded by type and recency), vessel track polyline with intel panel (name, flag, type, dark/loitering status, track history), risk badge with score in site panel, task transitions directly from map popups |
 | **Globe** | CesiumJS 3D globe with live asset telemetry — asset markers move in real time via SSE |
 | **Graph** | D3 force-directed object graph showing site → task → asset dependency chains (Palantir ontology pattern) |
-| **Signal Feed** | Live paginated table of all ingested signals, filterable by source and type; Commander inject-signal dialog that runs the correlation engine immediately |
-| **Correlation Rules** | Visual rule builder — Simple mode (flat condition) or Compound mode (AND/OR multi-signal with per-condition signal type, proximity, and magnitude); table shows compound badge; dry-run against historical signals before activating |
+| **Signal Feed** | Infinite-scroll virtual list ([@tanstack/react-virtual](https://tanstack.com/virtual)) — only visible rows rendered regardless of total count; loads next page as you scroll; filterable by source and type; Commander inject-signal dialog that runs the correlation engine immediately |
+| **Correlation Rules** | Visual rule builder — Simple mode (flat condition) or Compound mode (AND/OR multi-signal); AO scope selector limits rule evaluation to one Area of Operation; dry-run against historical signals before activating; firing history with confidence scores |
 | **Areas of Operation** | Geofenced GeoJSON polygon AoOs with threat levels (green/amber/red/black) overlaid on map and globe, color-coded by threat |
 | **Briefing** | Claude-powered AI operational summaries (site activity, readiness change, leadership briefing) with citation-validated grounding to live audit events |
 | **Replay** | Server-side time-travel — scrub to any past timestamp and see the full operational state as it existed at that moment |
@@ -64,8 +65,9 @@ Resilience is not a CRUD app dressed up with a dark theme. It is an **operationa
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                       Frontend (React 19)                        │
-│   Blueprint.js · TanStack Query · MapLibre · CesiumJS · D3.js   │
-│   Recharts · TypeScript strict · Vite 6 · PWA (Workbox)         │
+│   Blueprint.js · TanStack Query · TanStack Virtual              │
+│   MapLibre · CesiumJS · D3.js · Recharts                        │
+│   TypeScript strict · Vite 6 · PWA (Workbox)                    │
 └─────────────────────────┬───────────────────────────────────────┘
                           │ JSON REST + SSE
 ┌─────────────────────────▼───────────────────────────────────────┐
@@ -84,6 +86,7 @@ Resilience is not a CRUD app dressed up with a dark theme. It is an **operationa
 │  → EvaluatorService (compound AND/OR) │
 │  → RuleFiringService (atomic cooldown)│
 │  → Alerts::TransitionService          │
+│  → Risk::ScoringService (per-site)    │
 └───────────────────────────────────────┘
 ```
 
@@ -104,6 +107,14 @@ Resilience is not a CRUD app dressed up with a dark theme. It is an **operationa
 **Confidence scoring formula** — Direct condition: `proximity_score = 1 − (distance_km / proximity_km)`, clamped [0, 1]. Corroboration condition (when signal type differs): `(proximity_score + freshness) / 2` where `freshness = 1 − (age_seconds / window_seconds)` for the most recent qualifying nearby signal. AND rule → mean of scores. OR rule → max of scores.
 
 **Vessel gap detection** — AIS vessels that have not been seen in N minutes (configurable) trigger derived `ais_gap` signals. Confidence is computed from speed at last observation (a slow-moving vessel going dark is more suspicious), plus a bonus for vessels inside high-threat Areas of Operation. Idempotency key: `gap_#{mmsi}_#{last_seen_at.to_i}`.
+
+**Risk score formula** — Three independent components capped and summed:
+- Alert pressure (0–40): `min(sum_of_open_match_confidences × 20, 40)` — 72h window
+- Task health (0–30): `(1.0 − readiness_score) × 30` — nil readiness contributes 0, not risk
+- Signal density (0–30): `min(signals_within_100km_24h × 2, 30)` — exact Haversine, bounding-box pre-filter
+- Risk levels: LOW 0–25 · MODERATE 26–50 · HIGH 51–75 · CRITICAL 76–100
+
+**Virtual list rendering** — The Signal Feed uses `@tanstack/react-virtual` with a fixed `estimateSize` of 40px per row. A separate sticky `<thead>` table sits above a fixed-height scrollable container. The virtualizer positions a `<table>` at `top: virtualItems[0].start` inside a `totalHeight`-tall div, creating the illusion of a full list while rendering only ~25 DOM nodes at any scroll position. `useInfiniteQuery` fetches the next page when the last virtual item is within 10 rows of the bottom.
 
 **AI citation grounding** — The Claude briefing receives a JSON block of real `AuditEvent` IDs and content. The model is instructed to cite only from those IDs. Every UUID in the response is validated against the provided set — unrecognized IDs are stripped before the response reaches the client.
 
@@ -132,6 +143,7 @@ BackgroundEvaluator — every 10s, evaluates all active CorrelationRules
   │
   └── EvaluatorService — per rule:
         Flat rule:     signal_type + proximity + magnitude + count_threshold + cooldown
+        AO scope:      target_sites scoped to rule.area_of_operation_id when set
         Compound AND:  ALL sub-conditions must match (direct or corroboration path)
         Compound OR:   ANY sub-condition sufficient
         Corroboration: when sub-condition signal_type ≠ incoming signal type →
@@ -150,6 +162,9 @@ Alert lifecycle — Alerts::TransitionService
                    ↑____________________________________|
   Each transition records: actor (User FK), acknowledged_at, notes
   Broadcasts alert_transitioned SSE
+
+Risk scoring — Risk::ScoringService (on demand, GET /api/risk_scores)
+  Per site: alert_pressure + task_health + signal_density → 0–100 score + level
 ```
 
 ### Compound Rule Format
@@ -228,6 +243,22 @@ Resolved tasks carry more weight than merely non-blocked ones. Returns `null` fo
 
 ---
 
+## Risk Score Formula
+
+```
+alert_pressure  = min(Σ open_match_confidence × 20,  40)   72-hour window
+task_health     = (1.0 − readiness_score) × 30              nil → 0 (no tasks ≠ risk)
+signal_density  = min(signals_within_100km_24h × 2,  30)   exact Haversine
+
+risk_score = alert_pressure + task_health + signal_density   (0–100, integer)
+
+LOW 0–25  ·  MODERATE 26–50  ·  HIGH 51–75  ·  CRITICAL 76–100
+```
+
+Visible on the Dashboard (badge per readiness bar), Map (site panel), and Sites page (dedicated column). Each badge shows a hover tooltip with the component breakdown.
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -235,6 +266,7 @@ Resolved tasks carry more weight than merely non-blocked ones. Returns `null` fo
 | Backend | Ruby on Rails 8.1, Ruby 3.4, PostgreSQL 16 |
 | Frontend | React 19, TypeScript (strict mode), Blueprint.js v6 |
 | State / Data | TanStack Query v5, React Context |
+| Virtual list | TanStack Virtual v3 (`useVirtualizer` — infinite-scroll signal feed) |
 | Maps | MapLibre GL JS |
 | Globe | CesiumJS 1.139 — OSM tiles, zero Ion dependency |
 | Graph | D3.js v7 force simulation |
@@ -245,8 +277,8 @@ Resolved tasks carry more weight than merely non-blocked ones. Returns `null` fo
 | Cache | SolidCache |
 | Auth | JWT (24h TTL), Rack::Attack (5 login/min, auto-ban on violations), SSE tokens (60s TTL, sse_only claim) |
 | Build | Vite 6, vite-plugin-cesium |
-| Testing | RSpec (339 examples, 0 failures), FactoryBot, Brakeman (0 warnings), bundler-audit (0 CVEs) |
-| CI | GitHub Actions — typecheck, RSpec, Brakeman, bundler-audit, yarn audit, Fly.io deploy |
+| Testing | RSpec (376 examples, 0 failures), FactoryBot, Brakeman (0 warnings), bundler-audit (0 CVEs) |
+| CI | GitHub Actions — typecheck, ESLint, RSpec, Brakeman, bundler-audit, yarn audit, Fly.io deploy |
 | Deploy | Fly.io — combined Docker image (SPA built into Rails public/), single origin, no CORS |
 
 ---
@@ -257,7 +289,9 @@ Resolved tasks carry more weight than merely non-blocked ones. Returns `null` fo
 resilience/
 ├── backend/
 │   ├── app/
-│   │   ├── controllers/api/        18 REST + SSE controllers
+│   │   ├── controllers/api/        19 REST + SSE controllers
+│   │   │   ├── risk_scores_controller.rb   GET /api/risk_scores
+│   │   │   ├── vessels_controller.rb       GET /api/vessels, GET /api/vessels/:id/tracks
 │   │   │   └── signal_rule_matches_controller.rb
 │   │   │       ├── GET  /api/signal_rule_matches
 │   │   │       ├── POST /api/signal_rule_matches/:id/transition
@@ -269,7 +303,7 @@ resilience/
 │   │   │   ├── external_signal.rb  signal_type, source, lat/lng, magnitude, raw_payload
 │   │   │   ├── vessel.rb           mmsi, loitering_since, last_signal_id
 │   │   │   ├── vessel_track.rb     append-only, immutable (before_update abort)
-│   │   │   ├── correlation_rule.rb compound?, normalized_conditions, cooldown
+│   │   │   ├── correlation_rule.rb compound?, normalized_conditions, area_of_operation_id
 │   │   │   ├── signal_rule_match.rb confidence, TRANSITIONS table, acknowledged_by FK
 │   │   │   ├── area_of_operation.rb GeoJSON polygon, threat_level, color
 │   │   │   └── audit_event.rb      before/after snapshots, schema_version, immutable
@@ -278,9 +312,10 @@ resilience/
 │   │       ├── signals/            IngestService
 │   │       ├── vessels/            GapDetectionJob (→ ais_gap signals)
 │   │       ├── feeds/              OpenSky, UsgsSeismic, Ais, Gpsjam, FirmsWildfire
-│   │       ├── correlations/       EvaluatorService, RuleFiringService,
+│   │       ├── correlations/       EvaluatorService (AO-scoped), RuleFiringService,
 │   │       │                       BackgroundEvaluator, DryRunService
 │   │       ├── alerts/             TransitionService (alert acknowledgment workflow)
+│   │       ├── risk/               ScoringService (alert pressure + task health + signal density)
 │   │       ├── ai/                 SummaryService (grounded), FilterService (NL→params)
 │   │       ├── readiness/          CalculationService
 │   │       ├── replay/             ProjectionService (as_of reconstruction)
@@ -291,29 +326,36 @@ resilience/
 │   │   │                           indexes, FK cascade rules not captured by schema.rb
 │   │   └── seeds.rb                9 sites · 4 theaters · 7 assets · 19 tasks ·
 │   │                               5 Areas of Operation · 5 correlation rules ·
-│   │                               demo vessel + wildfire signals
-│   └── spec/                       RSpec unit + request specs (324 examples)
+│   │                               6 demo vessels with track history
+│   └── spec/                       RSpec unit + request specs (376 examples)
 ├── frontend/
 │   ├── src/
 │   │   ├── api/                    Typed fetch wrappers — all resources, all params
-│   │   │   └── types.ts            Full domain type tree, RuleConditions union,
-│   │   │                           isCompoundRule type guard, AlertStatus, SignalType
+│   │   │   ├── types.ts            Full domain type tree — RuleConditions union,
+│   │   │   │                       isCompoundRule guard, SiteRiskScore, RiskLevel,
+│   │   │   │                       AlertStatus, SignalType, VesselTrack
+│   │   │   └── riskScores.ts       getRiskScores()
 │   │   ├── components/             AppShell (SSE toasts), GlobalSearch (⌘K),
 │   │   │                           ReplaySelector, AuditTimeline, ProtectedRoute
 │   │   ├── context/                AuthContext (JWT), ReplayContext (as_of)
 │   │   ├── hooks/                  useEventSource, useTelemetryStream, useOnlineStatus,
-│   │   │                           useSignals, useCorrelationRules, useAreasOfOperation,
+│   │   │                           useSignals, useSignalsInfinite, useVessels,
+│   │   │                           useVesselTracks, useRiskScores,
+│   │   │                           useCorrelationRules, useAreasOfOperation,
 │   │   │                           useSignalRuleMatches
 │   │   └── pages/
-│   │       ├── DashboardPage       KPIs, readiness bars, charts, AlertsPanel
-│   │       ├── SitesPage / SiteDetailPage (5 tabs)
+│   │       ├── DashboardPage       KPIs, readiness bars + risk badges, charts, AlertsPanel
+│   │       ├── SitesPage           Site list with risk score column
+│   │       ├── SiteDetailPage      5-tab detail view
 │   │       ├── TasksPage           NL filter, transitions, audit trail
 │   │       ├── AssetsPage
-│   │       ├── MapPage             MapLibre, signals layer, AoO overlays
+│   │       ├── MapPage             MapLibre, signals layer, vessel track polyline,
+│   │       │                       risk badge in site panel, AoO overlays
 │   │       ├── GlobePage           CesiumJS, live telemetry
 │   │       ├── GraphPage           D3 force-directed ontology graph
-│   │       ├── SignalFeedPage      paginated, filterable, inject-signal dialog
-│   │       ├── CorrelationRulesPage  compound rule builder, dry-run, firing history
+│   │       ├── SignalFeedPage      Virtual list (TanStack Virtual), infinite scroll,
+│   │       │                       filterable, inject-signal dialog
+│   │       ├── CorrelationRulesPage  compound rule builder, AO scope selector, dry-run
 │   │       ├── AreasPage           AoO CRUD with map preview
 │   │       └── BriefingPage        AI summaries with citation rendering
 │   └── vite.config.ts
@@ -340,7 +382,7 @@ resilience/
 | `GET` | `/api/sites` | List sites — supports `?as_of=` |
 | `GET` | `/api/sites/:id` | Site detail |
 | `PATCH` | `/api/sites/:id/toggle_status` | Activate / deactivate (Commander) |
-| `DELETE` | `/api/sites/:id/flag` | Clear flag (Commander) |
+| `PATCH` | `/api/sites/:id/unflag` | Clear flag (Commander) |
 | `GET` | `/api/tasks` | List tasks — `?as_of=`, `?site_id=`, `?workflow_status=`, `?priority=` |
 | `POST` | `/api/tasks` | Create task |
 | `PATCH` | `/api/tasks/:id` | Update task attributes |
@@ -353,13 +395,15 @@ resilience/
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/signals` | Signal feed — `?source=`, `?signal_type=`, `?site_id=`, `?from=`, `?to=` |
+| `GET` | `/api/signals` | Signal feed — `?source=`, `?signal_type=`, `?site_id=`, `?from=`, `?to=`, `?page=`, `?per_page=` |
 | `POST` | `/api/signals` | Inject signal manually — triggers correlation engine immediately (Commander) |
+| `GET` | `/api/vessels` | Vessel list — `?mmsi=`, `?loitering=`, `?dark_hours=` |
+| `GET` | `/api/vessels/:id/tracks` | Vessel track history — `?limit=` |
 | `GET` | `/api/correlation_rules` | List rules |
-| `POST` | `/api/correlation_rules` | Create rule — flat or compound (Commander) |
+| `POST` | `/api/correlation_rules` | Create rule — flat or compound, with optional `area_of_operation_id` scope (Commander) |
 | `PATCH` | `/api/correlation_rules/:id` | Update rule (Commander) |
 | `DELETE` | `/api/correlation_rules/:id` | Delete rule (Commander) |
-| `GET` | `/api/correlation_rules/:id/dry_run` | Simulate rule against historical signals |
+| `POST` | `/api/correlation_rules/:id/dry_run` | Simulate rule against historical signals |
 | `GET` | `/api/signal_rule_matches` | Rule firing history — `?rule_id=`, `?site_id=`, `?workflow_status=`, `?from=`, `?to=` |
 | `POST` | `/api/signal_rule_matches/:id/transition` | Acknowledge / investigate / close alert |
 | `GET` | `/api/signal_rule_matches/:id/allowed_transitions` | Valid next alert states |
@@ -373,6 +417,7 @@ resilience/
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/api/readiness` | Per-site readiness scores — supports `?as_of=` |
+| `GET` | `/api/risk_scores` | Per-site risk scores — alert pressure + task health + signal density |
 | `GET` | `/api/analytics/throughput` | Daily resolved task counts (last 30 days) |
 | `POST` | `/api/ai/summary` | AI operational briefing — `site_activity`, `readiness_change`, `leadership_briefing` |
 | `GET` | `/api/ai/filter` | NL → task filter params |
@@ -382,9 +427,9 @@ resilience/
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/api/events` | SSE — `rule_fired`, `alert_transitioned`, `task_created`, `task_transitioned`, `readiness_updated` |
-| `GET` | `/api/telemetry` | SSE — live asset position updates (simulated sensor stream) |
+| `GET` | `/api/telemetry/stream` | SSE — live asset position updates (simulated sensor stream) |
 
-All SSE streams require a short-lived SSE token (`GET /api/auth/sse_token`, 60s TTL, `sse_only` claim enforced).
+All SSE streams require a short-lived SSE token (`POST /api/sse_token`, 60s TTL, `sse_only` claim enforced).
 
 ---
 
@@ -419,7 +464,7 @@ All SSE streams require a short-lived SSE token (`GET /api/auth/sse_token`, 60s 
 ### 1 — Clone
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/resilience.git
+git clone https://github.com/TimurMishiev/resilience.git
 cd resilience
 ```
 
@@ -470,13 +515,13 @@ Open **http://localhost:5176** in your browser.
 
 ### What you'll see after seed
 
-- **9 sites** across 4 theaters (CENTCOM, INDOPACOM, EUCOM, AFRICOM)
+- **9 sites** across 4 theaters (CENTCOM, INDOPACOM, EUCOM, AFRICOM) each with a live risk score
 - **5 Areas of Operation** with threat-level polygon overlays
 - **19 tasks** in various workflow states
 - **7 assets** with live simulated telemetry (visible on Globe page)
-- **5 correlation rules** (flat and compound AND/OR)
+- **5 correlation rules** (flat and compound AND/OR, some scoped to specific AOs)
 - **Live signals** on the map — aircraft, vessel, seismic, GPS jamming, wildfire
-- **6 demo vessels** with track history — click any vessel dot on the map to open the intel panel
+- **6 demo vessels** with track history — click any vessel dot on the map for the full intel panel and track polyline
 
 ### AI Briefing (optional)
 
@@ -506,21 +551,23 @@ Demo seed data covers all 5 signal types out of the box. Add these to `.env` to 
 
 ```bash
 cd backend
-bundle exec rspec --format documentation      # 339 examples, 0 failures
+bundle exec rspec --format documentation      # 376 examples, 0 failures
 bundle exec brakeman --no-progress -q         # 0 security warnings
 bundle exec bundler-audit check               # 0 CVEs
 
 cd frontend
 yarn tsc --noEmit                             # 0 TypeScript errors
-yarn audit                                    # 0 vulnerabilities
+yarn lint                                     # 0 ESLint errors
+yarn build                                    # clean production build
 ```
 
 Key spec coverage:
-- `EvaluatorService` — compound AND/OR rules, direct path, corroboration path, no-fire when corroborating signal absent
+- `EvaluatorService` — compound AND/OR rules, direct path, corroboration path, AO scoping, no-fire when corroborating signal absent
 - `RuleFiringService` — atomic cooldown (race condition), confidence scoring, action execution, SSE broadcast after commit
+- `Risk::ScoringService` — all three components, caps, thresholds, nil readiness, time windows, exact Haversine distance
 - `Alerts::TransitionService` — all valid transitions, all invalid transitions, actor recording, notes, SSE broadcast
 - `Tasks::TransitionService` — full state machine, blocked_reason enforcement, resolved_at timestamp
-- Request specs — auth guards (401/403 on every protected endpoint), role enforcement, pagination
+- Request specs — auth guards (401/403 on every protected endpoint), role enforcement, pagination, mmsi filter
 
 ---
 
@@ -556,6 +603,10 @@ Key spec coverage:
 | **v2-6** | **Alert acknowledgment** — SignalRuleMatch state machine, Alerts::TransitionService, actor recording |
 | **v2-7** | **Enriched SSE** — rule_fired includes confidence + status; alert_transitioned toast with notes |
 | **v2-8** | **Compound rule builder UI** — visual AND/OR editor, Simple/Compound toggle, CompoundBuilder component |
+| **v2-9** | **Vessel track polyline + intel panel** — click any vessel dot on the map for name/flag/type/dark/loitering status + dashed track polyline drawn from VesselTrack history |
+| **v2-10** | **AO-scoped correlation rules** — rule builder AO selector, EvaluatorService scopes target_sites by AO, dry-run respects same scoping |
+| **v2-11** | **Risk score per site** — Risk::ScoringService (alert pressure + task health + signal density → 0–100), GET /api/risk_scores, Dashboard badges, Map panel, Sites column |
+| **v2-12** | **Virtual list + infinite scroll** — @tanstack/react-virtual with useInfiniteQuery; constant DOM node count at any signal volume; auto-fetch on scroll |
 
 ---
 
