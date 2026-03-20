@@ -59,7 +59,15 @@ const SOURCE_LABELS: Record<string, string> = {
   usgs_seismic:   'USGS Seismic',
   gpsjam:         'GPSJam',
   firms_wildfire: 'FIRMS Wildfire',
+  acled:          'ACLED',
+  gdacs:          'GDACS',
   manual:         'Manual',
+}
+
+const ALERT_LEVEL_INTENT: Record<string, 'success' | 'warning' | 'danger'> = {
+  Green:  'success',
+  Orange: 'warning',
+  Red:    'danger',
 }
 
 // ---------------------------------------------------------------------------
@@ -606,6 +614,16 @@ export default function MapPage() {
           speed:       s.speed,
           heading:     s.heading,
           occurred_at: s.occurred_at,
+          // Conflict event fields (from raw_payload)
+          p_country:        (s.raw_payload.country        as string | undefined) ?? null,
+          p_actor1:         (s.raw_payload.actor1         as string | undefined) ?? null,
+          p_fatalities:     (s.raw_payload.fatalities     as number | undefined) ?? null,
+          p_event_type:     (s.raw_payload.event_type     as string | undefined) ?? null,
+          // Disaster alert fields (from raw_payload)
+          p_event_type_name: (s.raw_payload.event_type_name as string | undefined) ?? null,
+          p_alert_level:     (s.raw_payload.alert_level    as string | undefined) ?? null,
+          p_severity_text:   (s.raw_payload.severity_text  as string | undefined) ?? null,
+          p_name:            (s.raw_payload.name           as string | undefined) ?? null,
         },
         geometry: {
           type:        'Point' as const,
@@ -741,21 +759,42 @@ export default function MapPage() {
       const label  = SIGNAL_LABELS[props.signal_type] ?? props.signal_type
       const icon   = SIGNAL_ICON_CHAR[props.signal_type] ?? '●'
       const color  = SIGNAL_COLORS[props.signal_type] ?? '#8f99a8'
-      const mag    = props.magnitude ? `<span class="sp-row"><span>Magnitude</span><b>${Number(props.magnitude).toFixed(1)}</b></span>` : ''
-      const alt    = props.altitude  ? `<span class="sp-row"><span>Altitude</span><b>${Number(props.altitude).toFixed(0)} m</b></span>` : ''
-      const spd    = props.speed     ? `<span class="sp-row"><span>Speed</span><b>${Number(props.speed).toFixed(0)} kn</b></span>` : ''
       const time   = props.occurred_at ? new Date(props.occurred_at).toLocaleTimeString() : ''
+
+      // Build contextual detail rows based on signal type
+      let detailRows = ''
+      if (props.signal_type === 'conflict_event') {
+        const country    = props.p_country   ? `<span class="sp-row"><span>Country</span><b>${props.p_country}</b></span>` : ''
+        const actor      = props.p_actor1    ? `<span class="sp-row"><span>Actor</span><b>${props.p_actor1}</b></span>` : ''
+        const fatalities = props.p_fatalities != null
+          ? `<span class="sp-row"><span>Fatalities</span><b>${props.p_fatalities}</b></span>` : ''
+        detailRows = country + actor + fatalities
+      } else if (props.signal_type === 'disaster_alert') {
+        const typeRow    = props.p_event_type_name ? `<span class="sp-row"><span>Type</span><b>${props.p_event_type_name}</b></span>` : ''
+        const country    = props.p_country    ? `<span class="sp-row"><span>Country</span><b>${props.p_country}</b></span>` : ''
+        const alertColor = props.p_alert_level === 'Red' ? '#ff4444' : props.p_alert_level === 'Orange' ? '#ff9800' : '#4caf50'
+        const alertRow   = props.p_alert_level
+          ? `<span class="sp-row"><span>Alert</span><b style="color:${alertColor}">${props.p_alert_level}</b></span>` : ''
+        const sevRow     = props.p_severity_text ? `<span class="sp-row"><span>Severity</span><b>${props.p_severity_text}</b></span>` : ''
+        detailRows = typeRow + country + alertRow + sevRow
+      } else {
+        const mag = props.magnitude ? `<span class="sp-row"><span>Magnitude</span><b>${Number(props.magnitude).toFixed(1)}</b></span>` : ''
+        const alt = props.altitude  ? `<span class="sp-row"><span>Altitude</span><b>${Number(props.altitude).toFixed(0)} m</b></span>` : ''
+        const spd = props.speed     ? `<span class="sp-row"><span>Speed</span><b>${Number(props.speed).toFixed(0)} kn</b></span>` : ''
+        detailRows = mag + alt + spd
+      }
+
       popup
         .setLngLat(coords)
         .setHTML(`
           <div class="signal-popup">
             <div class="sp-header" style="border-left: 3px solid ${color}">
               <span class="sp-icon">${icon}</span>
-              <span class="sp-type">${label}</span>
+              <span class="sp-type">${props.signal_type === 'disaster_alert' && props.p_name ? props.p_name : label}</span>
             </div>
             <div class="sp-body">
               <span class="sp-row"><span>Source</span><b>${SOURCE_LABELS[props.source] ?? props.source}</b></span>
-              ${mag}${alt}${spd}
+              ${detailRows}
               ${time ? `<span class="sp-row"><span>Time</span><b>${time}</b></span>` : ''}
               <span class="sp-hint">Click for details</span>
             </div>
@@ -1069,7 +1108,11 @@ export default function MapPage() {
               <Icon icon={SIGNAL_ICON_NAME[selectedSignal.signal_type] ?? 'dot'} size={14} style={{ marginRight: 6 }} />
               {selectedVessel?.name
                 ? selectedVessel.name
-                : (SIGNAL_LABELS[selectedSignal.signal_type] ?? selectedSignal.signal_type)}
+                : selectedSignal.signal_type === 'disaster_alert' && typeof selectedSignal.raw_payload.name === 'string'
+                  ? selectedSignal.raw_payload.name
+                  : selectedSignal.signal_type === 'conflict_event' && typeof selectedSignal.raw_payload.sub_event_type === 'string'
+                    ? selectedSignal.raw_payload.sub_event_type
+                    : (SIGNAL_LABELS[selectedSignal.signal_type] ?? selectedSignal.signal_type)}
             </span>
             <button
               className="map-panel-close bp6-button bp6-minimal bp6-icon-cross"
@@ -1089,6 +1132,15 @@ export default function MapPage() {
               {selectedSignal.signal_type.replace(/_/g, ' ')}
             </Tag>
             <Tag minimal>{SOURCE_LABELS[selectedSignal.source] ?? selectedSignal.source}</Tag>
+            {selectedSignal.signal_type === 'disaster_alert' &&
+             typeof selectedSignal.raw_payload.alert_level === 'string' && (
+              <Tag
+                intent={ALERT_LEVEL_INTENT[selectedSignal.raw_payload.alert_level] ?? 'none'}
+                minimal
+              >
+                {selectedSignal.raw_payload.alert_level}
+              </Tag>
+            )}
             {selectedVessel?.loitering && (
               <Tag intent="warning" minimal>Loitering</Tag>
             )}
@@ -1144,8 +1196,101 @@ export default function MapPage() {
               </>
             )}
 
-            {/* Standard signal telemetry */}
-            {selectedSignal.magnitude !== null && selectedSignal.magnitude !== undefined && (
+            {/* Conflict event detail */}
+            {selectedSignal.signal_type === 'conflict_event' && (() => {
+              const p = selectedSignal.raw_payload
+              const eventType   = typeof p.event_type   === 'string' ? p.event_type   : null
+              const country     = typeof p.country      === 'string' ? p.country      : null
+              const actor1      = typeof p.actor1       === 'string' ? p.actor1       : null
+              const actor2      = typeof p.actor2       === 'string' && p.actor2.length > 0 ? p.actor2 : null
+              const fatalities  = typeof p.fatalities   === 'number' ? p.fatalities   : 0
+              const notes       = typeof p.notes        === 'string' ? p.notes        : null
+              return (
+                <>
+                  {eventType && (
+                    <div className="map-telemetry-row">
+                      <span className="map-telemetry-label">Event</span>
+                      <span className="map-telemetry-value">{eventType}</span>
+                    </div>
+                  )}
+                  {country && (
+                    <div className="map-telemetry-row">
+                      <span className="map-telemetry-label">Country</span>
+                      <span className="map-telemetry-value">{country}</span>
+                    </div>
+                  )}
+                  {actor1 && (
+                    <div className="map-telemetry-row">
+                      <span className="map-telemetry-label">Actor</span>
+                      <span className="map-telemetry-value">{actor1}</span>
+                    </div>
+                  )}
+                  {actor2 && (
+                    <div className="map-telemetry-row">
+                      <span className="map-telemetry-label">vs</span>
+                      <span className="map-telemetry-value">{actor2}</span>
+                    </div>
+                  )}
+                  <div className="map-telemetry-row">
+                    <span className="map-telemetry-label">Fatalities</span>
+                    <span className="map-telemetry-value" style={fatalities > 0 ? { color: '#ff6b6b', fontWeight: 600 } : undefined}>
+                      {fatalities}
+                    </span>
+                  </div>
+                  {notes && (
+                    <div className="map-telemetry-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+                      <span className="map-telemetry-label">Notes</span>
+                      <span className="map-telemetry-value bp6-text-muted" style={{ fontStyle: 'italic', fontSize: 11, whiteSpace: 'normal' }}>
+                        {notes}
+                      </span>
+                    </div>
+                  )}
+                </>
+              )
+            })()}
+
+            {/* Disaster alert detail */}
+            {selectedSignal.signal_type === 'disaster_alert' && (() => {
+              const p            = selectedSignal.raw_payload
+              const typeName     = typeof p.event_type_name === 'string' ? p.event_type_name : null
+              const country      = typeof p.country         === 'string' ? p.country         : null
+              const severityText = typeof p.severity_text   === 'string' ? p.severity_text   : null
+              return (
+                <>
+                  {typeName && (
+                    <div className="map-telemetry-row">
+                      <span className="map-telemetry-label">Type</span>
+                      <span className="map-telemetry-value">{typeName}</span>
+                    </div>
+                  )}
+                  {country && (
+                    <div className="map-telemetry-row">
+                      <span className="map-telemetry-label">Country</span>
+                      <span className="map-telemetry-value">{country}</span>
+                    </div>
+                  )}
+                  {severityText && (
+                    <div className="map-telemetry-row">
+                      <span className="map-telemetry-label">Severity</span>
+                      <span className="map-telemetry-value">{severityText}</span>
+                    </div>
+                  )}
+                  {selectedSignal.magnitude != null && (
+                    <div className="map-telemetry-row">
+                      <span className="map-telemetry-label">Impact score</span>
+                      <span className="map-telemetry-value">
+                        {Number(selectedSignal.magnitude).toFixed(1)} / 3.0
+                      </span>
+                    </div>
+                  )}
+                </>
+              )
+            })()}
+
+            {/* Standard signal telemetry — suppressed for types with custom display above */}
+            {selectedSignal.magnitude !== null && selectedSignal.magnitude !== undefined &&
+             selectedSignal.signal_type !== 'conflict_event' &&
+             selectedSignal.signal_type !== 'disaster_alert' && (
               <div className="map-telemetry-row">
                 <span className="map-telemetry-label">Magnitude</span>
                 <span className="map-telemetry-value">
