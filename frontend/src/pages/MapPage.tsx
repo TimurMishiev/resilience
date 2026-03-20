@@ -391,7 +391,12 @@ export default function MapPage() {
     return () => { mapRef.current?.remove(); mapRef.current = null; setMapLoaded(false) }
   }, [])
 
-  useEffect(() => { setSelectedSiteId(null); setSelectedAssetId(null) }, [asOf])
+  useEffect(() => {
+    setSelectedSiteId(null)
+    setSelectedAssetId(null)
+    setSelectedSignal(null)
+    setSelectedVesselMmsi(null)
+  }, [asOf])
 
   // -------------------------------------------------------------------------
   // Style switching — skip first render (map init already loaded tactical)
@@ -429,6 +434,7 @@ export default function MapPage() {
       el.addEventListener('click', () => {
         setSelectedAssetId(null)
         setSelectedSignal(null)
+        setSelectedVesselMmsi(null)
         setSelectedSiteId(id => id === site.id ? null : site.id)
       })
       siteMarkersRef.current.push(marker)
@@ -523,6 +529,7 @@ export default function MapPage() {
         e.stopPropagation()
         setSelectedSiteId(null)
         setSelectedSignal(null)
+        setSelectedVesselMmsi(null)
         setSelectedAssetId(id => id === asset.id ? null : asset.id)
       })
 
