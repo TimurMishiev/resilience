@@ -54,6 +54,7 @@ const GLOBE_SIGNAL_COLORS: Record<string, Cesium.Color> = {
   seismic_event:     Cesium.Color.fromCssColorString('#ff8c42'),
   gps_jamming:       Cesium.Color.fromCssColorString('#ffd700'),
   wildfire:          Cesium.Color.fromCssColorString('#ff4422'),
+  conflict_event:    Cesium.Color.fromCssColorString('#e040fb'),
   manual:            Cesium.Color.fromCssColorString('#8f99a8'),
 }
 
@@ -63,6 +64,7 @@ const GLOBE_SIGNAL_LABELS: Record<string, string> = {
   seismic_event:     'Seismic',
   gps_jamming:       'GPS Jam',
   wildfire:          'Wildfire',
+  conflict_event:    'Conflict',
   manual:            'Manual',
 }
 
@@ -82,6 +84,7 @@ export default function GlobePage() {
   const { data: seismicRes }   = useSignals({ signal_type: 'seismic_event',     per_page: 50  })
   const { data: gpsJamRes }    = useSignals({ signal_type: 'gps_jamming',       per_page: 50  })
   const { data: wildfireRes }  = useSignals({ signal_type: 'wildfire',          per_page: 50  })
+  const { data: conflictRes }  = useSignals({ signal_type: 'conflict_event',    per_page: 50  })
   const { data: manualRes }    = useSignals({ signal_type: 'manual',            per_page: 20  })
   const { data: aisGapRes }    = useSignals({ signal_type: 'ais_gap',           per_page: 20  })
 
@@ -95,11 +98,12 @@ export default function GlobePage() {
     ...(seismicRes?.data   ?? []),
     ...(gpsJamRes?.data    ?? []),
     ...(wildfireRes?.data  ?? []),
+    ...(conflictRes?.data  ?? []),
     ...(manualRes?.data    ?? []),
     ...(aisGapRes?.data    ?? []),
   ], [
     aircraftRes?.data, vesselRes?.data, seismicRes?.data,
-    gpsJamRes?.data, wildfireRes?.data, manualRes?.data, aisGapRes?.data,
+    gpsJamRes?.data, wildfireRes?.data, conflictRes?.data, manualRes?.data, aisGapRes?.data,
   ])
   const loading = sitesQuery.isLoading || tasksQuery.isLoading
 

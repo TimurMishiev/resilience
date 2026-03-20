@@ -5,13 +5,14 @@
 # Skipped in test mode, rake tasks, and Rails console.
 #
 # Feed summary:
-#   opensky-feed   — aircraft positions (OpenSky Network, no key)    — 900s
-#   usgs-feed      — seismic events     (USGS FDSN, no key)          — 300s
-#   gpsjam-feed    — GPS interference   (gpsjam.org, no key)         — 900s
-#   ais-feed       — vessel positions   (AIS Hub, AISHUB_USERNAME)   — 30s
-#   firms-feed     — wildfire hotspots  (NASA FIRMS, NASA_FIRMS_MAP_KEY) — 900s
+#   opensky-feed   — aircraft positions (OpenSky Network, no key)          — 900s
+#   usgs-feed      — seismic events     (USGS FDSN, no key)                — 300s
+#   gpsjam-feed    — GPS interference   (gpsjam.org, no key)               — 900s
+#   ais-feed       — vessel positions   (AIS Hub, AISHUB_USERNAME)         — 30s
+#   firms-feed     — wildfire hotspots  (NASA FIRMS, NASA_FIRMS_MAP_KEY)   — 900s
+#   acled-feed     — conflict events    (ACLED, ACLED_API_KEY + ACLED_EMAIL) — 3600s
 #
-# AIS and FIRMS feeds require API keys; threads are skipped if keys are absent.
+# AIS, FIRMS, and ACLED feeds require API keys; threads are skipped if keys are absent.
 # See backend/.env.example for all required variables.
 #
 # Retry policy: exponential backoff on errors — 5s → 10s → 20s → … → cap 300s.
@@ -133,6 +134,18 @@ unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAM
       end
     else
       Rails.logger.info "[FIRMSFeed] NASA_FIRMS_MAP_KEY not set — wildfire feed disabled (see .env.example)"
+    end
+
+    # ─── ACLED conflict events (requires ACLED_API_KEY + ACLED_EMAIL) ────────
+    if ENV["ACLED_API_KEY"].present? && ENV["ACLED_EMAIL"].present?
+      Thread.new do
+        Thread.current.name = "acled-feed"
+        Rails.logger.info "[ACLEDFeed] started — polling every 3600s (armed conflict events, 3-day lookback)"
+
+        feed_loop.call("[ACLEDFeed]", 3600) { Feeds::AcledIngestionService.call }
+      end
+    else
+      Rails.logger.info "[ACLEDFeed] ACLED_API_KEY or ACLED_EMAIL not set — conflict feed disabled (see .env.example)"
     end
 
   end

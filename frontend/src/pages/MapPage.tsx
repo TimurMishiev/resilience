@@ -34,6 +34,7 @@ const SIGNAL_COLORS: Record<string, string> = {
   seismic_event:     '#ff8c42',
   gps_jamming:       '#ffd700',
   wildfire:          '#ff4422',
+  conflict_event:    '#e040fb',
   manual:            '#8f99a8',
 }
 
@@ -43,6 +44,7 @@ const SIGNAL_LABELS: Record<string, string> = {
   seismic_event:     'Seismic',
   gps_jamming:       'GPS Jam',
   wildfire:          'Wildfire',
+  conflict_event:    'Conflict',
   manual:            'Manual',
 }
 
@@ -342,6 +344,7 @@ export default function MapPage() {
   const { data: seismicRes }   = useSignals({ signal_type: 'seismic_event',     per_page: 50  })
   const { data: gpsJamRes }    = useSignals({ signal_type: 'gps_jamming',       per_page: 50  })
   const { data: wildfireRes }  = useSignals({ signal_type: 'wildfire',          per_page: 50  })
+  const { data: conflictRes }  = useSignals({ signal_type: 'conflict_event',    per_page: 50  })
   const { data: manualRes }    = useSignals({ signal_type: 'manual',            per_page: 20  })
   const { data: aisGapRes }    = useSignals({ signal_type: 'ais_gap',           per_page: 20  })
 
@@ -351,11 +354,12 @@ export default function MapPage() {
     ...(seismicRes?.data   ?? []),
     ...(gpsJamRes?.data    ?? []),
     ...(wildfireRes?.data  ?? []),
+    ...(conflictRes?.data  ?? []),
     ...(manualRes?.data    ?? []),
     ...(aisGapRes?.data    ?? []),
   ], [
     aircraftRes?.data, vesselRes?.data, seismicRes?.data,
-    gpsJamRes?.data, wildfireRes?.data, manualRes?.data, aisGapRes?.data,
+    gpsJamRes?.data, wildfireRes?.data, conflictRes?.data, manualRes?.data, aisGapRes?.data,
   ])
 
   // Vessel lookup by MMSI (only active when a vessel_position signal is selected)
@@ -633,6 +637,7 @@ export default function MapPage() {
           'seismic_event',     SIGNAL_COLORS.seismic_event,
           'gps_jamming',       SIGNAL_COLORS.gps_jamming,
           'wildfire',          SIGNAL_COLORS.wildfire,
+          'conflict_event',    SIGNAL_COLORS.conflict_event,
           SIGNAL_COLORS.manual,
         ],
         'circle-opacity': 0.15,
@@ -658,6 +663,7 @@ export default function MapPage() {
           'seismic_event',     SIGNAL_COLORS.seismic_event,
           'gps_jamming',       SIGNAL_COLORS.gps_jamming,
           'wildfire',          SIGNAL_COLORS.wildfire,
+          'conflict_event',    SIGNAL_COLORS.conflict_event,
           SIGNAL_COLORS.manual,
         ],
         'circle-opacity':       0.85,

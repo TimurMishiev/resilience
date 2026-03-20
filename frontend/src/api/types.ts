@@ -189,8 +189,8 @@ export interface AiSummaryResult {
 // Signal types
 // ---------------------------------------------------------------------------
 
-export type SignalSource = 'opensky' | 'ais' | 'usgs_seismic' | 'gpsjam' | 'firms_wildfire' | 'manual' | 'derived'
-export type SignalType = 'aircraft_position' | 'vessel_position' | 'seismic_event' | 'gps_jamming' | 'wildfire' | 'ais_gap' | 'manual'
+export type SignalSource = 'opensky' | 'ais' | 'usgs_seismic' | 'gpsjam' | 'firms_wildfire' | 'manual' | 'derived' | 'acled'
+export type SignalType = 'aircraft_position' | 'vessel_position' | 'seismic_event' | 'gps_jamming' | 'wildfire' | 'ais_gap' | 'manual' | 'conflict_event'
 
 export type AlertStatus = 'unacknowledged' | 'acknowledged' | 'investigating' | 'closed'
 

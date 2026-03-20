@@ -12,6 +12,7 @@ export const SIGNAL_ICON_NAME: Record<string, IconName> = {
   gps_jamming:       'satellite',
   wildfire:          'flame',
   ais_gap:           'eye-off',
+  conflict_event:    'warning-sign',
   manual:            'manually-entered-data',
 }
 
@@ -29,5 +30,6 @@ export const SIGNAL_ICON_CHAR: Record<string, string> = {
   gps_jamming:       '⊗',   // U+2297 CIRCLED TIMES (disruption)
   wildfire:          '△',   // U+25B3 WHITE TRIANGLE (flame silhouette)
   ais_gap:           '⊙',   // U+2299 CIRCLED DOT (eye-like, vessel went dark)
+  conflict_event:    '⚔',   // U+2694 CROSSED SWORDS (armed conflict)
   manual:            '+',   // U+002B PLUS (injected manually)
 }

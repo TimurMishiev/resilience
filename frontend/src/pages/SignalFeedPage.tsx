@@ -29,6 +29,7 @@ const SOURCE_LABELS: Record<string, string> = {
   usgs_seismic:   'USGS Seismic',
   gpsjam:         'GPSJam',
   firms_wildfire: 'FIRMS Wildfire',
+  acled:          'ACLED',
   manual:         'Manual',
   derived:        'Derived',
 }
@@ -39,6 +40,7 @@ const TYPE_LABELS: Record<string, string> = {
   seismic_event:     'Seismic',
   gps_jamming:       'GPS Jam',
   wildfire:          'Wildfire',
+  conflict_event:    'Conflict',
   manual:            'Manual',
   ais_gap:           'AIS Gap',
 }
@@ -49,13 +51,14 @@ const TYPE_INTENTS: Record<string, 'primary' | 'warning' | 'danger' | 'none' | '
   seismic_event:     'danger',
   gps_jamming:       'warning',
   wildfire:          'danger',
+  conflict_event:    'danger',
   manual:            'none',
   ais_gap:           'warning',
 }
 
 const SIGNAL_TYPES: SignalType[] = [
   'aircraft_position', 'vessel_position', 'seismic_event',
-  'gps_jamming', 'wildfire', 'manual',
+  'gps_jamming', 'wildfire', 'conflict_event', 'manual',
 ]
 
 // Fixed row height in pixels — required by the virtualizer.
@@ -76,8 +79,11 @@ function formatRelativeTime(iso: string): string {
 function speedOrMag(signal: Signal): string {
   const isSeismic  = signal.signal_type === 'seismic_event'
   const isWildfire = signal.signal_type === 'wildfire'
+  const isConflict = signal.signal_type === 'conflict_event'
   if (isSeismic || isWildfire)
     return signal.magnitude != null ? `M ${Number(signal.magnitude).toFixed(1)}` : '—'
+  if (isConflict)
+    return signal.magnitude != null ? `${Math.round(Number(signal.magnitude))} fatalities` : '—'
   return signal.speed != null ? `${Number(signal.speed).toFixed(1)} m/s` : '—'
 }
 
