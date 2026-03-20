@@ -500,7 +500,6 @@ export default function CorrelationRulesPage() {
                 ))
               : rules.map(rule => {
                   const actionPriority = (rule.actions.create_task?.priority ?? 'normal') as TaskPriority
-                  const isCompound = isCompoundRule(rule.conditions)
                   return (
                     <tr key={rule.id} onClick={() => isCommander && openEdit(rule)}
                         style={{ cursor: isCommander ? 'pointer' : 'default' }}>
