@@ -11,8 +11,10 @@
 #   ais-feed       — vessel positions   (AIS Hub, AISHUB_USERNAME)         — 30s
 #   firms-feed     — wildfire hotspots  (NASA FIRMS, NASA_FIRMS_MAP_KEY)   — 900s
 #   acled-feed     — conflict events    (ACLED, ACLED_API_KEY + ACLED_EMAIL) — 3600s
+#   gdacs-feed     — disaster alerts    (GDACS UN, no key)                   — 900s
 #
 # AIS, FIRMS, and ACLED feeds require API keys; threads are skipped if keys are absent.
+# GDACS is fully public — no credentials needed.
 # See backend/.env.example for all required variables.
 #
 # Retry policy: exponential backoff on errors — 5s → 10s → 20s → … → cap 300s.
@@ -134,6 +136,14 @@ unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAM
       end
     else
       Rails.logger.info "[FIRMSFeed] NASA_FIRMS_MAP_KEY not set — wildfire feed disabled (see .env.example)"
+    end
+
+    # ─── GDACS disaster alerts (no key required) ─────────────────────────────
+    Thread.new do
+      Thread.current.name = "gdacs-feed"
+      Rails.logger.info "[GDACSFeed] started — polling every 900s (EQ,TC,FL,VO,DR,TS — global)"
+
+      feed_loop.call("[GDACSFeed]", 900) { Feeds::GdacsIngestionService.call }
     end
 
     # ─── ACLED conflict events (requires ACLED_API_KEY + ACLED_EMAIL) ────────

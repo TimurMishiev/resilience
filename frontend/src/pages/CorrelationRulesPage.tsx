@@ -37,6 +37,7 @@ const SIGNAL_TYPE_OPTIONS: { value: SignalType; label: string }[] = [
   { value: 'gps_jamming',       label: 'GPS Jamming'       },
   { value: 'wildfire',          label: 'Wildfire'          },
   { value: 'conflict_event',    label: 'Conflict Event'    },
+  { value: 'disaster_alert',   label: 'Disaster Alert'    },
   { value: 'ais_gap',           label: 'AIS Gap (vessel dark)' },
   { value: 'manual',            label: 'Manual'            },
 ]

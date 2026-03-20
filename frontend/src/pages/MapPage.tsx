@@ -35,6 +35,7 @@ const SIGNAL_COLORS: Record<string, string> = {
   gps_jamming:       '#ffd700',
   wildfire:          '#ff4422',
   conflict_event:    '#e040fb',
+  disaster_alert:    '#ff4081',
   manual:            '#8f99a8',
 }
 
@@ -45,6 +46,7 @@ const SIGNAL_LABELS: Record<string, string> = {
   gps_jamming:       'GPS Jam',
   wildfire:          'Wildfire',
   conflict_event:    'Conflict',
+  disaster_alert:    'Disaster',
   manual:            'Manual',
 }
 
@@ -345,6 +347,7 @@ export default function MapPage() {
   const { data: gpsJamRes }    = useSignals({ signal_type: 'gps_jamming',       per_page: 50  })
   const { data: wildfireRes }  = useSignals({ signal_type: 'wildfire',          per_page: 50  })
   const { data: conflictRes }  = useSignals({ signal_type: 'conflict_event',    per_page: 50  })
+  const { data: disasterRes }  = useSignals({ signal_type: 'disaster_alert',    per_page: 50  })
   const { data: manualRes }    = useSignals({ signal_type: 'manual',            per_page: 20  })
   const { data: aisGapRes }    = useSignals({ signal_type: 'ais_gap',           per_page: 20  })
 
@@ -355,11 +358,12 @@ export default function MapPage() {
     ...(gpsJamRes?.data    ?? []),
     ...(wildfireRes?.data  ?? []),
     ...(conflictRes?.data  ?? []),
+    ...(disasterRes?.data  ?? []),
     ...(manualRes?.data    ?? []),
     ...(aisGapRes?.data    ?? []),
   ], [
     aircraftRes?.data, vesselRes?.data, seismicRes?.data,
-    gpsJamRes?.data, wildfireRes?.data, conflictRes?.data, manualRes?.data, aisGapRes?.data,
+    gpsJamRes?.data, wildfireRes?.data, conflictRes?.data, disasterRes?.data, manualRes?.data, aisGapRes?.data,
   ])
 
   // Vessel lookup by MMSI (only active when a vessel_position signal is selected)
@@ -638,6 +642,7 @@ export default function MapPage() {
           'gps_jamming',       SIGNAL_COLORS.gps_jamming,
           'wildfire',          SIGNAL_COLORS.wildfire,
           'conflict_event',    SIGNAL_COLORS.conflict_event,
+          'disaster_alert',    SIGNAL_COLORS.disaster_alert,
           SIGNAL_COLORS.manual,
         ],
         'circle-opacity': 0.15,
@@ -664,6 +669,7 @@ export default function MapPage() {
           'gps_jamming',       SIGNAL_COLORS.gps_jamming,
           'wildfire',          SIGNAL_COLORS.wildfire,
           'conflict_event',    SIGNAL_COLORS.conflict_event,
+          'disaster_alert',    SIGNAL_COLORS.disaster_alert,
           SIGNAL_COLORS.manual,
         ],
         'circle-opacity':       0.85,

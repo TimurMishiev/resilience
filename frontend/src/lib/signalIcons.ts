@@ -13,6 +13,7 @@ export const SIGNAL_ICON_NAME: Record<string, IconName> = {
   wildfire:          'flame',
   ais_gap:           'eye-off',
   conflict_event:    'warning-sign',
+  disaster_alert:    'issue',
   manual:            'manually-entered-data',
 }
 
@@ -31,5 +32,6 @@ export const SIGNAL_ICON_CHAR: Record<string, string> = {
   wildfire:          '△',   // U+25B3 WHITE TRIANGLE (flame silhouette)
   ais_gap:           '⊙',   // U+2299 CIRCLED DOT (eye-like, vessel went dark)
   conflict_event:    '⚔',   // U+2694 CROSSED SWORDS (armed conflict)
+  disaster_alert:    '⚠',   // U+26A0 WARNING SIGN (natural disaster)
   manual:            '+',   // U+002B PLUS (injected manually)
 }
