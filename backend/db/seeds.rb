@@ -681,7 +681,7 @@ end
 # Demo signals — vessel + wildfire (AIS/FIRMS require API keys; seeded for
 # demo purposes so all 5 signal types appear on the map immediately)
 # ---------------------------------------------------------------------------
-puts "\nSeeding demo signals (vessel + GPS jamming + wildfire)..."
+puts "\nSeeding demo signals (vessel + GPS jamming + wildfire + conflict + disaster)..."
 
 vessel_signals = [
   # Gulf of Aden — near Site Foxtrot (Djibouti 11.57, 43.14)
@@ -790,12 +790,204 @@ wildfire_signals.each_with_index do |attrs, i|
   puts "  Wildfire: FRP #{attrs[:magnitude]} MW (#{attrs[:lat]}, #{attrs[:lng]})"
 end
 
+# ---------------------------------------------------------------------------
+# Demo conflict events — ACLED (gated on ACLED_API_KEY; seeded for demo)
+# ---------------------------------------------------------------------------
+puts "\nSeeding demo ACLED conflict events..."
+
+acled_signals = [
+  # Eastern Ukraine — near Site Alpha (Warsaw 52.23, 21.01)
+  {
+    external_id: "DEMO-ACLED-001",
+    lat: 49.50, lng: 31.20,
+    magnitude: 12.0,
+    raw_payload: {
+      event_type: "Explosions/Remote violence", sub_event_type: "Shelling/artillery/missiles",
+      actor1: "Armed Forces of Russia", actor2: "Armed Forces of Ukraine",
+      country: "Ukraine", fatalities: 12,
+      notes: "Artillery exchange along the eastern front line. Multiple residential structures struck."
+    }
+  },
+  # Northern Syria — near Site Charlie (Ankara 39.93, 32.86)
+  {
+    external_id: "DEMO-ACLED-002",
+    lat: 36.20, lng: 37.10,
+    magnitude: 24.0,
+    raw_payload: {
+      event_type: "Battles", sub_event_type: "Armed clash",
+      actor1: "Syrian Armed Forces", actor2: "Hayat Tahrir al-Sham",
+      country: "Syria", fatalities: 24,
+      notes: "Ground assault in the northwest. Coalition air support requested."
+    }
+  },
+  # Gaza Strip — near Site Echo (Tel Aviv 32.08, 34.78)
+  {
+    external_id: "DEMO-ACLED-003",
+    lat: 31.35, lng: 34.30,
+    magnitude: 8.0,
+    raw_payload: {
+      event_type: "Explosions/Remote violence", sub_event_type: "Air/drone strike",
+      actor1: "Israeli Air Force", actor2: "Hamas",
+      country: "Palestine", fatalities: 8,
+      notes: "Precision strike on military infrastructure. Civilian proximity flagged."
+    }
+  },
+  # Somalia — near Site Foxtrot (Djibouti 11.57, 43.15)
+  {
+    external_id: "DEMO-ACLED-004",
+    lat: 10.20, lng: 44.90,
+    magnitude: 5.0,
+    raw_payload: {
+      event_type: "Battles", sub_event_type: "Government regains territory",
+      actor1: "Somali National Army", actor2: "Al-Shabaab",
+      country: "Somalia", fatalities: 5,
+      notes: "Government forces recaptured a contested village. Al-Shabaab retreated south."
+    }
+  },
+  # North Korea border — near Site Hotel (Seoul 37.57, 126.98)
+  {
+    external_id: "DEMO-ACLED-005",
+    lat: 37.88, lng: 126.10,
+    magnitude: nil,
+    raw_payload: {
+      event_type: "Explosions/Remote violence", sub_event_type: "Remote explosive/landmine/IED",
+      actor1: "North Korean Forces", actor2: "",
+      country: "North Korea", fatalities: 0,
+      notes: "Artillery provocation near the DMZ. No casualties reported. ROK forces on alert."
+    }
+  },
+]
+
+acled_signals.each_with_index do |attrs, i|
+  ExternalSignal.upsert(
+    {
+      source:      "acled",
+      signal_type: "conflict_event",
+      external_id: attrs[:external_id],
+      lat:         attrs[:lat],
+      lng:         attrs[:lng],
+      magnitude:   attrs[:magnitude],
+      occurred_at: demo_base_time - (100 + i).minutes,
+      ingested_at: Time.current,
+      raw_payload: attrs[:raw_payload],
+    },
+    unique_by: %i[source external_id occurred_at]
+  )
+  label = attrs[:raw_payload][:event_type]
+  puts "  Conflict: #{label} (#{attrs[:lat]}, #{attrs[:lng]})#{attrs[:magnitude] ? " — #{attrs[:magnitude].to_i} fatalities" : ""}"
+end
+
+# ---------------------------------------------------------------------------
+# Demo disaster alerts — GDACS (public feed; seeded for demo so map is live)
+# ---------------------------------------------------------------------------
+puts "\nSeeding demo GDACS disaster alerts..."
+
+gdacs_signals = [
+  # Earthquake Turkey — near Site Charlie (Ankara 39.93, 32.86) — Orange
+  {
+    external_id: "DEMO-GDACS-001",
+    lat: 37.80, lng: 38.50,
+    magnitude: 1.8,
+    raw_payload: {
+      event_type: "EQ", event_type_name: "Earthquake",
+      event_id: 9900001, episode_id: 9910001,
+      name: "Earthquake in Turkey", country: "Turkey", iso3: "TUR",
+      alert_level: "Orange", alert_score: 1.8,
+      severity_text: "Magnitude 6.2M, Depth:12km", severity_value: 6.2, severity_unit: "M",
+      is_current: "true"
+    }
+  },
+  # Earthquake Eastern Mediterranean — near Site Echo (Tel Aviv 32.08, 34.78) — Orange
+  {
+    external_id: "DEMO-GDACS-002",
+    lat: 33.50, lng: 36.40,
+    magnitude: 1.2,
+    raw_payload: {
+      event_type: "EQ", event_type_name: "Earthquake",
+      event_id: 9900002, episode_id: 9910002,
+      name: "Earthquake in Lebanon", country: "Lebanon", iso3: "LBN",
+      alert_level: "Orange", alert_score: 1.2,
+      severity_text: "Magnitude 5.8M, Depth:10km", severity_value: 5.8, severity_unit: "M",
+      is_current: "true"
+    }
+  },
+  # Flood Horn of Africa — near Site Foxtrot (Djibouti 11.57, 43.15) — Green
+  {
+    external_id: "DEMO-GDACS-003",
+    lat: 9.50, lng: 42.80,
+    magnitude: 0.8,
+    raw_payload: {
+      event_type: "FL", event_type_name: "Flood",
+      event_id: 9900003, episode_id: 9910003,
+      name: "Flood in Ethiopia", country: "Ethiopia", iso3: "ETH",
+      alert_level: "Green", alert_score: 0.8,
+      severity_text: "Magnitude 1 (GLOFAS severity score)", severity_value: 1.0, severity_unit: "",
+      is_current: "true"
+    }
+  },
+  # Typhoon Indo-Pacific — near Site India (Guam 13.44, 144.79) — Red
+  {
+    external_id: "DEMO-GDACS-004",
+    lat: 16.50, lng: 146.00,
+    magnitude: 2.3,
+    raw_payload: {
+      event_type: "TC", event_type_name: "Tropical Cyclone",
+      event_id: 9900004, episode_id: 9910004,
+      name: "Tropical Cyclone Mariana", country: "Federated States of Micronesia", iso3: "FSM",
+      alert_level: "Red", alert_score: 2.3,
+      severity_text: "Maximum wind speed 185 km/h", severity_value: 185.0, severity_unit: "km/h",
+      is_current: "true"
+    }
+  },
+  # Earthquake Japan — near Site Hotel (Seoul 37.57, 126.98) — Red
+  {
+    external_id: "DEMO-GDACS-005",
+    lat: 38.50, lng: 141.50,
+    magnitude: 2.1,
+    raw_payload: {
+      event_type: "EQ", event_type_name: "Earthquake",
+      event_id: 9900005, episode_id: 9910005,
+      name: "Earthquake in Japan", country: "Japan", iso3: "JPN",
+      alert_level: "Red", alert_score: 2.1,
+      severity_text: "Magnitude 6.8M, Depth:35km", severity_value: 6.8, severity_unit: "M",
+      is_current: "true"
+    }
+  },
+]
+
+gdacs_signals.each_with_index do |attrs, i|
+  ExternalSignal.upsert(
+    {
+      source:      "gdacs",
+      signal_type: "disaster_alert",
+      external_id: attrs[:external_id],
+      lat:         attrs[:lat],
+      lng:         attrs[:lng],
+      magnitude:   attrs[:magnitude],
+      occurred_at: demo_base_time - (200 + i).minutes,
+      ingested_at: Time.current,
+      raw_payload: attrs[:raw_payload],
+    },
+    unique_by: %i[source external_id occurred_at]
+  )
+  level = attrs[:raw_payload][:alert_level]
+  name  = attrs[:raw_payload][:name]
+  puts "  Disaster [#{level}]: #{name} (#{attrs[:lat]}, #{attrs[:lng]})"
+end
+
 puts "\nSeed complete."
 puts "  Areas:            #{AreaOfOperation.count}  (EUCOM amber, CENTCOM red, AFRICOM amber, INDOPACOM green)"
 puts "  Sites:            #{Site.count}  (#{Site.where(status: 'active').count} active, #{Site.where(status: 'inactive').count} inactive)"
 puts "  Assets:           #{Asset.count}"
 puts "  Tasks:            #{Task.count}  (#{Task.group(:workflow_status).count.map { |s, c| "#{c} #{s}" }.join(', ')})"
 puts "  Correlation Rules:#{CorrelationRule.count}  (Air/Seismic/GPS/Vessel/Wildfire)"
+puts "  Signals:"
+puts "    vessel_position:  #{ExternalSignal.where(signal_type: 'vessel_position').count}  (demo AIS)"
+puts "    seismic_event:    #{ExternalSignal.where(signal_type: 'seismic_event').count}  (live USGS — seeded at boot)"
+puts "    gps_jamming:      #{ExternalSignal.where(signal_type: 'gps_jamming').count}  (demo GPSJam)"
+puts "    wildfire:         #{ExternalSignal.where(signal_type: 'wildfire').count}  (demo FIRMS)"
+puts "    conflict_event:   #{ExternalSignal.where(signal_type: 'conflict_event').count}  (demo ACLED)"
+puts "    disaster_alert:   #{ExternalSignal.where(signal_type: 'disaster_alert').count}  (demo GDACS)"
 puts "  AuditEvents: #{AuditEvent.count}"
 puts ""
 puts "  Theaters:"
