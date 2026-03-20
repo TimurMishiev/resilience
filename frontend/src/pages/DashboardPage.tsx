@@ -13,10 +13,11 @@ import {
   CartesianGrid,
 } from 'recharts'
 import { useReadiness, useThroughput } from '../hooks/useReadiness'
+import { useRiskScores } from '../hooks/useRiskScores'
 import { useTasks } from '../hooks/useTasks'
 import { useSignalRuleMatches, useTransitionAlert } from '../hooks/useSignalRuleMatches'
 import { useReplay } from '../context/ReplayContext'
-import type { WorkflowStatus, TaskPriority, SignalRuleMatch, AlertStatus } from '../api/types'
+import type { WorkflowStatus, TaskPriority, SignalRuleMatch, AlertStatus, RiskLevel } from '../api/types'
 import { SIGNAL_ICON_NAME } from '../lib/signalIcons'
 
 const STATUS_ORDER: WorkflowStatus[] = ['new', 'triaged', 'in_progress', 'blocked', 'resolved']
@@ -47,6 +48,20 @@ function scoreIntent(score: number | null) {
 function pct(n: number | null): string {
   if (n === null) return '—'
   return `${Math.round(n * 100)}%`
+}
+
+const RISK_COLOR: Record<RiskLevel, string> = {
+  low:      '#23a26d',
+  moderate: '#f0b726',
+  high:     '#e07b26',
+  critical: '#cd4246',
+}
+
+const RISK_LABEL: Record<RiskLevel, string> = {
+  low:      'LOW',
+  moderate: 'MOD',
+  high:     'HIGH',
+  critical: 'CRIT',
 }
 
 const ALERT_STATUS_LABEL: Record<AlertStatus, string> = {
@@ -217,6 +232,9 @@ export default function DashboardPage() {
   const { data: matchesRes } = useSignalRuleMatches({ per_page: 15 })
   const recentMatches = matchesRes?.data ?? []
 
+  const { data: riskData } = useRiskScores()
+  const riskBySite = Object.fromEntries((riskData ?? []).map((r) => [r.site_id, r]))
+
   const { data: readinessData, isPending: readinessPending, error: readinessError } = useReadiness(
     asOf ? { as_of: asOf } : undefined
   )
@@ -322,29 +340,59 @@ export default function DashboardPage() {
             <p className="bp6-text-muted">No sites.</p>
           ) : (
             <div className="readiness-list">
-              {readiness.map((s) => (
-                <div key={s.site_id} className="readiness-row">
-                  <span className="readiness-name">{s.site_name}</span>
-                  <div className="readiness-bar-track">
-                    <div
-                      className="readiness-bar-fill"
-                      style={{
-                        width: `${Math.round((s.score ?? 0) * 100)}%`,
-                        backgroundColor: scoreIntent(s.score),
-                      }}
-                    />
-                  </div>
-                  <span className="readiness-pct" style={{ color: scoreIntent(s.score) }}>
-                    {pct(s.score)}
-                  </span>
-                  <div className="readiness-counts">
-                    <Tag minimal intent="success" style={{ fontSize: 10 }}>{s.counts.resolved}R</Tag>
-                    {s.counts.blocked > 0 && (
-                      <Tag minimal intent="danger" style={{ fontSize: 10 }}>{s.counts.blocked}B</Tag>
+              {readiness.map((s) => {
+                const risk = riskBySite[s.site_id]
+                return (
+                  <div key={s.site_id} className="readiness-row">
+                    <span className="readiness-name">{s.site_name}</span>
+                    <div className="readiness-bar-track">
+                      <div
+                        className="readiness-bar-fill"
+                        style={{
+                          width: `${Math.round((s.score ?? 0) * 100)}%`,
+                          backgroundColor: scoreIntent(s.score),
+                        }}
+                      />
+                    </div>
+                    <span className="readiness-pct" style={{ color: scoreIntent(s.score) }}>
+                      {pct(s.score)}
+                    </span>
+                    <div className="readiness-counts">
+                      <Tag minimal intent="success" style={{ fontSize: 10 }}>{s.counts.resolved}R</Tag>
+                      {s.counts.blocked > 0 && (
+                        <Tag minimal intent="danger" style={{ fontSize: 10 }}>{s.counts.blocked}B</Tag>
+                      )}
+                    </div>
+                    {risk && (
+                      <Tooltip
+                        content={
+                          <span style={{ fontSize: 11, lineHeight: 1.6 }}>
+                            <strong>Risk Score: {risk.score}/100</strong><br />
+                            Alerts: {risk.components.alert_pressure.toFixed(1)}&nbsp;·&nbsp;
+                            Tasks: {risk.components.task_health.toFixed(1)}&nbsp;·&nbsp;
+                            Signals: {risk.components.signal_density.toFixed(1)}
+                          </span>
+                        }
+                        placement="top"
+                      >
+                        <Tag
+                          minimal
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 700,
+                            color: RISK_COLOR[risk.risk_level],
+                            borderColor: RISK_COLOR[risk.risk_level],
+                            cursor: 'default',
+                            letterSpacing: '0.04em',
+                          }}
+                        >
+                          {RISK_LABEL[risk.risk_level]}
+                        </Tag>
+                      </Tooltip>
                     )}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>

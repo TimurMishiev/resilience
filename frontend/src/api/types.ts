@@ -353,6 +353,21 @@ export interface SiteReadiness {
   as_of: string | null
 }
 
+export type RiskLevel = 'low' | 'moderate' | 'high' | 'critical'
+
+export interface SiteRiskScore {
+  site_id:    number
+  site_name:  string
+  score:      number
+  risk_level: RiskLevel
+  components: {
+    alert_pressure:  number
+    task_health:     number
+    signal_density:  number
+  }
+  computed_at: string
+}
+
 export interface ThroughputPoint {
   date: string
   resolved: number

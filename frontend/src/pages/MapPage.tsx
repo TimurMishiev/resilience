@@ -8,6 +8,7 @@ import {
   InputGroup,
   Spinner,
   Tag,
+  Tooltip,
 } from '@blueprintjs/core'
 import { useQueryClient } from '@tanstack/react-query'
 import { useSites } from '../hooks/useSites'
@@ -17,8 +18,9 @@ import { useTelemetryStream } from '../hooks/useTelemetryStream'
 import { useAreasOfOperation } from '../hooks/useAreasOfOperation'
 import { useSignals } from '../hooks/useSignals'
 import { useVessels, useVesselTracks } from '../hooks/useVessels'
+import { useRiskScores } from '../hooks/useRiskScores'
 import { useReplay } from '../context/ReplayContext'
-import type { Site, Task, Asset, WorkflowStatus, Signal } from '../api/types'
+import type { Site, Task, Asset, WorkflowStatus, Signal, RiskLevel } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
 import { Icon } from '@blueprintjs/core'
 import { SIGNAL_ICON_NAME, SIGNAL_ICON_CHAR } from '../lib/signalIcons'
@@ -157,6 +159,20 @@ function computeReadiness(tasks: Task[]): number | null {
   const resolved   = tasks.filter(t => t.workflow_status === 'resolved').length
   const nonBlocked = tasks.filter(t => t.workflow_status !== 'blocked').length
   return (resolved / total) * 0.6 + (nonBlocked / total) * 0.4
+}
+
+const RISK_COLOR: Record<RiskLevel, string> = {
+  low:      '#23a26d',
+  moderate: '#f0b726',
+  high:     '#e07b26',
+  critical: '#cd4246',
+}
+
+const RISK_LABEL: Record<RiskLevel, string> = {
+  low:      'LOW',
+  moderate: 'MOD',
+  high:     'HIGH',
+  critical: 'CRIT',
 }
 
 function batteryIntent(pct: number): Intent {
@@ -305,6 +321,12 @@ export default function MapPage() {
   const [mapLoaded,       setMapLoaded]         = useState(false)
   const [mapStyle,        setMapStyle]          = useState<MapStyleKey>('tactical')
   const mapStyleInitRef = useRef(false)
+
+  const { data: riskData } = useRiskScores()
+  const riskBySiteId       = useMemo(
+    () => Object.fromEntries((riskData ?? []).map(r => [String(r.site_id), r])),
+    [riskData]
+  )
 
   const asOfParam  = asOf ? { as_of: asOf } : {}
   const sitesQuery = useSites({ per_page: 200, ...asOfParam })
@@ -879,6 +901,35 @@ export default function MapPage() {
                 {Math.round(readiness * 100)}% ready
               </Tag>
             )}
+            {riskBySiteId[String(selectedSite.id)] && (() => {
+              const risk = riskBySiteId[String(selectedSite.id)]
+              return (
+                <Tooltip
+                  content={
+                    <span style={{ fontSize: 11, lineHeight: 1.7 }}>
+                      <strong>Risk Score: {risk.score}/100</strong><br />
+                      Alerts: {risk.components.alert_pressure.toFixed(1)}&nbsp;·&nbsp;
+                      Tasks: {risk.components.task_health.toFixed(1)}&nbsp;·&nbsp;
+                      Signals: {risk.components.signal_density.toFixed(1)}
+                    </span>
+                  }
+                  placement="top"
+                >
+                  <Tag
+                    minimal
+                    style={{
+                      fontWeight: 700,
+                      color: RISK_COLOR[risk.risk_level],
+                      borderColor: RISK_COLOR[risk.risk_level],
+                      cursor: 'default',
+                      letterSpacing: '0.04em',
+                    }}
+                  >
+                    RISK {RISK_LABEL[risk.risk_level]} {risk.score}
+                  </Tag>
+                </Tooltip>
+              )
+            })()}
           </div>
 
           <p className="map-panel-coords bp6-text-muted">

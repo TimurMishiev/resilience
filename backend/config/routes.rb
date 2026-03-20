@@ -36,7 +36,8 @@ Rails.application.routes.draw do
 
     resources :audit_events, only: [:index]
 
-    get "readiness", to: "readiness#index"
+    get "readiness",   to: "readiness#index"
+    get "risk_scores", to: "risk_scores#index"
 
     namespace :analytics do
       get :throughput
