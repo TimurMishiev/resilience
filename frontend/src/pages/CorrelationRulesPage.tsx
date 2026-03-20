@@ -513,7 +513,7 @@ export default function CorrelationRulesPage() {
                         )}
                       </td>
                       <td>
-                        {isCompound ? (
+                        {isCompoundRule(rule.conditions) ? (
                           <Tag minimal intent="warning">
                             {rule.conditions.operator} · {rule.conditions.conditions.length} signals
                           </Tag>
@@ -524,9 +524,9 @@ export default function CorrelationRulesPage() {
                         )}
                       </td>
                       <td className="mono">
-                        {!isCompound && rule.conditions.proximity_km
+                        {!isCompoundRule(rule.conditions) && rule.conditions.proximity_km
                           ? `${rule.conditions.proximity_km}km`
-                          : isCompound ? '—' : '—'}
+                          : '—'}
                       </td>
                       <td>
                         <Tag minimal intent={PRIORITY_INTENTS[actionPriority]}>
