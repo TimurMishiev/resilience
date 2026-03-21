@@ -2,6 +2,10 @@ module Api
   class SitesController < BaseController
     before_action :require_commander!, only: %i[toggle_status unflag]
 
+    TIMELINE_VALID_KINDS = %w[
+      signal_detected rule_fired task_created task_transitioned site_event
+    ].freeze
+
     def index
       sites = Site.all.order(:name)
       sites = sites.where(status: params[:status]) if params[:status].present?
@@ -12,6 +16,24 @@ module Api
     def show
       site = Site.find(params[:id])
       render json: serialize_site(site)
+    end
+
+    def timeline
+      site = Site.find(params[:id])
+      days = (params[:days] || 7).to_i.clamp(1, 90)
+
+      events = Sites::TimelineService.call(site: site, days: days)
+
+      # Optional kind filter — e.g. ?kinds[]=rule_fired&kinds[]=signal_detected
+      if params[:kinds].present?
+        allowed = Array(params[:kinds]) & TIMELINE_VALID_KINDS
+        events  = events.select { |e| allowed.include?(e[:event_kind]) }
+      end
+
+      render json: {
+        data:    events,
+        meta:    { total: events.size, site_id: site.id, days: days }
+      }
     end
 
     def toggle_status

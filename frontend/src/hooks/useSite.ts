@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getSite, unflagSite, toggleSiteStatus } from '../api/sites'
+import { getSite, unflagSite, toggleSiteStatus, getSiteTimeline } from '../api/sites'
+import type { SiteTimelineParams } from '../api/types'
 
 export function useSite(id: string | undefined) {
   return useQuery({
@@ -17,6 +18,15 @@ export function useUnflagSite() {
       queryClient.invalidateQueries({ queryKey: ['sites'] })
       queryClient.setQueryData(['sites', updated.id], updated)
     },
+  })
+}
+
+export function useSiteTimeline(id: string | undefined, params?: SiteTimelineParams) {
+  return useQuery({
+    queryKey: ['site-timeline', id, params],
+    queryFn:  () => getSiteTimeline(id!, params),
+    enabled:  Boolean(id),
+    refetchInterval: 30_000, // refresh every 30s — new signals/rule fires appear
   })
 }
 

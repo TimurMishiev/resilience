@@ -26,6 +26,7 @@ import { useSignalRuleMatches, useTransitionAlert } from '../hooks/useSignalRule
 import { useAssets } from '../hooks/useAssets'
 import { useReadiness } from '../hooks/useReadiness'
 import AuditTimeline from '../components/AuditTimeline'
+import SiteTimeline from '../components/SiteTimeline'
 import { SIGNAL_ICON_NAME } from '../lib/signalIcons'
 import type { TaskPriority, AlertStatus } from '../api/types'
 import type { Task, Signal, SignalRuleMatch, Asset } from '../api/types'
@@ -553,6 +554,15 @@ export default function SiteDetailPage() {
         <Tab id="signals" title="Signals" panel={<SignalsTab siteId={site.id} />} />
         <Tab id="rule_fires" title="Rule Fires" panel={<RuleFiresTab siteId={site.id} />} />
         <Tab id="assets" title="Assets" panel={<AssetsTab siteId={site.id} />} />
+        <Tab id="timeline" title={
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span>Timeline</span>
+            <span style={{
+              fontSize: 9, background: '#e65100', color: '#fff',
+              borderRadius: 3, padding: '1px 4px', fontWeight: 700, letterSpacing: '0.03em'
+            }}>NEW</span>
+          </span>
+        } panel={<SiteTimeline siteId={site.id} />} />
         <Tab id="audit" title="Audit Trail" panel={
           <div style={{ paddingTop: 12 }}>
             <AuditTimeline entityType="Site" entityId={site.id} />

@@ -23,6 +23,7 @@ Rails.application.routes.draw do
       member do
         patch :unflag
         patch :toggle_status
+        get   :timeline
       end
     end
     resources :assets, only: %i[index show]

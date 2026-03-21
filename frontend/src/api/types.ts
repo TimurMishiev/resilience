@@ -372,3 +372,63 @@ export interface ThroughputPoint {
   date: string
   resolved: number
 }
+
+// ---------------------------------------------------------------------------
+// Site timeline types
+// ---------------------------------------------------------------------------
+
+export type TimelineEventKind =
+  | 'signal_detected'
+  | 'rule_fired'
+  | 'task_created'
+  | 'task_transitioned'
+  | 'site_event'
+
+export interface TimelineEventMeta {
+  // signal_detected
+  signal_id?:   string
+  signal_type?: string
+  source?:      string
+  distance_km?: number
+  magnitude?:   string | number | null
+  lat?:         string | number
+  lng?:         string | number
+  // rule_fired
+  match_id?:      string
+  rule_id?:       string
+  rule_name?:     string
+  actions_taken?: string[]
+  // task_created / task_transitioned
+  task_id?:         string
+  task_title?:      string
+  priority?:        string
+  workflow_status?: string
+  // audit-based
+  audit_event_id?: string
+  event_type?:     string
+  action?:         string
+  entity_type?:    string
+  entity_id?:      string
+}
+
+export interface TimelineEvent {
+  id:               string
+  event_kind:       TimelineEventKind
+  occurred_at:      string
+  title:            string
+  subtitle:         string | null
+  actor:            string
+  confidence?:      number
+  workflow_status?: string
+  meta:             TimelineEventMeta
+}
+
+export interface SiteTimelineResponse {
+  data: TimelineEvent[]
+  meta: { total: number; site_id: string; days: number }
+}
+
+export interface SiteTimelineParams {
+  days?:  number
+  kinds?: TimelineEventKind[]
+}

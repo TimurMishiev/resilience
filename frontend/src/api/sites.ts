@@ -1,6 +1,6 @@
 import { api } from './client'
 import type { QueryParams } from './client'
-import type { Site, PaginatedResponse, PaginationParams, AsOfParam } from './types'
+import type { Site, PaginatedResponse, PaginationParams, AsOfParam, SiteTimelineResponse, SiteTimelineParams } from './types'
 
 type SitesParams = PaginationParams & AsOfParam
 
@@ -18,4 +18,8 @@ export function unflagSite(id: string): Promise<Site> {
 
 export function toggleSiteStatus(id: string): Promise<Site> {
   return api.patch(`/api/sites/${id}/toggle_status`, {})
+}
+
+export function getSiteTimeline(id: string, params?: SiteTimelineParams): Promise<SiteTimelineResponse> {
+  return api.get(`/api/sites/${id}/timeline`, params as QueryParams)
 }
