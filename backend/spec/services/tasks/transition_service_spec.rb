@@ -128,10 +128,12 @@ RSpec.describe Tasks::TransitionService, type: :service do
     end
     end
 
-    context "transition to resolved" do
+    context "transition to resolved (commander)" do
       let(:task) { create(:task, site: site, workflow_status: "in_progress") }
 
-      subject(:result) { described_class.call(task: task, to_status: "resolved", actor: actor) }
+      subject(:result) do
+        described_class.call(task: task, to_status: "resolved", actor: actor, actor_role: "commander")
+      end
 
       it "sets resolved_at" do
         result
@@ -145,10 +147,12 @@ RSpec.describe Tasks::TransitionService, type: :service do
       end
     end
 
-    context "unblocking a task (blocked -> in_progress)" do
+    context "unblocking a task — blocked -> in_progress (commander)" do
       let(:task) { create(:task, :blocked, site: site) }
 
-      subject(:result) { described_class.call(task: task, to_status: "in_progress", actor: actor) }
+      subject(:result) do
+        described_class.call(task: task, to_status: "in_progress", actor: actor, actor_role: "commander")
+      end
 
       it "returns success" do
         expect(result.success).to be true
@@ -157,6 +161,109 @@ RSpec.describe Tasks::TransitionService, type: :service do
       it "clears blocked_reason" do
         result
         expect(task.reload.blocked_reason).to be_nil
+      end
+    end
+
+    context "reopening a resolved task (commander)" do
+      let(:task) { create(:task, :resolved, site: site) }
+
+      subject(:result) do
+        described_class.call(task: task, to_status: "triaged", actor: actor, actor_role: "commander")
+      end
+
+      it "returns success" do
+        expect(result.success).to be true
+      end
+
+      it "updates workflow_status to triaged" do
+        result
+        expect(task.reload.workflow_status).to eq("triaged")
+      end
+    end
+
+    context "operator attempting commander-only transitions" do
+      context "operator tries to resolve an in_progress task" do
+        let(:task) { create(:task, site: site, workflow_status: "in_progress") }
+
+        subject(:result) do
+          described_class.call(task: task, to_status: "resolved", actor: actor, actor_role: "operator")
+        end
+
+        it "returns failure" do
+          expect(result.failure?).to be true
+        end
+
+        it "returns a commander authority error" do
+          expect(result.errors.first).to match(/Commander authority required/i)
+        end
+
+        it "does not update the task" do
+          result
+          expect(task.reload.workflow_status).to eq("in_progress")
+        end
+
+        it "does not write an audit event" do
+          expect { result }.not_to change(AuditEvent, :count)
+        end
+      end
+
+      context "operator tries to unblock a blocked task" do
+        let(:task) { create(:task, :blocked, site: site) }
+
+        subject(:result) do
+          described_class.call(task: task, to_status: "in_progress", actor: actor, actor_role: "operator")
+        end
+
+        it "returns failure" do
+          expect(result.failure?).to be true
+        end
+
+        it "returns a commander authority error" do
+          expect(result.errors.first).to match(/Commander authority required/i)
+        end
+      end
+
+      context "operator tries to reopen a resolved task" do
+        let(:task) { create(:task, :resolved, site: site) }
+
+        subject(:result) do
+          described_class.call(task: task, to_status: "triaged", actor: actor, actor_role: "operator")
+        end
+
+        it "returns failure" do
+          expect(result.failure?).to be true
+        end
+
+        it "returns a commander authority error" do
+          expect(result.errors.first).to match(/Commander authority required/i)
+        end
+      end
+    end
+
+    context ".allowed_transitions_for role filtering" do
+      it "returns all transitions for commander from in_progress" do
+        expect(described_class.allowed_transitions_for("in_progress", role: "commander"))
+          .to match_array(%w[blocked resolved])
+      end
+
+      it "filters out resolved for operator from in_progress" do
+        expect(described_class.allowed_transitions_for("in_progress", role: "operator"))
+          .to eq(%w[blocked])
+      end
+
+      it "filters out in_progress (unblock) for operator from blocked" do
+        expect(described_class.allowed_transitions_for("blocked", role: "operator"))
+          .to eq([])
+      end
+
+      it "filters out triaged (reopen) for operator from resolved" do
+        expect(described_class.allowed_transitions_for("resolved", role: "operator"))
+          .to eq([])
+      end
+
+      it "returns triaged for both roles from new" do
+        expect(described_class.allowed_transitions_for("new", role: "operator"))
+          .to eq(%w[triaged])
       end
     end
   end

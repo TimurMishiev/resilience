@@ -47,9 +47,10 @@ module Api
     def transition
       task = Task.find(params[:id])
       result = Tasks::TransitionService.call(
-        task: task,
-        to_status: transition_params[:to_status],
-        actor: actor,
+        task:           task,
+        to_status:      transition_params[:to_status],
+        actor:          actor,
+        actor_role:     current_user.role,
         blocked_reason: transition_params[:blocked_reason]
       )
       if result.success
@@ -63,7 +64,12 @@ module Api
 
     def allowed_transitions
       task = Task.find(params[:id])
-      render json: { allowed: Tasks::TransitionService.allowed_transitions_for(task.workflow_status) }
+      render json: {
+        allowed: Tasks::TransitionService.allowed_transitions_for(
+          task.workflow_status,
+          role: current_user.role
+        )
+      }
     end
 
     private

@@ -12,7 +12,7 @@ import {
 } from '@blueprintjs/core'
 import { useQueryClient } from '@tanstack/react-query'
 import { useSites } from '../hooks/useSites'
-import { useTasks, useTransitionTask } from '../hooks/useTasks'
+import { useTasks, useTransitionTask, useAllowedTransitions } from '../hooks/useTasks'
 import { useAssets } from '../hooks/useAssets'
 import { useTelemetryStream } from '../hooks/useTelemetryStream'
 import { useAreasOfOperation } from '../hooks/useAreasOfOperation'
@@ -102,21 +102,6 @@ const MAP_STYLE_CONFIGS: Record<MapStyleKey, { label: string; style: string | St
   tactical:  { label: 'Tactical',   style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json' },
   satellite: { label: 'Satellite',  style: SATELLITE_STYLE },
   street:    { label: 'Street',     style: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json' },
-}
-
-// ---------------------------------------------------------------------------
-// Transition table — mirrors backend ALLOWED_TRANSITIONS
-// ---------------------------------------------------------------------------
-const ALLOWED: Record<WorkflowStatus, WorkflowStatus[]> = {
-  new:         ['triaged'],
-  triaged:     ['in_progress'],
-  in_progress: ['blocked', 'resolved'],
-  blocked:     ['in_progress'],
-  resolved:    ['triaged'],
-}
-
-function allowedTransitions(status: WorkflowStatus): WorkflowStatus[] {
-  return ALLOWED[status] ?? []
 }
 
 // ---------------------------------------------------------------------------
@@ -221,10 +206,11 @@ interface TaskRowProps {
 }
 
 function TaskRow({ task, disabled, onTransitioned }: TaskRowProps) {
-  const transition = useTransitionTask()
+  const transition    = useTransitionTask()
+  const { data: allowedData } = useAllowedTransitions(task.id)
   const [blockReason, setBlockReason] = useState('')
   const [blocking, setBlocking]       = useState(false)
-  const next = allowedTransitions(task.workflow_status)
+  const next = allowedData?.allowed ?? []
 
   function handleTransition(to: WorkflowStatus) {
     if (to === 'blocked') { setBlocking(true); return }

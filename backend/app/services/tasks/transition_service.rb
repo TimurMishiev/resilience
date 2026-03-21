@@ -11,17 +11,35 @@ module Tasks
       "resolved"    => %w[triaged]
     }.freeze
 
-    def initialize(task:, to_status:, actor:, blocked_reason: nil)
-      @task = task
-      @to_status = to_status
-      @actor = actor
+    # Transitions that require Commander authority.
+    # Operators handle day-to-day triage; Commanders own sign-off actions:
+    #   resolved   — marks work complete (requires sign-off)
+    #   unblock    — releases a blocked task (requires resource/escalation authority)
+    #   reopen     — reopens a resolved task (requires authority to re-open closed work)
+    COMMANDER_ONLY_TRANSITIONS = {
+      "in_progress" => %w[resolved],
+      "blocked"     => %w[in_progress],
+      "resolved"    => %w[triaged]
+    }.freeze
+
+    def initialize(task:, to_status:, actor:, blocked_reason: nil, actor_role: "commander")
+      @task        = task
+      @to_status   = to_status
+      @actor       = actor
       @blocked_reason = blocked_reason
+      @actor_role  = actor_role
     end
 
     def call
       unless transition_allowed?
         return ServiceResult.failure(
           errors: ["Transition from '#{@task.workflow_status}' to '#{@to_status}' is not allowed"]
+        )
+      end
+
+      if commander_only_transition? && @actor_role != "commander"
+        return ServiceResult.failure(
+          errors: ["Commander authority required to transition task to '#{@to_status}'"]
         )
       end
 
@@ -39,7 +57,13 @@ module Tasks
       ActiveRecord::Base.transaction do
         @task.workflow_status = @to_status
         @task.blocked_reason = (@to_status == "blocked") ? @blocked_reason : nil
-        @task.resolved_at = Time.current if @to_status == "resolved" && @task.resolved_at.nil?
+        # Set resolved_at on first resolution; clear it if the task is reopened
+        # (DB constraint resolved_at_only_when_resolved requires NULL for non-resolved statuses)
+        if @to_status == "resolved"
+          @task.resolved_at ||= Time.current
+        else
+          @task.resolved_at = nil
+        end
 
         @task.save!
 
@@ -61,16 +85,25 @@ module Tasks
       ServiceResult.failure(errors: e.record.errors.full_messages)
     end
 
-    # Returns the allowed next statuses for a given current status.
-    # Used by the API to inform the frontend of available actions.
-    def self.allowed_transitions_for(current_status)
-      ALLOWED_TRANSITIONS.fetch(current_status, [])
+    # Returns the allowed next statuses for a given current status and role.
+    # Filters out commander-only transitions for operators so the frontend
+    # renders only the actions the actor is actually permitted to take.
+    def self.allowed_transitions_for(current_status, role: "commander")
+      all = ALLOWED_TRANSITIONS.fetch(current_status, [])
+      return all if role == "commander"
+
+      commander_only = COMMANDER_ONLY_TRANSITIONS.fetch(current_status, [])
+      all.reject { |to| commander_only.include?(to) }
     end
 
     private
 
     def transition_allowed?
       ALLOWED_TRANSITIONS.fetch(@task.workflow_status, []).include?(@to_status)
+    end
+
+    def commander_only_transition?
+      COMMANDER_ONLY_TRANSITIONS.fetch(@task.workflow_status, []).include?(@to_status)
     end
 
     def task_snapshot(task)

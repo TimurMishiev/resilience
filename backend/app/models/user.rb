@@ -8,4 +8,8 @@ class User < ApplicationRecord
   validates :role, inclusion: { in: ROLES }
 
   before_save { self.email = email.downcase }
+
+  def commander?
+    role == "commander"
+  end
 end

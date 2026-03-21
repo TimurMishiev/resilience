@@ -22,7 +22,10 @@ class Task < ApplicationRecord
   private
 
   def prevent_resolved_at_change
-    if resolved_at_changed? && resolved_at_was.present?
+    # Allow clearing resolved_at to nil (required when reopening a resolved task so
+    # the resolved_at_only_when_resolved DB constraint is satisfied).
+    # Block overwriting a prior non-nil value with a different non-nil value.
+    if resolved_at_changed? && resolved_at_was.present? && resolved_at.present?
       errors.add(:resolved_at, "cannot be changed once set")
       throw :abort
     end
