@@ -181,8 +181,13 @@ export interface AiSummaryRequest {
 }
 
 export interface AiSummaryResult {
-  summary: string
+  summary:   string
   citations: string[]
+  context_counts: {
+    audit_events: number
+    signals:      number
+    rule_fires:   number
+  }
 }
 
 // ---------------------------------------------------------------------------

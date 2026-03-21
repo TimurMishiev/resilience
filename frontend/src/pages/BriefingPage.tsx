@@ -10,7 +10,7 @@ export default function BriefingPage() {
     <div className="page-content">
       <div className="page-header">
         <h2 className="bp6-heading">Operational Briefing</h2>
-        <span className="bp6-text-muted">AI-generated summaries grounded in audit data</span>
+        <span className="bp6-text-muted">AI-generated summaries grounded in audit events, intelligence signals, and rule fires</span>
       </div>
 
       {!isCommander ? (
