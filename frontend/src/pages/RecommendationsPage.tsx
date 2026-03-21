@@ -45,7 +45,7 @@ export default function RecommendationsPage() {
       <div className="page-header">
         <h1 className="bp6-heading" style={{ margin: 0 }}>Recommendations</h1>
         <span className="bp6-text-muted" style={{ fontSize: 13, marginLeft: 8 }}>
-          {data?.total ?? '—'} active
+          {data?.meta.total ?? '—'} active
         </span>
         {isCommander && (
           <Button

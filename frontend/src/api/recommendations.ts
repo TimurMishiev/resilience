@@ -1,4 +1,5 @@
 import { api } from './client'
+import type { PaginatedResponse } from './types'
 
 export type RecommendationType =
   | 'close_stale_alert'
@@ -55,10 +56,7 @@ export interface RecommendationMetrics {
   by_type:     Record<string, number>
 }
 
-export interface RecommendationsResponse {
-  data:  Recommendation[]
-  total: number
-}
+export type RecommendationsResponse = PaginatedResponse<Recommendation>
 
 export interface RecommendationParams {
   status?: string
@@ -68,29 +66,29 @@ export interface RecommendationParams {
 }
 
 export function getRecommendations(params?: RecommendationParams): Promise<RecommendationsResponse> {
-  return api.get<RecommendationsResponse>('/recommendations', params)
+  return api.get<RecommendationsResponse>('/api/recommendations', params)
 }
 
 export function generateRecommendations(): Promise<{ created: number; invalid_count: number }> {
-  return api.post<{ created: number; invalid_count: number }>('/recommendations/generate', {})
+  return api.post<{ created: number; invalid_count: number }>('/api/recommendations/generate', {})
 }
 
 export function acceptRecommendation(id: string, reason?: string): Promise<Recommendation> {
-  return api.post<Recommendation>(`/recommendations/${id}/accept`, { reason })
+  return api.post<Recommendation>(`/api/recommendations/${id}/accept`, { reason })
 }
 
 export function rejectRecommendation(id: string, reason?: string): Promise<Recommendation> {
-  return api.post<Recommendation>(`/recommendations/${id}/reject`, { reason })
+  return api.post<Recommendation>(`/api/recommendations/${id}/reject`, { reason })
 }
 
 export function deferRecommendation(id: string, reason?: string): Promise<Recommendation> {
-  return api.post<Recommendation>(`/recommendations/${id}/defer`, { reason })
+  return api.post<Recommendation>(`/api/recommendations/${id}/defer`, { reason })
 }
 
 export function executeRecommendation(id: string): Promise<Recommendation> {
-  return api.post<Recommendation>(`/recommendations/${id}/execute`, {})
+  return api.post<Recommendation>(`/api/recommendations/${id}/execute`, {})
 }
 
 export function getRecommendationMetrics(): Promise<RecommendationMetrics> {
-  return api.get<RecommendationMetrics>('/recommendations/metrics')
+  return api.get<RecommendationMetrics>('/api/recommendations/metrics')
 }
