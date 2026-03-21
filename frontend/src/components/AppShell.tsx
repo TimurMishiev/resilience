@@ -58,9 +58,14 @@ export default function AppShell() {
           confidence:      number | null
           actions_taken:   string[]
         }
+        // FusionService opens or updates an incident on every rule_fired event,
+        // so incidents and recommendations are invalidated here alongside the
+        // alert/rule/site surfaces.  geofence_breach does the same below.
         queryClient.invalidateQueries({ queryKey: ['signal_rule_matches'] })
         queryClient.invalidateQueries({ queryKey: ['correlation_rules'] })
         queryClient.invalidateQueries({ queryKey: ['sites'] })
+        queryClient.invalidateQueries({ queryKey: ['incidents'] })
+        queryClient.invalidateQueries({ queryKey: ['recommendations'] })
         const confPct = d.confidence != null ? ` · ${Math.round(d.confidence * 100)}% conf` : ''
         AppToaster.then(t => t.show({
           message: `⚡ ${d.rule_name} fired near ${d.site_name} — ${d.signal_type}, ${d.distance_km} km${confPct}`,
@@ -132,12 +137,6 @@ export default function AppShell() {
         }))
       }
 
-      if (e.event === 'rule_fired') {
-        // FusionService opens or updates an incident on every rule_fired event,
-        // so both incidents and recommendations need a fresh read.
-        queryClient.invalidateQueries({ queryKey: ['incidents'] })
-        queryClient.invalidateQueries({ queryKey: ['recommendations'] })
-      }
     },
   })
 
