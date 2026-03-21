@@ -18,6 +18,22 @@ module Api
       render json: serialize_site(site)
     end
 
+    def risk_history
+      site = Site.find(params[:id])
+      days = (params[:days] || 7).to_i.clamp(1, 30)
+
+      snapshots = SiteRiskSnapshot
+        .for_site(site.id)
+        .within_days(days)
+        .chronological
+        .map { |s| serialize_snapshot(s) }
+
+      render json: {
+        data: snapshots,
+        meta: { total: snapshots.size, site_id: site.id, days: days }
+      }
+    end
+
     def timeline
       site = Site.find(params[:id])
       days = (params[:days] || 7).to_i.clamp(1, 90)
@@ -88,6 +104,18 @@ module Api
     end
 
     private
+
+    def serialize_snapshot(s)
+      {
+        id:             s.id,
+        recorded_at:    s.recorded_at.iso8601,
+        score:          s.score,
+        risk_level:     s.risk_level,
+        alert_pressure: s.alert_pressure.to_f.round(2),
+        task_health:    s.task_health.to_f.round(2),
+        signal_density: s.signal_density.to_f.round(2)
+      }
+    end
 
     def serialize_site(site)
       site.as_json(only: %i[id name latitude longitude status area_of_operation_id flagged_at flag_reason created_at])

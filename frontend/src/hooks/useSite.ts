@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getSite, unflagSite, toggleSiteStatus, getSiteTimeline } from '../api/sites'
-import type { SiteTimelineParams } from '../api/types'
+import { getSite, unflagSite, toggleSiteStatus, getSiteTimeline, getSiteRiskHistory } from '../api/sites'
+import type { SiteTimelineParams, SiteRiskHistoryParams } from '../api/types'
 
 export function useSite(id: string | undefined) {
   return useQuery({
@@ -18,6 +18,15 @@ export function useUnflagSite() {
       queryClient.invalidateQueries({ queryKey: ['sites'] })
       queryClient.setQueryData(['sites', updated.id], updated)
     },
+  })
+}
+
+export function useSiteRiskHistory(id: string | undefined, params?: SiteRiskHistoryParams) {
+  return useQuery({
+    queryKey: ['site-risk-history', id, params],
+    queryFn:  () => getSiteRiskHistory(id!, params),
+    enabled:  Boolean(id),
+    refetchInterval: 60_000, // refresh every minute — new snapshots arrive hourly
   })
 }
 

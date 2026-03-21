@@ -374,6 +374,29 @@ export interface ThroughputPoint {
 }
 
 // ---------------------------------------------------------------------------
+// Risk history types
+// ---------------------------------------------------------------------------
+
+export interface SiteRiskSnapshot {
+  id:             string
+  recorded_at:    string
+  score:          number
+  risk_level:     RiskLevel
+  alert_pressure: number
+  task_health:    number
+  signal_density: number
+}
+
+export interface SiteRiskHistoryResponse {
+  data: SiteRiskSnapshot[]
+  meta: { total: number; site_id: string; days: number }
+}
+
+export interface SiteRiskHistoryParams {
+  days?: number
+}
+
+// ---------------------------------------------------------------------------
 // Site timeline types
 // ---------------------------------------------------------------------------
 

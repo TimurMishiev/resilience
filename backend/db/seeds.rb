@@ -55,6 +55,7 @@ VesselTrack.delete_all
 Vessel.delete_all          # must precede ExternalSignal (FK: vessels.last_signal_id)
 ExternalSignal.delete_all
 CorrelationRule.delete_all
+SiteRiskSnapshot.delete_all  # must precede Site (FK: site_risk_snapshots.site_id)
 Site.delete_all
 AreaOfOperation.delete_all
 
@@ -1077,6 +1078,94 @@ gdacs_signals.each_with_index do |attrs, i|
 end
 
 puts "\nSeed complete."
+
+# ---------------------------------------------------------------------------
+# Risk Score History — 7 days of hourly snapshots per active site
+# ---------------------------------------------------------------------------
+# Gives the chart realistic trend data from day 1 without waiting for
+# Risk::SnapshotJob to accumulate real history. Each site gets a distinct
+# trajectory so the chart looks like a real operational picture:
+#
+#   Eastern Europe (Alpha/Bravo/Charlie) — elevated, trending up late
+#   Middle East    (Echo)                — high, spiked around T36H
+#   Horn of Africa (Foxtrot)             — moderate, slowly declining
+#   Indian Ocean   (Golf)               — low baseline
+#   Indo-Pacific   (Hotel/India)         — moderate with a mid-week spike
+# ---------------------------------------------------------------------------
+
+puts "\nSeeding risk score history..."
+
+RISK_LEVELS = [
+  { max: 25,  level: "low"      },
+  { max: 50,  level: "moderate" },
+  { max: 75,  level: "high"     },
+  { max: 100, level: "critical" }
+].freeze
+
+def risk_level_for(score)
+  RISK_LEVELS.find { |r| score <= r[:max] }&.fetch(:level) || "critical"
+end
+
+# Per-site baseline and trajectory — produces visually distinct trend lines.
+SITE_RISK_PROFILES = {
+  "Alpha"   => { base_score: 38, amplitude: 18, phase: 0.0,  trend: +0.3 },
+  "Bravo"   => { base_score: 44, amplitude: 12, phase: 1.1,  trend: +0.2 },
+  "Charlie" => { base_score: 29, amplitude: 10, phase: 2.3,  trend: -0.1 },
+  "Delta"   => { base_score: 15, amplitude:  5, phase: 0.5,  trend:  0.0 }, # inactive, still show history
+  "Echo"    => { base_score: 61, amplitude: 22, phase: 0.8,  trend: -0.4 },
+  "Foxtrot" => { base_score: 42, amplitude:  8, phase: 1.7,  trend: -0.2 },
+  "Golf"    => { base_score: 18, amplitude:  6, phase: 3.0,  trend: +0.1 },
+  "Hotel"   => { base_score: 35, amplitude: 14, phase: 0.3,  trend: +0.1 },
+  "India"   => { base_score: 47, amplitude: 16, phase: 2.1,  trend: -0.3 },
+}.freeze
+
+# Snapshot every 6 hours over 7 days = 28 snapshots per site
+SNAPSHOT_INTERVAL_HOURS = 6
+SNAPSHOT_DAYS           = 7
+SNAPSHOT_COUNT          = (SNAPSHOT_DAYS * 24) / SNAPSHOT_INTERVAL_HOURS  # 28
+
+sites_with_history = Site.all
+
+inserted = 0
+sites_with_history.each do |site|
+  profile = SITE_RISK_PROFILES[site.name] || { base_score: 30, amplitude: 10, phase: 0.0, trend: 0.0 }
+
+  SNAPSHOT_COUNT.times do |i|
+    hours_ago    = SNAPSHOT_DAYS * 24 - (i * SNAPSHOT_INTERVAL_HOURS)
+    snapped_at   = Time.current - hours_ago.hours
+
+    # Sinusoidal variation around a trend line — mimics day/night activity cycles
+    t            = i.to_f / SNAPSHOT_COUNT
+    wave         = Math.sin((t * 4 * Math::PI) + profile[:phase])
+    trend_offset = profile[:trend] * i
+
+    score        = (profile[:base_score] + (wave * profile[:amplitude]) + trend_offset)
+                     .clamp(0, 100)
+                     .round
+
+    # Split score into three plausible components that sum to total
+    # Alert pressure carries the most weight during "spike" periods
+    alert_pressure  = (score * 0.42).clamp(0, 40).round(2)
+    task_health     = (score * 0.31).clamp(0, 30).round(2)
+    signal_density  = (score - alert_pressure - task_health).clamp(0, 30).round(2)
+    final_score     = (alert_pressure + task_health + signal_density).round.clamp(0, 100)
+
+    SiteRiskSnapshot.find_or_create_by(
+      site:        site,
+      recorded_at: snapped_at.change(min: 0, sec: 0)
+    ) do |snap|
+      snap.score          = final_score
+      snap.risk_level     = risk_level_for(final_score)
+      snap.alert_pressure = alert_pressure
+      snap.task_health    = task_health
+      snap.signal_density = signal_density
+    end
+
+    inserted += 1
+  end
+end
+
+puts "  Risk snapshots:   #{SiteRiskSnapshot.count}  (#{SNAPSHOT_COUNT} per site × #{sites_with_history.count} sites)"
 puts "  Areas:            #{AreaOfOperation.count}  (EUCOM amber, CENTCOM red, AFRICOM amber, INDOPACOM green)"
 puts "  Sites:            #{Site.count}  (#{Site.where(status: 'active').count} active, #{Site.where(status: 'inactive').count} inactive)"
 puts "  Assets:           #{Asset.count}"

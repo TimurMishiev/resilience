@@ -23,3 +23,19 @@ production:
     class: Vessels::GapDetectionJob
     queue: background
     schedule: every 5 minutes
+
+  risk_snapshot:
+    class: Risk::SnapshotJob
+    queue: background
+    schedule: every hour at minute 30
+
+development:
+  vessel_gap_detection:
+    class: Vessels::GapDetectionJob
+    queue: background
+    schedule: every 5 minutes
+
+  risk_snapshot:
+    class: Risk::SnapshotJob
+    queue: background
+    schedule: every hour at minute 30

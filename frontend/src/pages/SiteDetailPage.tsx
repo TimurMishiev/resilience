@@ -27,6 +27,7 @@ import { useAssets } from '../hooks/useAssets'
 import { useReadiness } from '../hooks/useReadiness'
 import AuditTimeline from '../components/AuditTimeline'
 import SiteTimeline from '../components/SiteTimeline'
+import RiskScoreChart from '../components/RiskScoreChart'
 import { SIGNAL_ICON_NAME } from '../lib/signalIcons'
 import type { TaskPriority, AlertStatus } from '../api/types'
 import type { Task, Signal, SignalRuleMatch, Asset } from '../api/types'
@@ -530,6 +531,9 @@ export default function SiteDetailPage() {
           </div>
         )}
       </div>
+
+      {/* ── risk trend chart ── */}
+      <RiskScoreChart siteId={site.id} />
 
       {/* ── tabs ── */}
       <Tabs

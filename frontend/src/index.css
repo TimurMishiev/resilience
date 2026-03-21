@@ -301,6 +301,45 @@ body {
   font-size: 13px;
 }
 
+/* ── Risk Score Chart (SiteDetailPage header) ─────────────── */
+
+.risk-chart-shell {
+  background:    rgba(255, 255, 255, 0.02);
+  border:        1px solid #2f363f;
+  border-radius: 6px;
+  padding:       12px 16px 8px;
+  margin-bottom: 16px;
+}
+
+.risk-chart-empty {
+  padding:    24px 16px;
+}
+
+.risk-chart-header {
+  display:       flex;
+  align-items:   center;
+  gap:           8px;
+  margin-bottom: 8px;
+  flex-wrap:     wrap;
+}
+
+.risk-chart-title {
+  font-size:   12px;
+  font-weight: 600;
+  color:       #8a9ba8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.risk-chart-legend {
+  display:    flex;
+  gap:        14px;
+  font-size:  10px;
+  margin-top: 6px;
+  flex-wrap:  wrap;
+  opacity:    0.8;
+}
+
 /* ── Threat Timeline (SiteDetailPage) ─────────────────────── */
 
 .threat-timeline {

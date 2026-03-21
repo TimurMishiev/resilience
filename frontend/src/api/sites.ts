@@ -1,6 +1,10 @@
 import { api } from './client'
 import type { QueryParams } from './client'
-import type { Site, PaginatedResponse, PaginationParams, AsOfParam, SiteTimelineResponse, SiteTimelineParams } from './types'
+import type {
+  Site, PaginatedResponse, PaginationParams, AsOfParam,
+  SiteTimelineResponse, SiteTimelineParams,
+  SiteRiskHistoryResponse, SiteRiskHistoryParams,
+} from './types'
 
 type SitesParams = PaginationParams & AsOfParam
 
@@ -22,4 +26,8 @@ export function toggleSiteStatus(id: string): Promise<Site> {
 
 export function getSiteTimeline(id: string, params?: SiteTimelineParams): Promise<SiteTimelineResponse> {
   return api.get(`/api/sites/${id}/timeline`, params as QueryParams)
+}
+
+export function getSiteRiskHistory(id: string, params?: SiteRiskHistoryParams): Promise<SiteRiskHistoryResponse> {
+  return api.get(`/api/sites/${id}/risk_history`, params as QueryParams)
 }

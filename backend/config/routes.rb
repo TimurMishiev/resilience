@@ -24,6 +24,7 @@ Rails.application.routes.draw do
         patch :unflag
         patch :toggle_status
         get   :timeline
+        get   :risk_history
       end
     end
     resources :assets, only: %i[index show]
