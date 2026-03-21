@@ -54,6 +54,11 @@ module Sites
           }
         )
 
+        # Fuse this breach into an existing or new incident before broadcasting.
+        # The SSE event intentionally fires after fusion so that when the client
+        # invalidates ['incidents'] the incident row is already committed.
+        Incidents::FusionService.call(match: match)
+
         Sse::Broadcaster.instance.publish(
           event: "geofence_breach",
           data: {
@@ -67,9 +72,6 @@ module Sites
             fired_at:       Time.current.iso8601
           }
         )
-
-        # Fuse this breach into an existing or new incident.
-        Incidents::FusionService.call(match: match)
 
         breached << { site_id: site.id, match_id: match.id, distance_km: distance_km.round(1) }
       rescue ActiveRecord::RecordNotUnique

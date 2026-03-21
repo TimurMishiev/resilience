@@ -27,6 +27,7 @@ export function useIncidentAllowedTransitions(id: string | undefined) {
     queryKey: ['incident-transitions', id],
     queryFn:  () => getIncidentAllowedTransitions(id!),
     enabled:  Boolean(id),
+    refetchInterval: 15_000,
   })
 }
 
@@ -41,26 +42,35 @@ export function useUpdateIncident() {
   })
 }
 
-export function useTransitionIncident() {
+interface MutationCallbacks<TVariables> {
+  onMutate?:  (variables: TVariables) => void
+  onSettled?: () => void
+}
+
+export function useTransitionIncident(callbacks?: MutationCallbacks<{ id: string; to_status: IncidentStatus }>) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ id, to_status }: { id: string; to_status: IncidentStatus }) =>
       transitionIncident(id, to_status),
+    onMutate: callbacks?.onMutate,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['incidents'] })
       queryClient.invalidateQueries({ queryKey: ['incident-transitions'] })
     },
+    onSettled: callbacks?.onSettled,
   })
 }
 
-export function useAssignIncident() {
+export function useAssignIncident(callbacks?: MutationCallbacks<{ id: string; assignee_id: string | null }>) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ id, assignee_id }: { id: string; assignee_id: string | null }) =>
       assignIncident(id, assignee_id),
+    onMutate: callbacks?.onMutate,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['incidents'] })
     },
+    onSettled: callbacks?.onSettled,
   })
 }
 

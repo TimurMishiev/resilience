@@ -94,6 +94,17 @@ module Recommendations
       # alert_id / incident_id / site_id in the executable payload.
       errors.concat(validate_action_payload(rec[:recommendation_type], rec[:action_payload]))
 
+      # Cross-entity consistency — verifies that the payload target matches the
+      # surfaced entity.  Prevents an LLM from displaying Incident A while
+      # carrying Incident B in the executable payload (both would pass existence
+      # checks above, but ExecutorService would act on the wrong entity).
+      errors.concat(validate_payload_target_match(
+        rec[:recommendation_type],
+        rec[:action_payload],
+        rec[:affected_entity_type],
+        rec[:affected_entity_id]
+      ))
+
       errors
     end
 
@@ -126,6 +137,38 @@ module Recommendations
       end
 
       id_errors
+    end
+
+    # Verifies that the IDs inside action_payload refer to the same entity as
+    # affected_entity_*.  An LLM can produce a recommendation that passes all
+    # existence checks while carrying a different entity in the executable
+    # payload — this check closes that trust-boundary gap.
+    def validate_payload_target_match(type, payload, entity_type, entity_id)
+      return [] if entity_id.blank? || entity_type.blank?
+
+      payload_h = (payload || {}).with_indifferent_access
+      errors    = []
+
+      case type
+      when "escalate_incident"
+        if entity_type == "Incident" && payload_h[:incident_id].present? &&
+           payload_h[:incident_id].to_s != entity_id.to_s
+          errors << "action_payload incident_id does not match affected_entity_id"
+        end
+      when "close_stale_alert", "acknowledge_alert"
+        if entity_type == "Incident" && payload_h[:alert_id].present?
+          unless SignalRuleMatch.where(id: payload_h[:alert_id], incident_id: entity_id).exists?
+            errors << "action_payload alert_id does not belong to the surfaced incident"
+          end
+        end
+      when "flag_site", "create_task", "bulk_triage_alerts"
+        if entity_type == "Site" && payload_h[:site_id].present? &&
+           payload_h[:site_id].to_s != entity_id.to_s
+          errors << "action_payload site_id does not match affected_entity_id"
+        end
+      end
+
+      errors
     end
 
     # Maps evidence item type strings (as the LLM sees them) to AR class names

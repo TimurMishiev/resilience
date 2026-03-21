@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { getToken } from '../api/client'
+import { api } from '../api/client'
 
 export interface TelemetryReading {
   asset_id: string
@@ -19,6 +19,11 @@ export type TelemetryMap = Map<string, TelemetryReading>
  * Opens a persistent SSE connection to /api/telemetry/stream.
  * Returns a Map of asset_id → latest TelemetryReading, updated every ~3s.
  * Automatically reconnects with exponential back-off on failure.
+ *
+ * Security: Fetches a short-lived (60s) SSE token from POST /api/sse_token
+ * before opening the EventSource — same pattern as useEventSource. This avoids
+ * passing the long-lived 24h JWT as a URL query parameter where it would be
+ * visible in proxy/access logs.
  *
  * Pass enabled=false to suppress the connection (e.g. in replay mode).
  */
@@ -44,40 +49,60 @@ export function useTelemetryStream(enabled = true) {
   useEffect(() => {
     if (!enabled) return
 
-    function connect() {
-      const token = getToken()
-      if (!token) return
+    let mounted = true
 
-      const url = `/api/telemetry/stream?token=${encodeURIComponent(token)}`
-      const es  = new EventSource(url)
-      esRef.current = es
+    async function connect() {
+      try {
+        // Exchange the long-lived JWT for a short-lived (60s) SSE-only token.
+        const { token } = await api.post<{ token: string; expires_in: number }>(
+          '/api/sse_token',
+          {}
+        )
 
-      es.addEventListener('connected', () => {
-        setConnected(true)
-        delayRef.current = 1000
-      })
+        if (!mounted) return
 
-      es.addEventListener('heartbeat', () => {
-        // Stream alive — no action needed
-      })
+        const url = `/api/telemetry/stream?token=${encodeURIComponent(token)}`
+        const es  = new EventSource(url)
+        esRef.current = es
 
-      es.addEventListener('telemetry', (e: MessageEvent) => {
-        try {
-          const reading: TelemetryReading = JSON.parse(e.data)
-          setReadings(prev => {
-            const next = new Map(prev)
-            next.set(reading.asset_id, reading)
-            return next
-          })
-        } catch {
-          // Ignore parse errors
+        es.addEventListener('connected', () => {
+          setConnected(true)
+          delayRef.current = 1000
+        })
+
+        es.addEventListener('heartbeat', () => {
+          // Stream alive — no action needed
+        })
+
+        es.addEventListener('telemetry', (e: MessageEvent) => {
+          try {
+            const reading: TelemetryReading = JSON.parse(e.data)
+            setReadings(prev => {
+              const next = new Map(prev)
+              next.set(reading.asset_id, reading)
+              return next
+            })
+          } catch {
+            // Ignore parse errors
+          }
+        })
+
+        es.onerror = () => {
+          es.close()
+          esRef.current = null
+          setConnected(false)
+
+          if (!mounted) return
+
+          retryRef.current = setTimeout(() => {
+            delayRef.current = Math.min(delayRef.current * 2, 30_000)
+            connect()
+          }, delayRef.current)
         }
-      })
+      } catch {
+        // Token exchange failed — retry with back-off
+        if (!mounted) return
 
-      es.onerror = () => {
-        es.close()
-        esRef.current = null
-        setConnected(false)
         retryRef.current = setTimeout(() => {
           delayRef.current = Math.min(delayRef.current * 2, 30_000)
           connect()
@@ -88,6 +113,7 @@ export function useTelemetryStream(enabled = true) {
     connect()
 
     return () => {
+      mounted = false
       esRef.current?.close()
       esRef.current = null
       if (retryRef.current) clearTimeout(retryRef.current)

@@ -1,8 +1,10 @@
 module Incidents
   # Assigns (or unassigns) an incident to a user and writes an audit event.
   #
-  # Any authenticated user may assign any incident — this is intentional for
-  # operational speed.  Commanders can reassign; operators can self-assign.
+  # This service is intentionally role-agnostic — it assigns or clears the
+  # assignment without checking the caller's role.  Authorization (operators may
+  # only self-assign or release their own assignment; commanders can assign
+  # anyone) is enforced at the controller boundary, not here.
   # The audit trail records every assignment change.
   #
   # Pass assignee: nil to clear the assignment.

@@ -227,11 +227,11 @@ export default function IncidentDetailPage() {
             minimal
             value={incident.severity}
             autoFocus
-            onBlur={() => setEditingSev(false)}
             onChange={e => {
               updateMut.mutate({ id: incident.id, severity: e.target.value as IncidentSeverity })
               setEditingSev(false)
             }}
+            onKeyDown={e => { if (e.key === 'Escape') setEditingSev(false) }}
             style={{ marginRight: 8 }}
           >
             {SEVERITY_OPTIONS.map(s => (

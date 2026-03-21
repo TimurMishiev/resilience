@@ -161,6 +161,84 @@ RSpec.describe Recommendations::Validator, type: :service do
     end
   end
 
+  describe "cross-entity consistency (payload-to-target match)" do
+    it "rejects escalate_incident when payload incident_id differs from affected_entity_id" do
+      incident_a = create(:incident, site: site)
+      incident_b = create(:incident, site: site)
+      attrs = valid_attrs(
+        recommendation_type:  "escalate_incident",
+        affected_entity_type: "Incident",
+        affected_entity_id:   incident_a.id,
+        action_payload:       { "incident_id" => incident_b.id, "to_status" => "acknowledged" },
+        evidence:             []
+      )
+      result = described_class.call(recommendations: [attrs])
+      expect(result.valid).to be_empty
+      expect(result.invalid.first[:errors]).to include(
+        "action_payload incident_id does not match affected_entity_id"
+      )
+    end
+
+    it "accepts escalate_incident when payload incident_id matches affected_entity_id" do
+      incident = create(:incident, site: site)
+      attrs = valid_attrs(
+        recommendation_type:  "escalate_incident",
+        affected_entity_type: "Incident",
+        affected_entity_id:   incident.id,
+        action_payload:       { "incident_id" => incident.id },
+        evidence:             []
+      )
+      result = described_class.call(recommendations: [attrs])
+      expect(result.valid.size).to eq 1
+    end
+
+    it "rejects acknowledge_alert when payload alert_id belongs to a different incident" do
+      incident_a  = create(:incident, site: site)
+      incident_b  = create(:incident, site: site)
+      alert_for_b = create(:signal_rule_match, site: site, incident: incident_b)
+      attrs = valid_attrs(
+        recommendation_type:  "acknowledge_alert",
+        affected_entity_type: "Incident",
+        affected_entity_id:   incident_a.id,
+        action_payload:       { "alert_id" => alert_for_b.id },
+        evidence:             []
+      )
+      result = described_class.call(recommendations: [attrs])
+      expect(result.valid).to be_empty
+      expect(result.invalid.first[:errors]).to include(
+        "action_payload alert_id does not belong to the surfaced incident"
+      )
+    end
+
+    it "rejects flag_site when payload site_id differs from affected_entity_id" do
+      site_b = create(:site)
+      attrs = valid_attrs(
+        recommendation_type:  "flag_site",
+        affected_entity_type: "Site",
+        affected_entity_id:   site.id,
+        action_payload:       { "site_id" => site_b.id },
+        evidence:             []
+      )
+      result = described_class.call(recommendations: [attrs])
+      expect(result.valid).to be_empty
+      expect(result.invalid.first[:errors]).to include(
+        "action_payload site_id does not match affected_entity_id"
+      )
+    end
+
+    it "accepts flag_site when payload site_id matches affected_entity_id" do
+      attrs = valid_attrs(
+        recommendation_type:  "flag_site",
+        affected_entity_type: "Site",
+        affected_entity_id:   site.id,
+        action_payload:       { "site_id" => site.id },
+        evidence:             []
+      )
+      result = described_class.call(recommendations: [attrs])
+      expect(result.valid.size).to eq 1
+    end
+  end
+
   describe "deduplication uniqueness (DB constraint)" do
     it "raises RecordNotUnique on concurrent duplicate creation" do
       create(:recommendation,

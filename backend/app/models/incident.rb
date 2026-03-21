@@ -20,7 +20,11 @@ class Incident < ApplicationRecord
   has_many :signal_rule_matches, dependent: :nullify
   has_many :tasks,   through: :signal_rule_matches
   has_many :signals, through: :signal_rule_matches, source: :signal
-  has_many :incident_notes, dependent: :destroy
+  # Incidents are operational records — they should not be casually deleted.
+  # :restrict_with_exception makes the invariant explicit: any attempt to
+  # destroy an incident with notes raises DeleteRestrictionError rather than
+  # silently fighting the IncidentNote before_destroy guard.
+  has_many :incident_notes, dependent: :restrict_with_exception
 
   validates :title,     presence: true
   validates :status,    inclusion: { in: VALID_STATUSES }

@@ -44,6 +44,10 @@ module Api
 
     private
 
+    # Mark this as an SSE endpoint so JwtAuthenticatable reads the ?token=
+    # query param and accepts short-lived sse_only tokens.
+    def sse_endpoint? = true
+
     def sse_write(stream, event:, data:)
       stream.write("event: #{event}\ndata: #{data.to_json}\n\n")
     rescue IOError, ActionController::Live::ClientDisconnected

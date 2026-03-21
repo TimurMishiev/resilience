@@ -78,9 +78,18 @@ export default function IncidentsPage() {
     ...(mineOnly && currentUser ? { assigned_to_id: currentUser.id } : {}),
   }
 
+  const [pendingTx,     setPendingTx]     = useState<string | null>(null)
+  const [pendingAssign, setPendingAssign] = useState<string | null>(null)
+
   const { data, isPending, error } = useIncidents(queryParams)
-  const transition = useTransitionIncident()
-  const assign     = useAssignIncident()
+  const transition = useTransitionIncident({
+    onMutate:  ({ id }) => setPendingTx(id),
+    onSettled: ()       => setPendingTx(null),
+  })
+  const assign = useAssignIncident({
+    onMutate:  ({ id }) => setPendingAssign(id),
+    onSettled: ()       => setPendingAssign(null),
+  })
 
   const incidents     = data?.data ?? []
   const criticalCount = incidents.filter(i => i.severity === 'critical' && i.status !== 'closed').length
@@ -253,7 +262,7 @@ export default function IncidentsPage() {
                         small
                         minimal
                         intent={TX_INTENT[quickTx.to]}
-                        loading={transition.isPending}
+                        loading={pendingTx === incident.id}
                         onClick={() => transition.mutate({ id: incident.id, to_status: quickTx.to })}
                         style={{ fontSize: 11, marginRight: 4 }}
                       >
@@ -268,7 +277,7 @@ export default function IncidentsPage() {
                           small
                           minimal
                           intent="none"
-                          loading={assign.isPending}
+                          loading={pendingAssign === incident.id}
                           onClick={() => assign.mutate({ id: incident.id, assignee_id: null })}
                           style={{ fontSize: 11 }}
                         >
@@ -279,7 +288,7 @@ export default function IncidentsPage() {
                           small
                           minimal
                           intent="primary"
-                          loading={assign.isPending}
+                          loading={pendingAssign === incident.id}
                           onClick={() => assign.mutate({ id: incident.id, assignee_id: currentUser.id })}
                           style={{ fontSize: 11 }}
                         >
