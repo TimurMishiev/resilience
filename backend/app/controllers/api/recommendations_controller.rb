@@ -16,7 +16,8 @@ module Api
       # Default: only show active (pending + not expired)
       recs = recs.active if params[:status].blank?
 
-      render json: { data: recs.map { |r| serialize(r) }, total: recs.size }
+      records, meta = paginate(recs)
+      render json: { data: records.map { |r| serialize(r) }, meta: meta }
     end
 
     # POST /api/recommendations/generate

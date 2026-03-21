@@ -69,7 +69,7 @@ function buildResults(
       subtitle:  `Site · ${s.status}`,
       tag:       s.status,
       tagIntent: (s.status === 'active' ? 'success' : 'none') as Intent,
-      href:      `/sites`,
+      href:      `/sites/${s.id}`,
     })),
     ...tasks.map(t => ({
       id:        t.id,
@@ -78,7 +78,7 @@ function buildResults(
       subtitle:  `Task · ${siteMap[t.site_id] ?? 'Unknown site'}`,
       tag:       t.workflow_status.replace('_', ' '),
       tagIntent: workflowIntent(t.workflow_status),
-      href:      `/tasks`,
+      href:      `/sites/${t.site_id}`,
     })),
     ...assets.map(a => ({
       id:        a.id,
@@ -87,7 +87,7 @@ function buildResults(
       subtitle:  `Asset · ${a.asset_type} · ${a.status}`,
       tag:       a.status,
       tagIntent: 'none' as Intent,
-      href:      `/assets`,
+      href:      a.home_site_id ? `/sites/${a.home_site_id}` : `/assets`,
     })),
   ]
 

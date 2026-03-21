@@ -1,31 +1,30 @@
 require "net/http"
-require "json"
+require "csv"
+require "zlib"
+require "stringio"
 
 module Feeds
   # Polls gpsjam.org for GPS interference heatmap data and ingests high-confidence
   # jamming detections as ExternalSignal records via Signals::IngestService.
   #
-  # No API key required.  GPSJam publishes a GeoJSON endpoint used by their
-  # public map frontend.  Data is derived from ADS-B receiver networks that
-  # detect GPS signal degradation in aircraft navigation.
+  # No API key required. GPSJam publishes daily compressed CSV files with H3
+  # hexagon indices (resolution 4) and aircraft count data.
   #
-  # Poll interval: 15 minutes (900 s) — data is refreshed periodically by GPSJam,
-  # not in real time. see config/initializers/feed_ingestion.rb
+  # API as of 2026: https://gpsjam.org/data/YYYY-MM-DD-h3_4.csv (gzip-compressed)
+  # Columns: hex, count_good_aircraft, count_bad_aircraft
+  # Data lags 1-2 days; we try today-1 then today-2 if unavailable.
   #
-  # Each feature is an H3 hexagon polygon.  We compute the centroid, filter to
-  # our 4 theater bounding boxes, and ingest hexagons with signal >= MIN_SIGNAL.
+  # Signal level = count_bad / (count_good + count_bad) — same 0.0–1.0 range as
+  # the old GeoJSON `signal` property.
+  #
+  # Poll interval: 15 minutes (900s). see config/initializers/feed_ingestion.rb
   class GpsjamIngestionService < ApplicationService
     include SslHelper
 
-    # GPSJam exposes H3 hexagon heatmap data via a GeoJSON endpoint.
-    # Non-200 responses are treated as "no data available" (success, 0 ingested)
-    # rather than errors, since the endpoint URL may change without notice.
-    BASE_URL   = "https://gpsjam.org/geo.json"
+    BASE_URL   = "https://gpsjam.org/data"
     TIMEOUT    = 20
-    MIN_SIGNAL = 0.5  # 0.0 = no jamming, 1.0 = heavy jamming — skip noise below 50%
+    MIN_SIGNAL = 0.5  # skip hexagons where <50% of aircraft see GPS degradation
 
-    # Log fetch errors at most once per hour to avoid log spam when the endpoint
-    # is temporarily unavailable or has changed.
     LOG_THROTTLE_SECONDS = 3600
 
     # Theater bounding boxes [latmin, latmax, lonmin, lonmax]
@@ -38,34 +37,16 @@ module Feeds
 
     def call
       @last_logged_error ||= {}
-      uri       = URI(BASE_URL)
-      uri.query = URI.encode_www_form(date: Date.today.to_s)
-      http      = ssl_http(uri.host, uri.port, timeout: TIMEOUT)
-      response  = http.get(uri.request_uri)
 
-      unless response.code == "200"
-        # Treat non-200 as "no data" rather than an error — endpoint may be
-        # temporarily unavailable or URL may have changed.  Throttle the log.
-        throttled_warn("fetch", "HTTP #{response.code}")
+      # GPSJam data lags 1-2 days — try yesterday first, then day before
+      csv_body = fetch_csv_for(Date.today - 1) || fetch_csv_for(Date.today - 2)
+
+      unless csv_body
+        throttled_warn("fetch", "no data available for last 2 days")
         return ServiceResult.success(ingested: 0)
       end
 
-      data     = JSON.parse(response.body)
-      features = data["features"] || []
-      ingested = 0
-
-      features.each do |feature|
-        signal_level = feature.dig("properties", "signal").to_f
-        next unless signal_level >= MIN_SIGNAL
-
-        lat, lng = centroid(feature.dig("geometry", "coordinates", 0))
-        next unless lat && lng
-        next unless in_any_theater?(lat, lng)
-
-        result = ingest_hexagon(feature, lat, lng, signal_level)
-        ingested += 1 if result&.success && result.payload[:created]
-      end
-
+      ingested = parse_and_ingest(csv_body)
       ServiceResult.success(ingested: ingested)
     rescue => e
       throttled_warn("exception", e.message)
@@ -73,6 +54,52 @@ module Feeds
     end
 
     private
+
+    # Returns decompressed CSV body string, or nil if the date is unavailable.
+    def fetch_csv_for(date)
+      uri  = URI("#{BASE_URL}/#{date}-h3_4.csv")
+      http = ssl_http(uri.host, uri.port, timeout: TIMEOUT)
+      resp = http.get(uri.request_uri, "Accept-Encoding" => "gzip")
+
+      return nil unless resp.code == "200"
+
+      body = resp.body
+      # Decompress if gzip
+      if resp["Content-Encoding"] == "gzip" || body.b.start_with?("\x1F\x8B".b)
+        body = Zlib::GzipReader.new(StringIO.new(body)).read
+      end
+      body
+    rescue => e
+      throttled_warn("fetch_#{date}", e.message)
+      nil
+    end
+
+    def parse_and_ingest(csv_body)
+      ingested = 0
+
+      CSV.parse(csv_body, headers: true) do |row|
+        hex_str = row["hex"]&.strip
+        next if hex_str.blank?
+
+        good = row["count_good_aircraft"].to_i
+        bad  = row["count_bad_aircraft"].to_i
+        total = good + bad
+        next if total.zero?
+
+        signal_level = bad.to_f / total
+        next if signal_level < MIN_SIGNAL
+
+        h3_index = hex_str.to_i(16)
+        lat, lng = H3.h3_to_geo_coords(h3_index)
+        next unless lat && lng
+        next unless in_any_theater?(lat, lng)
+
+        result = ingest_hexagon(hex_str, lat, lng, signal_level)
+        ingested += 1 if result&.success && result.payload[:created]
+      end
+
+      ingested
+    end
 
     def throttled_warn(key, message)
       last = @last_logged_error&.dig(key)
@@ -82,17 +109,6 @@ module Feeds
       (@last_logged_error ||= {})[key] = Time.current
     end
 
-    # Compute the centroid of a polygon ring (array of [lng, lat] coordinate pairs).
-    # Returns [lat, lng].
-    def centroid(ring)
-      return nil unless ring&.any?
-
-      sum_lng = ring.sum { |c| c[0] }
-      sum_lat = ring.sum { |c| c[1] }
-      n = ring.size.to_f
-      [ (sum_lat / n).round(6), (sum_lng / n).round(6) ]
-    end
-
     def in_any_theater?(lat, lng)
       THEATER_BOXES.any? do |box|
         lat.between?(box[:latmin], box[:latmax]) &&
@@ -100,27 +116,18 @@ module Feeds
       end
     end
 
-    # Use the H3 hex index as external_id if present (stable across polls).
-    # Fall back to a rounded lat/lng hash to maintain deduplication.
-    # occurred_at = Time.current because jamming data reflects current conditions.
-    def ingest_hexagon(feature, lat, lng, signal_level)
-      hex_id      = feature["id"].presence || feature.dig("properties", "hex")
-      external_id = hex_id || "#{lat.round(3)}_#{lng.round(3)}"
-
+    def ingest_hexagon(hex_str, lat, lng, signal_level)
       Signals::IngestService.call(
         source:      "gpsjam",
         signal_type: "gps_jamming",
-        external_id: external_id,
-        lat:         lat,
-        lng:         lng,
+        external_id: hex_str,
+        lat:         lat.round(6),
+        lng:         lng.round(6),
         occurred_at: Time.current.utc,
-        raw_payload: {
-          signal_level: signal_level,
-          hex_id:       hex_id
-        }
+        raw_payload: { signal_level: signal_level, hex_id: hex_str }
       )
     rescue => e
-      Rails.logger.warn "[GPSJamFeed] failed to ingest hexagon #{external_id}: #{e.message}"
+      Rails.logger.warn "[GPSJamFeed] failed to ingest hexagon #{hex_str}: #{e.message}"
       nil
     end
   end

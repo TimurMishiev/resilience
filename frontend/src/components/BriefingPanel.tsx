@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Button,
   Callout,
@@ -68,6 +68,9 @@ export default function BriefingPanel() {
   const [error, setError]             = useState<string | null>(null)
   const [result, setResult]           = useState<AiSummaryResult | null>(null)
 
+  const mountedRef = useRef(true)
+  useEffect(() => { return () => { mountedRef.current = false } }, [])
+
   function generate() {
     setLoading(true)
     setError(null)
@@ -78,9 +81,9 @@ export default function BriefingPanel() {
       site_id:      siteId || undefined,
       from:         asOf ?? undefined,
     })
-      .then(({ data }) => setResult(data))
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Failed to generate briefing'))
-      .finally(() => setLoading(false))
+      .then(({ data }) => { if (mountedRef.current) setResult(data) })
+      .catch((err: unknown) => { if (mountedRef.current) setError(err instanceof Error ? err.message : 'Failed to generate briefing') })
+      .finally(() => { if (mountedRef.current) setLoading(false) })
   }
 
   return (

@@ -582,32 +582,36 @@ export default function SiteDetailPage() {
             <Tag minimal intent="danger" icon="flag" title={site.flag_reason ?? 'Flagged'}>
               flagged
             </Tag>
-            <Button
-              icon="flag"
-              intent="danger"
-              minimal
-              small
-              loading={unflagging}
-              onClick={() => unflag(site.id)}
-              title="Clear flag"
-            >
-              Clear flag
-            </Button>
+            {isCommander && (
+              <Button
+                icon="flag"
+                intent="danger"
+                minimal
+                small
+                loading={unflagging}
+                onClick={() => unflag(site.id)}
+                title="Clear flag"
+              >
+                Clear flag
+              </Button>
+            )}
           </>
         )}
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Button
-            icon={site.status === 'active' ? 'pause' : 'play'}
-            minimal
-            small
-            loading={togglingStatus}
-            intent={site.status === 'active' ? 'none' : 'success'}
-            onClick={() => toggleStatus(site.id)}
-            title={site.status === 'active' ? 'Deactivate site' : 'Activate site'}
-          >
-            {site.status === 'active' ? 'Deactivate' : 'Activate'}
-          </Button>
+          {isCommander && (
+            <Button
+              icon={site.status === 'active' ? 'pause' : 'play'}
+              minimal
+              small
+              loading={togglingStatus}
+              intent={site.status === 'active' ? 'none' : 'success'}
+              onClick={() => toggleStatus(site.id)}
+              title={site.status === 'active' ? 'Deactivate site' : 'Activate site'}
+            >
+              {site.status === 'active' ? 'Deactivate' : 'Activate'}
+            </Button>
+          )}
           {readinessScore != null && (
             <Tag minimal intent={readinessIntent}>
               Readiness {Math.round(readinessScore * 100)}%
