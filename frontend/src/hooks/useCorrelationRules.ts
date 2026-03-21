@@ -4,6 +4,7 @@ import {
   createCorrelationRule,
   updateCorrelationRule,
   deleteCorrelationRule,
+  getRuleEffectiveness,
 } from '../api/correlation_rules'
 import type { CreateCorrelationRuleBody, UpdateCorrelationRuleBody } from '../api/types'
 
@@ -42,5 +43,15 @@ export function useDeleteCorrelationRule() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['correlation_rules'] })
     },
+  })
+}
+
+// Returns per-rule effectiveness stats indexed by rule_id.
+// Fetched once per page load; stale after 5 minutes (analytics are not real-time).
+export function useRuleEffectiveness() {
+  return useQuery({
+    queryKey: ['correlation_rules', 'effectiveness'],
+    queryFn:  getRuleEffectiveness,
+    staleTime: 5 * 60 * 1000,
   })
 }

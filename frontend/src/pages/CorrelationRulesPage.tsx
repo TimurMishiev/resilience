@@ -23,7 +23,7 @@ import {
   TextArea,
 } from '@blueprintjs/core'
 import { useMutation } from '@tanstack/react-query'
-import { useCorrelationRules, useCreateCorrelationRule, useUpdateCorrelationRule, useDeleteCorrelationRule } from '../hooks/useCorrelationRules'
+import { useCorrelationRules, useCreateCorrelationRule, useUpdateCorrelationRule, useDeleteCorrelationRule, useRuleEffectiveness } from '../hooks/useCorrelationRules'
 import { useSignalRuleMatches } from '../hooks/useSignalRuleMatches'
 import { useAreasOfOperation } from '../hooks/useAreasOfOperation'
 import { dryRunRule } from '../api/correlation_rules'
@@ -476,7 +476,8 @@ export default function CorrelationRulesPage() {
   const isCommander = currentUser?.role === 'commander'
 
   const { data, error, isPending } = useCorrelationRules()
-  const { data: matchesData } = useSignalRuleMatches({ per_page: 5 })
+  const { data: matchesData }      = useSignalRuleMatches({ per_page: 5 })
+  const { data: effectivenessData } = useRuleEffectiveness()
 
   const createMutation = useCreateCorrelationRule()
   const updateMutation = useUpdateCorrelationRule()
@@ -694,6 +695,7 @@ export default function CorrelationRulesPage() {
               <th>Triggers</th>
               <th>Active</th>
               <th>Last Fired</th>
+              <th>Fires (30d)</th>
               <th>Cooldown</th>
               <th></th>
               {isCommander && <th>Actions</th>}
@@ -709,6 +711,7 @@ export default function CorrelationRulesPage() {
                     <td><span className={Classes.SKELETON} style={{ width: 48, display: 'inline-block' }}>&nbsp;</span></td>
                     <td><span className={Classes.SKELETON} style={{ width: 48, display: 'inline-block' }}>&nbsp;</span></td>
                     <td><span className={Classes.SKELETON} style={{ width: 64, display: 'inline-block' }}>&nbsp;</span></td>
+                    <td><span className={Classes.SKELETON} style={{ width: 40, display: 'inline-block' }}>&nbsp;</span></td>
                     <td><span className={Classes.SKELETON} style={{ width: 56, display: 'inline-block' }}>&nbsp;</span></td>
                   </tr>
                 ))
@@ -774,6 +777,23 @@ export default function CorrelationRulesPage() {
                         </Tag>
                       </td>
                       <td className="mono">{formatLastFired(rule.last_fired_at)}</td>
+                      <td>
+                        {(() => {
+                          const eff = effectivenessData?.[rule.id]
+                          if (!eff) return <span className="bp6-text-muted">—</span>
+                          return (
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <Tag minimal intent={eff.fires_last_30d > 0 ? 'primary' : 'none'}>
+                                {eff.fires_last_30d}
+                              </Tag>
+                              {eff.low_value_flag && (
+                                <Icon icon="warning-sign" intent="warning" size={12}
+                                      title="Low signal — fires frequently but rarely produces actionable outcomes" />
+                              )}
+                            </span>
+                          )
+                        })()}
+                      </td>
                       <td className="mono">{rule.cooldown_minutes}m</td>
                       <td onClick={e => e.stopPropagation()}>
                         <Button
@@ -1149,6 +1169,48 @@ export default function CorrelationRulesPage() {
               {form.mitre_tags.map(id => MITRE_BY_ID.get(id)?.name).filter(Boolean).join(' · ')}
             </div>
           )}
+
+          {/* ── EFFECTIVENESS ────────────────────────────────────────── */}
+          {editingRule && (() => {
+            const eff = effectivenessData?.[editingRule.id]
+            if (!eff) return null
+            const pct = (r: number | null) => r === null ? '—' : `${Math.round(r * 100)}%`
+            return (
+              <>
+                <Divider style={{ margin: '20px 0 12px' }} />
+                <p className="bp6-text-muted" style={{ fontSize: 12, marginBottom: 10 }}>EFFECTIVENESS</p>
+                {eff.low_value_flag && (
+                  <Callout intent="warning" icon="warning-sign" compact
+                           style={{ marginBottom: 12, fontSize: 12 }}>
+                    Low signal — this rule fires frequently but rarely generates tasks or closed alerts.
+                    Consider tightening conditions or raising the proximity threshold.
+                  </Callout>
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', fontSize: 12 }}>
+                  <span className="bp6-text-muted">Total fires</span>
+                  <span>{eff.total_fires}</span>
+                  <span className="bp6-text-muted">Last 30 days</span>
+                  <span>{eff.fires_last_30d}</span>
+                  <span className="bp6-text-muted">Last 7 days</span>
+                  <span>{eff.fires_last_7d}</span>
+                  <span className="bp6-text-muted">Avg confidence</span>
+                  <span>{eff.avg_confidence !== null ? eff.avg_confidence.toFixed(2) : '—'}</span>
+                  <span className="bp6-text-muted">Task creation rate</span>
+                  <span>{pct(eff.task_creation_rate)}</span>
+                  <span className="bp6-text-muted">Task resolution rate</span>
+                  <span>{pct(eff.task_resolution_rate)}</span>
+                  <span className="bp6-text-muted">Alert closure rate</span>
+                  <span>{pct(eff.alert_closure_rate)}</span>
+                  {eff.avg_hours_to_ack !== null && (
+                    <>
+                      <span className="bp6-text-muted">Avg time to ack</span>
+                      <span>{eff.avg_hours_to_ack.toFixed(1)}h</span>
+                    </>
+                  )}
+                </div>
+              </>
+            )
+          })()}
 
           <div style={{ display: 'flex', gap: 8, marginTop: 24 }}>
             <Button

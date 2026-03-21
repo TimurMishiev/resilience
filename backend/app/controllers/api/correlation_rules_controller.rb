@@ -2,6 +2,14 @@ module Api
   class CorrelationRulesController < BaseController
     before_action :require_commander!, only: %i[create update destroy dry_run]
 
+    # GET /api/correlation_rules/effectiveness
+    # Returns per-rule analytics for all rules (batch — avoids N+1).
+    # Accessible to all authenticated users so operators can see rule health.
+    def effectiveness
+      result = Rules::EffectivenessService.call
+      render json: result.payload[:stats].index_by { |s| s[:rule_id] }
+    end
+
     # GET /api/correlation_rules
     def index
       rules = CorrelationRule.order(created_at: :desc)

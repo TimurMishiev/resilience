@@ -59,6 +59,9 @@ Rails.application.routes.draw do
 
     resources :signals,               only: %i[index show create]
     resources :correlation_rules, only: %i[index show create update destroy] do
+      collection do
+        get :effectiveness
+      end
       member do
         post :dry_run
       end

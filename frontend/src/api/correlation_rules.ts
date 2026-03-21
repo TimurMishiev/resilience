@@ -55,3 +55,21 @@ export interface DryRunResult {
 export function dryRunRule(id: string, hours = 24): Promise<DryRunResult> {
   return api.post(`/api/correlation_rules/${id}/dry_run`, { hours })
 }
+
+export interface RuleEffectivenessStats {
+  rule_id:              string
+  total_fires:          number
+  fires_last_30d:       number
+  fires_last_7d:        number
+  avg_confidence:       number | null   // 0.0–1.0
+  task_creation_rate:   number | null   // 0.0–1.0
+  task_resolution_rate: number | null   // 0.0–1.0
+  alert_closure_rate:   number | null   // 0.0–1.0
+  avg_hours_to_ack:     number | null
+  low_value_flag:       boolean
+}
+
+// Returns a map of rule_id → stats for O(1) lookup
+export function getRuleEffectiveness(): Promise<Record<string, RuleEffectivenessStats>> {
+  return api.get('/api/correlation_rules/effectiveness')
+}
