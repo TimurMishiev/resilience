@@ -161,6 +161,31 @@ CREATE TABLE public.incidents (
 
 
 --
+-- Name: recommendations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.recommendations (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    recommendation_type character varying NOT NULL,
+    status character varying DEFAULT 'pending'::character varying NOT NULL,
+    tier character varying NOT NULL,
+    confidence double precision NOT NULL,
+    rationale text NOT NULL,
+    evidence jsonb DEFAULT '[]'::jsonb NOT NULL,
+    action_payload jsonb DEFAULT '{}'::jsonb NOT NULL,
+    affected_entity_type character varying,
+    affected_entity_id uuid,
+    reviewed_by_id uuid,
+    reviewed_at timestamp without time zone,
+    review_reason text,
+    executed_at timestamp without time zone,
+    expires_at timestamp without time zone NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
 -- Name: schema_migrations; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -361,6 +386,14 @@ ALTER TABLE ONLY public.incidents
 
 
 --
+-- Name: recommendations recommendations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.recommendations
+    ADD CONSTRAINT recommendations_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: schema_migrations schema_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -429,6 +462,13 @@ ALTER TABLE ONLY public.vessels
 --
 
 CREATE INDEX idx_on_entity_type_entity_id_occurred_at_dfd7f189aa ON public.audit_events USING btree (entity_type, entity_id, occurred_at);
+
+
+--
+-- Name: idx_recommendations_entity; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_recommendations_entity ON public.recommendations USING btree (affected_entity_type, affected_entity_id);
 
 
 --
@@ -548,6 +588,27 @@ CREATE INDEX index_incidents_on_site_id ON public.incidents USING btree (site_id
 --
 
 CREATE INDEX index_incidents_on_status ON public.incidents USING btree (status);
+
+
+--
+-- Name: index_recommendations_on_expires_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_recommendations_on_expires_at ON public.recommendations USING btree (expires_at);
+
+
+--
+-- Name: index_recommendations_on_recommendation_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_recommendations_on_recommendation_type ON public.recommendations USING btree (recommendation_type);
+
+
+--
+-- Name: index_recommendations_on_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_recommendations_on_status ON public.recommendations USING btree (status);
 
 
 --
@@ -743,6 +804,14 @@ ALTER TABLE ONLY public.site_risk_snapshots
 
 
 --
+-- Name: recommendations fk_rails_246db9116b; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.recommendations
+    ADD CONSTRAINT fk_rails_246db9116b FOREIGN KEY (reviewed_by_id) REFERENCES public.users(id);
+
+
+--
 -- Name: vessel_tracks fk_rails_28041b5ea5; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -869,6 +938,7 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260320000008'),
 ('20260320000007'),
 ('20260320000006'),
 ('20260320000005'),

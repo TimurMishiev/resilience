@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Button, Callout, Checkbox, Classes, Icon, Tag, Tooltip } from '@blueprintjs/core'
 import AlertChainDrawer from '../components/AlertChainDrawer'
+import RecommendationCard from '../components/RecommendationCard'
+import EvidenceDrawer from '../components/EvidenceDrawer'
 import { useNavigate } from 'react-router-dom'
 import {
   BarChart,
@@ -19,6 +21,9 @@ import { useRiskScores } from '../hooks/useRiskScores'
 import { useTasks } from '../hooks/useTasks'
 import { useSignalRuleMatches, useTransitionAlert, useBulkTransitionAlerts } from '../hooks/useSignalRuleMatches'
 import { useReplay } from '../context/ReplayContext'
+import { useAuth } from '../context/AuthContext'
+import { useRecommendations } from '../hooks/useRecommendations'
+import type { Recommendation } from '../api/recommendations'
 import type { WorkflowStatus, TaskPriority, SignalRuleMatch, AlertStatus, RiskLevel } from '../api/types'
 import { SIGNAL_ICON_NAME } from '../lib/signalIcons'
 
@@ -303,6 +308,13 @@ function AlertsPanel({ matches }: { matches: SignalRuleMatch[] }) {
 
 export default function DashboardPage() {
   const { asOf } = useReplay()
+  const navigate  = useNavigate()
+  const { currentUser } = useAuth()
+  const isCommander = currentUser?.role === 'commander'
+  const [evidenceRec, setEvidenceRec] = useState<Recommendation | null>(null)
+
+  const { data: recData } = useRecommendations()
+  const topRecs = (recData?.data ?? []).slice(0, 3)
 
   const { data: matchesRes } = useSignalRuleMatches({ per_page: 15 })
   const recentMatches = matchesRes?.data ?? []
@@ -529,6 +541,33 @@ export default function DashboardPage() {
           <AlertsPanel matches={recentMatches} />
         </div>
 
+        {/* Recommendations panel */}
+        <div className="dashboard-card dashboard-card--wide">
+          <div className="dashboard-card-header">
+            <h4 className="dashboard-card-title bp6-heading">
+              <Icon icon="lightbulb" size={14} style={{ marginRight: 6 }} />
+              Recommendations
+            </h4>
+            <Button minimal small onClick={() => navigate('/recommendations')} style={{ fontSize: 11 }}>
+              View all →
+            </Button>
+          </div>
+          {topRecs.length === 0 ? (
+            <p className="bp6-text-muted" style={{ fontSize: 12, margin: 0 }}>
+              No active recommendations. System analyses operational state every 30 minutes.
+            </p>
+          ) : (
+            topRecs.map(rec => (
+              <RecommendationCard
+                key={rec.id}
+                rec={rec}
+                onViewEvidence={setEvidenceRec}
+                isCommander={isCommander}
+              />
+            ))
+          )}
+        </div>
+
         {/* Throughput — resolved tasks per day */}
         <div className="dashboard-card dashboard-card--wide">
           <h4 className="dashboard-card-title bp6-heading">Resolution Throughput — Last 30 Days</h4>
@@ -562,6 +601,8 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      <EvidenceDrawer rec={evidenceRec} onClose={() => setEvidenceRec(null)} />
     </div>
   )
 }

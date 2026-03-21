@@ -28,6 +28,9 @@ module Incidents
       incident, action = find_or_create_incident
       @match.update_column(:incident_id, incident.id)
 
+      # Trigger a recommendation generation pass whenever a new incident is opened
+      Recommendations::GenerationJob.perform_later if action == :created
+
       ServiceResult.success(incident: incident, action: action)
     rescue ActiveRecord::RecordInvalid => e
       Rails.logger.warn "[FusionService] failed match=#{@match.id}: #{e.message}"

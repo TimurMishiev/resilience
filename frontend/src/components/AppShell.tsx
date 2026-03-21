@@ -123,12 +123,18 @@ export default function AppShell() {
       if (e.event === 'geofence_breach') {
         const d = e.data as { site_name: string; signal_type: string; distance_km: number }
         queryClient.invalidateQueries({ queryKey: ['incidents'] })
+        queryClient.invalidateQueries({ queryKey: ['recommendations'] })
         AppToaster.then(t => t.show({
           message: `⚠ Geofence breach at ${d.site_name} — ${d.signal_type.replace(/_/g, ' ')} (${d.distance_km} km)`,
           intent:  'warning',
           icon:    'locate',
           timeout: 8_000,
         }))
+      }
+
+      if (e.event === 'rule_fired') {
+        // Also refresh recommendations when a rule fires — new incidents may have been created
+        queryClient.invalidateQueries({ queryKey: ['recommendations'] })
       }
     },
   })
@@ -238,6 +244,12 @@ export default function AppShell() {
               text="Incidents"
               active={pathname.startsWith('/incidents')}
               onClick={() => navigate('/incidents')}
+            />
+            <MenuItem
+              icon="lightbulb"
+              text="Recommendations"
+              active={pathname.startsWith('/recommendations')}
+              onClick={() => navigate('/recommendations')}
             />
             <MenuItem
               icon="cube"

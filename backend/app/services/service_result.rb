@@ -13,7 +13,16 @@ ServiceResult = Data.define(:success, :payload, :errors) do
     new(success: false, payload: payload, errors: Array(errors))
   end
 
-  def failure?
-    !success
+  def success? = success
+  def failure?  = !success
+
+  # Convenience: allow result.foo to read payload[:foo]
+  def method_missing(name, *args, &block)
+    key = name.to_sym
+    payload.key?(key) ? payload[key] : super
+  end
+
+  def respond_to_missing?(name, include_private = false)
+    payload.key?(name.to_sym) || super
   end
 end

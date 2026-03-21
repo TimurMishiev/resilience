@@ -1,0 +1,140 @@
+module Api
+  class RecommendationsController < BaseController
+    before_action :require_commander!, only: %i[generate accept reject defer execute]
+
+    # GET /api/recommendations
+    # Query params: status, tier, type
+    def index
+      recs = Recommendation.includes(:reviewer).recent
+
+      recs = recs.where(status: params[:status]) if params[:status].present?
+      recs = recs.by_tier(params[:tier])         if params[:tier].present?
+      recs = recs.where(recommendation_type: params[:type]) if params[:type].present?
+
+      # Default: only show active (pending + not expired)
+      recs = recs.active if params[:status].blank?
+
+      render json: { data: recs.map { |r| serialize(r) }, total: recs.size }
+    end
+
+    # POST /api/recommendations/generate
+    # Triggers an on-demand generation run (commander only)
+    def generate
+      result = Recommendations::GeneratorService.call
+      if result.success?
+        render json: { created: result.created, invalid_count: result.invalid_count }, status: :ok
+      else
+        render json: { errors: result.errors }, status: :unprocessable_entity
+      end
+    end
+
+    # POST /api/recommendations/:id/accept
+    def accept
+      rec = find_pending_rec
+      return if rec.nil?
+      rec.accept!(user: current_user, reason: params[:reason])
+      render json: serialize(rec)
+    end
+
+    # POST /api/recommendations/:id/reject
+    def reject
+      rec = find_pending_rec
+      return if rec.nil?
+      rec.reject!(user: current_user, reason: params[:reason])
+      render json: serialize(rec)
+    end
+
+    # POST /api/recommendations/:id/defer
+    def defer
+      rec = find_pending_rec
+      return if rec.nil?
+      rec.defer!(user: current_user, reason: params[:reason])
+      render json: serialize(rec)
+    end
+
+    # POST /api/recommendations/:id/execute
+    # Accepts (if pending) and immediately executes the recommendation
+    def execute
+      rec = Recommendation.find(params[:id])
+
+      unless rec.pending? || rec.accepted?
+        render json: { errors: ["Recommendation is #{rec.status} — cannot execute"] }, status: :unprocessable_entity
+        return
+      end
+
+      rec.accept!(user: current_user, reason: "auto-accepted for execution") if rec.pending?
+
+      result = Recommendations::ExecutorService.call(recommendation: rec, user: current_user)
+      if result.success?
+        render json: serialize(rec.reload)
+      else
+        render json: { errors: result.errors }, status: :unprocessable_entity
+      end
+    end
+
+    # GET /api/recommendations/metrics
+    def metrics
+      accepted = Recommendation.where(status: "accepted").count
+      rejected = Recommendation.where(status: "rejected").count
+      deferred = Recommendation.where(status: "deferred").count
+      executed = Recommendation.where(status: "executed").count
+      expired  = Recommendation.where(status: "expired").count
+      pending  = Recommendation.active.count
+
+      total_reviewed = accepted + rejected + deferred
+      accept_rate    = total_reviewed > 0 ? (accepted.to_f / total_reviewed * 100).round(1) : nil
+
+      render json: {
+        pending:     pending,
+        accepted:    accepted,
+        rejected:    rejected,
+        deferred:    deferred,
+        executed:    executed,
+        expired:     expired,
+        accept_rate: accept_rate,
+        by_tier: {
+          rule: Recommendation.by_tier("rule").count,
+          llm:  Recommendation.by_tier("llm").count,
+        },
+        by_type: Recommendation.group(:recommendation_type).count,
+      }
+    end
+
+    private
+
+    def find_pending_rec
+      rec = Recommendation.find(params[:id])
+      unless rec.pending?
+        render json: { errors: ["Recommendation is already #{rec.status}"] }, status: :unprocessable_entity
+        return nil
+      end
+      rec
+    end
+
+    def require_commander!
+      return if current_user&.role == "commander"
+      render json: { errors: ["Commander role required"] }, status: :forbidden
+    end
+
+    def serialize(rec)
+      {
+        id:                    rec.id,
+        recommendation_type:   rec.recommendation_type,
+        tier:                  rec.tier,
+        status:                rec.status,
+        confidence:            rec.confidence,
+        rationale:             rec.rationale,
+        evidence:              rec.evidence,
+        action_payload:        rec.action_payload,
+        affected_entity_type:  rec.affected_entity_type,
+        affected_entity_id:    rec.affected_entity_id,
+        expires_at:            rec.expires_at,
+        reviewed_by:           rec.reviewer ? { id: rec.reviewer.id, email: rec.reviewer.email } : nil,
+        reviewed_at:           rec.reviewed_at,
+        review_reason:         rec.review_reason,
+        executed_at:           rec.executed_at,
+        created_at:            rec.created_at,
+      }
+    end
+  end
+end

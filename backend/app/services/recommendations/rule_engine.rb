@@ -1,0 +1,149 @@
+module Recommendations
+  # Tier 1: Deterministic, rule-based recommendation generation.
+  # Produces zero-LLM recommendations that are always fast, cheap, and explainable.
+  # Each rule returns an array of recommendation attribute hashes (or []).
+  class RuleEngine < ApplicationService
+    def initialize(context:)
+      @ctx = context
+    end
+
+    def call
+      recs = []
+      recs.concat close_stale_alerts
+      recs.concat acknowledge_high_conf_alerts
+      recs.concat escalate_incidents
+      recs.concat bulk_triage_suggestions
+      recs.concat flag_high_risk_sites
+      ServiceResult.success(recommendations: recs)
+    end
+
+    private
+
+    # ── Rule: close_stale_alert ─────────────────────────────────────────────────
+    # Unacknowledged low-confidence alerts older than 4 hours → suggest close
+    def close_stale_alerts
+      @ctx[:stale_alerts]
+        .select { |a| a[:confidence] < 0.5 }
+        .reject { |a| already_pending?("close_stale_alert", "SignalRuleMatch", a[:id]) }
+        .map do |a|
+          hours_old = ((Time.current - Time.parse(a[:fired_at])) / 3600).round(1)
+          build_rec(
+            type:        "close_stale_alert",
+            tier:        "rule",
+            confidence:  0.85,
+            rationale:   "Alert '#{a[:rule_name] || a[:signal_type]}' at #{a[:site_name] || 'unknown site'} " \
+                         "has been unacknowledged for #{hours_old}h with low confidence (#{(a[:confidence] * 100).round}%). " \
+                         "Recommend closing to reduce noise.",
+            evidence:    [{ type: "alert", id: a[:id], detail: "fired_at=#{a[:fired_at]}, conf=#{a[:confidence]}" }],
+            payload:     { alert_id: a[:id], to_status: "closed" },
+            entity_type: "SignalRuleMatch",
+            entity_id:   a[:id],
+          )
+        end
+    end
+
+    # ── Rule: acknowledge_alert ─────────────────────────────────────────────────
+    # High-confidence unacknowledged alerts → suggest acknowledge
+    def acknowledge_high_conf_alerts
+      @ctx[:high_conf_alerts]
+        .reject { |a| already_pending?("acknowledge_alert", "SignalRuleMatch", a[:id]) }
+        .map do |a|
+          build_rec(
+            type:        "acknowledge_alert",
+            tier:        "rule",
+            confidence:  [a[:confidence].to_f, 0.90].min,
+            rationale:   "High-confidence alert (#{(a[:confidence] * 100).round}%) from " \
+                         "'#{a[:rule_name] || a[:signal_type]}' at #{a[:site_name] || 'unknown'} " \
+                         "requires attention. Recommend acknowledging to begin triage.",
+            evidence:    [{ type: "alert", id: a[:id], detail: "conf=#{a[:confidence]}, fired=#{a[:fired_at]}" }],
+            payload:     { alert_id: a[:id], to_status: "acknowledged" },
+            entity_type: "SignalRuleMatch",
+            entity_id:   a[:id],
+          )
+        end
+    end
+
+    # ── Rule: escalate_incident ─────────────────────────────────────────────────
+    # Open incidents (not yet acknowledged) with high severity or many alerts → escalate
+    def escalate_incidents
+      @ctx[:open_incidents]
+        .select { |i| i[:status] == "open" && %w[high critical].include?(i[:severity]) }
+        .reject { |i| already_pending?("escalate_incident", "Incident", i[:id]) }
+        .map do |i|
+          build_rec(
+            type:        "escalate_incident",
+            tier:        "rule",
+            confidence:  i[:confidence].to_f,
+            rationale:   "#{i[:severity].capitalize} incident '#{i[:title]}' has been open since " \
+                         "#{Time.parse(i[:opened_at]).strftime('%b %-d %H:%M')} with #{i[:alert_count]} " \
+                         "alert(s). Recommend acknowledging and beginning containment.",
+            evidence:    [{ type: "incident", id: i[:id], detail: "severity=#{i[:severity]}, alerts=#{i[:alert_count]}" }],
+            payload:     { incident_id: i[:id], to_status: "acknowledged" },
+            entity_type: "Incident",
+            entity_id:   i[:id],
+          )
+        end
+    end
+
+    # ── Rule: bulk_triage_alerts ────────────────────────────────────────────────
+    # Sites with ≥5 unacked alerts piling up → recommend bulk triage
+    def bulk_triage_suggestions
+      @ctx[:bulk_triage_sites]
+        .reject { |s| already_pending?("bulk_triage_alerts", "Site", s[:site_id]) }
+        .map do |s|
+          build_rec(
+            type:        "bulk_triage_alerts",
+            tier:        "rule",
+            confidence:  0.80,
+            rationale:   "#{s[:unacked_count]} unacknowledged alerts are queued at this site. " \
+                         "Bulk triage can resolve noise and surface actionable items faster.",
+            evidence:    [{ type: "site", id: s[:site_id], detail: "unacked_count=#{s[:unacked_count]}" }],
+            payload:     { site_id: s[:site_id], unacked_count: s[:unacked_count] },
+            entity_type: "Site",
+            entity_id:   s[:site_id],
+          )
+        end
+    end
+
+    # ── Rule: flag_site ─────────────────────────────────────────────────────────
+    # Sites with high risk score not yet flagged
+    def flag_high_risk_sites
+      @ctx[:flaggable_sites]
+        .reject { |s| already_pending?("flag_site", "Site", s[:id]) }
+        .map do |s|
+          build_rec(
+            type:        "flag_site",
+            tier:        "rule",
+            confidence:  [s[:risk_score].to_f, 0.95].min,
+            rationale:   "#{s[:name]} has a risk score of #{(s[:risk_score] * 100).round}% but is not yet flagged. " \
+                         "Flagging will prioritise it in operational views and trigger additional monitoring.",
+            evidence:    [{ type: "site", id: s[:id], detail: "risk_score=#{s[:risk_score]}" }],
+            payload:     { site_id: s[:id] },
+            entity_type: "Site",
+            entity_id:   s[:id],
+          )
+        end
+    end
+
+    # ── Helpers ──────────────────────────────────────────────────────────────────
+
+    def build_rec(type:, tier:, confidence:, rationale:, evidence:, payload:, entity_type:, entity_id:)
+      {
+        recommendation_type:  type,
+        tier:                 tier,
+        confidence:           confidence.round(4),
+        rationale:            rationale,
+        evidence:             evidence,
+        action_payload:       payload,
+        affected_entity_type: entity_type,
+        affected_entity_id:   entity_id,
+        expires_at:           Recommendation::EXPIRY_BY_TIER[tier].from_now,
+        status:               "pending",
+      }
+    end
+
+    def already_pending?(type, entity_type, entity_id)
+      Recommendation.duplicate_pending?(type: type, entity_type: entity_type, entity_id: entity_id)
+    end
+  end
+end

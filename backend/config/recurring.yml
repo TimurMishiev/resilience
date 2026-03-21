@@ -29,6 +29,11 @@ production:
     queue: background
     schedule: every hour at minute 30
 
+  recommendation_generation:
+    class: Recommendations::GenerationJob
+    queue: background
+    schedule: every 30 minutes
+
 development:
   vessel_gap_detection:
     class: Vessels::GapDetectionJob
@@ -39,3 +44,8 @@ development:
     class: Risk::SnapshotJob
     queue: background
     schedule: every hour at minute 30
+
+  recommendation_generation:
+    class: Recommendations::GenerationJob
+    queue: background
+    schedule: every 30 minutes

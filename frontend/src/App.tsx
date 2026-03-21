@@ -18,6 +18,7 @@ import SitesPage from './pages/SitesPage'
 import TasksPage from './pages/TasksPage'
 import IncidentsPage from './pages/IncidentsPage'
 import IncidentDetailPage from './pages/IncidentDetailPage'
+import RecommendationsPage from './pages/RecommendationsPage'
 
 export default function App() {
   return (
@@ -47,6 +48,7 @@ export default function App() {
               } />
               <Route path="incidents" element={<IncidentsPage />} />
               <Route path="incidents/:id" element={<IncidentDetailPage />} />
+              <Route path="recommendations" element={<RecommendationsPage />} />
               <Route path="signals" element={<SignalFeedPage />} />
               <Route path="rules" element={<CorrelationRulesPage />} />
               <Route path="areas" element={<AreasPage />} />

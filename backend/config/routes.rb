@@ -83,6 +83,19 @@ Rails.application.routes.draw do
       end
     end
 
+    resources :recommendations, only: %i[index] do
+      collection do
+        post :generate
+        get  :metrics
+      end
+      member do
+        post :accept
+        post :reject
+        post :defer
+        post :execute
+      end
+    end
+
     resources :areas_of_operation,    only: %i[index show create update destroy]
 
     resources :vessels, only: %i[index show] do
