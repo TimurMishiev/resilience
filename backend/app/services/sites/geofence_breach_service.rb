@@ -5,8 +5,13 @@ module Sites
   # Called alongside the correlation engine after each signal is ingested, so
   # geofence alerts are raised even when no explicit correlation rule matches.
   #
-  # Idempotent: a second call for the same (signal, site) pair is a no-op
-  # because we guard with a uniqueness check before inserting.
+  # Idempotent: a second call for the same (signal, site) pair is a no-op.
+  # Guaranteed at two layers:
+  #   1. Application-level: exists? fast-path skips the INSERT for the common case.
+  #   2. DB-level: a partial unique index on (signal_id, site_id) WHERE
+  #      correlation_rule_id IS NULL absorbs any concurrent duplicate INSERT via
+  #      RecordNotUnique rescue, so back-to-back evaluator runs can never create
+  #      duplicate geofence alerts for the same signal/site.
   class GeofenceBreachService < ApplicationService
     def initialize(signal:)
       @signal = signal
@@ -25,7 +30,9 @@ module Sites
 
         next if distance_km > site.geofence_radius_km
 
-        # Skip if a breach record already exists for this (signal, site) pair.
+        # Fast-path: skip the INSERT if the record already exists.  The DB
+        # unique index (idx_geofence_breach_signal_site_unique) is the hard
+        # backstop — a concurrent race is absorbed below by RecordNotUnique.
         next if SignalRuleMatch.exists?(
           signal_id:           @signal.id,
           site_id:             site.id,
@@ -39,10 +46,11 @@ module Sites
           fired_at:            Time.current,
           confidence:          breach_confidence(distance_km, site.geofence_radius_km),
           metadata: {
-            distance_km:    distance_km.round(2),
-            signal_type:    @signal.signal_type,
-            signal_source:  @signal.source,
-            geofence_breach: true
+            distance_km:         distance_km.round(2),
+            geofence_radius_km:  site.geofence_radius_km,
+            signal_type:         @signal.signal_type,
+            signal_source:       @signal.source,
+            geofence_breach:     true
           }
         )
 
@@ -64,6 +72,9 @@ module Sites
         Incidents::FusionService.call(match: match)
 
         breached << { site_id: site.id, match_id: match.id, distance_km: distance_km.round(1) }
+      rescue ActiveRecord::RecordNotUnique
+        # Concurrent evaluator run beat us to the insert — this is a no-op.
+        Rails.logger.debug "[GeofenceBreachService] duplicate suppressed site=#{site.id} signal=#{@signal.id}"
       rescue ActiveRecord::RecordInvalid => e
         Rails.logger.warn "[GeofenceBreachService] skipped site=#{site.id} signal=#{@signal.id}: #{e.message}"
       end

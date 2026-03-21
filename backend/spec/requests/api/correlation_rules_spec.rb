@@ -192,4 +192,37 @@ RSpec.describe "Api::CorrelationRules", type: :request do
       expect(response).to have_http_status(:not_found)
     end
   end
+
+  describe "GET /api/correlation_rules/effectiveness" do
+    let(:site)   { create(:site) }
+    let(:signal) { create(:external_signal, lat: site.latitude, lng: site.longitude) }
+
+    before do
+      # One match for the active rule so the stat has non-zero data
+      create(:signal_rule_match, correlation_rule: rule_active, site: site)
+    end
+
+    it "returns 200 with a hash keyed by rule_id" do
+      get "/api/correlation_rules/effectiveness", headers: auth_headers(commander)
+      expect(response).to have_http_status(:ok)
+      body = JSON.parse(response.body)
+      expect(body).to be_a(Hash)
+    end
+
+    it "includes an entry for each rule" do
+      get "/api/correlation_rules/effectiveness", headers: auth_headers(commander)
+      body = JSON.parse(response.body)
+      expect(body.keys).to include(rule_active.id)
+    end
+
+    it "is accessible to operators (no commander restriction)" do
+      get "/api/correlation_rules/effectiveness", headers: auth_headers(operator)
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "returns 401 for unauthenticated requests" do
+      get "/api/correlation_rules/effectiveness"
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
 end

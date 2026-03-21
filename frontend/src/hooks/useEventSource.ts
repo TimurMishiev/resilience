@@ -64,8 +64,8 @@ export function useEventSource({ onEvent, enabled = true }: Options = {}) {
           // Heartbeats confirm the stream is alive — no action needed
         })
 
-        // Listen for task mutation, correlation engine, and alert workflow events
-        for (const evt of ['task_created', 'task_updated', 'task_transitioned', 'rule_fired', 'alert_transitioned']) {
+        // Listen for task mutation, correlation engine, alert workflow, and geofence events
+        for (const evt of ['task_created', 'task_updated', 'task_transitioned', 'rule_fired', 'alert_transitioned', 'geofence_breach']) {
           es.addEventListener(evt, (e: MessageEvent) => {
             try {
               const data = JSON.parse(e.data)

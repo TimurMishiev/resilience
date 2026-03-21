@@ -113,4 +113,44 @@ RSpec.describe "Api::SignalRuleMatches", type: :request do
       expect(response).to have_http_status(:not_found)
     end
   end
+
+  describe "POST /api/signal_rule_matches/bulk_transition" do
+    it "transitions all supplied matches to the requested status" do
+      post "/api/signal_rule_matches/bulk_transition",
+           params:  { ids: [match1.id, match2.id], to_status: "acknowledged" },
+           headers: auth_headers(user), as: :json
+
+      expect(response).to have_http_status(:ok)
+      body = JSON.parse(response.body)
+      expect(body["succeeded"].map { |r| r["id"] }).to contain_exactly(match1.id, match2.id)
+      expect(body["failed"]).to be_empty
+    end
+
+    it "reports per-alert failures without aborting the batch" do
+      # Close match1 so it cannot be re-acknowledged (invalid transition)
+      match1.update_column(:workflow_status, "closed")
+
+      post "/api/signal_rule_matches/bulk_transition",
+           params:  { ids: [match1.id, match2.id], to_status: "acknowledged" },
+           headers: auth_headers(user), as: :json
+
+      expect(response).to have_http_status(:ok)
+      body = JSON.parse(response.body)
+      expect(body["succeeded"].map { |r| r["id"] }).to contain_exactly(match2.id)
+      expect(body["failed"].map { |r| r["id"] }).to contain_exactly(match1.id)
+    end
+
+    it "returns 422 when ids or to_status is missing" do
+      post "/api/signal_rule_matches/bulk_transition",
+           params:  { to_status: "acknowledged" },
+           headers: auth_headers(user), as: :json
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
+
+    it "returns 401 for unauthenticated requests" do
+      post "/api/signal_rule_matches/bulk_transition",
+           params: { ids: [match1.id], to_status: "acknowledged" }, as: :json
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
 end

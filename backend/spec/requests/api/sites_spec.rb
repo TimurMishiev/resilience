@@ -76,4 +76,43 @@ RSpec.describe "Api::Sites", type: :request do
       expect(response).to have_http_status(:not_found)
     end
   end
+
+  describe "PATCH /api/sites/:id/update_geofence" do
+    let(:operator) { create(:user, role: "operator") }
+
+    it "updates the geofence radius for commanders" do
+      patch "/api/sites/#{alpha.id}/update_geofence",
+            params:  { geofence_radius_km: 12.5 },
+            headers: auth_headers(current_user), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body)["geofence_radius_km"]).to eq(12.5)
+      expect(alpha.reload.geofence_radius_km).to eq(12.5)
+    end
+
+    it "returns 422 when radius is zero or negative" do
+      patch "/api/sites/#{alpha.id}/update_geofence",
+            params:  { geofence_radius_km: 0 },
+            headers: auth_headers(current_user), as: :json
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(JSON.parse(response.body)["errors"]).to be_present
+    end
+
+    it "returns 403 for operators" do
+      patch "/api/sites/#{alpha.id}/update_geofence",
+            params:  { geofence_radius_km: 5.0 },
+            headers: auth_headers(operator), as: :json
+
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "returns 404 for an unknown site" do
+      patch "/api/sites/00000000-0000-0000-0000-000000000000/update_geofence",
+            params:  { geofence_radius_km: 5.0 },
+            headers: auth_headers(current_user), as: :json
+
+      expect(response).to have_http_status(:not_found)
+    end
+  end
 end

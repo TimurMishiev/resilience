@@ -26,6 +26,7 @@ import { useSignals } from '../hooks/useSignals'
 import { useSignalRuleMatches, useTransitionAlert, useBulkTransitionAlerts } from '../hooks/useSignalRuleMatches'
 import { useAssets } from '../hooks/useAssets'
 import { useReadiness } from '../hooks/useReadiness'
+import { useAuth } from '../context/AuthContext'
 import AuditTimeline from '../components/AuditTimeline'
 import SiteTimeline from '../components/SiteTimeline'
 import AlertChainDrawer from '../components/AlertChainDrawer'
@@ -511,6 +512,9 @@ export default function SiteDetailPage() {
   const [geofenceInput, setGeofenceInput]     = useState('')
   const [chainMatch, setChainMatch]           = useState<import('../api/types').SignalRuleMatch | null>(null)
 
+  const { currentUser } = useAuth()
+  const isCommander = currentUser?.role === 'commander'
+
   const { data: site, isPending, error } = useSite(id)
   const { data: readinessData } = useReadiness()
   const readiness = readinessData?.find((r) => r.site_id === id) ?? null
@@ -621,7 +625,7 @@ export default function SiteDetailPage() {
         {/* Geofence radius */}
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 12 }}>
           <Icon icon="locate" size={12} style={{ opacity: 0.6 }} />
-          {editingGeofence ? (
+          {isCommander && editingGeofence ? (
             <>
               <InputGroup
                 small
@@ -651,14 +655,16 @@ export default function SiteDetailPage() {
               <span className="bp6-text-muted" style={{ fontSize: 12 }}>
                 Geofence {site.geofence_radius_km} km
               </span>
-              <Button
-                icon="edit"
-                minimal
-                small
-                style={{ minWidth: 0, minHeight: 0 }}
-                onClick={() => { setGeofenceInput(String(site.geofence_radius_km)); setEditingGeofence(true) }}
-                title="Edit geofence radius"
-              />
+              {isCommander && (
+                <Button
+                  icon="edit"
+                  minimal
+                  small
+                  style={{ minWidth: 0, minHeight: 0 }}
+                  onClick={() => { setGeofenceInput(String(site.geofence_radius_km)); setEditingGeofence(true) }}
+                  title="Edit geofence radius"
+                />
+              )}
             </>
           )}
         </span>
