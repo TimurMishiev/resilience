@@ -81,8 +81,12 @@ module Api
       expired  = Recommendation.where(status: "expired").count
       pending  = Recommendation.active.count
 
-      total_reviewed = accepted + rejected + deferred
-      accept_rate    = total_reviewed > 0 ? (accepted.to_f / total_reviewed * 100).round(1) : nil
+      # `executed` recommendations were accepted-and-run in a single step, so
+      # they count in both the numerator and denominator of accept_rate.
+      # Otherwise a healthy execute-heavy workflow would show a declining rate.
+      effectively_accepted = accepted + executed
+      total_reviewed       = effectively_accepted + rejected + deferred
+      accept_rate          = total_reviewed > 0 ? (effectively_accepted.to_f / total_reviewed * 100).round(1) : nil
 
       render json: {
         pending:     pending,

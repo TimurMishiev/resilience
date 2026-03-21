@@ -472,6 +472,13 @@ CREATE INDEX idx_recommendations_entity ON public.recommendations USING btree (a
 
 
 --
+-- Name: idx_recommendations_pending_dedup; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_recommendations_pending_dedup ON public.recommendations USING btree (recommendation_type, affected_entity_type, affected_entity_id) WHERE ((status)::text = 'pending'::text);
+
+
+--
 -- Name: index_ao_on_threat_level; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -938,6 +945,7 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260321045816'),
 ('20260320000008'),
 ('20260320000007'),
 ('20260320000006'),

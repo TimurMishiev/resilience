@@ -1,6 +1,15 @@
 module Recommendations
   # Maps an accepted recommendation to the appropriate backend service call.
-  # Returns a ServiceResult. On success, marks the recommendation as executed.
+  #
+  # Execution parity principle: AI-assisted actions go through the same
+  # canonical services as manual operator actions, so they receive identical
+  # audit-event trails, SSE broadcasts, and validation semantics.
+  #
+  #   alert transitions  → Alerts::TransitionService   (audit + SSE per alert)
+  #   incident transitions → inline update (same logic as IncidentsController#transition)
+  #   task creation      → Tasks::CreationService      (audit event, metadata records rec ID)
+  #   site flagging      → direct update + Audit::EventWriter (same as rule_firing_service)
+  #   bulk triage        → loop Alerts::TransitionService   (same as bulk_transition action)
   class ExecutorService < ApplicationService
     def initialize(recommendation:, user:)
       @rec  = recommendation
@@ -53,74 +62,134 @@ module Recommendations
 
     # ── Dispatchers ──────────────────────────────────────────────────────────────
 
+    # Routes through Alerts::TransitionService — identical to the manual single-alert
+    # transition path, including audit event and SSE broadcast.
     def transition_alert(alert_id, to_status)
       match = SignalRuleMatch.find_by(id: alert_id)
       return ServiceResult.failure(errors: ["Alert #{alert_id} not found"]) unless match
 
-      allowed = SignalRuleMatch::TRANSITIONS[match.workflow_status] || []
-      return ServiceResult.failure(errors: ["Transition to #{to_status} not allowed from #{match.workflow_status}"]) \
-        unless allowed.include?(to_status)
-
-      match.update!(workflow_status: to_status, acknowledged_by: @user, acknowledged_at: Time.current)
-      ServiceResult.success(match: match)
-    rescue ActiveRecord::RecordInvalid => e
-      ServiceResult.failure(errors: [e.message])
+      Alerts::TransitionService.call(
+        match:     match,
+        to_status: to_status,
+        actor:     @user,
+        notes:     "Executed via recommendation #{@rec.id}",
+      )
     end
 
+    # Transitions an incident through the same logic as IncidentsController#transition.
+    # Writes an audit event so the change is visible in the site timeline.
     def transition_incident(incident_id, to_status)
       incident = Incident.find_by(id: incident_id)
       return ServiceResult.failure(errors: ["Incident #{incident_id} not found"]) unless incident
 
       allowed = incident.allowed_transitions
-      return ServiceResult.failure(errors: ["Transition to #{to_status} not allowed"]) \
+      return ServiceResult.failure(errors: ["Transition to #{to_status} not allowed from #{incident.status}"]) \
         unless allowed.include?(to_status)
 
-      ts_fields = {}
-      ts_fields[:acknowledged_at] = Time.current if to_status == "acknowledged" && incident.acknowledged_at.nil?
-      ts_fields[:closed_at]       = Time.current if %w[resolved closed].include?(to_status)
+      before = incident.slice(:status, :acknowledged_at, :closed_at)
+      now    = Time.current
 
-      incident.update!(status: to_status, **ts_fields)
+      incident.status          = to_status
+      incident.acknowledged_at = now if to_status == "acknowledged" && incident.acknowledged_at.nil?
+      incident.closed_at       = now if %w[resolved closed].include?(to_status) && incident.closed_at.nil?
+      incident.closed_at       = nil if to_status == "open"
+
+      ActiveRecord::Base.transaction do
+        incident.save!
+        Audit::EventWriter.write(
+          actor:           @user.email,
+          entity_type:     "Incident",
+          entity_id:       incident.id,
+          event_type:      "incident_transitioned",
+          action:          "transition",
+          before_snapshot: before,
+          after_snapshot:  incident.slice(:status, :acknowledged_at, :closed_at),
+          metadata:        { recommendation_id: @rec.id },
+          correlation_id:  SecureRandom.uuid,
+        )
+      end
+
       ServiceResult.success(incident: incident)
     rescue ActiveRecord::RecordInvalid => e
       ServiceResult.failure(errors: [e.message])
     end
 
+    # Routes through Tasks::CreationService — records the recommendation ID in
+    # audit metadata so the AI-assisted provenance is fully traceable.
     def create_task(payload)
       site = Site.find_by(id: payload[:site_id])
       return ServiceResult.failure(errors: ["Site #{payload[:site_id]} not found for task creation"]) unless site
 
-      task = Task.create!(
-        title:           payload.fetch(:title, "Follow-up task from recommendation"),
-        priority:        payload.fetch(:priority, "normal"),
-        workflow_status: "new",
-        site:            site,
+      Tasks::CreationService.call(
+        params: {
+          title:           payload.fetch(:title, "Follow-up task from recommendation"),
+          priority:        payload.fetch(:priority, "normal"),
+          workflow_status: "new",
+          site_id:         site.id,
+        },
+        actor:    @user,
+        metadata: { recommendation_id: @rec.id },
       )
-      ServiceResult.success(task: task)
-    rescue ActiveRecord::RecordInvalid => e
-      ServiceResult.failure(errors: [e.message])
     end
 
+    # Flags a site using the same update + audit pattern as rule_firing_service
+    # and the manual unflag controller action, so the action appears in the
+    # site timeline and audit log.
     def flag_site(site_id)
       site = Site.find_by(id: site_id)
       return ServiceResult.failure(errors: ["Site #{site_id} not found"]) unless site
+      return ServiceResult.success(site: site) if site.flagged_at.present?  # idempotent
 
-      site.update!(flagged_at: Time.current)
+      ActiveRecord::Base.transaction do
+        site.update!(
+          flagged_at:  Time.current,
+          flag_reason: "Flagged via recommendation #{@rec.id} by #{@user.email}",
+        )
+        Audit::EventWriter.write(
+          actor:           @user.email,
+          entity_type:     "Site",
+          entity_id:       site.id,
+          event_type:      "site_flagged",
+          action:          "flag",
+          before_snapshot: { flagged_at: nil, flag_reason: nil },
+          after_snapshot:  site.slice(:flagged_at, :flag_reason),
+          metadata:        { recommendation_id: @rec.id },
+          correlation_id:  SecureRandom.uuid,
+        )
+      end
+
       ServiceResult.success(site: site)
     rescue ActiveRecord::RecordInvalid => e
       ServiceResult.failure(errors: [e.message])
     end
 
+    # Bulk-triages unacknowledged alerts at a site by iterating through
+    # Alerts::TransitionService — identical to the manual bulk_transition action,
+    # so each alert receives its own audit event + SSE broadcast.
     def bulk_triage(site_id)
       site = Site.find_by(id: site_id)
       return ServiceResult.failure(errors: ["Site #{site_id} not found"]) unless site
 
-      count = SignalRuleMatch
+      matches = SignalRuleMatch
         .unacknowledged
         .where(site_id: site_id)
         .where("fired_at > ?", 24.hours.ago)
-        .update_all(workflow_status: "acknowledged", acknowledged_at: Time.current, acknowledged_by_id: @user.id)
 
-      ServiceResult.success(count: count)
+      succeeded = 0
+      failed    = 0
+
+      matches.each do |match|
+        result = Alerts::TransitionService.call(
+          match:     match,
+          to_status: "acknowledged",
+          actor:     @user,
+          notes:     "Bulk triage via recommendation #{@rec.id}",
+        )
+        result.success? ? succeeded += 1 : failed += 1
+      end
+
+      Rails.logger.info "[ExecutorService] bulk_triage site=#{site_id} succeeded=#{succeeded} failed=#{failed}"
+      ServiceResult.success(succeeded: succeeded, failed: failed)
     end
   end
 end

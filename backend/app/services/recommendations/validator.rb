@@ -52,14 +52,37 @@ module Recommendations
         end
       end
 
-      # Evidence item structure check (accept both string and symbol keys)
+      # Evidence item structure + provenance check (accept both string and symbol keys).
+      # For LLM-produced recommendations each item's entity ID is verified against the
+      # live database so that hallucinated references are caught before persistence.
       Array(rec[:evidence]).each_with_index do |item, i|
         next unless item.is_a?(Hash)
         h = item.with_indifferent_access
-        errors << "evidence[#{i}] must have type and id" unless h[:type].present? && h[:id].present?
+        unless h[:type].present? && h[:id].present?
+          errors << "evidence[#{i}] must have type and id"
+          next
+        end
+
+        # Map evidence type string → AR model class and verify existence
+        evidence_class = ENTITY_CLASSES[evidence_entity_class_name(h[:type])]
+        if evidence_class && !evidence_class.exists?(h[:id])
+          errors << "evidence[#{i}] #{h[:type]} #{h[:id]} does not exist"
+        end
       end
 
       errors
+    end
+
+    # Maps evidence item type strings (as the LLM sees them) to AR class names
+    EVIDENCE_TYPE_CLASS = {
+      "site"     => "Site",
+      "incident" => "Incident",
+      "alert"    => "SignalRuleMatch",
+      "task"     => "Task",
+    }.freeze
+
+    def evidence_entity_class_name(type_str)
+      EVIDENCE_TYPE_CLASS[type_str.to_s.downcase]
     end
   end
 end

@@ -45,6 +45,9 @@ module Recommendations
 
         Recommendation.create!(attrs)
         count += 1
+      rescue ActiveRecord::RecordNotUnique
+        # Concurrent generation run won the race — harmless, just skip
+        Rails.logger.debug "[GeneratorService] dedup race absorbed for #{attrs[:recommendation_type]}/#{attrs[:affected_entity_id]}"
       rescue ActiveRecord::RecordInvalid => e
         Rails.logger.warn "[GeneratorService] skipping invalid rec: #{e.message}"
       end

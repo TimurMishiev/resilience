@@ -32,9 +32,12 @@ class Recommendation < ApplicationRecord
   scope :by_tier,    ->(tier) { where(tier: tier) }
   scope :recent,     -> { order(created_at: :desc) }
 
-  # Prevents duplicate pending recommendations for the same type + entity
+  # Prevents duplicate pending recommendations for the same type + entity.
+  # The application-level check is a fast-path read; the partial unique index
+  # idx_recommendations_pending_dedup is the DB-level guarantee against races.
+  # GeneratorService rescues RecordNotUnique to absorb concurrent duplicates.
   def self.duplicate_pending?(type:, entity_type:, entity_id:)
-    active.where(
+    pending.where(
       recommendation_type:  type,
       affected_entity_type: entity_type,
       affected_entity_id:   entity_id,
