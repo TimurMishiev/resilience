@@ -15,10 +15,12 @@ class Incident < ApplicationRecord
 
   belongs_to :site,               optional: true
   belongs_to :area_of_operation,  optional: true
+  belongs_to :assigned_to, class_name: "User", optional: true
 
   has_many :signal_rule_matches, dependent: :nullify
   has_many :tasks,   through: :signal_rule_matches
   has_many :signals, through: :signal_rule_matches, source: :signal
+  has_many :incident_notes, dependent: :destroy
 
   validates :title,     presence: true
   validates :status,    inclusion: { in: VALID_STATUSES }

@@ -1,16 +1,17 @@
 module Api
   class IncidentsController < BaseController
     # GET /api/incidents
-    # Query params: status, severity, site_id, page, per_page
+    # Query params: status, severity, site_id, assigned_to_id, page, per_page
     def index
       incidents = Incident
-        .includes(:site, :area_of_operation, :signal_rule_matches)
+        .includes(:site, :area_of_operation, :signal_rule_matches, :assigned_to)
         .by_severity
         .recent
 
-      incidents = incidents.by_status(params[:status]) if params[:status].present?
-      incidents = incidents.where(severity: params[:severity]) if params[:severity].present?
-      incidents = incidents.for_site(params[:site_id]) if params[:site_id].present?
+      incidents = incidents.by_status(params[:status])           if params[:status].present?
+      incidents = incidents.where(severity: params[:severity])   if params[:severity].present?
+      incidents = incidents.for_site(params[:site_id])           if params[:site_id].present?
+      incidents = incidents.where(assigned_to_id: params[:assigned_to_id]) if params[:assigned_to_id].present?
 
       records, meta = paginate(incidents)
       render json: { data: records.map { |i| serialize_incident(i) }, meta: meta }
@@ -19,7 +20,7 @@ module Api
     # GET /api/incidents/:id
     def show
       incident = Incident
-        .includes(:site, :area_of_operation,
+        .includes(:site, :area_of_operation, :assigned_to,
                   signal_rule_matches: [:signal, :correlation_rule, :task])
         .find(params[:id])
       render json: serialize_incident(incident, detailed: true)
@@ -65,6 +66,53 @@ module Api
       render json: { allowed: incident.allowed_transitions }
     end
 
+    # PATCH /api/incidents/:id/assign
+    # Body: { assignee_id: "<uuid>" } — pass null/absent to unassign
+    def assign
+      incident = Incident.find(params[:id])
+      assignee = if params[:assignee_id].present?
+        user = User.find_by(id: params[:assignee_id])
+        return render json: { errors: ["User not found"] }, status: :not_found unless user
+        user
+      end
+
+      result = Incidents::AssignService.call(
+        incident: incident,
+        assignee: assignee,
+        actor:    current_user,
+      )
+
+      if result.success?
+        render json: serialize_incident(result.incident)
+      else
+        render json: { errors: result.errors }, status: :unprocessable_entity
+      end
+    end
+
+    # GET /api/incidents/:id/notes
+    def list_notes
+      incident = Incident.find(params[:id])
+      notes    = incident.incident_notes.includes(:author)
+      render json: notes.map { |n| serialize_note(n) }
+    end
+
+    # POST /api/incidents/:id/notes
+    # Body: { body: "..." }
+    def add_note
+      incident = Incident.find(params[:id])
+      result   = Incidents::NoteService.call(
+        incident: incident,
+        author:   current_user,
+        body:     params[:body].to_s,
+      )
+
+      if result.success?
+        render json: serialize_note(result.note), status: :created
+      else
+        render json: { errors: result.errors }, status: :unprocessable_entity
+      end
+    end
+
     private
 
     def incident_params
@@ -85,7 +133,13 @@ module Api
         fusion_rationale: incident.fusion_rationale,
         alert_count:      incident.signal_rule_matches.size,
         task_count:       incident.signal_rule_matches.filter_map(&:task_id).uniq.size,
-        site:             incident.site ? { id: incident.site.id, name: incident.site.name } : nil,
+        assigned_to:      incident.assigned_to ? {
+          id:    incident.assigned_to.id,
+          email: incident.assigned_to.email,
+          role:  incident.assigned_to.role,
+        } : nil,
+        assigned_at:       incident.assigned_at,
+        site:              incident.site ? { id: incident.site.id, name: incident.site.name } : nil,
         area_of_operation: incident.area_of_operation ? {
           id:   incident.area_of_operation.id,
           name: incident.area_of_operation.name
@@ -126,6 +180,15 @@ module Api
         title:           t.title,
         workflow_status: t.workflow_status,
         priority:        t.priority,
+      }
+    end
+
+    def serialize_note(note)
+      {
+        id:         note.id,
+        body:       note.body,
+        author:     { id: note.author.id, email: note.author.email },
+        created_at: note.created_at,
       }
     end
   end

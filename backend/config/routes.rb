@@ -78,8 +78,11 @@ Rails.application.routes.draw do
     end
     resources :incidents, only: %i[index show update] do
       member do
-        post :transition
-        get  :allowed_transitions
+        post  :transition
+        get   :allowed_transitions
+        patch :assign
+        get   'notes', action: :list_notes
+        post  'notes', action: :add_note
       end
     end
 

@@ -1,10 +1,17 @@
 import { useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
-  Button, Callout, Classes, EditableText, HTMLTable,
+  Button, Callout, Classes, EditableText, HTMLSelect, HTMLTable,
   Icon, NonIdealState, Spinner, Tab, Tabs, Tag,
 } from '@blueprintjs/core'
-import { useIncident, useTransitionIncident, useUpdateIncident, useIncidentAllowedTransitions } from '../hooks/useIncidents'
+import {
+  useIncident, useTransitionIncident, useUpdateIncident,
+  useIncidentAllowedTransitions, useAssignIncident,
+} from '../hooks/useIncidents'
+import { useAuth } from '../context/AuthContext'
+import AuditTimeline from '../components/AuditTimeline'
+import IncidentNotesPanel from '../components/IncidentNotesPanel'
+import IncidentRecommendationsPanel from '../components/IncidentRecommendationsPanel'
 import { SIGNAL_ICON_NAME } from '../lib/signalIcons'
 import type { IncidentStatus, IncidentSeverity, IncidentAlert, IncidentTask } from '../api/incidents'
 
@@ -47,6 +54,8 @@ const TASK_PRIORITY_INTENT: Record<string, 'danger' | 'warning' | 'primary' | 'n
   low:      'none',
 }
 
+const SEVERITY_OPTIONS: IncidentSeverity[] = ['critical', 'high', 'moderate', 'low']
+
 function fmt(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -57,7 +66,14 @@ function fmt(iso: string) {
 
 function AlertsTab({ alerts }: { alerts: IncidentAlert[] }) {
   if (alerts.length === 0) {
-    return <NonIdealState icon="shield" title="No alerts" className="tab-empty-state" />
+    return (
+      <NonIdealState
+        icon="shield"
+        title="No alerts"
+        description="No alerts are linked to this incident yet."
+        className="tab-empty-state"
+      />
+    )
   }
   return (
     <HTMLTable className="data-table" striped>
@@ -146,13 +162,17 @@ function TasksTab({ tasks }: { tasks: IncidentTask[] }) {
 export default function IncidentDetailPage() {
   const { id }    = useParams<{ id: string }>()
   const navigate  = useNavigate()
-  const [tab, setTab] = useState('alerts')
+  const { currentUser } = useAuth()
+
+  const [tab,          setTab]          = useState('alerts')
   const [editingTitle, setEditingTitle] = useState(false)
+  const [editingSev,   setEditingSev]   = useState(false)
 
   const { data: incident, isPending, error } = useIncident(id)
   const { data: txData } = useIncidentAllowedTransitions(id)
-  const transition  = useTransitionIncident()
-  const updateMut   = useUpdateIncident()
+  const transition = useTransitionIncident()
+  const updateMut  = useUpdateIncident()
+  const assign     = useAssignIncident()
 
   if (isPending) {
     return (
@@ -176,8 +196,10 @@ export default function IncidentDetailPage() {
   }
 
   const allowedTransitions = txData?.allowed ?? []
-  const alerts = incident.alerts ?? []
-  const tasks  = incident.tasks  ?? []
+  const alerts             = incident.alerts ?? []
+  const tasks              = incident.tasks  ?? []
+  const isTerminal         = incident.status === 'resolved' || incident.status === 'closed'
+  const isAssignedToMe     = currentUser && incident.assigned_to?.id === currentUser.id
 
   function handleTitleConfirm(value: string) {
     if (value.trim() && value !== incident!.title) {
@@ -199,14 +221,36 @@ export default function IncidentDetailPage() {
 
       {/* ── header ── */}
       <div className="site-detail-header">
-        <Tag
-          minimal
-          intent={SEVERITY_INTENT[incident.severity]}
-          style={{ fontWeight: 700, fontSize: 12, marginRight: 8 }}
-        >
-          {incident.severity}
-        </Tag>
+        {/* Severity — click to edit */}
+        {editingSev ? (
+          <HTMLSelect
+            minimal
+            value={incident.severity}
+            autoFocus
+            onBlur={() => setEditingSev(false)}
+            onChange={e => {
+              updateMut.mutate({ id: incident.id, severity: e.target.value as IncidentSeverity })
+              setEditingSev(false)
+            }}
+            style={{ marginRight: 8 }}
+          >
+            {SEVERITY_OPTIONS.map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </HTMLSelect>
+        ) : (
+          <Tag
+            minimal
+            intent={SEVERITY_INTENT[incident.severity]}
+            style={{ fontWeight: 700, fontSize: 12, marginRight: 8, cursor: 'pointer' }}
+            onClick={() => setEditingSev(true)}
+            title="Click to change severity"
+          >
+            {incident.severity}
+          </Tag>
+        )}
 
+        {/* Title */}
         {editingTitle ? (
           <EditableText
             defaultValue={incident.title}
@@ -230,7 +274,42 @@ export default function IncidentDetailPage() {
           {incident.status}
         </Tag>
 
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* Assignment */}
+          <span style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Icon icon="person" size={12} className="bp6-text-muted" />
+            {incident.assigned_to ? (
+              <>
+                <span className="bp6-text-muted">{incident.assigned_to.email}</span>
+                {isAssignedToMe && <Tag minimal style={{ fontSize: 10, padding: '1px 5px' }}>me</Tag>}
+              </>
+            ) : (
+              <span className="bp6-text-muted">Unassigned</span>
+            )}
+            {/* Take / Drop */}
+            {!isTerminal && currentUser && (
+              isAssignedToMe ? (
+                <Button
+                  small minimal intent="none"
+                  loading={assign.isPending}
+                  onClick={() => assign.mutate({ id: incident.id, assignee_id: null })}
+                  style={{ fontSize: 11, height: 20 }}
+                >
+                  Drop
+                </Button>
+              ) : (
+                <Button
+                  small minimal intent="primary"
+                  loading={assign.isPending}
+                  onClick={() => assign.mutate({ id: incident.id, assignee_id: currentUser.id })}
+                  style={{ fontSize: 11, height: 20 }}
+                >
+                  Take
+                </Button>
+              )
+            )}
+          </span>
+
           <span className="bp6-text-muted" style={{ fontSize: 12 }}>
             {Math.round(incident.confidence * 100)}% conf ·{' '}
             {incident.alert_count} alert{incident.alert_count !== 1 ? 's' : ''} ·{' '}
@@ -255,9 +334,15 @@ export default function IncidentDetailPage() {
             </Link>
           </span>
         )}
+        {incident.assigned_at && (
+          <span className="bp6-text-muted" style={{ fontSize: 12, marginLeft: 12 }}>
+            <Icon icon="inherited-group" size={12} style={{ marginRight: 4 }} />
+            Assigned {fmt(incident.assigned_at)}
+          </span>
+        )}
       </div>
 
-      {/* ── transition buttons ── */}
+      {/* ── status transition buttons ── */}
       {allowedTransitions.length > 0 && (
         <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
           {allowedTransitions.map((to) => (
@@ -294,13 +379,33 @@ export default function IncidentDetailPage() {
       >
         <Tab
           id="alerts"
-          title={`Alerts (${alerts.length})`}
+          title={`Evidence (${alerts.length})`}
           panel={<AlertsTab alerts={alerts} />}
         />
         <Tab
           id="tasks"
           title={`Tasks (${tasks.length})`}
           panel={<TasksTab tasks={tasks} />}
+        />
+        <Tab
+          id="recommendations"
+          title="Recommendations"
+          panel={<IncidentRecommendationsPanel incidentId={incident.id} />}
+        />
+        <Tab
+          id="notes"
+          title="Notes"
+          panel={<IncidentNotesPanel incidentId={incident.id} />}
+        />
+        <Tab
+          id="history"
+          title="History"
+          panel={
+            <AuditTimeline
+              entityType="Incident"
+              entityId={incident.id}
+            />
+          }
         />
       </Tabs>
     </div>

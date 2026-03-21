@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   getIncidents, getIncident, updateIncident, transitionIncident,
-  getIncidentAllowedTransitions,
+  getIncidentAllowedTransitions, assignIncident, getIncidentNotes, addIncidentNote,
 } from '../api/incidents'
 import type { IncidentParams, IncidentStatus, Incident } from '../api/incidents'
 
@@ -9,7 +9,7 @@ export function useIncidents(params?: IncidentParams) {
   return useQuery({
     queryKey: ['incidents', params],
     queryFn:  () => getIncidents(params),
-    refetchInterval: 15_000, // poll every 15s — incidents update as alerts are triaged
+    refetchInterval: 15_000,
   })
 }
 
@@ -49,6 +49,37 @@ export function useTransitionIncident() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['incidents'] })
       queryClient.invalidateQueries({ queryKey: ['incident-transitions'] })
+    },
+  })
+}
+
+export function useAssignIncident() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, assignee_id }: { id: string; assignee_id: string | null }) =>
+      assignIncident(id, assignee_id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['incidents'] })
+    },
+  })
+}
+
+export function useIncidentNotes(id: string | undefined) {
+  return useQuery({
+    queryKey: ['incident-notes', id],
+    queryFn:  () => getIncidentNotes(id!),
+    enabled:  Boolean(id),
+    refetchInterval: 30_000,
+  })
+}
+
+export function useAddIncidentNote() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: string }) =>
+      addIncidentNote(id, body),
+    onSuccess: (_data, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ['incident-notes', id] })
     },
   })
 }

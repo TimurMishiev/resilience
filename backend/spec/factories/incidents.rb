@@ -21,5 +21,10 @@ FactoryBot.define do
       status     { "closed" }
       closed_at  { Time.current }
     end
+
+    trait :assigned do
+      association :assigned_to, factory: :user
+      assigned_at { Time.current }
+    end
   end
 end

@@ -138,6 +138,20 @@ CREATE TABLE public.external_signals (
 
 
 --
+-- Name: incident_notes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.incident_notes (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    incident_id uuid NOT NULL,
+    author_id uuid NOT NULL,
+    body text NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
 -- Name: incidents; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -156,7 +170,9 @@ CREATE TABLE public.incidents (
     fusion_rationale text,
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL
+    updated_at timestamp(6) without time zone NOT NULL,
+    assigned_to_id uuid,
+    assigned_at timestamp(6) without time zone
 );
 
 
@@ -378,6 +394,14 @@ ALTER TABLE ONLY public.external_signals
 
 
 --
+-- Name: incident_notes incident_notes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.incident_notes
+    ADD CONSTRAINT incident_notes_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: incidents incidents_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -455,6 +479,13 @@ ALTER TABLE ONLY public.vessel_tracks
 
 ALTER TABLE ONLY public.vessels
     ADD CONSTRAINT vessels_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: idx_geofence_breach_signal_site_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_geofence_breach_signal_site_unique ON public.signal_rule_matches USING btree (signal_id, site_id) WHERE (correlation_rule_id IS NULL);
 
 
 --
@@ -567,6 +598,34 @@ CREATE INDEX index_external_signals_on_occurred_at ON public.external_signals US
 --
 
 CREATE INDEX index_external_signals_on_source ON public.external_signals USING btree (source);
+
+
+--
+-- Name: index_incident_notes_on_author_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_incident_notes_on_author_id ON public.incident_notes USING btree (author_id);
+
+
+--
+-- Name: index_incident_notes_on_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_incident_notes_on_created_at ON public.incident_notes USING btree (created_at);
+
+
+--
+-- Name: index_incident_notes_on_incident_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_incident_notes_on_incident_id ON public.incident_notes USING btree (incident_id);
+
+
+--
+-- Name: index_incidents_on_assigned_to_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_incidents_on_assigned_to_id ON public.incidents USING btree (assigned_to_id);
 
 
 --
@@ -795,11 +854,27 @@ ALTER TABLE ONLY public.areas_of_operation
 
 
 --
+-- Name: incident_notes fk_rails_0cdae229bf; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.incident_notes
+    ADD CONSTRAINT fk_rails_0cdae229bf FOREIGN KEY (incident_id) REFERENCES public.incidents(id);
+
+
+--
 -- Name: incidents fk_rails_15ea701cfa; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.incidents
     ADD CONSTRAINT fk_rails_15ea701cfa FOREIGN KEY (area_of_operation_id) REFERENCES public.areas_of_operation(id);
+
+
+--
+-- Name: incident_notes fk_rails_1f12c8a379; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.incident_notes
+    ADD CONSTRAINT fk_rails_1f12c8a379 FOREIGN KEY (author_id) REFERENCES public.users(id);
 
 
 --
@@ -907,6 +982,14 @@ ALTER TABLE ONLY public.signal_rule_matches
 
 
 --
+-- Name: incidents fk_rails_d2436dcc2e; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.incidents
+    ADD CONSTRAINT fk_rails_d2436dcc2e FOREIGN KEY (assigned_to_id) REFERENCES public.users(id);
+
+
+--
 -- Name: correlation_rules fk_rails_df82305965; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -945,6 +1028,9 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260321150001'),
+('20260321150000'),
+('20260321120000'),
 ('20260321045816'),
 ('20260320000008'),
 ('20260320000007'),

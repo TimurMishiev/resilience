@@ -3,13 +3,15 @@ module Api
     before_action :require_commander!, only: %i[generate accept reject defer execute]
 
     # GET /api/recommendations
-    # Query params: status, tier, type
+    # Query params: status, tier, type, affected_entity_type, affected_entity_id
     def index
       recs = Recommendation.includes(:reviewer).recent
 
-      recs = recs.where(status: params[:status]) if params[:status].present?
-      recs = recs.by_tier(params[:tier])         if params[:tier].present?
-      recs = recs.where(recommendation_type: params[:type]) if params[:type].present?
+      recs = recs.where(status: params[:status])                          if params[:status].present?
+      recs = recs.by_tier(params[:tier])                                  if params[:tier].present?
+      recs = recs.where(recommendation_type: params[:type])               if params[:type].present?
+      recs = recs.where(affected_entity_type: params[:affected_entity_type]) if params[:affected_entity_type].present?
+      recs = recs.where(affected_entity_id:   params[:affected_entity_id])   if params[:affected_entity_id].present?
 
       # Default: only show active (pending + not expired)
       recs = recs.active if params[:status].blank?

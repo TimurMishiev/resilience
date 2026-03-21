@@ -7,6 +7,19 @@ import type { PaginatedResponse, PaginationParams } from './types'
 export type IncidentStatus   = 'open' | 'acknowledged' | 'contained' | 'resolved' | 'closed'
 export type IncidentSeverity = 'low' | 'moderate' | 'high' | 'critical'
 
+export interface AssignedUser {
+  id:    string
+  email: string
+  role:  string
+}
+
+export interface IncidentNote {
+  id:         string
+  body:       string
+  author:     { id: string; email: string }
+  created_at: string
+}
+
 export interface IncidentAlert {
   id:               string
   fired_at:         string
@@ -44,6 +57,8 @@ export interface Incident {
   fusion_rationale: string | null
   alert_count:      number
   task_count:       number
+  assigned_to:      AssignedUser | null
+  assigned_at:      string | null
   site:             { id: string; name: string } | null
   area_of_operation: { id: string; name: string } | null
   created_at:       string
@@ -54,9 +69,10 @@ export interface Incident {
 }
 
 export interface IncidentParams extends PaginationParams {
-  status?:   IncidentStatus
-  severity?: IncidentSeverity
-  site_id?:  string
+  status?:          IncidentStatus
+  severity?:        IncidentSeverity
+  site_id?:         string
+  assigned_to_id?:  string
 }
 
 // ── API functions ─────────────────────────────────────────────────────────
@@ -79,4 +95,16 @@ export function transitionIncident(id: string, to_status: IncidentStatus): Promi
 
 export function getIncidentAllowedTransitions(id: string): Promise<{ allowed: IncidentStatus[] }> {
   return api.get(`/api/incidents/${id}/allowed_transitions`)
+}
+
+export function assignIncident(id: string, assignee_id: string | null): Promise<Incident> {
+  return api.patch(`/api/incidents/${id}/assign`, { assignee_id })
+}
+
+export function getIncidentNotes(id: string): Promise<IncidentNote[]> {
+  return api.get(`/api/incidents/${id}/notes`)
+}
+
+export function addIncidentNote(id: string, body: string): Promise<IncidentNote> {
+  return api.post(`/api/incidents/${id}/notes`, { body })
 }
