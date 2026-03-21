@@ -304,7 +304,7 @@ Visible on the Dashboard (badge per readiness bar), Map (site panel), and Sites 
 | Cache | SolidCache |
 | Auth | JWT (24h TTL), Rack::Attack (5 login/min, auto-ban on violations), SSE tokens (60s TTL, sse_only claim) |
 | Build | Vite 6, vite-plugin-cesium |
-| Testing | RSpec (490 examples, 0 failures), FactoryBot, Brakeman (0 warnings), bundler-audit (0 CVEs) |
+| Testing | RSpec (508 examples, 0 failures), FactoryBot, Brakeman (0 warnings), bundler-audit (0 CVEs) |
 | CI | GitHub Actions — typecheck, ESLint, RSpec, Brakeman, bundler-audit, yarn audit, Fly.io deploy |
 | Deploy | Fly.io — combined Docker image (SPA built into Rails public/), single origin, no CORS |
 
@@ -359,7 +359,7 @@ resilience/
 │   │                               5 Areas of Operation · 8 correlation rules (MITRE-tagged) ·
 │   │                               6 demo vessels · demo conflict + disaster signals ·
 │   │                               252 SiteRiskSnapshot history rows (28 × 9 sites)
-│   └── spec/                       RSpec unit + request specs (490 examples)
+│   └── spec/                       RSpec unit + request specs (508 examples)
 ├── frontend/
 │   ├── src/
 │   │   ├── api/                    Typed fetch wrappers — all resources, all params
@@ -591,7 +591,7 @@ Demo seed data covers all 7 signal types out of the box. Add these to `.env` to 
 
 ```bash
 cd backend
-bundle exec rspec --format documentation      # 490 examples, 0 failures
+bundle exec rspec --format documentation      # 508 examples, 0 failures
 bundle exec brakeman --no-progress -q         # 0 security warnings
 bundle exec bundler-audit check               # 0 CVEs
 
