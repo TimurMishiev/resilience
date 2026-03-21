@@ -64,12 +64,17 @@ module Api
 
     def allowed_transitions
       task = Task.find(params[:id])
-      render json: {
-        allowed: Tasks::TransitionService.allowed_transitions_for(
-          task.workflow_status,
-          role: current_user.role
-        )
-      }
+      allowed = Tasks::TransitionService.allowed_transitions_for(
+        task.workflow_status,
+        role: current_user.role
+      )
+      # commander_only: subset of the allowed list that requires Commander authority.
+      # Always empty for operators (those transitions are already excluded from allowed).
+      # Lets the frontend render a ★ badge without hardcoding the same list client-side.
+      commander_only = Tasks::TransitionService::COMMANDER_ONLY_TRANSITIONS
+                         .fetch(task.workflow_status, [])
+                         .intersection(allowed)
+      render json: { allowed: allowed, commander_only: commander_only }
     end
 
     private

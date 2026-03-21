@@ -214,6 +214,29 @@ RSpec.describe "Api::Tasks", type: :request do
       expect(JSON.parse(response.body)["allowed"]).to eq(["triaged"])
     end
 
+    it "includes commander_only field in the response" do
+      task = create(:task, site: site, workflow_status: "in_progress")
+      get "/api/tasks/#{task.id}/allowed_transitions", headers: auth_headers(current_user)
+      body = JSON.parse(response.body)
+      expect(body).to have_key("commander_only")
+      expect(body["commander_only"]).to eq(["resolved"])
+    end
+
+    it "returns empty commander_only for a new task (no commander-gated transitions from new)" do
+      task = create(:task, site: site)
+      get "/api/tasks/#{task.id}/allowed_transitions", headers: auth_headers(current_user)
+      expect(JSON.parse(response.body)["commander_only"]).to eq([])
+    end
+
+    it "filters commander-only transitions from allowed for operator" do
+      operator = create(:user) # default role is operator
+      task = create(:task, site: site, workflow_status: "in_progress")
+      get "/api/tasks/#{task.id}/allowed_transitions", headers: auth_headers(operator)
+      body = JSON.parse(response.body)
+      expect(body["allowed"]).to eq(["blocked"])
+      expect(body["commander_only"]).to eq([])
+    end
+
     it "returns 404 for an unknown task" do
       get "/api/tasks/00000000-0000-0000-0000-000000000000/allowed_transitions",
           headers: auth_headers(current_user)

@@ -18,20 +18,9 @@ import { useSites } from '../hooks/useSites'
 import { getAiFilter } from '../api/ai'
 import AuditTimeline from '../components/AuditTimeline'
 import { useReplay } from '../context/ReplayContext'
-import { useAuth } from '../context/AuthContext'
 import type { Task, TaskPriority, WorkflowStatus } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
 
-// Transitions that require commander authority:
-// - resolving a task (sign-off)
-// - unblocking a task (resource / escalation authority)
-// - reopening a resolved task
-function isCommanderOnlyTransition(task: Task, target: WorkflowStatus): boolean {
-  if (target === 'resolved') return true
-  if (task.workflow_status === 'blocked'  && target === 'in_progress') return true
-  if (task.workflow_status === 'resolved' && target === 'triaged')     return true
-  return false
-}
 
 const WORKFLOW_STATUS_OPTIONS: { label: string; value: WorkflowStatus | '' }[] = [
   { label: 'All statuses', value: '' },
@@ -72,9 +61,6 @@ function statusLabel(status: WorkflowStatus): string {
 
 export default function TasksPage() {
   const { asOf, isReplaying } = useReplay()
-  const { currentUser } = useAuth()
-  const isCommander = currentUser?.role === 'commander'
-
   const [statusFilter, setStatusFilter]     = useState<WorkflowStatus | ''>('')
   const [siteFilter, setSiteFilter]         = useState<string | null>(null)
   const [priorityFilter, setPriorityFilter] = useState<TaskPriority | null>(null)
@@ -113,7 +99,8 @@ export default function TasksPage() {
   const siteMap: Record<string, string> = {}
   for (const site of siteRes?.data ?? []) siteMap[site.id] = site.name
 
-  const allowedTransitions = transitionsData?.allowed ?? []
+  const allowedTransitions    = transitionsData?.allowed        ?? []
+  const commanderOnlyTransitions = transitionsData?.commander_only ?? []
 
   function handleNlSearch() {
     const q = nlQuery.trim()
@@ -310,18 +297,14 @@ export default function TasksPage() {
                 <span className="drawer-section-label bp6-text-muted">Move to</span>
                 <div className="transition-buttons">
                   {allowedTransitions.map((status) => {
-                    const cmdOnly = isCommanderOnlyTransition(selectedTask, status)
-                    const blocked = !isCommander && cmdOnly
+                    const cmdOnly = commanderOnlyTransitions.includes(status)
                     return (
                       <Button
                         key={status}
                         small
                         active={pendingStatus === status}
                         intent={workflowIntent(status)}
-                        disabled={blocked}
-                        title={blocked ? 'Commander authority required' : undefined}
                         onClick={() => {
-                          if (blocked) return
                           setPendingStatus(pendingStatus === status ? null : status)
                           setBlockedReason('')
                           setTransitionError(null)

@@ -37,6 +37,6 @@ export function transitionTask(id: string, body: TransitionTaskBody): Promise<Ta
   return api.post(`/api/tasks/${id}/transition`, { transition: body })
 }
 
-export function getAllowedTransitions(id: string): Promise<{ allowed: WorkflowStatus[] }> {
+export function getAllowedTransitions(id: string): Promise<{ allowed: WorkflowStatus[]; commander_only: WorkflowStatus[] }> {
   return api.get(`/api/tasks/${id}/allowed_transitions`)
 }
