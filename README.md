@@ -15,17 +15,19 @@ Built as a portfolio project targeting defense-tech companies (Palantir, Anduril
 
 ## Quick Start
 
-The only thing you need is [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+You only need [Docker](https://docs.docker.com/get-docker/) with Compose support (Docker Desktop on Mac/Windows, or Docker Engine + the Compose plugin on Linux).
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/resilience.git
+git clone https://github.com/TimurMishiev/resilience.git
 cd resilience
 docker compose up
 ```
 
 Open **[http://localhost:3000](http://localhost:3000)**.
 
-Demo data (sites, tasks, signals, rules, incidents, vessels, risk scores) is seeded automatically on first run. Live signal feeds start immediately — you'll see seismic events, aircraft positions, and disaster alerts populating the map within seconds.
+Demo data (sites, tasks, signals, rules, incidents, vessels, risk scores) is seeded automatically on first run and is available immediately. External live feeds (seismic, aircraft, disaster alerts) begin opportunistically — some start right away, others require free credentials or have a startup delay. See the [Signal Feeds](#live-signal-feeds) section for details.
+
+> **Note on startup logs:** You may see warnings like `[AISFeed] AISHUB_USERNAME not set` or similar for optional feeds that require credentials. These are expected — the app is fully usable with demo data and does not require any feed credentials to run.
 
 > **Want AI briefings?** Add an Anthropic API key (free at [console.anthropic.com](https://console.anthropic.com)):
 > ```bash
@@ -193,7 +195,7 @@ If you want to run the app locally for development:
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/YOUR_USERNAME/resilience.git
+git clone https://github.com/TimurMishiev/resilience.git
 cd resilience
 
 # 2. Backend setup
