@@ -60,6 +60,31 @@ const PRIORITY_INTENTS: Record<TaskPriority, 'none' | 'primary' | 'warning' | 'd
   critical: 'danger',
 }
 
+// ── MITRE ATT&CK techniques ──────────────────────────────────────────────────
+
+interface MitreTechnique {
+  id:     string
+  name:   string
+  tactic: string
+}
+
+const MITRE_TECHNIQUES: MitreTechnique[] = [
+  { id: 'T1036',  name: 'Masquerading',                      tactic: 'Defense Evasion'      },
+  { id: 'T1040',  name: 'Network Sniffing',                  tactic: 'Credential Access'    },
+  { id: 'T1498',  name: 'Network Denial of Service',         tactic: 'Impact'               },
+  { id: 'T1562',  name: 'Impair Defenses',                   tactic: 'Defense Evasion'      },
+  { id: 'T1565',  name: 'Data Manipulation',                 tactic: 'Impact'               },
+  { id: 'T1583',  name: 'Acquire Infrastructure',            tactic: 'Resource Development' },
+  { id: 'T1590',  name: 'Gather Victim Network Information', tactic: 'Reconnaissance'       },
+  { id: 'T1591',  name: 'Gather Victim Org Information',     tactic: 'Reconnaissance'       },
+  { id: 'T0826',  name: 'Loss of Availability',              tactic: 'Impact (ICS)'         },
+  { id: 'T0827',  name: 'Loss of Control',                   tactic: 'Impact (ICS)'         },
+  { id: 'T0879',  name: 'Damage to Property',                tactic: 'Impact (ICS)'         },
+  { id: 'T0880',  name: 'Loss of Safety',                    tactic: 'Impact (ICS)'         },
+]
+
+const MITRE_BY_ID = new Map(MITRE_TECHNIQUES.map(t => [t.id, t]))
+
 // ── Rule templates ───────────────────────────────────────────────────────────
 
 interface RuleTemplate {
@@ -92,6 +117,7 @@ const RULE_TEMPLATES: RuleTemplate[] = [
       task_description: 'Vessel position followed by AIS gap within {{proximity_km}}km. Review vessel traffic and confirm no covert approach.',
       task_priority:    'high',
       cooldown_minutes: 120,
+      mitre_tags:       ['T1036', 'T1565'],
     },
   },
   {
@@ -114,6 +140,7 @@ const RULE_TEMPLATES: RuleTemplate[] = [
       task_description: 'GPS jamming and aircraft activity within {{proximity_km}}km. Potential EW precursor. Verify GPS reception and airspace.',
       task_priority:    'critical',
       cooldown_minutes: 60,
+      mitre_tags:       ['T1562', 'T0826', 'T1498'],
     },
   },
   {
@@ -136,6 +163,7 @@ const RULE_TEMPLATES: RuleTemplate[] = [
       task_description: '{{signal_type}} within {{proximity_km}}km. Assess impact on operations and personnel safety.',
       task_priority:    'high',
       cooldown_minutes: 180,
+      mitre_tags:       ['T0879', 'T0880'],
     },
   },
   {
@@ -158,6 +186,7 @@ const RULE_TEMPLATES: RuleTemplate[] = [
       task_description: 'Magnitude {{magnitude}} seismic event detected {{proximity_km}}km from site. Assess structural integrity and utility services.',
       task_priority:    'high',
       cooldown_minutes: 240,
+      mitre_tags:       ['T0879', 'T0880'],
     },
   },
   {
@@ -180,6 +209,7 @@ const RULE_TEMPLATES: RuleTemplate[] = [
       task_description: 'Aircraft detected {{proximity_km}}km from {{site_name}}. Monitor for pattern of life or approach vector.',
       task_priority:    'normal',
       cooldown_minutes: 30,
+      mitre_tags:       ['T1590', 'T1591'],
     },
   },
   {
@@ -202,6 +232,7 @@ const RULE_TEMPLATES: RuleTemplate[] = [
       task_description: 'Conflict event and GPS jamming within {{proximity_km}}km. Possible combined-arms operation. Initiate security posture review.',
       task_priority:    'critical',
       cooldown_minutes: 90,
+      mitre_tags:       ['T0827', 'T0880', 'T1562'],
     },
   },
 ]
@@ -256,6 +287,8 @@ interface RuleFormState {
   compound_conditions: ConditionRow[]
   // Scope
   area_of_operation_id: string | null
+  // MITRE ATT&CK technique IDs
+  mitre_tags: string[]
 }
 
 const DEFAULT_FORM: RuleFormState = {
@@ -275,6 +308,7 @@ const DEFAULT_FORM: RuleFormState = {
   compound_operator:   'AND',
   compound_conditions: [{ ...DEFAULT_CONDITION }, { ...DEFAULT_CONDITION }],
   area_of_operation_id: null,
+  mitre_tags: [],
 }
 
 function ruleToForm(rule: CorrelationRule): RuleFormState {
@@ -288,6 +322,7 @@ function ruleToForm(rule: CorrelationRule): RuleFormState {
     task_description:     a.description ?? '',
     task_priority:        (a.priority as TaskPriority | undefined) ?? 'normal',
     area_of_operation_id: rule.area_of_operation_id,
+    mitre_tags:           rule.mitre_tags ?? [],
   }
 
   if (isCompoundRule(rule.conditions)) {
@@ -545,6 +580,7 @@ export default function CorrelationRulesPage() {
       is_active:            form.is_active,
       cooldown_minutes:     form.cooldown_minutes,
       area_of_operation_id: form.area_of_operation_id || null,
+      mitre_tags:           form.mitre_tags,
       conditions,
       actions: {
         create_task: {
@@ -692,6 +728,23 @@ export default function CorrelationRulesPage() {
                           <Tag minimal style={{ marginTop: 4, fontSize: 10 }} icon="geofence">
                             {aoByIdMap.get(rule.area_of_operation_id) ?? 'AO'}
                           </Tag>
+                        )}
+                        {rule.mitre_tags?.length > 0 && (
+                          <div className="mitre-tag-row">
+                            {rule.mitre_tags.map(id => (
+                              <Tag
+                                key={id}
+                                minimal
+                                className="mitre-table-tag"
+                                title={(() => {
+                                  const t = MITRE_BY_ID.get(id)
+                                  return t ? `${t.id} · ${t.name} [${t.tactic}]` : id
+                                })()}
+                              >
+                                {id}
+                              </Tag>
+                            ))}
+                          </div>
                         )}
                       </td>
                       <td>
@@ -1059,6 +1112,43 @@ export default function CorrelationRulesPage() {
               min={0} max={44640} fill
             />
           </FormGroup>
+
+          {/* ── MITRE ATT&CK ────────────────────────────────────────── */}
+          <Divider style={{ margin: '16px 0 12px' }} />
+          <p className="bp6-text-muted" style={{ fontSize: 12, marginBottom: 4 }}>MITRE ATT&amp;CK TECHNIQUES</p>
+          <p className="bp6-text-muted" style={{ fontSize: 11, marginBottom: 10 }}>
+            Tag this rule with relevant ATT&amp;CK techniques for threat intelligence mapping.
+          </p>
+          <div className="mitre-picker">
+            {MITRE_TECHNIQUES.map(t => {
+              const selected = form.mitre_tags.includes(t.id)
+              return (
+                <Tag
+                  key={t.id}
+                  interactive
+                  intent={selected ? 'primary' : 'none'}
+                  minimal={!selected}
+                  className="mitre-picker-tag"
+                  onClick={() =>
+                    setForm(f => ({
+                      ...f,
+                      mitre_tags: selected
+                        ? f.mitre_tags.filter(x => x !== t.id)
+                        : [...f.mitre_tags, t.id],
+                    }))
+                  }
+                  title={`${t.tactic}: ${t.name}`}
+                >
+                  {t.id}
+                </Tag>
+              )
+            })}
+          </div>
+          {form.mitre_tags.length > 0 && (
+            <div style={{ marginTop: 8, fontSize: 11, color: '#8a9ba8' }}>
+              {form.mitre_tags.map(id => MITRE_BY_ID.get(id)?.name).filter(Boolean).join(' · ')}
+            </div>
+          )}
 
           <div style={{ display: 'flex', gap: 8, marginTop: 24 }}>
             <Button

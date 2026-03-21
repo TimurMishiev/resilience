@@ -793,6 +793,42 @@ body {
   gap:       4px;
 }
 
+/* ── MITRE ATT&CK picker / table tags ────────────────────── */
+
+.mitre-picker {
+  display:       flex;
+  flex-wrap:     wrap;
+  gap:           5px;
+  padding:       8px;
+  background:    #1c2127;
+  border:        1px solid #2f363f;
+  border-radius: 3px;
+}
+
+.mitre-picker-tag {
+  cursor:      pointer;
+  font-family: monospace;
+  font-size:   11px;
+  user-select: none;
+  transition:  background 0.1s, color 0.1s;
+}
+
+.mitre-tag-row {
+  display:    flex;
+  flex-wrap:  wrap;
+  gap:        3px;
+  margin-top: 4px;
+}
+
+.mitre-table-tag {
+  font-family: monospace;
+  font-size:   10px;
+  cursor:      default;
+  color:       #8abbff;
+  border:      1px solid #2c3f5e;
+  background:  rgba(138, 187, 255, 0.06);
+}
+
 /* ── Login page ───────────────────────────────────────────── */
 
 .login-page {

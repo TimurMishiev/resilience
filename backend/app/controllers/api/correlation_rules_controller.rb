@@ -169,8 +169,9 @@ module Api
     def rule_params
       params.require(:correlation_rule).permit(
         :name, :description, :is_active, :cooldown_minutes, :area_of_operation_id,
-        conditions: {},
-        actions:    {}
+        conditions:  {},
+        actions:     {},
+        mitre_tags:  []
       )
     end
 
@@ -181,7 +182,8 @@ module Api
       ]).merge(
         conditions:  rule.conditions,
         actions:     rule.actions,
-        created_by:  rule.created_by_id
+        created_by:  rule.created_by_id,
+        mitre_tags:  rule.mitre_tags || []
       )
     end
   end

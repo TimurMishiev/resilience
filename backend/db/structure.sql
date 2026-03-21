@@ -109,7 +109,8 @@ CREATE TABLE public.correlation_rules (
     last_fired_at timestamp(6) without time zone,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    area_of_operation_id uuid
+    area_of_operation_id uuid,
+    mitre_tags text[] DEFAULT '{}'::text[]
 );
 
 
@@ -162,6 +163,24 @@ CREATE TABLE public.signal_rule_matches (
     acknowledged_at timestamp(6) without time zone,
     notes text,
     acknowledged_by_id uuid
+);
+
+
+--
+-- Name: site_risk_snapshots; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.site_risk_snapshots (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    site_id uuid NOT NULL,
+    score integer NOT NULL,
+    risk_level character varying NOT NULL,
+    alert_pressure numeric(5,2) NOT NULL,
+    task_health numeric(5,2) NOT NULL,
+    signal_density numeric(5,2) NOT NULL,
+    recorded_at timestamp(6) without time zone NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
 );
 
 
@@ -322,6 +341,14 @@ ALTER TABLE ONLY public.schema_migrations
 
 ALTER TABLE ONLY public.signal_rule_matches
     ADD CONSTRAINT signal_rule_matches_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: site_risk_snapshots site_risk_snapshots_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.site_risk_snapshots
+    ADD CONSTRAINT site_risk_snapshots_pkey PRIMARY KEY (id);
 
 
 --
@@ -526,6 +553,20 @@ CREATE UNIQUE INDEX index_signals_on_dedup ON public.external_signals USING btre
 
 
 --
+-- Name: index_site_risk_snapshots_on_site_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_site_risk_snapshots_on_site_id ON public.site_risk_snapshots USING btree (site_id);
+
+
+--
+-- Name: index_site_risk_snapshots_on_site_id_and_recorded_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_site_risk_snapshots_on_site_id_and_recorded_at ON public.site_risk_snapshots USING btree (site_id, recorded_at);
+
+
+--
 -- Name: index_sites_on_area_of_operation_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -615,6 +656,14 @@ CREATE UNIQUE INDEX index_vessels_on_mmsi ON public.vessels USING btree (mmsi);
 
 ALTER TABLE ONLY public.areas_of_operation
     ADD CONSTRAINT fk_rails_0bd4a97ef0 FOREIGN KEY (created_by_id) REFERENCES public.users(id) ON DELETE SET NULL;
+
+
+--
+-- Name: site_risk_snapshots fk_rails_2321d15556; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.site_risk_snapshots
+    ADD CONSTRAINT fk_rails_2321d15556 FOREIGN KEY (site_id) REFERENCES public.sites(id);
 
 
 --
@@ -728,6 +777,8 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260320000004'),
+('20260320000003'),
 ('20260320000002'),
 ('20260320000001'),
 ('20260318030004'),

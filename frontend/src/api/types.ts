@@ -264,6 +264,7 @@ export interface CorrelationRule {
   area_of_operation_id: string | null
   cooldown_minutes: number
   last_fired_at: string | null
+  mitre_tags: string[]
   created_at: string
   updated_at: string
 }
@@ -311,6 +312,7 @@ export interface CreateCorrelationRuleBody {
   conditions: RuleConditions
   actions: CorrelationActions
   cooldown_minutes?: number
+  mitre_tags?: string[]
 }
 
 export interface UpdateCorrelationRuleBody {
@@ -320,6 +322,7 @@ export interface UpdateCorrelationRuleBody {
   conditions?: RuleConditions
   actions?: CorrelationActions
   cooldown_minutes?: number
+  mitre_tags?: string[]
 }
 
 export interface SignalsParams extends PaginationParams {

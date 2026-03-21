@@ -559,8 +559,9 @@ if commander
           "priority"    => "high"
         }
       },
-      created_by:      commander,
-      cooldown_minutes: 60
+      created_by:       commander,
+      cooldown_minutes: 60,
+      mitre_tags:       %w[T1590 T1591]
     )
     puts "  Created rule: Unplanned Air Activity Near Site"
   end
@@ -586,8 +587,9 @@ if commander
           "priority"    => "high"
         }
       },
-      created_by:      commander,
-      cooldown_minutes: 1440  # 24 hours
+      created_by:       commander,
+      cooldown_minutes: 1440,  # 24 hours
+      mitre_tags:       %w[T0879 T0880]
     )
     puts "  Created rule: Seismic Event Near Site"
   end
@@ -612,8 +614,9 @@ if commander
           "priority"    => "critical"
         }
       },
-      created_by:      commander,
-      cooldown_minutes: 30
+      created_by:       commander,
+      cooldown_minutes: 30,
+      mitre_tags:       %w[T1562 T0826 T1498]
     )
     puts "  Created rule: GPS Jamming Detected"
   end
@@ -640,8 +643,9 @@ if commander
           "priority"    => "normal"
         }
       },
-      created_by:      commander,
-      cooldown_minutes: 120
+      created_by:       commander,
+      cooldown_minutes: 120,
+      mitre_tags:       %w[T1040 T1590]
     )
     puts "  Created rule: Vessel Activity Near Site"
   end
@@ -669,8 +673,9 @@ if commander
           "priority"    => "high"
         }
       },
-      created_by:      commander,
-      cooldown_minutes: 240  # 4 hours
+      created_by:       commander,
+      cooldown_minutes: 240,  # 4 hours
+      mitre_tags:       %w[T0879 T0880]
     )
     puts "  Created rule: Wildfire Proximity Alert"
   end
@@ -698,7 +703,8 @@ if commander
         }
       },
       created_by:       commander,
-      cooldown_minutes: 240
+      cooldown_minutes: 240,
+      mitre_tags:       %w[T0879 T0880 T1583]
     )
     puts "  Created rule: Armed Conflict Near Site"
   end
@@ -729,7 +735,8 @@ if commander
         }
       },
       created_by:       commander,
-      cooldown_minutes: 720
+      cooldown_minutes: 720,
+      mitre_tags:       %w[T0879 T0826]
     )
     puts "  Created rule: Major Disaster Alert"
   end
@@ -771,7 +778,8 @@ if commander
         }
       },
       created_by:       commander,
-      cooldown_minutes: 480
+      cooldown_minutes: 480,
+      mitre_tags:       %w[T0879 T0880 T0826 T1583]
     )
     puts "  Created rule: Compound Crisis — Conflict and Disaster"
   end

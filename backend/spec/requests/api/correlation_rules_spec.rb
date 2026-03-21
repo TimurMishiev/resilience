@@ -120,6 +120,24 @@ RSpec.describe "Api::CorrelationRules", type: :request do
       body = JSON.parse(response.body)
       expect(body["area_of_operation_id"]).to eq(ao.id)
     end
+
+    it "persists and returns mitre_tags" do
+      params_with_tags = valid_params.deep_merge(
+        correlation_rule: { mitre_tags: %w[T1562 T0826] }
+      )
+      post "/api/correlation_rules", params: params_with_tags,
+           headers: auth_headers(commander), as: :json
+      expect(response).to have_http_status(:created)
+      body = JSON.parse(response.body)
+      expect(body["mitre_tags"]).to contain_exactly("T1562", "T0826")
+    end
+
+    it "includes an empty mitre_tags array when none supplied" do
+      post "/api/correlation_rules", params: valid_params,
+           headers: auth_headers(commander), as: :json
+      expect(response).to have_http_status(:created)
+      expect(JSON.parse(response.body)["mitre_tags"]).to eq([])
+    end
   end
 
   describe "PATCH /api/correlation_rules/:id" do
@@ -145,6 +163,14 @@ RSpec.describe "Api::CorrelationRules", type: :request do
             params:  { correlation_rule: { name: "X" } },
             headers: auth_headers(commander), as: :json
       expect(response).to have_http_status(:not_found)
+    end
+
+    it "updates mitre_tags" do
+      patch "/api/correlation_rules/#{rule_active.id}",
+            params:  { correlation_rule: { mitre_tags: %w[T0879 T0880] } },
+            headers: auth_headers(commander), as: :json
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body)["mitre_tags"]).to contain_exactly("T0879", "T0880")
     end
   end
 
