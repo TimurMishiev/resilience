@@ -41,16 +41,17 @@ Resilience is not a CRUD app dressed up with a dark theme. It is an **operationa
 |---|---|
 | **Dashboard** | Live KPI row (total/resolved/blocked/avg readiness), per-site readiness bars with color-coded scores and risk badges (LOW/MOD/HIGH/CRIT with breakdown tooltip), task status and priority bar charts, 30-day resolution throughput line chart, Recent Alerts panel with confidence badges and workflow status chips |
 | **Sites** | Site inventory with status tags, readiness scores, risk score column (color-coded by level, hover for component breakdown) |
-| **Site Detail** | 5-tab detail view: Tasks (with inline create), Signals (proximity-filtered), Rule Fires, Assets, Audit Trail — plus Activate/Deactivate and Unflag actions |
+| **Site Detail** | Risk score history chart (Recharts ComposedChart — area fill + 3 component lines + threshold markers, lookback selector). 6-tab detail view: Tasks (inline create), Signals (proximity-filtered), Rule Fires, Assets, Audit Trail, **Timeline** — plus Activate/Deactivate and Unflag actions |
+| **Site Timeline** | Unified threat timeline per site — merges signal detections, rule fires, task events, and audit entries into a single chronological spine; per-kind icon + color; expandable metadata; kind filter; 3d/7d/14d/30d lookback; auto-refreshes every 30s |
 | **Tasks** | Full task management with controlled workflow transitions, blocked-reason enforcement, AI natural-language filter (`find all high-priority blocked tasks`), and per-task audit timeline |
 | **Assets** | Asset inventory with type, status, and home site linkage |
 | **Map** | MapLibre GL interactive map — site health markers, AoO polygon overlays, live signal layer (color-coded by type and recency, 7 signal types), vessel track polyline with intel panel, enriched signal detail panel (conflict: country/actor/fatalities; disaster: event type/alert level/severity), risk badge in site panel, task transitions directly from map popups |
 | **Globe** | CesiumJS 3D globe with live asset telemetry — asset markers move in real time via SSE |
 | **Graph** | D3 force-directed object graph showing site → task → asset dependency chains (Palantir ontology pattern) |
 | **Signal Feed** | Infinite-scroll virtual list ([@tanstack/react-virtual](https://tanstack.com/virtual)) — only visible rows rendered regardless of total count; loads next page as you scroll; filterable by all 7 signal sources and types; speed/mag column shows fatalities for conflict events and alert score for disaster alerts; Commander inject-signal dialog runs correlation engine immediately |
-| **Correlation Rules** | Visual rule builder — Simple mode (flat condition) or Compound mode (AND/OR multi-signal); AO scope selector limits rule evaluation to one Area of Operation; dry-run against historical signals before activating; firing history with confidence scores |
+| **Correlation Rules** | Visual rule builder — Simple or Compound (AND/OR multi-signal) mode; AO scope selector; dry-run against historical signals; 6 named templates (Maritime Deception, EW Precursor, Humanitarian Crisis, Seismic Threat, Air Approach, Multi-Domain Convergence) pre-fill the form on one click; MITRE ATT&CK technique tagging (12-technique curated picker, T-code badges on table) |
 | **Areas of Operation** | Geofenced GeoJSON polygon AoOs with threat levels (green/amber/red/black) overlaid on map and globe, color-coded by threat |
-| **Briefing** | Claude-powered AI operational summaries (site activity, readiness change, leadership briefing) with citation-validated grounding to live audit events |
+| **Briefing** | Claude-powered AI operational summaries grounded in three context sources — audit events, nearby intelligence signals (ExternalSignal, 200 km/72 h), and recent rule fires; site selector scopes briefing to one site; grounding badge shows signal + rule fire record counts with tooltip breakdown; citation validation strips hallucinated UUIDs |
 | **Replay** | Server-side time-travel — scrub to any past timestamp and see the full operational state as it existed at that moment |
 | **Search** | `⌘K` global cross-entity search across sites, tasks, and assets |
 | **Auth** | JWT role auth (Commander/Operator), protected routes, role-gated UI elements with lock indicators |
@@ -125,6 +126,14 @@ Resilience is not a CRUD app dressed up with a dark theme. It is an **operationa
 
 **Phase 3 GDACS without credentials** — GDACS provides a public GeoJSON endpoint requiring no API key. The feed thread runs unconditionally on every Rails boot, providing live disaster alert coverage for any developer who clones the repo. ACLED requires registration credentials and is credential-guarded; the feed silently returns 0 results when keys are absent, keeping boots clean in environments without credentials.
 
+**Unified timeline via service merger** — `Sites::TimelineService` merges five heterogeneous event sources (ExternalSignal, SignalRuleMatch, Task creates, Task audit events, Site audit events) into a single sorted array. ExternalSignal proximity uses `ExternalSignal.near_point` (bounding-box pre-filter) followed by exact Haversine via `Correlations::EvaluatorService.haversine_km` to eliminate false positives at bounding-box corners. The service returns plain hashes — no ActiveRecord objects — keeping the controller thin and the response allocation predictable.
+
+**Risk score snapshots for trend charts** — Hourly `Risk::SnapshotJob` (SolidQueue recurring) calls `Readiness::CalculationService` + `Risk::ScoringService` for every active site and writes a `SiteRiskSnapshot` row. 90-day retention via `prune_old!`. Seeds pre-populate 252 snapshots (28 × 9 sites, every 6 h over 7 days) with per-site trajectory profiles (sinusoidal + trend) so the chart is populated on a fresh `db:seed` — no waiting for hourly ticks.
+
+**AI grounding extended to signals and rule fires** — `Ai::SummaryService` now passes three context blocks to Claude: AUDIT TRAIL (citable by UUID, full before/after), INTELLIGENCE SIGNALS (nearby ExternalSignals, 200 km/72 h, type-specific payload extraction), and RULE FIRES (SignalRuleMatch, 72 h). Only AuditEvent IDs are offered as citable entities — signal and rule fire IDs are contextual only — preserving citation-safety while dramatically increasing factual grounding. `context_counts` in the ServiceResult payload drives the frontend grounding badge.
+
+**MITRE ATT&CK as a PostgreSQL text array** — `mitre_tags text[]` on `correlation_rules` uses PG's native array type with a `default: []`. No join table or JSON column needed for a bounded, ordered list of short strings. The frontend curates a closed set of 12 techniques (Enterprise + ICS ATT&CK) rather than free-form input, ensuring consistent taxonomy across rules. T-code strings are stable identifiers — technique names can change in MITRE's framework without invalidating stored data.
+
 ---
 
 ## Intelligence Fusion Pipeline
@@ -174,6 +183,15 @@ Alert lifecycle — Alerts::TransitionService
 
 Risk scoring — Risk::ScoringService (on demand, GET /api/risk_scores)
   Per site: alert_pressure + task_health + signal_density → 0–100 score + level
+
+Risk snapshots — Risk::SnapshotJob (SolidQueue, every hour at :30)
+  Writes SiteRiskSnapshot per active site; 90-day retention via prune_old!
+  GET /api/sites/:id/risk_history → chronological snapshots for Recharts chart
+
+Threat timeline — Sites::TimelineService (on demand, GET /api/sites/:id/timeline)
+  Merges: signal_detected · rule_fired · task_created · task_transitioned · site_event
+  Proximity filter: near_point bounding box → exact Haversine (200 km radius)
+  Optional: ?kinds[]=rule_fired&days=7 filtering
 ```
 
 ### Compound Rule Format
@@ -286,7 +304,7 @@ Visible on the Dashboard (badge per readiness bar), Map (site panel), and Sites 
 | Cache | SolidCache |
 | Auth | JWT (24h TTL), Rack::Attack (5 login/min, auto-ban on violations), SSE tokens (60s TTL, sse_only claim) |
 | Build | Vite 6, vite-plugin-cesium |
-| Testing | RSpec (411 examples, 0 failures), FactoryBot, Brakeman (0 warnings), bundler-audit (0 CVEs) |
+| Testing | RSpec (490 examples, 0 failures), FactoryBot, Brakeman (0 warnings), bundler-audit (0 CVEs) |
 | CI | GitHub Actions — typecheck, ESLint, RSpec, Brakeman, bundler-audit, yarn audit, Fly.io deploy |
 | Deploy | Fly.io — combined Docker image (SPA built into Rails public/), single origin, no CORS |
 
@@ -325,19 +343,23 @@ resilience/
 │   │       ├── correlations/       EvaluatorService (AO-scoped), RuleFiringService,
 │   │       │                       BackgroundEvaluator, DryRunService
 │   │       ├── alerts/             TransitionService (alert acknowledgment workflow)
-│   │       ├── risk/               ScoringService (alert pressure + task health + signal density)
-│   │       ├── ai/                 SummaryService (grounded), FilterService (NL→params)
+│   │       ├── risk/               ScoringService (alert_pressure + task_health + signal_density)
+│   │       ├── sites/              TimelineService (5-source merger, Haversine proximity)
+│   │       ├── ai/                 SummaryService (audit + signals + rule fires), FilterService
 │   │       ├── readiness/          CalculationService
 │   │       ├── replay/             ProjectionService (as_of reconstruction)
 │   │       ├── sse/                Broadcaster (singleton, thread-safe, typed events)
 │   │       └── telemetry/          SimulatorService (live asset position stream)
+│   ├── jobs/
+│   │   └── risk/                   SnapshotJob (SolidQueue, hourly) → SiteRiskSnapshot
 │   ├── db/
 │   │   ├── structure.sql           Authoritative schema — preserves CHECK constraints,
 │   │   │                           indexes, FK cascade rules not captured by schema.rb
 │   │   └── seeds.rb                9 sites · 4 theaters · 7 assets · 19 tasks ·
-│   │                               5 Areas of Operation · 8 correlation rules ·
-│   │                               6 demo vessels · demo conflict + disaster signals
-│   └── spec/                       RSpec unit + request specs (411 examples)
+│   │                               5 Areas of Operation · 8 correlation rules (MITRE-tagged) ·
+│   │                               6 demo vessels · demo conflict + disaster signals ·
+│   │                               252 SiteRiskSnapshot history rows (28 × 9 sites)
+│   └── spec/                       RSpec unit + request specs (490 examples)
 ├── frontend/
 │   ├── src/
 │   │   ├── api/                    Typed fetch wrappers — all resources, all params
@@ -346,17 +368,19 @@ resilience/
 │   │   │   │                       AlertStatus, SignalType, VesselTrack
 │   │   │   └── riskScores.ts       getRiskScores()
 │   │   ├── components/             AppShell (SSE toasts), GlobalSearch (⌘K),
-│   │   │                           ReplaySelector, AuditTimeline, ProtectedRoute
+│   │   │                           ReplaySelector, AuditTimeline, ProtectedRoute,
+│   │   │                           SiteTimeline (5-source spine), RiskScoreChart (Recharts),
+│   │   │                           BriefingPanel (site selector, grounding badge)
 │   │   ├── context/                AuthContext (JWT), ReplayContext (as_of)
 │   │   ├── hooks/                  useEventSource, useTelemetryStream, useOnlineStatus,
 │   │   │                           useSignals, useSignalsInfinite, useVessels,
-│   │   │                           useVesselTracks, useRiskScores,
-│   │   │                           useCorrelationRules, useAreasOfOperation,
-│   │   │                           useSignalRuleMatches
+│   │   │                           useVesselTracks, useRiskScores, useSiteTimeline,
+│   │   │                           useSiteRiskHistory, useCorrelationRules,
+│   │   │                           useAreasOfOperation, useSignalRuleMatches
 │   │   └── pages/
 │   │       ├── DashboardPage       KPIs, readiness bars + risk badges, charts, AlertsPanel
 │   │       ├── SitesPage           Site list with risk score column
-│   │       ├── SiteDetailPage      5-tab detail view
+│   │       ├── SiteDetailPage      RiskScoreChart above tabs; 6-tab detail view
 │   │       ├── TasksPage           NL filter, transitions, audit trail
 │   │       ├── AssetsPage
 │   │       ├── MapPage             MapLibre, signals layer, vessel track polyline,
@@ -365,9 +389,10 @@ resilience/
 │   │       ├── GraphPage           D3 force-directed ontology graph
 │   │       ├── SignalFeedPage      Virtual list (TanStack Virtual), infinite scroll,
 │   │       │                       filterable, inject-signal dialog
-│   │       ├── CorrelationRulesPage  compound rule builder, AO scope selector, dry-run
+│   │       ├── CorrelationRulesPage  compound rule builder, AO scope, dry-run,
+│   │       │                         template picker dialog, MITRE tag picker
 │   │       ├── AreasPage           AoO CRUD with map preview
-│   │       └── BriefingPage        AI summaries with citation rendering
+│   │       └── BriefingPage        AI summaries, site selector, grounding badge
 │   └── vite.config.ts
 ├── contracts/                      OpenAPI 3.1 specification
 ├── docs/                           Architecture Decision Records
@@ -393,6 +418,8 @@ resilience/
 | `GET` | `/api/sites/:id` | Site detail |
 | `PATCH` | `/api/sites/:id/toggle_status` | Activate / deactivate (Commander) |
 | `PATCH` | `/api/sites/:id/unflag` | Clear flag (Commander) |
+| `GET` | `/api/sites/:id/timeline` | Unified threat timeline — `?days=7&kinds[]=rule_fired` — merges signals, rule fires, task events, audit entries |
+| `GET` | `/api/sites/:id/risk_history` | Risk score snapshots — `?days=7` (1–30) — chronological SiteRiskSnapshot rows for trend chart |
 | `GET` | `/api/tasks` | List tasks — `?as_of=`, `?site_id=`, `?workflow_status=`, `?priority=` |
 | `POST` | `/api/tasks` | Create task |
 | `PATCH` | `/api/tasks/:id` | Update task attributes |
@@ -564,7 +591,7 @@ Demo seed data covers all 7 signal types out of the box. Add these to `.env` to 
 
 ```bash
 cd backend
-bundle exec rspec --format documentation      # 411 examples, 0 failures
+bundle exec rspec --format documentation      # 490 examples, 0 failures
 bundle exec brakeman --no-progress -q         # 0 security warnings
 bundle exec bundler-audit check               # 0 CVEs
 
@@ -582,7 +609,10 @@ Key spec coverage:
 - `Tasks::TransitionService` — full state machine, blocked_reason enforcement, resolved_at timestamp
 - `Feeds::AcledIngestionService` — ingest, theater filter, dedup, fatality magnitude, notes truncation, date parsing, credential guard
 - `Feeds::GdacsIngestionService` — ingest, GeoJSON coordinate order, magnitude, alertscore fallback, dedup, timestamp parsing, HTTP stubs
-- Request specs — auth guards (401/403 on every protected endpoint), role enforcement, pagination, mmsi filter
+- `Sites::TimelineService` — 5 event sources, proximity filter, Haversine correctness, kind filtering, dedup, sort order
+- `Risk::SnapshotJob` — iterates active sites, writes SiteRiskSnapshot, prunes old records, handles service failure gracefully
+- `Ai::SummaryService` — audit event scoping (Site + Task events), signal context (GPS/conflict/disaster payloads), rule fire context, citation allow/strip, context_counts, error paths
+- Request specs — auth guards (401/403 on every protected endpoint), role enforcement, pagination, mmsi filter, mitre_tags round-trip
 
 ---
 
@@ -627,6 +657,14 @@ Key spec coverage:
 | **v3-3** | **Phase 3 demo seeds** — 5 ACLED conflict_event + 5 GDACS disaster_alert demo signals near seeded sites; 3 new compound correlation rules (CENTCOM armed conflict, INDOPACOM major disaster, compound crisis AND rule); CorrelationRule.VALID_SIGNAL_TYPES extended to include new types |
 | **v3-4** | **Enriched signal detail panel** — MapPage hover popup + click panel extended with type-specific fields: conflict (country, actor, fatalities, sub_event_type); disaster (event type, alert level badge Green/Orange/Red, severity text, event name); TypeScript-safe IIFE pattern for unknown-typed raw_payload rendering |
 | **v3-5** | **Phase 3 signal coverage** — all 7 signal types visible on Map, Globe, Signal Feed, Correlation Rules builder; SignalFeedPage speedOrMag() shows fatalities/score; GlobePage + SignalFeedPage extended with conflict (purple) and disaster (hot-pink) color/label entries |
+| **v4-1** | **Unified threat timeline** — `Sites::TimelineService` merges 5 event sources (signal_detected, rule_fired, task_created, task_transitioned, site_event) with exact Haversine proximity filter; GET /api/sites/:id/timeline with ?days= and ?kinds[]= params; 28 RSpec examples |
+| **v4-2** | **SiteTimeline component** — vertical spine + per-kind icon/color (satellite, warning-sign, add-to-artifact, exchange, map-marker); confidence badge + workflow chip on rule fires; expandable metadata panel; kind filter button group; lookback selector 3d/7d/14d/30d; auto-refresh 30s; "Timeline" tab on SiteDetailPage |
+| **v5-1** | **Risk score snapshots** — `SiteRiskSnapshot` model (UUID PK, site FK, score, risk_level, component decimals, recorded_at); `Risk::SnapshotJob` (SolidQueue recurring, every hour at :30); 90-day retention; GET /api/sites/:id/risk_history; 10 RSpec examples |
+| **v5-2** | **RiskScoreChart** — Recharts ComposedChart: Area fill (gradient) for total score, dashed Lines for alert_pressure/task_health/signal_density, ReferenceLine thresholds at 25/50/75, custom tooltip with risk level, lookback selector, components toggle; 252 historical seed snapshots with per-site trajectory profiles |
+| **v6-1** | **AI grounding enrichment** — `Ai::SummaryService` rewritten with three context blocks (AUDIT TRAIL + INTELLIGENCE SIGNALS + RULE FIRES); signals fetched within 200 km/72 h with type-specific payload extraction; rule fires fetched within 72 h; citation safety preserved (only AuditEvent IDs citable); context_counts in ServiceResult payload; fixed scoping bug (was dropping Site-level audit events); 21 RSpec examples |
+| **v6-2** | **BriefingPanel enrichment** — site selector (all sites / specific site); GroundingBadge shows total records + signal/alert sub-badges with tooltip breakdown showing audit events, signal count, rule fire count |
+| **v7-1** | **Named rule templates** — 6 pre-built tactical patterns (Maritime Deception, EW Precursor, Humanitarian Crisis Indicator, Significant Seismic Activity, Air Approach Warning, Multi-Domain Threat Convergence); "From Template" button opens 2-column card picker dialog; selecting a template merges form state into DEFAULT_FORM and opens rule drawer pre-filled; all fields editable before saving |
+| **v9-1** | **MITRE ATT&CK tagging** — `mitre_tags text[]` column on correlation_rules; 12-technique curated constant (Enterprise + ICS ATT&CK — T1036/T1040/T1498/T1562/T1565/T1583/T1590/T1591/T0826/T0827/T0879/T0880); toggleable pill picker in rule form with selected-name summary; T-code badges in rules table with tactic tooltip; all 8 seeded rules tagged; all 6 templates tagged; 3 new request specs |
 
 ---
 
