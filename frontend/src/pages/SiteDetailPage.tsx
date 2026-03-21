@@ -28,6 +28,7 @@ import { useAssets } from '../hooks/useAssets'
 import { useReadiness } from '../hooks/useReadiness'
 import AuditTimeline from '../components/AuditTimeline'
 import SiteTimeline from '../components/SiteTimeline'
+import AlertChainDrawer from '../components/AlertChainDrawer'
 import RiskScoreChart from '../components/RiskScoreChart'
 import { SIGNAL_ICON_NAME } from '../lib/signalIcons'
 import type { TaskPriority, AlertStatus } from '../api/types'
@@ -197,7 +198,7 @@ const SITE_BULK_ACTIONS = [
   { to_status: 'closed',        label: 'Close',       intent: 'danger'  },
 ] as const
 
-function RuleFiresTab({ siteId }: { siteId: string }) {
+function RuleFiresTab({ siteId, onChain }: { siteId: string; onChain: (m: SignalRuleMatch) => void }) {
   const { data, isPending, error } = useSignalRuleMatches({ site_id: siteId, per_page: 50 })
   const transition   = useTransitionAlert()
   const bulkTransition = useBulkTransitionAlerts()
@@ -285,6 +286,7 @@ function RuleFiresTab({ siteId }: { siteId: string }) {
             <th>Actions</th>
             <th>Distance</th>
             <th>Fired</th>
+            <th style={{ width: 32 }} />
           </tr>
         </thead>
         <tbody>
@@ -334,10 +336,20 @@ function RuleFiresTab({ siteId }: { siteId: string }) {
                   </td>
                   <td className="mono">{distKm != null ? `${Number(distKm).toFixed(1)} km` : '—'}</td>
                   <td className="mono">{fmt(m.fired_at)}</td>
+                  <td>
+                    <Button
+                      icon="data-lineage"
+                      minimal
+                      small
+                      title="View intelligence chain"
+                      onClick={(e) => { e.stopPropagation(); onChain(m) }}
+                      style={{ minWidth: 0, minHeight: 0 }}
+                    />
+                  </td>
                 </tr>
                 {txBtns.length > 0 && !bulkActive && (
                   <tr key={`${m.id}-tx`} style={{ background: 'transparent' }}>
-                    <td colSpan={7} style={{ paddingTop: 2, paddingBottom: 6, border: 'none' }}>
+                    <td colSpan={8} style={{ paddingTop: 2, paddingBottom: 6, border: 'none' }}>
                       <div style={{ display: 'flex', gap: 4 }} onClick={(e) => e.stopPropagation()}>
                         {txBtns.map((btn) => (
                           <Button
@@ -497,6 +509,7 @@ export default function SiteDetailPage() {
   const [createTaskOpen, setCreateTaskOpen] = useState(false)
   const [editingGeofence, setEditingGeofence] = useState(false)
   const [geofenceInput, setGeofenceInput]     = useState('')
+  const [chainMatch, setChainMatch]           = useState<import('../api/types').SignalRuleMatch | null>(null)
 
   const { data: site, isPending, error } = useSite(id)
   const { data: readinessData } = useReadiness()
@@ -539,6 +552,10 @@ export default function SiteDetailPage() {
         siteId={site.id}
         isOpen={createTaskOpen}
         onClose={() => setCreateTaskOpen(false)}
+      />
+      <AlertChainDrawer
+        match={chainMatch}
+        onClose={() => setChainMatch(null)}
       />
 
       {/* ── header ── */}
@@ -685,7 +702,7 @@ export default function SiteDetailPage() {
           </span>
         } panel={<TasksTab siteId={site.id} />} />
         <Tab id="signals" title="Signals" panel={<SignalsTab siteId={site.id} />} />
-        <Tab id="rule_fires" title="Rule Fires" panel={<RuleFiresTab siteId={site.id} />} />
+        <Tab id="rule_fires" title="Rule Fires" panel={<RuleFiresTab siteId={site.id} onChain={setChainMatch} />} />
         <Tab id="assets" title="Assets" panel={<AssetsTab siteId={site.id} />} />
         <Tab id="timeline" title={
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>

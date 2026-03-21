@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Button, Callout, Checkbox, Classes, Icon, Tag, Tooltip } from '@blueprintjs/core'
+import AlertChainDrawer from '../components/AlertChainDrawer'
 import { useNavigate } from 'react-router-dom'
 import {
   BarChart,
@@ -128,7 +129,8 @@ function AlertsPanel({ matches }: { matches: SignalRuleMatch[] }) {
   const navigate    = useNavigate()
   const transition  = useTransitionAlert()
   const bulkMutate  = useBulkTransitionAlerts()
-  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [selected, setSelected]   = useState<Set<string>>(new Set())
+  const [chainMatch, setChainMatch] = useState<SignalRuleMatch | null>(null)
 
   if (matches.length === 0) {
     return <p className="bp6-text-muted" style={{ fontSize: 13, margin: 0 }}>No rule fires recorded yet.</p>
@@ -261,7 +263,17 @@ function AlertsPanel({ matches }: { matches: SignalRuleMatch[] }) {
                       <span className="bp6-text-muted" style={{ fontSize: 11 }}>{Number(distKm).toFixed(0)} km</span>
                     )}
                   </div>
-                  <span className="alert-time bp6-text-muted">{fmtTime(m.fired_at)}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span className="alert-time bp6-text-muted">{fmtTime(m.fired_at)}</span>
+                    <Button
+                      icon="data-lineage"
+                      minimal
+                      small
+                      title="View intelligence chain"
+                      onClick={e => { e.stopPropagation(); setChainMatch(m) }}
+                      style={{ minWidth: 0, minHeight: 0, opacity: 0.6 }}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -283,6 +295,8 @@ function AlertsPanel({ matches }: { matches: SignalRuleMatch[] }) {
           </div>
         )
       })}
+
+      <AlertChainDrawer match={chainMatch} onClose={() => setChainMatch(null)} />
     </div>
   )
 }
