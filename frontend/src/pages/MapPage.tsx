@@ -516,6 +516,72 @@ export default function MapPage() {
   }, [mapLoaded, areaOfOperations])
 
   // -------------------------------------------------------------------------
+  // Geofence rings — dashed circle for each site's geofence_radius_km
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapLoaded) return
+
+    // Generate approximate GeoJSON circle polygon for a site geofence.
+    // Uses flat-earth approximation (accurate to ~1% for radii ≤ 500 km).
+    function geofencePolygon(lat: number, lng: number, radiusKm: number, steps = 64): GeoJSON.Feature {
+      const coords: [number, number][] = []
+      const latRad = (lat * Math.PI) / 180
+      for (let i = 0; i <= steps; i++) {
+        const angle = (i / steps) * 2 * Math.PI
+        const dLat = ((radiusKm / 6371) * Math.cos(angle) * 180) / Math.PI
+        const dLng = ((radiusKm / 6371) * Math.sin(angle) * 180) / Math.PI / Math.cos(latRad)
+        coords.push([lng + dLng, lat + dLat])
+      }
+      return {
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'Polygon', coordinates: [coords] },
+      }
+    }
+
+    const geojsonData: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: sites
+        .filter(s => s.geofence_radius_km > 0)
+        .map(s => geofencePolygon(Number(s.latitude), Number(s.longitude), s.geofence_radius_km)),
+    }
+
+    const existing = map.getSource('geofence-rings') as maplibregl.GeoJSONSource | undefined
+    if (existing) {
+      existing.setData(geojsonData)
+      return
+    }
+
+    map.addSource('geofence-rings', { type: 'geojson', data: geojsonData })
+
+    // Faint fill inside the ring
+    map.addLayer(
+      {
+        id:     'geofence-fill',
+        type:   'fill',
+        source: 'geofence-rings',
+        paint:  { 'fill-color': '#5c7cfa', 'fill-opacity': 0.04 },
+      },
+      // Insert behind site markers so the ring doesn't obscure them
+      map.getLayer('ao-fill') ? 'ao-fill' : undefined,
+    )
+
+    // Dashed ring outline
+    map.addLayer({
+      id:     'geofence-stroke',
+      type:   'line',
+      source: 'geofence-rings',
+      paint:  {
+        'line-color':     '#5c7cfa',
+        'line-width':     1,
+        'line-dasharray': [3, 3],
+        'line-opacity':   0.6,
+      },
+    })
+  }, [mapLoaded, sites])
+
+  // -------------------------------------------------------------------------
   // Asset markers — created once from DB positions, then moved by telemetry
   // -------------------------------------------------------------------------
   useEffect(() => {

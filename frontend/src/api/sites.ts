@@ -31,3 +31,7 @@ export function getSiteTimeline(id: string, params?: SiteTimelineParams): Promis
 export function getSiteRiskHistory(id: string, params?: SiteRiskHistoryParams): Promise<SiteRiskHistoryResponse> {
   return api.get(`/api/sites/${id}/risk_history`, params as QueryParams)
 }
+
+export function updateSiteGeofence(id: string, geofence_radius_km: number): Promise<Site> {
+  return api.patch(`/api/sites/${id}/update_geofence`, { geofence_radius_km })
+}

@@ -226,7 +226,13 @@ function AlertsPanel({ matches }: { matches: SignalRuleMatch[] }) {
                       : <Icon icon="dot" size={14} />}
                   </span>
                   <div className="alert-body">
-                    <span className="alert-rule-name">{m.correlation_rule?.name ?? 'Unknown rule'}</span>
+                    <span className="alert-rule-name">
+                      {m.correlation_rule?.name ?? (
+                        m.metadata?.geofence_breach
+                          ? <Tag minimal intent="primary" icon="locate" style={{ fontSize: 10 }}>Geofence breach</Tag>
+                          : 'Unknown rule'
+                      )}
+                    </span>
                     {m.site && (
                       <span className="alert-site bp6-text-muted">@ {m.site.name}</span>
                     )}

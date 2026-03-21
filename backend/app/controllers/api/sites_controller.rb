@@ -1,6 +1,6 @@
 module Api
   class SitesController < BaseController
-    before_action :require_commander!, only: %i[toggle_status unflag]
+    before_action :require_commander!, only: %i[toggle_status unflag update_geofence]
 
     TIMELINE_VALID_KINDS = %w[
       signal_detected rule_fired task_created task_transitioned site_event
@@ -75,6 +75,21 @@ module Api
       render json: serialize_site(site)
     end
 
+    def update_geofence
+      site   = Site.find(params[:id])
+      radius = params[:geofence_radius_km].to_f
+
+      if radius <= 0
+        render json: { errors: ["geofence_radius_km must be greater than 0"] }, status: :unprocessable_entity
+        return
+      end
+
+      site.update!(geofence_radius_km: radius)
+      render json: serialize_site(site)
+    rescue ActiveRecord::RecordInvalid => e
+      render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
+    end
+
     def unflag
       site = Site.find(params[:id])
 
@@ -118,7 +133,7 @@ module Api
     end
 
     def serialize_site(site)
-      site.as_json(only: %i[id name latitude longitude status area_of_operation_id flagged_at flag_reason created_at])
+      site.as_json(only: %i[id name latitude longitude status area_of_operation_id flagged_at flag_reason geofence_radius_km created_at])
     end
   end
 end

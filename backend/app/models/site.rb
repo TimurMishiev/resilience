@@ -10,6 +10,7 @@ class Site < ApplicationRecord
   validates :latitude, presence: true, numericality: { greater_than_or_equal_to: -90, less_than_or_equal_to: 90 }
   validates :longitude, presence: true, numericality: { greater_than_or_equal_to: -180, less_than_or_equal_to: 180 }
   validates :status, inclusion: { in: STATUSES }
+  validates :geofence_radius_km, numericality: { greater_than: 0, less_than_or_equal_to: 2000 }
 
   scope :active,  -> { where(status: "active") }
   scope :flagged, -> { where.not(flagged_at: nil) }

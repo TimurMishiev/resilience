@@ -23,6 +23,7 @@ Rails.application.routes.draw do
       member do
         patch :unflag
         patch :toggle_status
+        patch :update_geofence
         get   :timeline
         get   :risk_history
       end

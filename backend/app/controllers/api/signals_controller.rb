@@ -51,8 +51,9 @@ module Api
         return
       end
 
-      # Trigger rule evaluation immediately — don't wait for the 10s background poll
+      # Trigger rule evaluation + geofence check immediately
       Correlations::EvaluatorService.call(signal: result.signal)
+      Sites::GeofenceBreachService.call(signal: result.signal)
 
       render json: serialize_signal(result.signal), status: :created
     end

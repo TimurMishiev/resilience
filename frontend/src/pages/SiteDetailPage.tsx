@@ -20,7 +20,7 @@ import {
   Tag,
   TextArea,
 } from '@blueprintjs/core'
-import { useSite, useUnflagSite, useToggleSiteStatus } from '../hooks/useSite'
+import { useSite, useUnflagSite, useToggleSiteStatus, useUpdateSiteGeofence } from '../hooks/useSite'
 import { useTasks, useCreateTask } from '../hooks/useTasks'
 import { useSignals } from '../hooks/useSignals'
 import { useSignalRuleMatches, useTransitionAlert, useBulkTransitionAlerts } from '../hooks/useSignalRuleMatches'
@@ -304,7 +304,13 @@ function RuleFiresTab({ siteId }: { siteId: string }) {
                       style={{ margin: 0 }}
                     />
                   </td>
-                  <td>{m.correlation_rule?.name ?? <span className="bp6-text-muted">—</span>}</td>
+                  <td>
+                    {m.correlation_rule
+                      ? m.correlation_rule.name
+                      : m.metadata?.geofence_breach
+                        ? <Tag minimal intent="primary" icon="locate" style={{ fontSize: 10 }}>Geofence breach</Tag>
+                        : <span className="bp6-text-muted">—</span>}
+                  </td>
                   <td className="mono">
                     {m.signal
                       ? <><Icon icon={SIGNAL_ICON_NAME[m.signal.signal_type] ?? 'dot'} size={12} style={{ marginRight: 5 }} />{m.signal.signal_type.replace(/_/g, ' ')}</>
@@ -489,12 +495,15 @@ export default function SiteDetailPage() {
   const navigate = useNavigate()
   const [tab, setTab]             = useState<string>('tasks')
   const [createTaskOpen, setCreateTaskOpen] = useState(false)
+  const [editingGeofence, setEditingGeofence] = useState(false)
+  const [geofenceInput, setGeofenceInput]     = useState('')
 
   const { data: site, isPending, error } = useSite(id)
   const { data: readinessData } = useReadiness()
   const readiness = readinessData?.find((r) => r.site_id === id) ?? null
   const { mutate: unflag, isPending: unflagging }           = useUnflagSite()
   const { mutate: toggleStatus, isPending: togglingStatus } = useToggleSiteStatus()
+  const { mutate: updateGeofence, isPending: savingGeofence } = useUpdateSiteGeofence()
 
   if (isPending) {
     return (
@@ -591,6 +600,52 @@ export default function SiteDetailPage() {
         <span className="bp6-text-muted mono">
           {Number(site.latitude).toFixed(4)}, {Number(site.longitude).toFixed(4)}
         </span>
+
+        {/* Geofence radius */}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 12 }}>
+          <Icon icon="locate" size={12} style={{ opacity: 0.6 }} />
+          {editingGeofence ? (
+            <>
+              <InputGroup
+                small
+                value={geofenceInput}
+                onChange={e => setGeofenceInput(e.target.value)}
+                placeholder="km"
+                style={{ width: 72 }}
+                rightElement={<span style={{ padding: '4px 6px', fontSize: 11, opacity: 0.6 }}>km</span>}
+              />
+              <Button
+                small
+                intent="primary"
+                loading={savingGeofence}
+                onClick={() => {
+                  const km = parseFloat(geofenceInput)
+                  if (!isNaN(km) && km > 0) {
+                    updateGeofence({ id: site.id, geofence_radius_km: km }, {
+                      onSuccess: () => setEditingGeofence(false),
+                    })
+                  }
+                }}
+              >Save</Button>
+              <Button small minimal onClick={() => setEditingGeofence(false)}>Cancel</Button>
+            </>
+          ) : (
+            <>
+              <span className="bp6-text-muted" style={{ fontSize: 12 }}>
+                Geofence {site.geofence_radius_km} km
+              </span>
+              <Button
+                icon="edit"
+                minimal
+                small
+                style={{ minWidth: 0, minHeight: 0 }}
+                onClick={() => { setGeofenceInput(String(site.geofence_radius_km)); setEditingGeofence(true) }}
+                title="Edit geofence radius"
+              />
+            </>
+          )}
+        </span>
+
         {site.flagged_at && site.flag_reason && (
           <Callout intent="danger" compact style={{ marginTop: 10 }}>
             <strong>Flag reason:</strong> {site.flag_reason}

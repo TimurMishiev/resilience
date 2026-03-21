@@ -12,7 +12,7 @@ class SignalRuleMatch < ApplicationRecord
   }.freeze
 
   belongs_to :signal,           class_name: "ExternalSignal", foreign_key: :signal_id
-  belongs_to :correlation_rule
+  belongs_to :correlation_rule, optional: true
   belongs_to :site,             optional: true
   belongs_to :task,             optional: true
   belongs_to :acknowledged_by,  class_name: "User", optional: true
@@ -50,9 +50,12 @@ class SignalRuleMatch < ApplicationRecord
       errors.add(:metadata, "signal_source must be a non-empty string")
     end
 
-    actions = metadata["actions_taken"]
-    unless actions.is_a?(Array) && actions.all? { |a| VALID_ACTIONS.include?(a) }
-      errors.add(:metadata, "actions_taken must be an array of known action types")
+    # Geofence-breach records have no rule — skip actions_taken check for those.
+    unless metadata["geofence_breach"] == true
+      actions = metadata["actions_taken"]
+      unless actions.is_a?(Array) && actions.all? { |a| VALID_ACTIONS.include?(a) }
+        errors.add(:metadata, "actions_taken must be an array of known action types")
+      end
     end
   end
 end

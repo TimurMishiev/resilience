@@ -26,6 +26,7 @@ module Correlations
 
             recent.find_each do |signal|
               Correlations::EvaluatorService.call(signal: signal)
+              Sites::GeofenceBreachService.call(signal: signal)
             end
 
             consecutive_errors = 0

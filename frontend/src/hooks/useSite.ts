@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getSite, unflagSite, toggleSiteStatus, getSiteTimeline, getSiteRiskHistory } from '../api/sites'
+import { getSite, unflagSite, toggleSiteStatus, getSiteTimeline, getSiteRiskHistory, updateSiteGeofence } from '../api/sites'
 import type { SiteTimelineParams, SiteRiskHistoryParams } from '../api/types'
 
 export function useSite(id: string | undefined) {
@@ -43,6 +43,18 @@ export function useToggleSiteStatus() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => toggleSiteStatus(id),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ['sites'] })
+      queryClient.setQueryData(['sites', updated.id], updated)
+    },
+  })
+}
+
+export function useUpdateSiteGeofence() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, geofence_radius_km }: { id: string; geofence_radius_km: number }) =>
+      updateSiteGeofence(id, geofence_radius_km),
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ['sites'] })
       queryClient.setQueryData(['sites', updated.id], updated)

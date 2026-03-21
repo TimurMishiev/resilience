@@ -153,7 +153,7 @@ CREATE TABLE public.schema_migrations (
 CREATE TABLE public.signal_rule_matches (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     signal_id uuid NOT NULL,
-    correlation_rule_id uuid NOT NULL,
+    correlation_rule_id uuid,
     site_id uuid,
     task_id uuid,
     fired_at timestamp(6) without time zone DEFAULT now() NOT NULL,
@@ -198,7 +198,8 @@ CREATE TABLE public.sites (
     updated_at timestamp(6) without time zone NOT NULL,
     area_of_operation_id uuid,
     flagged_at timestamp(6) without time zone,
-    flag_reason text
+    flag_reason text,
+    geofence_radius_km double precision DEFAULT 50.0 NOT NULL
 );
 
 
@@ -777,6 +778,8 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260320000006'),
+('20260320000005'),
 ('20260320000004'),
 ('20260320000003'),
 ('20260320000002'),

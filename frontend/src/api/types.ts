@@ -54,6 +54,7 @@ export interface Site {
   area_of_operation_id: string | null
   flagged_at: string | null
   flag_reason: string | null
+  geofence_radius_km: number
   created_at: string
   updated_at: string
 }
