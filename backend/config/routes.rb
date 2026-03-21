@@ -67,6 +67,9 @@ Rails.application.routes.draw do
       end
     end
     resources :signal_rule_matches, only: %i[index show] do
+      collection do
+        post :bulk_transition
+      end
       member do
         post :transition
         get  :allowed_transitions

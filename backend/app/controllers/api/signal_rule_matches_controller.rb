@@ -23,6 +23,44 @@ module Api
       render json: serialize_match(match)
     end
 
+    # POST /api/signal_rule_matches/bulk_transition
+    # Body: { ids: [...], to_status: "acknowledged", notes: "..." }
+    # Runs each alert through the same TransitionService used for single transitions.
+    # Per-alert failures (invalid transition from current state) go to `failed`
+    # without aborting the rest of the batch.  Hard cap: MAX_BULK IDs per call.
+    MAX_BULK = 100
+
+    def bulk_transition
+      ids       = Array(params[:ids]).first(MAX_BULK)
+      to_status = params[:to_status].to_s.strip
+      notes     = params[:notes].presence
+
+      if ids.blank? || to_status.blank?
+        return render json: { errors: ["ids and to_status are required"] },
+                      status: :unprocessable_entity
+      end
+
+      succeeded = []
+      failed    = []
+
+      SignalRuleMatch.where(id: ids).each do |match|
+        result = Alerts::TransitionService.call(
+          match:     match,
+          to_status: to_status,
+          actor:     current_user,
+          notes:     notes
+        )
+
+        if result.success
+          succeeded << { id: match.id, workflow_status: match.reload.workflow_status }
+        else
+          failed << { id: match.id, errors: result.errors }
+        end
+      end
+
+      render json: { succeeded: succeeded, failed: failed }
+    end
+
     # POST /api/signal_rule_matches/:id/transition
     # Body: { transition: { to_status: "acknowledged", notes: "..." } }
     # Available to operators and commanders — alert triage is not command-restricted.

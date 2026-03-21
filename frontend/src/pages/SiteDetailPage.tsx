@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   Button,
   Callout,
+  Checkbox,
   Classes,
   Dialog,
   DialogBody,
@@ -22,7 +23,7 @@ import {
 import { useSite, useUnflagSite, useToggleSiteStatus } from '../hooks/useSite'
 import { useTasks, useCreateTask } from '../hooks/useTasks'
 import { useSignals } from '../hooks/useSignals'
-import { useSignalRuleMatches, useTransitionAlert } from '../hooks/useSignalRuleMatches'
+import { useSignalRuleMatches, useTransitionAlert, useBulkTransitionAlerts } from '../hooks/useSignalRuleMatches'
 import { useAssets } from '../hooks/useAssets'
 import { useReadiness } from '../hooks/useReadiness'
 import AuditTimeline from '../components/AuditTimeline'
@@ -190,9 +191,17 @@ const ALERT_STATUS_LABEL_SITE: Record<AlertStatus, string> = {
   closed:         'Done',
 }
 
+const SITE_BULK_ACTIONS = [
+  { to_status: 'acknowledged', label: 'Acknowledge', intent: 'success'  },
+  { to_status: 'investigating', label: 'Investigate', intent: 'warning' },
+  { to_status: 'closed',        label: 'Close',       intent: 'danger'  },
+] as const
+
 function RuleFiresTab({ siteId }: { siteId: string }) {
   const { data, isPending, error } = useSignalRuleMatches({ site_id: siteId, per_page: 50 })
-  const transition = useTransitionAlert()
+  const transition   = useTransitionAlert()
+  const bulkTransition = useBulkTransitionAlerts()
+  const [selected, setSelected] = useState<Set<string>>(new Set())
 
   if (isPending) return <Spinner size={20} style={{ marginTop: 24 }} />
   if (error) return <Callout intent="danger" compact>{error.message}</Callout>
@@ -210,78 +219,143 @@ function RuleFiresTab({ siteId }: { siteId: string }) {
     )
   }
 
+  const allIds       = matches.map((m: SignalRuleMatch) => m.id)
+  const allChecked   = allIds.length > 0 && allIds.every((id: string) => selected.has(id))
+  const someChecked  = allIds.some((id: string) => selected.has(id)) && !allChecked
+  const bulkActive   = selected.size > 0
+
+  function toggleAll() {
+    if (allChecked) {
+      setSelected(new Set())
+    } else {
+      setSelected(new Set(allIds))
+    }
+  }
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) { next.delete(id) } else { next.add(id) }
+      return next
+    })
+  }
+
+  function handleBulkAction(to_status: string) {
+    bulkTransition.mutate(
+      { ids: Array.from(selected), to_status },
+      { onSuccess: () => setSelected(new Set()) },
+    )
+  }
+
   return (
-    <HTMLTable className="data-table" striped>
-      <thead>
-        <tr>
-          <th>Rule</th>
-          <th>Signal</th>
-          <th>Status</th>
-          <th>Actions</th>
-          <th>Distance</th>
-          <th>Fired</th>
-        </tr>
-      </thead>
-      <tbody>
-        {matches.map((m: SignalRuleMatch) => {
-          const actions  = (m.metadata?.actions_taken as string[] | undefined) ?? []
-          const distKm   = m.metadata?.distance_km as number | undefined
-          const status   = (m.workflow_status ?? 'unacknowledged') as AlertStatus
-          const txBtns   = RULE_FIRE_TRANSITIONS[status] ?? []
-          return (
-            <>
-              <tr key={m.id}>
-                <td>{m.correlation_rule?.name ?? <span className="bp6-text-muted">—</span>}</td>
-                <td className="mono">
-                  {m.signal
-                    ? <><Icon icon={SIGNAL_ICON_NAME[m.signal.signal_type] ?? 'dot'} size={12} style={{ marginRight: 5 }} />{m.signal.signal_type.replace(/_/g, ' ')}</>
-                    : <span className="bp6-text-muted">—</span>}
-                </td>
-                <td>
-                  <Tag minimal intent={ALERT_STATUS_INTENT_SITE[status] ?? 'none'} style={{ fontSize: 10, fontWeight: 600 }}>
-                    {ALERT_STATUS_LABEL_SITE[status] ?? status}
-                  </Tag>
-                </td>
-                <td>
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                    {actions.length > 0
-                      ? actions.map((a) => (
-                          <Tag key={a} minimal intent="warning" style={{ fontSize: 11 }}>
-                            {a.replace(/_/g, ' ')}
-                          </Tag>
-                        ))
+    <div>
+      {bulkActive && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', marginBottom: 4, background: 'var(--bp6-dark-gray3, #383e47)', borderRadius: 4 }}>
+          <span style={{ fontSize: 12, opacity: 0.7, marginRight: 4 }}>{selected.size} selected</span>
+          {SITE_BULK_ACTIONS.map((a) => (
+            <Button
+              key={a.to_status}
+              small
+              intent={a.intent}
+              loading={bulkTransition.isPending}
+              onClick={() => handleBulkAction(a.to_status)}
+            >
+              {a.label}
+            </Button>
+          ))}
+          <Button small minimal onClick={() => setSelected(new Set())} style={{ marginLeft: 'auto' }}>
+            Clear
+          </Button>
+        </div>
+      )}
+      <HTMLTable className="data-table" striped>
+        <thead>
+          <tr>
+            <th style={{ width: 32 }}>
+              <Checkbox
+                checked={allChecked}
+                indeterminate={someChecked}
+                onChange={toggleAll}
+                style={{ margin: 0 }}
+              />
+            </th>
+            <th>Rule</th>
+            <th>Signal</th>
+            <th>Status</th>
+            <th>Actions</th>
+            <th>Distance</th>
+            <th>Fired</th>
+          </tr>
+        </thead>
+        <tbody>
+          {matches.map((m: SignalRuleMatch) => {
+            const actions  = (m.metadata?.actions_taken as string[] | undefined) ?? []
+            const distKm   = m.metadata?.distance_km as number | undefined
+            const status   = (m.workflow_status ?? 'unacknowledged') as AlertStatus
+            const txBtns   = RULE_FIRE_TRANSITIONS[status] ?? []
+            const isChecked = selected.has(m.id)
+            return (
+              <>
+                <tr key={m.id}>
+                  <td>
+                    <Checkbox
+                      checked={isChecked}
+                      onChange={() => toggleOne(m.id)}
+                      style={{ margin: 0 }}
+                    />
+                  </td>
+                  <td>{m.correlation_rule?.name ?? <span className="bp6-text-muted">—</span>}</td>
+                  <td className="mono">
+                    {m.signal
+                      ? <><Icon icon={SIGNAL_ICON_NAME[m.signal.signal_type] ?? 'dot'} size={12} style={{ marginRight: 5 }} />{m.signal.signal_type.replace(/_/g, ' ')}</>
                       : <span className="bp6-text-muted">—</span>}
-                  </div>
-                </td>
-                <td className="mono">{distKm != null ? `${Number(distKm).toFixed(1)} km` : '—'}</td>
-                <td className="mono">{fmt(m.fired_at)}</td>
-              </tr>
-              {txBtns.length > 0 && (
-                <tr key={`${m.id}-tx`} style={{ background: 'transparent' }}>
-                  <td colSpan={6} style={{ paddingTop: 2, paddingBottom: 6, border: 'none' }}>
-                    <div style={{ display: 'flex', gap: 4 }} onClick={(e) => e.stopPropagation()}>
-                      {txBtns.map((btn) => (
-                        <Button
-                          key={btn.to}
-                          small
-                          minimal
-                          intent={btn.intent}
-                          disabled={transition.isPending}
-                          onClick={() => transition.mutate({ id: m.id, body: { to_status: btn.to } })}
-                          style={{ fontSize: 11 }}
-                        >
-                          {btn.label}
-                        </Button>
-                      ))}
+                  </td>
+                  <td>
+                    <Tag minimal intent={ALERT_STATUS_INTENT_SITE[status] ?? 'none'} style={{ fontSize: 10, fontWeight: 600 }}>
+                      {ALERT_STATUS_LABEL_SITE[status] ?? status}
+                    </Tag>
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {actions.length > 0
+                        ? actions.map((a) => (
+                            <Tag key={a} minimal intent="warning" style={{ fontSize: 11 }}>
+                              {a.replace(/_/g, ' ')}
+                            </Tag>
+                          ))
+                        : <span className="bp6-text-muted">—</span>}
                     </div>
                   </td>
+                  <td className="mono">{distKm != null ? `${Number(distKm).toFixed(1)} km` : '—'}</td>
+                  <td className="mono">{fmt(m.fired_at)}</td>
                 </tr>
-              )}
-            </>
-          )
-        })}
-      </tbody>
-    </HTMLTable>
+                {txBtns.length > 0 && !bulkActive && (
+                  <tr key={`${m.id}-tx`} style={{ background: 'transparent' }}>
+                    <td colSpan={7} style={{ paddingTop: 2, paddingBottom: 6, border: 'none' }}>
+                      <div style={{ display: 'flex', gap: 4 }} onClick={(e) => e.stopPropagation()}>
+                        {txBtns.map((btn) => (
+                          <Button
+                            key={btn.to}
+                            small
+                            minimal
+                            intent={btn.intent}
+                            disabled={transition.isPending}
+                            onClick={() => transition.mutate({ id: m.id, body: { to_status: btn.to } })}
+                            style={{ fontSize: 11 }}
+                          >
+                            {btn.label}
+                          </Button>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </>
+            )
+          })}
+        </tbody>
+      </HTMLTable>
+    </div>
   )
 }
 

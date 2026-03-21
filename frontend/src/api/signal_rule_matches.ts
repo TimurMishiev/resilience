@@ -23,3 +23,18 @@ export function transitionAlert(id: string, body: TransitionAlertBody): Promise<
 export function getAllowedTransitions(id: string): Promise<AllowedTransitionsResponse> {
   return api.get(`/api/signal_rule_matches/${id}/allowed_transitions`)
 }
+
+export interface BulkTransitionBody {
+  ids:       string[]
+  to_status: string
+  notes?:    string
+}
+
+export interface BulkTransitionResult {
+  succeeded: { id: string; workflow_status: string }[]
+  failed:    { id: string; errors: string[] }[]
+}
+
+export function bulkTransitionAlerts(body: BulkTransitionBody): Promise<BulkTransitionResult> {
+  return api.post('/api/signal_rule_matches/bulk_transition', body)
+}
