@@ -2,12 +2,30 @@ module Recommendations
   # Validates recommendation attribute hashes before they are persisted.
   # For LLM-produced recommendations this includes entity ID verification
   # against the live database — hallucinated IDs are rejected.
+  #
+  # Trust boundary: three independent layers are checked for every rec:
+  #   1. primary entity   — affected_entity_type / affected_entity_id must exist
+  #   2. evidence items   — each item's ID must exist in the matching AR model
+  #   3. action_payload   — per-recommendation-type schema + ID existence checks
+  #                         so that ExecutorService never acts on a hallucinated
+  #                         or mismatched target entity inside the payload
   class Validator < ApplicationService
     ENTITY_CLASSES = {
       "Site"             => Site,
       "Incident"         => Incident,
       "SignalRuleMatch"  => SignalRuleMatch,
       "Task"             => Task,
+    }.freeze
+
+    # Describes which payload keys are required for each type and which AR
+    # class the referenced ID must exist in.
+    PAYLOAD_REQUIREMENTS = {
+      "close_stale_alert"  => [{ key: :alert_id,    klass: SignalRuleMatch }],
+      "acknowledge_alert"  => [{ key: :alert_id,    klass: SignalRuleMatch }],
+      "escalate_incident"  => [{ key: :incident_id, klass: Incident        }],
+      "create_task"        => [{ key: :site_id,     klass: Site            }],
+      "flag_site"          => [{ key: :site_id,     klass: Site            }],
+      "bulk_triage_alerts" => [{ key: :site_id,     klass: Site            }],
     }.freeze
 
     def initialize(recommendations:)
@@ -70,7 +88,44 @@ module Recommendations
         end
       end
 
+      # Action payload validation — ensures the IDs ExecutorService will act on
+      # actually exist before the recommendation is persisted.  Without this an
+      # LLM can pass primary-entity + evidence checks while carrying a hallucinated
+      # alert_id / incident_id / site_id in the executable payload.
+      errors.concat(validate_action_payload(rec[:recommendation_type], rec[:action_payload]))
+
       errors
+    end
+
+    # Validates the action_payload for a given recommendation type.
+    # Returns an array of error strings (empty means valid).
+    def validate_action_payload(type, payload)
+      requirements = PAYLOAD_REQUIREMENTS[type]
+      return [] if requirements.nil?  # unknown type already flagged above
+
+      payload_h = (payload || {}).with_indifferent_access
+
+      id_errors = requirements.flat_map do |req|
+        id = payload_h[req[:key]]
+        if id.blank?
+          ["action_payload missing required key '#{req[:key]}'"]
+        elsif !req[:klass].exists?(id)
+          ["action_payload #{req[:key]} #{id} does not exist"]
+        else
+          []
+        end
+      end
+
+      # Extra: escalate_incident must carry a valid to_status string so
+      # ExecutorService never issues a transition with an arbitrary model value.
+      if type == "escalate_incident" && id_errors.empty?
+        to_status = payload_h[:to_status].to_s.strip
+        if to_status.present? && !Incident::VALID_STATUSES.include?(to_status)
+          id_errors << "action_payload to_status '#{to_status}' is not a valid incident status"
+        end
+      end
+
+      id_errors
     end
 
     # Maps evidence item type strings (as the LLM sees them) to AR class names

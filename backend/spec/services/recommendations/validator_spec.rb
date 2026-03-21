@@ -80,6 +80,87 @@ RSpec.describe Recommendations::Validator, type: :service do
     end
   end
 
+  describe "action_payload validation" do
+    it "accepts a payload whose IDs all exist" do
+      result = described_class.call(recommendations: [valid_attrs])
+      expect(result.valid.size).to eq 1
+      expect(result.invalid).to be_empty
+    end
+
+    it "rejects acknowledge_alert when alert_id is missing" do
+      attrs = valid_attrs(action_payload: {})
+      result = described_class.call(recommendations: [attrs])
+      expect(result.invalid.first[:errors]).to include(
+        "action_payload missing required key 'alert_id'"
+      )
+    end
+
+    it "rejects acknowledge_alert when alert_id does not exist in DB" do
+      attrs = valid_attrs(action_payload: { "alert_id" => SecureRandom.uuid })
+      result = described_class.call(recommendations: [attrs])
+      expect(result.invalid.first[:errors]).to include(
+        a_string_matching("action_payload alert_id .* does not exist")
+      )
+    end
+
+    it "rejects escalate_incident when incident_id does not exist" do
+      incident = create(:incident, site: site)
+      attrs = valid_attrs(
+        recommendation_type:  "escalate_incident",
+        affected_entity_type: "Incident",
+        affected_entity_id:   incident.id,
+        action_payload:       { "incident_id" => SecureRandom.uuid, "to_status" => "acknowledged" },
+        evidence:             []
+      )
+      result = described_class.call(recommendations: [attrs])
+      expect(result.invalid.first[:errors]).to include(
+        a_string_matching("action_payload incident_id .* does not exist")
+      )
+    end
+
+    it "rejects escalate_incident when to_status is not a valid incident status" do
+      incident = create(:incident, site: site)
+      attrs = valid_attrs(
+        recommendation_type:  "escalate_incident",
+        affected_entity_type: "Incident",
+        affected_entity_id:   incident.id,
+        action_payload:       { "incident_id" => incident.id, "to_status" => "hacked_status" },
+        evidence:             []
+      )
+      result = described_class.call(recommendations: [attrs])
+      expect(result.invalid.first[:errors]).to include(
+        a_string_matching("to_status.*is not a valid incident status")
+      )
+    end
+
+    it "allows escalate_incident with no to_status (defaults to service default)" do
+      incident = create(:incident, site: site)
+      attrs = valid_attrs(
+        recommendation_type:  "escalate_incident",
+        affected_entity_type: "Incident",
+        affected_entity_id:   incident.id,
+        action_payload:       { "incident_id" => incident.id },
+        evidence:             []
+      )
+      result = described_class.call(recommendations: [attrs])
+      expect(result.valid.size).to eq 1
+    end
+
+    it "rejects flag_site when site_id does not exist" do
+      attrs = valid_attrs(
+        recommendation_type:  "flag_site",
+        affected_entity_type: "Site",
+        affected_entity_id:   site.id,
+        action_payload:       { "site_id" => SecureRandom.uuid },
+        evidence:             []
+      )
+      result = described_class.call(recommendations: [attrs])
+      expect(result.invalid.first[:errors]).to include(
+        a_string_matching("action_payload site_id .* does not exist")
+      )
+    end
+  end
+
   describe "deduplication uniqueness (DB constraint)" do
     it "raises RecordNotUnique on concurrent duplicate creation" do
       create(:recommendation,
