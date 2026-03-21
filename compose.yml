@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: resilience
+      POSTGRES_PASSWORD: resilience
+      POSTGRES_DB: resilience_production
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U resilience"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    ports:
+      - "3000:80"
+    environment:
+      DATABASE_URL: postgres://resilience:resilience@db/resilience_production
+      # Non-secret dev key — fine for local demo, not for production deployment
+      SECRET_KEY_BASE: "resilience-dev-key-000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      RAILS_LOG_TO_STDOUT: "true"
+      # Optional — enables AI Briefing page. Get a free key at https://console.anthropic.com/
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

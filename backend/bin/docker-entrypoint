@@ -1,8 +1,16 @@
 #!/bin/bash -e
 
-# If running the rails server then create or migrate existing database
+# If running the rails server then create/migrate the database and seed demo data
 if [ "${@: -2:1}" == "./bin/rails" ] && [ "${@: -1:1}" == "server" ]; then
   ./bin/rails db:prepare
+
+  # Seed demo data on first run only (skipped if users already exist)
+  if ./bin/rails runner "exit(User.any? ? 0 : 1)" 2>/dev/null; then
+    echo "Database already seeded — skipping."
+  else
+    echo "Seeding demo data…"
+    ./bin/rails db:seed
+  fi
 fi
 
 exec "${@}"
