@@ -68,12 +68,27 @@ module Api
 
     # PATCH /api/incidents/:id/assign
     # Body: { assignee_id: "<uuid>" } — pass null/absent to unassign
+    #
+    # Authorization:
+    #   Commanders  — may assign any incident to any user (or clear any assignment)
+    #   Operators   — may only self-assign, or release their own assignment;
+    #                 any attempt to assign to a different user returns 403
     def assign
       incident = Incident.find(params[:id])
       assignee = if params[:assignee_id].present?
         user = User.find_by(id: params[:assignee_id])
         return render json: { errors: ["User not found"] }, status: :not_found unless user
         user
+      end
+
+      unless current_user.commander?
+        target_id    = assignee&.id
+        self_assign  = target_id == current_user.id
+        own_unassign = target_id.nil? && incident.assigned_to_id == current_user.id
+        unless self_assign || own_unassign
+          return render json: { errors: ["Operators may only self-assign or release their own assignment"] },
+                        status: :forbidden
+        end
       end
 
       result = Incidents::AssignService.call(

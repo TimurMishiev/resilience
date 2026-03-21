@@ -11,4 +11,17 @@ class IncidentNote < ApplicationRecord
 
   # Chronological order — oldest first so the log reads top-to-bottom
   default_scope { order(created_at: :asc) }
+
+  # ── Immutability enforcement ──────────────────────────────────────────────
+  # Rails raises ActiveRecord::ReadOnlyRecord on any save/update attempt
+  # against a persisted record, making the append-only invariant structural.
+  def readonly?
+    persisted?
+  end
+
+  # destroy bypasses readonly?, so we block it at the callback level too.
+  before_destroy do
+    raise ActiveRecord::ReadOnlyRecord,
+          "IncidentNote records are immutable and cannot be deleted"
+  end
 end

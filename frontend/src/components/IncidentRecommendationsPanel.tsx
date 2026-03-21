@@ -6,9 +6,18 @@
  * Uses the existing RecommendationCard component so UI is consistent
  * with the dedicated recommendations page.
  */
+/**
+ * IncidentRecommendationsPanel
+ *
+ * Shows active recommendations whose affected entity is this incident,
+ * with inline accept / reject / execute actions for commanders.
+ * Uses the existing RecommendationCard component so UI is consistent
+ * with the dedicated recommendations page.
+ */
 import { useState } from 'react'
 import { NonIdealState, Spinner, Callout } from '@blueprintjs/core'
 import { useRecommendations } from '../hooks/useRecommendations'
+import { useAuth } from '../context/AuthContext'
 import RecommendationCard from './RecommendationCard'
 import EvidenceDrawer from './EvidenceDrawer'
 import type { Recommendation } from '../api/recommendations'
@@ -19,6 +28,8 @@ interface Props {
 
 export default function IncidentRecommendationsPanel({ incidentId }: Props) {
   const [evidenceRec, setEvidenceRec] = useState<Recommendation | null>(null)
+  const { currentUser } = useAuth()
+  const isCommander = currentUser?.role === 'commander'
 
   const { data, isPending, error } = useRecommendations({
     affected_entity_type: 'Incident',
@@ -46,7 +57,8 @@ export default function IncidentRecommendationsPanel({ incidentId }: Props) {
           <RecommendationCard
             key={rec.id}
             rec={rec}
-            onEvidence={() => setEvidenceRec(rec)}
+            onViewEvidence={() => setEvidenceRec(rec)}
+            isCommander={isCommander}
           />
         ))}
       </div>

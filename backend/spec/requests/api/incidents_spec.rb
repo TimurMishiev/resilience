@@ -167,12 +167,43 @@ RSpec.describe "Api::Incidents", type: :request do
       expect(response).to have_http_status(:not_found)
     end
 
-    it "allows operators to assign" do
+    it "allows operators to self-assign" do
       patch "/api/incidents/#{incident.id}/assign",
             params:  { assignee_id: operator.id },
             headers: auth_headers(operator), as: :json
 
       expect(response).to have_http_status(:ok)
+    end
+
+    it "returns 403 when operator tries to assign to a different user" do
+      other = create(:user)
+      patch "/api/incidents/#{incident.id}/assign",
+            params:  { assignee_id: other.id },
+            headers: auth_headers(operator), as: :json
+
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "allows operator to release their own assignment" do
+      incident.update!(assigned_to_id: operator.id, assigned_at: Time.current)
+
+      patch "/api/incidents/#{incident.id}/assign",
+            params:  {},
+            headers: auth_headers(operator), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body)["assigned_to"]).to be_nil
+    end
+
+    it "returns 403 when operator tries to clear another user's assignment" do
+      other = create(:user)
+      incident.update!(assigned_to_id: other.id, assigned_at: Time.current)
+
+      patch "/api/incidents/#{incident.id}/assign",
+            params:  {},
+            headers: auth_headers(operator), as: :json
+
+      expect(response).to have_http_status(:forbidden)
     end
 
     it "filters index by assigned_to_id" do

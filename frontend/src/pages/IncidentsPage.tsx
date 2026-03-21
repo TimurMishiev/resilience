@@ -6,7 +6,7 @@ import {
   NonIdealState, Spinner, Tag,
 } from '@blueprintjs/core'
 import { useIncidents, useTransitionIncident, useAssignIncident } from '../hooks/useIncidents'
-import { useAuth } from '../hooks/useAuth'
+import { useAuth } from '../context/AuthContext'
 import type { IncidentStatus, IncidentSeverity, Incident } from '../api/incidents'
 
 // ── constants ─────────────────────────────────────────────────────────────
