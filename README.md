@@ -22,16 +22,16 @@ Commanders have full write access. Operators can view and transition tasks but c
 Resilience is not a CRUD app dressed up with a dark theme. It is an **operational intelligence console** built around the same engineering patterns used in real mission-critical platforms:
 
 - **Ontology-first domain model** — entities (Site, Task, Asset, Vessel, Signal, CorrelationRule, AreaOfOperation) are first-class with identity, state, and typed relationships. The data model is designed for a world where entities accumulate history and state transitions matter.
-- **Controlled workflow state machines** — task and alert transitions are enforced exclusively server-side with an allowed-transitions table. The frontend fetches valid next states and renders only those. No business logic lives in the UI.
+- **Controlled workflow state machines** — task and alert transitions are enforced server-side. The API exposes `GET /allowed_transitions` so the UI renders only valid next states. For performance, high-frequency surfaces (map task popups) mirror the transition table locally rather than issuing a per-row API call; the backend remains the authoritative gate. A small set of transitions (resolve, unblock, reopen) are additionally restricted to Commander in the UI as a sign-off convention.
 - **Immutable audit log** — every mutation writes a before/after snapshot `AuditEvent` inside the same database transaction. The audit log is never stale or inconsistent.
-- **Deterministic server-side replay** — any read endpoint accepts `?as_of=<ISO>` and reconstructs past state from the audit log. Time travel is semantically consistent because it uses the same data the mutations wrote.
+- **Deterministic server-side replay** — sites, tasks, readiness, and audit events accept `?as_of=<ISO>` and reconstruct past state from the audit log. Risk scores are live-only (computed on demand, not snapshotted for replay). Task replay is capped at 500 records. Time travel is semantically consistent because it uses the same data the mutations wrote.
 - **Intelligence fusion pipeline** — seven live signal feeds (aircraft, seismic, vessel, GPS jamming, wildfire, conflict events via ACLED, disaster alerts via GDACS) are ingested by background threads, stored as `ExternalSignal` records, and evaluated against a rules engine every 10 seconds.
 - **Compound correlation engine** — rules support simple flat conditions or compound AND/OR logic across multiple signal types, with per-condition confidence scoring, atomic cooldown enforcement, AO-scoped evaluation, and SSE broadcast on fire.
 - **Alert acknowledgment workflow** — every rule firing is a trackable `SignalRuleMatch` entity with its own state machine (UNACKNOWLEDGED → ACKNOWLEDGED → INVESTIGATING → CLOSED), actor recording, notes, and transition history.
 - **Vessel intelligence** — AIS vessel entities are upserted from every ping, accumulate immutable track history with 7-day retention, generate derived `ais_gap` signals when vessels go dark, and render a full track polyline on the map.
 - **Risk scoring** — per-site threat-pressure score (0–100) computed from three independent components: open alert confidence, inverted task readiness, and signal density within 100 km.
 - **AI briefing grounded to real data** — Claude-powered operational summaries pass actual `AuditEvent` records as context. Every citation UUID the model returns is validated against the provided IDs — hallucinated events are stripped.
-- **Role-based security throughout** — JWT auth with Commander/Operator roles, rate limiting on every sensitive endpoint, Rack::Attack auto-ban on violation accumulation, SSE tokens with 60s TTL and `sse_only` claim.
+- **Role-based security throughout** — JWT auth with Commander/Operator roles. Commanders gate signal injection, rule management, site status, AoOs, and AI. Operators can create and transition tasks and triage alerts — triage is the operator's primary function. Rate limiting on every endpoint, Rack::Attack auto-ban, short-lived SSE tokens on the intelligence event stream.
 
 ---
 
@@ -52,7 +52,7 @@ Resilience is not a CRUD app dressed up with a dark theme. It is an **operationa
 | **Correlation Rules** | Visual rule builder — Simple or Compound (AND/OR multi-signal) mode; AO scope selector; dry-run against historical signals; 6 named templates (Maritime Deception, EW Precursor, Humanitarian Crisis, Seismic Threat, Air Approach, Multi-Domain Convergence) pre-fill the form on one click; MITRE ATT&CK technique tagging (12-technique curated picker, T-code badges on table) |
 | **Areas of Operation** | Geofenced GeoJSON polygon AoOs with threat levels (green/amber/red/black) overlaid on map and globe, color-coded by threat |
 | **Briefing** | Claude-powered AI operational summaries grounded in three context sources — audit events, nearby intelligence signals (ExternalSignal, 200 km/72 h), and recent rule fires; site selector scopes briefing to one site; grounding badge shows signal + rule fire record counts with tooltip breakdown; citation validation strips hallucinated UUIDs |
-| **Replay** | Server-side time-travel — scrub to any past timestamp and see the full operational state as it existed at that moment |
+| **Replay** | Server-side time-travel for sites, tasks, readiness, and audit events — scrub to any past timestamp and reconstruct operational state from the audit log. Risk scores are live-only; task replay capped at 500 records |
 | **Search** | `⌘K` global cross-entity search across sites, tasks, and assets |
 | **Auth** | JWT role auth (Commander/Operator), protected routes, role-gated UI elements with lock indicators |
 | **Real-time** | SSE push — rule fires (with confidence and workflow status), alert transitions, task mutations, and readiness scores stream live to all connected clients |
@@ -94,9 +94,9 @@ Resilience is not a CRUD app dressed up with a dark theme. It is an **operationa
 
 ### Architecture Decision Records
 
-**Server-side replay** — All read endpoints accept `?as_of=<ISO>`. Past state is reconstructed from the audit log server-side, not replayed client-side. The frontend remains completely stateless with respect to time. The replica shows exactly what an analyst would have seen at that timestamp.
+**Server-side replay** — Sites, tasks, readiness, and audit events accept `?as_of=<ISO>`. Past state is reconstructed from the audit log server-side; the frontend remains stateless with respect to time. Replay task responses are projection snapshots, not the same contract as live task responses. Risk scores are live-only — they are computed on demand and not replayed. Task replay is capped at 500 records.
 
-**Workflow enforcement on the backend** — Transition rules live exclusively in the service layer. The API exposes `GET /allowed_transitions` so the UI renders only valid next states. This makes the constraint unbypassable regardless of what a client sends.
+**Workflow enforcement on the backend** — Transition rules live in the service layer. The API exposes `GET /allowed_transitions` so the UI renders only valid next states. High-frequency surfaces (map task popups) mirror the transition table locally for performance rather than fetching per-row — a deliberate trade-off. Commander-only transitions (resolve, unblock, reopen) are additionally enforced at the UI layer as a sign-off convention; the backend permits any authenticated user to perform task transitions, since operators are the primary triage layer by design.
 
 **Audit log in the same transaction** — `AuditEvent` records (with `before_snapshot` and `after_snapshot`) are written inside the same `ActiveRecord::Base.transaction` block as the mutation they describe. The log is structurally impossible to diverge from the data.
 
@@ -142,7 +142,7 @@ Resilience is not a CRUD app dressed up with a dark theme. It is an **operationa
 External feeds — background threads in Puma
   ├── OpenSky Network      aircraft_position signals    every 15 min, 4 theaters
   ├── USGS Earthquake      seismic_event signals        every 5 min,  M2.5+ global
-  ├── AISHub               vessel_position signals      every 15 min
+  ├── AISHub               vessel_position signals      every 30 sec
   │     └── Vessel.upsert_from_signal! + VesselTrack append (immutable time-series)
   ├── GPSJam               gps_jamming signals          every 15 min
   ├── NASA FIRMS           wildfire signals             every 15 min
@@ -466,7 +466,7 @@ resilience/
 | `GET` | `/api/events` | SSE — `rule_fired`, `alert_transitioned`, `task_created`, `task_transitioned`, `readiness_updated` |
 | `GET` | `/api/telemetry/stream` | SSE — live asset position updates (simulated sensor stream) |
 
-All SSE streams require a short-lived SSE token (`POST /api/sse_token`, 60s TTL, `sse_only` claim enforced).
+The events SSE stream (`/api/events`) requires a short-lived SSE token (`POST /api/sse_token`, 60s TTL, `sse_only` claim enforced). The telemetry stream (`/api/telemetry/stream`) uses the main JWT since it carries only simulated asset position data.
 
 ---
 
@@ -475,10 +475,10 @@ All SSE streams require a short-lived SSE token (`POST /api/sse_token`, 60s TTL,
 | Control | Detail |
 |---|---|
 | **Authentication** | JWT, 24h TTL, HS256, `Authorization: Bearer` header |
-| **Authorization** | Role check on every mutating endpoint — `before_action :require_commander!` |
+| **Authorization** | `require_commander!` on signals, rules, site status, AoOs, and AI endpoints. Task create/update/transition and alert triage are accessible to any authenticated user — operators are the primary triage layer by design |
 | **Rate limiting** | Rack::Attack: 5 login attempts/min, 20/hr; AI endpoints: 10/min, 100/hr; general: 300/min |
 | **Auto-ban** | 10+ Rack::Attack violations in 1hr → IP blocked for 1hr |
-| **SSE tokens** | Short-lived (60s), `sse_only: true` claim; main JWT rejected on SSE endpoint |
+| **SSE tokens** | Short-lived (60s), `sse_only: true` claim; main JWT rejected on the events SSE endpoint. Telemetry stream uses the main JWT since it carries only simulated position data |
 | **Audit log** | Append-only `AuditEvent` records with actor, before/after snapshots — written in same transaction as mutation |
 | **SQL injection** | All queries parameterized via ActiveRecord; no string interpolation in queries |
 | **Mass assignment** | Explicit `permit()` on all controller params |
