@@ -23,6 +23,19 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
 COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
 
 
+--
+-- Name: prevent_incident_note_update(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.prevent_incident_note_update() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  RAISE EXCEPTION 'incident_notes are immutable — updates are not permitted';
+END;
+$$;
+
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
@@ -846,6 +859,13 @@ CREATE UNIQUE INDEX index_vessels_on_mmsi ON public.vessels USING btree (mmsi);
 
 
 --
+-- Name: incident_notes incident_notes_immutable; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER incident_notes_immutable BEFORE UPDATE ON public.incident_notes FOR EACH ROW EXECUTE FUNCTION public.prevent_incident_note_update();
+
+
+--
 -- Name: areas_of_operation fk_rails_0bd4a97ef0; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1028,6 +1048,7 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260321225132'),
 ('20260321150001'),
 ('20260321150000'),
 ('20260321120000'),
