@@ -97,6 +97,9 @@ module Correlations
         }
       )
 
+      # Incident fusion — runs after commit, non-transactional.
+      Incidents::FusionService.call(match: match) if match
+
       ServiceResult.success(match: match, task: task, actions_taken: actions_taken)
     rescue CooldownActive
       Rails.logger.info "[RuleFiringService] cooldown active (concurrent claim) rule=#{@rule.id} site=#{@site.id}"

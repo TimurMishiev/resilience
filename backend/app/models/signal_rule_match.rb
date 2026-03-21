@@ -14,6 +14,7 @@ class SignalRuleMatch < ApplicationRecord
   belongs_to :signal,           class_name: "ExternalSignal", foreign_key: :signal_id
   belongs_to :correlation_rule, optional: true
   belongs_to :site,             optional: true
+  belongs_to :incident,         optional: true
   belongs_to :task,             optional: true
   belongs_to :acknowledged_by,  class_name: "User", optional: true
 

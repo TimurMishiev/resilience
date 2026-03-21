@@ -60,6 +60,9 @@ module Sites
           }
         )
 
+        # Fuse this breach into an existing or new incident.
+        Incidents::FusionService.call(match: match)
+
         breached << { site_id: site.id, match_id: match.id, distance_km: distance_km.round(1) }
       rescue ActiveRecord::RecordInvalid => e
         Rails.logger.warn "[GeofenceBreachService] skipped site=#{site.id} signal=#{@signal.id}: #{e.message}"

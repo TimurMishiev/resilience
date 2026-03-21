@@ -76,6 +76,13 @@ Rails.application.routes.draw do
         get  :allowed_transitions
       end
     end
+    resources :incidents, only: %i[index show update] do
+      member do
+        post :transition
+        get  :allowed_transitions
+      end
+    end
+
     resources :areas_of_operation,    only: %i[index show create update destroy]
 
     resources :vessels, only: %i[index show] do

@@ -1,0 +1,44 @@
+class Incident < ApplicationRecord
+  VALID_STATUSES   = %w[open acknowledged contained resolved closed].freeze
+  VALID_SEVERITIES = %w[low moderate high critical].freeze
+
+  # Status → allowed next statuses
+  TRANSITIONS = {
+    "open"         => %w[acknowledged contained resolved closed],
+    "acknowledged" => %w[contained resolved closed open],
+    "contained"    => %w[resolved closed acknowledged],
+    "resolved"     => %w[closed open],
+    "closed"       => %w[open],
+  }.freeze
+
+  SEVERITY_ORDER = %w[low moderate high critical].freeze
+
+  belongs_to :site,               optional: true
+  belongs_to :area_of_operation,  optional: true
+
+  has_many :signal_rule_matches, dependent: :nullify
+  has_many :tasks,   through: :signal_rule_matches
+  has_many :signals, through: :signal_rule_matches, source: :signal
+
+  validates :title,     presence: true
+  validates :status,    inclusion: { in: VALID_STATUSES }
+  validates :severity,  inclusion: { in: VALID_SEVERITIES }
+  validates :confidence, numericality: { greater_than_or_equal_to: 0.0, less_than_or_equal_to: 1.0 }
+  validates :opened_at, presence: true
+
+  scope :active,       -> { where.not(status: %w[resolved closed]) }
+  scope :by_severity,  -> { order(Arel.sql("CASE severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'moderate' THEN 2 ELSE 3 END")) }
+  scope :recent,       -> { order(opened_at: :desc) }
+  scope :for_site,     ->(id) { where(site_id: id) }
+  scope :by_status,    ->(s)  { where(status: s) }
+
+  # ── Helpers ─────────────────────────────────────────────────────────────────
+
+  def allowed_transitions
+    TRANSITIONS.fetch(status, [])
+  end
+
+  def severity_rank
+    SEVERITY_ORDER.index(severity) || 0
+  end
+end

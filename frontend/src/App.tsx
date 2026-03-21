@@ -16,6 +16,8 @@ import SignalFeedPage from './pages/SignalFeedPage'
 import SiteDetailPage from './pages/SiteDetailPage'
 import SitesPage from './pages/SitesPage'
 import TasksPage from './pages/TasksPage'
+import IncidentsPage from './pages/IncidentsPage'
+import IncidentDetailPage from './pages/IncidentDetailPage'
 
 export default function App() {
   return (
@@ -43,6 +45,8 @@ export default function App() {
                   <BriefingPage />
                 </PageErrorBoundary>
               } />
+              <Route path="incidents" element={<IncidentsPage />} />
+              <Route path="incidents/:id" element={<IncidentDetailPage />} />
               <Route path="signals" element={<SignalFeedPage />} />
               <Route path="rules" element={<CorrelationRulesPage />} />
               <Route path="areas" element={<AreasPage />} />

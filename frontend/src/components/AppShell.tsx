@@ -26,10 +26,10 @@ import type { IconName } from '@blueprintjs/icons'
 // Bottom nav tabs — shown on mobile only (hidden via CSS on desktop)
 const TABS: { icon: IconName; label: string; path: string }[] = [
   { icon: 'dashboard',          label: 'Dashboard', path: '/dashboard' },
+  { icon: 'warning-sign',       label: 'Incidents', path: '/incidents' },
   { icon: 'th-list',            label: 'Tasks',     path: '/tasks'     },
   { icon: 'globe',              label: 'Map',       path: '/map'       },
   { icon: 'graph',              label: 'Graph',     path: '/graph'     },
-  { icon: 'predictive-analysis',label: 'Briefing',  path: '/briefing'  },
 ]
 
 export default function AppShell() {
@@ -117,6 +117,17 @@ export default function AppShell() {
           intent:  d.workflow_status === 'resolved' ? 'success' : d.workflow_status === 'blocked' ? 'danger' : 'none',
           icon:    d.workflow_status === 'resolved' ? 'tick' : d.workflow_status === 'blocked' ? 'ban-circle' : 'refresh',
           timeout: 6_000,
+        }))
+      }
+
+      if (e.event === 'geofence_breach') {
+        const d = e.data as { site_name: string; signal_type: string; distance_km: number }
+        queryClient.invalidateQueries({ queryKey: ['incidents'] })
+        AppToaster.then(t => t.show({
+          message: `⚠ Geofence breach at ${d.site_name} — ${d.signal_type.replace(/_/g, ' ')} (${d.distance_km} km)`,
+          intent:  'warning',
+          icon:    'locate',
+          timeout: 8_000,
         }))
       }
     },
@@ -221,6 +232,12 @@ export default function AppShell() {
               text="Tasks"
               active={pathname.startsWith('/tasks')}
               onClick={() => navigate('/tasks')}
+            />
+            <MenuItem
+              icon="warning-sign"
+              text="Incidents"
+              active={pathname.startsWith('/incidents')}
+              onClick={() => navigate('/incidents')}
             />
             <MenuItem
               icon="cube"

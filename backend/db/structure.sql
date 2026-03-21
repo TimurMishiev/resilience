@@ -138,6 +138,29 @@ CREATE TABLE public.external_signals (
 
 
 --
+-- Name: incidents; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.incidents (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    title text NOT NULL,
+    description text,
+    status character varying DEFAULT 'open'::character varying NOT NULL,
+    severity character varying DEFAULT 'moderate'::character varying NOT NULL,
+    confidence double precision DEFAULT 0.0 NOT NULL,
+    site_id uuid,
+    area_of_operation_id uuid,
+    opened_at timestamp without time zone DEFAULT now() NOT NULL,
+    acknowledged_at timestamp without time zone,
+    closed_at timestamp without time zone,
+    fusion_rationale text,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
 -- Name: schema_migrations; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -162,7 +185,8 @@ CREATE TABLE public.signal_rule_matches (
     workflow_status character varying DEFAULT 'unacknowledged'::character varying NOT NULL,
     acknowledged_at timestamp(6) without time zone,
     notes text,
-    acknowledged_by_id uuid
+    acknowledged_by_id uuid,
+    incident_id uuid
 );
 
 
@@ -329,6 +353,14 @@ ALTER TABLE ONLY public.external_signals
 
 
 --
+-- Name: incidents incidents_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.incidents
+    ADD CONSTRAINT incidents_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: schema_migrations schema_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -491,6 +523,34 @@ CREATE INDEX index_external_signals_on_source ON public.external_signals USING b
 
 
 --
+-- Name: index_incidents_on_opened_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_incidents_on_opened_at ON public.incidents USING btree (opened_at);
+
+
+--
+-- Name: index_incidents_on_severity; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_incidents_on_severity ON public.incidents USING btree (severity);
+
+
+--
+-- Name: index_incidents_on_site_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_incidents_on_site_id ON public.incidents USING btree (site_id);
+
+
+--
+-- Name: index_incidents_on_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_incidents_on_status ON public.incidents USING btree (status);
+
+
+--
 -- Name: index_signal_rule_matches_on_acknowledged_by_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -516,6 +576,13 @@ CREATE INDEX index_signal_rule_matches_on_correlation_rule_id ON public.signal_r
 --
 
 CREATE INDEX index_signal_rule_matches_on_fired_at ON public.signal_rule_matches USING btree (fired_at);
+
+
+--
+-- Name: index_signal_rule_matches_on_incident_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_signal_rule_matches_on_incident_id ON public.signal_rule_matches USING btree (incident_id);
 
 
 --
@@ -660,6 +727,14 @@ ALTER TABLE ONLY public.areas_of_operation
 
 
 --
+-- Name: incidents fk_rails_15ea701cfa; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.incidents
+    ADD CONSTRAINT fk_rails_15ea701cfa FOREIGN KEY (area_of_operation_id) REFERENCES public.areas_of_operation(id);
+
+
+--
 -- Name: site_risk_snapshots fk_rails_2321d15556; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -692,6 +767,14 @@ ALTER TABLE ONLY public.signal_rule_matches
 
 
 --
+-- Name: incidents fk_rails_7d00d680b0; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.incidents
+    ADD CONSTRAINT fk_rails_7d00d680b0 FOREIGN KEY (site_id) REFERENCES public.sites(id);
+
+
+--
 -- Name: assets fk_rails_905e385552; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -713,6 +796,14 @@ ALTER TABLE ONLY public.tasks
 
 ALTER TABLE ONLY public.sites
     ADD CONSTRAINT fk_rails_ad9cdb6510 FOREIGN KEY (area_of_operation_id) REFERENCES public.areas_of_operation(id) ON DELETE SET NULL;
+
+
+--
+-- Name: signal_rule_matches fk_rails_ae93be248f; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.signal_rule_matches
+    ADD CONSTRAINT fk_rails_ae93be248f FOREIGN KEY (incident_id) REFERENCES public.incidents(id);
 
 
 --
@@ -778,6 +869,7 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260320000007'),
 ('20260320000006'),
 ('20260320000005'),
 ('20260320000004'),
