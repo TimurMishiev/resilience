@@ -6,14 +6,6 @@
  * Uses the existing RecommendationCard component so UI is consistent
  * with the dedicated recommendations page.
  */
-/**
- * IncidentRecommendationsPanel
- *
- * Shows active recommendations whose affected entity is this incident,
- * with inline accept / reject / execute actions for commanders.
- * Uses the existing RecommendationCard component so UI is consistent
- * with the dedicated recommendations page.
- */
 import { useState } from 'react'
 import { NonIdealState, Spinner, Callout } from '@blueprintjs/core'
 import { useRecommendations } from '../hooks/useRecommendations'
