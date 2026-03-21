@@ -3,13 +3,17 @@ import {
   Button,
   ButtonGroup,
   Callout,
+  Card,
   Classes,
+  Dialog,
+  DialogBody,
   Divider,
   Drawer,
   DrawerSize,
   FormGroup,
   HTMLSelect,
   HTMLTable,
+  Icon,
   InputGroup,
   NonIdealState,
   NumericInput,
@@ -55,6 +59,152 @@ const PRIORITY_INTENTS: Record<TaskPriority, 'none' | 'primary' | 'warning' | 'd
   high:     'warning',
   critical: 'danger',
 }
+
+// ── Rule templates ───────────────────────────────────────────────────────────
+
+interface RuleTemplate {
+  id:          string
+  name:        string
+  description: string
+  icon:        string
+  tags:        string[]
+  form:        Partial<RuleFormState>
+}
+
+const RULE_TEMPLATES: RuleTemplate[] = [
+  {
+    id:   'maritime_deception',
+    name: 'Maritime Deception Pattern',
+    description:
+      'Vessel goes AIS-dark (transponder off) while operating near a site — a classic indicator of covert or illicit maritime activity.',
+    icon: 'ship',
+    tags: ['Vessel Position', 'AIS Gap', 'compound AND'],
+    form: {
+      name:              'Maritime Deception Pattern',
+      description:       'Vessel goes AIS-dark near site',
+      condition_mode:    'compound',
+      compound_operator: 'AND',
+      compound_conditions: [
+        { signal_type: 'vessel_position', proximity_km: 100, magnitude_min: '', count_threshold: 1, time_window_minutes: 60  },
+        { signal_type: 'ais_gap',         proximity_km: 100, magnitude_min: '', count_threshold: 1, time_window_minutes: 120 },
+      ],
+      task_title:       'Maritime deception pattern — {{site_name}}',
+      task_description: 'Vessel position followed by AIS gap within {{proximity_km}}km. Review vessel traffic and confirm no covert approach.',
+      task_priority:    'high',
+      cooldown_minutes: 120,
+    },
+  },
+  {
+    id:   'electronic_warfare_precursor',
+    name: 'Electronic Warfare Precursor',
+    description:
+      'GPS jamming co-located with aircraft activity — a classic EW precursor pattern used to mask or support air operations.',
+    icon: 'satellite',
+    tags: ['GPS Jamming', 'Aircraft Position', 'compound AND'],
+    form: {
+      name:              'Electronic Warfare Precursor',
+      description:       'GPS jamming co-located with aircraft activity',
+      condition_mode:    'compound',
+      compound_operator: 'AND',
+      compound_conditions: [
+        { signal_type: 'gps_jamming',       proximity_km: 150, magnitude_min: '', count_threshold: 1, time_window_minutes: 60 },
+        { signal_type: 'aircraft_position', proximity_km: 150, magnitude_min: '', count_threshold: 1, time_window_minutes: 60 },
+      ],
+      task_title:       'EW precursor — {{site_name}}',
+      task_description: 'GPS jamming and aircraft activity within {{proximity_km}}km. Potential EW precursor. Verify GPS reception and airspace.',
+      task_priority:    'critical',
+      cooldown_minutes: 60,
+    },
+  },
+  {
+    id:   'humanitarian_crisis',
+    name: 'Humanitarian Crisis Indicator',
+    description:
+      'A natural disaster alert or armed conflict event near site — triggers a humanitarian response task for any high-consequence signal.',
+    icon: 'warning-sign',
+    tags: ['Disaster Alert', 'Conflict Event', 'compound OR'],
+    form: {
+      name:              'Humanitarian Crisis Indicator',
+      description:       'Natural disaster or armed conflict detected near site',
+      condition_mode:    'compound',
+      compound_operator: 'OR',
+      compound_conditions: [
+        { signal_type: 'disaster_alert', proximity_km: 250, magnitude_min: '', count_threshold: 1, time_window_minutes: 120 },
+        { signal_type: 'conflict_event', proximity_km: 200, magnitude_min: '', count_threshold: 1, time_window_minutes: 120 },
+      ],
+      task_title:       'Crisis event near {{site_name}}',
+      task_description: '{{signal_type}} within {{proximity_km}}km. Assess impact on operations and personnel safety.',
+      task_priority:    'high',
+      cooldown_minutes: 180,
+    },
+  },
+  {
+    id:   'seismic_threat',
+    name: 'Significant Seismic Activity',
+    description:
+      'Seismic events M4.5 or greater near a site — may indicate infrastructure risk, liquefaction hazard, or secondary effects.',
+    icon: 'pulse',
+    tags: ['Seismic Event', 'M4.5+', 'simple'],
+    form: {
+      name:              'Significant Seismic Activity',
+      description:       'Earthquake M4.5+ detected near site',
+      condition_mode:    'simple',
+      signal_type:       'seismic_event',
+      proximity_km:      300,
+      magnitude_min:     4.5,
+      count_threshold:   1,
+      time_window_minutes: 30,
+      task_title:       'Seismic event near {{site_name}}',
+      task_description: 'Magnitude {{magnitude}} seismic event detected {{proximity_km}}km from site. Assess structural integrity and utility services.',
+      task_priority:    'high',
+      cooldown_minutes: 240,
+    },
+  },
+  {
+    id:   'air_approach_warning',
+    name: 'Air Approach Warning',
+    description:
+      'Any aircraft within 50 km of a site. Useful for sites requiring continuous airspace awareness or no-fly enforcement.',
+    icon: 'airplane',
+    tags: ['Aircraft Position', 'simple'],
+    form: {
+      name:              'Air Approach Warning',
+      description:       'Aircraft within 50km of site',
+      condition_mode:    'simple',
+      signal_type:       'aircraft_position',
+      proximity_km:      50,
+      magnitude_min:     '',
+      count_threshold:   1,
+      time_window_minutes: 15,
+      task_title:       'Aircraft activity near {{site_name}}',
+      task_description: 'Aircraft detected {{proximity_km}}km from {{site_name}}. Monitor for pattern of life or approach vector.',
+      task_priority:    'normal',
+      cooldown_minutes: 30,
+    },
+  },
+  {
+    id:   'multi_domain_convergence',
+    name: 'Multi-Domain Threat Convergence',
+    description:
+      'Conflict activity combined with GPS jamming in the same area — combined-arms indicator requiring immediate escalation.',
+    icon: 'shield',
+    tags: ['Conflict Event', 'GPS Jamming', 'compound AND'],
+    form: {
+      name:              'Multi-Domain Threat Convergence',
+      description:       'Conflict activity with concurrent GPS jamming',
+      condition_mode:    'compound',
+      compound_operator: 'AND',
+      compound_conditions: [
+        { signal_type: 'conflict_event', proximity_km: 200, magnitude_min: '', count_threshold: 1, time_window_minutes: 180 },
+        { signal_type: 'gps_jamming',   proximity_km: 150, magnitude_min: '', count_threshold: 1, time_window_minutes: 60  },
+      ],
+      task_title:       'Multi-domain threat — {{site_name}}',
+      task_description: 'Conflict event and GPS jamming within {{proximity_km}}km. Possible combined-arms operation. Initiate security posture review.',
+      task_priority:    'critical',
+      cooldown_minutes: 90,
+    },
+  },
+]
 
 function formatLastFired(iso: string | null): string {
   if (!iso) return 'Never'
@@ -304,9 +454,10 @@ export default function CorrelationRulesPage() {
     [aosData?.data],
   )
 
-  const [drawerOpen, setDrawerOpen]     = useState(false)
-  const [editingRule, setEditingRule]   = useState<CorrelationRule | null>(null)
-  const [form, setForm]                 = useState<RuleFormState>(DEFAULT_FORM)
+  const [drawerOpen, setDrawerOpen]         = useState(false)
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
+  const [editingRule, setEditingRule]       = useState<CorrelationRule | null>(null)
+  const [form, setForm]                     = useState<RuleFormState>(DEFAULT_FORM)
   const [dryRunRule_,  setDryRunRule]   = useState<CorrelationRule | null>(null)
   const [dryRunResult, setDryRunResult] = useState<DryRunResult | null>(null)
   const [dryRunError,  setDryRunError]  = useState<string | null>(null)
@@ -346,6 +497,13 @@ export default function CorrelationRulesPage() {
   function openCreate() {
     setEditingRule(null)
     setForm(DEFAULT_FORM)
+    setDrawerOpen(true)
+  }
+
+  function openFromTemplate(template: RuleTemplate) {
+    setEditingRule(null)
+    setForm({ ...DEFAULT_FORM, ...template.form })
+    setTemplateDialogOpen(false)
     setDrawerOpen(true)
   }
 
@@ -449,9 +607,14 @@ export default function CorrelationRulesPage() {
               : `${rules.length} rules`}
           </span>
           {isCommander && (
-            <Button icon="plus" intent="primary" small onClick={openCreate}>
-              New Rule
-            </Button>
+            <>
+              <Button icon="duplicate" small onClick={() => setTemplateDialogOpen(true)}>
+                From Template
+              </Button>
+              <Button icon="plus" intent="primary" small onClick={openCreate}>
+                New Rule
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -588,6 +751,54 @@ export default function CorrelationRulesPage() {
           </tbody>
         </HTMLTable>
       )}
+
+      {/* Template Picker Dialog */}
+      <Dialog
+        isOpen={templateDialogOpen}
+        onClose={() => setTemplateDialogOpen(false)}
+        title="Create from Template"
+        icon="duplicate"
+        style={{ width: 680 }}
+      >
+        <DialogBody>
+          <p className="bp6-text-muted" style={{ marginTop: 0, marginBottom: 16, fontSize: 13 }}>
+            Select a pre-built rule template. All fields are editable before saving.
+          </p>
+          <div className="rule-templates-grid">
+            {RULE_TEMPLATES.map(tpl => (
+              <Card
+                key={tpl.id}
+                interactive
+                compact
+                className="rule-template-card"
+                onClick={() => openFromTemplate(tpl)}
+              >
+                <div className="rule-template-header">
+                  <Icon icon={tpl.icon as Parameters<typeof Icon>[0]['icon']} size={16} className="rule-template-icon" />
+                  <span className="rule-template-name">{tpl.name}</span>
+                </div>
+                <p className="rule-template-description">{tpl.description}</p>
+                <div className="rule-template-tags">
+                  {tpl.tags.map(tag => (
+                    <Tag
+                      key={tag}
+                      minimal
+                      intent={
+                        tag.includes('compound') ? 'warning'
+                        : tag.includes('M') ? 'danger'
+                        : 'primary'
+                      }
+                      style={{ fontSize: 10 }}
+                    >
+                      {tag}
+                    </Tag>
+                  ))}
+                </div>
+              </Card>
+            ))}
+          </div>
+        </DialogBody>
+      </Dialog>
 
       {/* Dry Run Drawer */}
       <Drawer

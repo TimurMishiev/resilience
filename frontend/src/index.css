@@ -749,6 +749,50 @@ body {
   font-size: 11px;
 }
 
+/* ── Rule Templates ───────────────────────────────────────── */
+
+.rule-templates-grid {
+  display:               grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap:                   12px;
+}
+
+.rule-template-card {
+  cursor:     pointer;
+  transition: background 0.15s;
+}
+
+.rule-template-header {
+  display:     flex;
+  align-items: center;
+  gap:         8px;
+  margin-bottom: 6px;
+}
+
+.rule-template-icon {
+  flex-shrink: 0;
+  color: #8abbff;
+}
+
+.rule-template-name {
+  font-size:   14px;
+  font-weight: 600;
+  color:       #d3d8de;
+}
+
+.rule-template-description {
+  font-size:   12px;
+  color:       #8a9ba8;
+  margin:      0 0 8px;
+  line-height: 1.5;
+}
+
+.rule-template-tags {
+  display:   flex;
+  flex-wrap: wrap;
+  gap:       4px;
+}
+
 /* ── Login page ───────────────────────────────────────────── */
 
 .login-page {
