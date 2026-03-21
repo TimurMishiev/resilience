@@ -24,6 +24,19 @@ COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
 
 
 --
+-- Name: prevent_incident_note_delete(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.prevent_incident_note_delete() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  RAISE EXCEPTION 'incident_notes are immutable — deletes are not permitted';
+END;
+$$;
+
+
+--
 -- Name: prevent_incident_note_update(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -866,6 +879,13 @@ CREATE TRIGGER incident_notes_immutable BEFORE UPDATE ON public.incident_notes F
 
 
 --
+-- Name: incident_notes incident_notes_no_delete; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER incident_notes_no_delete BEFORE DELETE ON public.incident_notes FOR EACH ROW EXECUTE FUNCTION public.prevent_incident_note_delete();
+
+
+--
 -- Name: areas_of_operation fk_rails_0bd4a97ef0; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1048,6 +1068,7 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260321234646'),
 ('20260321225132'),
 ('20260321150001'),
 ('20260321150000'),
