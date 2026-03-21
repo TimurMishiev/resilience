@@ -7,5 +7,9 @@ FactoryBot.define do
     trait :commander do
       role { "commander" }
     end
+
+    trait :operator do
+      role { "operator" }
+    end
   end
 end
