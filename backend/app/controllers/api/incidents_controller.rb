@@ -28,10 +28,16 @@ module Api
     # PATCH /api/incidents/:id
     def update
       incident = Incident.find(params[:id])
-      incident.update!(incident_params)
-      render json: serialize_incident(incident)
-    rescue ActiveRecord::RecordInvalid => e
-      render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
+      result   = Incidents::UpdateService.call(
+        incident: incident,
+        params:   incident_params.to_h,
+        actor:    current_user,
+      )
+      if result.success?
+        render json: serialize_incident(result.incident)
+      else
+        render json: { errors: result.errors }, status: :unprocessable_entity
+      end
     end
 
     # POST /api/incidents/:id/transition
@@ -40,22 +46,17 @@ module Api
       incident  = Incident.find(params[:id])
       to_status = params[:to_status].to_s.strip
 
-      unless incident.allowed_transitions.include?(to_status)
-        render json: { errors: ["Cannot transition from '#{incident.status}' to '#{to_status}'"] },
-               status: :unprocessable_entity
-        return
+      result = Incidents::TransitionService.call(
+        incident:  incident,
+        to_status: to_status,
+        actor:     current_user,
+      )
+
+      if result.success?
+        render json: serialize_incident(result.incident)
+      else
+        render json: { errors: result.errors }, status: :unprocessable_entity
       end
-
-      now = Time.current
-      incident.status         = to_status
-      incident.acknowledged_at = now if to_status == "acknowledged" && incident.acknowledged_at.nil?
-      incident.closed_at       = now if %w[resolved closed].include?(to_status) && incident.closed_at.nil?
-      incident.closed_at       = nil if to_status == "open"
-      incident.save!
-
-      render json: serialize_incident(incident)
-    rescue ActiveRecord::RecordInvalid => e
-      render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
     end
 
     # GET /api/incidents/:id/allowed_transitions

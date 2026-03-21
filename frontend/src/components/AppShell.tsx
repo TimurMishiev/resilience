@@ -133,7 +133,9 @@ export default function AppShell() {
       }
 
       if (e.event === 'rule_fired') {
-        // Also refresh recommendations when a rule fires — new incidents may have been created
+        // FusionService opens or updates an incident on every rule_fired event,
+        // so both incidents and recommendations need a fresh read.
+        queryClient.invalidateQueries({ queryKey: ['incidents'] })
         queryClient.invalidateQueries({ queryKey: ['recommendations'] })
       }
     },

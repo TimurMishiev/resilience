@@ -25,10 +25,23 @@ module Incidents
     def call
       return ServiceResult.success(incident: nil, action: :skipped) unless @match.site_id
 
-      incident, action = find_or_create_incident
-      @match.update_column(:incident_id, incident.id)
+      incident, action = nil, nil
 
-      # Trigger a recommendation generation pass whenever a new incident is opened
+      # Serialise concurrent fusion attempts for the same site by locking the
+      # site row FOR UPDATE inside a transaction.  Two threads racing on the same
+      # site_id will queue here; the second one re-reads an incident that the
+      # first already created and attaches to it rather than opening a parallel one.
+      ActiveRecord::Base.transaction do
+        # Lock site row — any other fusion call for this site will block here
+        # until our transaction commits, then re-read the (now existing) incident.
+        Site.lock("FOR UPDATE").find(@match.site_id)
+
+        incident, action = find_or_create_incident
+        @match.update_column(:incident_id, incident.id)
+      end
+
+      # Trigger a recommendation generation pass whenever a new incident is opened.
+      # Done outside the transaction so a job-queue failure can't roll back the DB write.
       Recommendations::GenerationJob.perform_later if action == :created
 
       ServiceResult.success(incident: incident, action: action)

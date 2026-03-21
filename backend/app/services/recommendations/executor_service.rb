@@ -82,36 +82,14 @@ module Recommendations
       incident = Incident.find_by(id: incident_id)
       return ServiceResult.failure(errors: ["Incident #{incident_id} not found"]) unless incident
 
-      allowed = incident.allowed_transitions
-      return ServiceResult.failure(errors: ["Transition to #{to_status} not allowed from #{incident.status}"]) \
-        unless allowed.include?(to_status)
-
-      before = incident.slice(:status, :acknowledged_at, :closed_at)
-      now    = Time.current
-
-      incident.status          = to_status
-      incident.acknowledged_at = now if to_status == "acknowledged" && incident.acknowledged_at.nil?
-      incident.closed_at       = now if %w[resolved closed].include?(to_status) && incident.closed_at.nil?
-      incident.closed_at       = nil if to_status == "open"
-
-      ActiveRecord::Base.transaction do
-        incident.save!
-        Audit::EventWriter.write(
-          actor:           @user.email,
-          entity_type:     "Incident",
-          entity_id:       incident.id,
-          event_type:      "incident_transitioned",
-          action:          "transition",
-          before_snapshot: before,
-          after_snapshot:  incident.slice(:status, :acknowledged_at, :closed_at),
-          metadata:        { recommendation_id: @rec.id },
-          correlation_id:  SecureRandom.uuid,
-        )
-      end
-
-      ServiceResult.success(incident: incident)
-    rescue ActiveRecord::RecordInvalid => e
-      ServiceResult.failure(errors: [e.message])
+      # Delegates to Incidents::TransitionService so audit + timestamp semantics
+      # are identical whether the transition comes from operator UI or AI execution.
+      Incidents::TransitionService.call(
+        incident:  incident,
+        to_status: to_status,
+        actor:     @user,
+        metadata:  { recommendation_id: @rec.id },
+      )
     end
 
     # Routes through Tasks::CreationService — records the recommendation ID in
