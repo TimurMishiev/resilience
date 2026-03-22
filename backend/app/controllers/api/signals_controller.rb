@@ -5,6 +5,13 @@ module Api
     # GET /api/signals
     # Query params: source, signal_type, from, to, site_id (proximity filter), page, per_page
     def index
+      if params[:from].present? && safe_parse_datetime(params[:from]).nil?
+        render json: { error: "Invalid 'from' datetime" }, status: :bad_request and return
+      end
+      if params[:to].present? && safe_parse_datetime(params[:to]).nil?
+        render json: { error: "Invalid 'to' datetime" }, status: :bad_request and return
+      end
+
       signals = ExternalSignal.all.order(occurred_at: :desc)
       upper_bound = [safe_parse_datetime(params[:to]), as_of].compact.min
 

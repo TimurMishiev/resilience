@@ -10,8 +10,9 @@ import { useAreasOfOperation } from '../hooks/useAreasOfOperation'
 import { useSignals } from '../hooks/useSignals'
 import { useVessels } from '../hooks/useVessels'
 import { useReplay } from '../context/ReplayContext'
-import type { Asset, Site, Task, WorkflowStatus } from '../api/types'
+import type { Asset, Site, Task, WorkflowStatus, Signal } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
+import type { Vessel } from '../api/vessels'
 import { useNavigate } from 'react-router-dom'
 
 // Only set Ion token if explicitly provided — never set to empty string
@@ -149,11 +150,35 @@ const ALERT_LEVEL_INTENT: Record<string, 'success' | 'warning' | 'danger'> = {
 }
 
 // ---------------------------------------------------------------------------
+// Inspector title — extracted from nested ternary for readability
+// ---------------------------------------------------------------------------
+function getInspectorTitle(
+  selectedSite:   Site   | null,
+  selectedAsset:  Asset  | null,
+  selectedSignal: Signal | null,
+  selectedVessel: Vessel | null,
+): string | null {
+  if (selectedSite)  return selectedSite.name
+  if (selectedAsset) return selectedAsset.name
+  if (selectedVessel?.name) return selectedVessel.name
+  if (selectedSignal?.signal_type === 'disaster_alert' && typeof selectedSignal.raw_payload.name === 'string')
+    return selectedSignal.raw_payload.name
+  if (selectedSignal?.signal_type === 'conflict_event' && typeof selectedSignal.raw_payload.sub_event_type === 'string')
+    return selectedSignal.raw_payload.sub_event_type
+  if (selectedSignal)
+    return GLOBE_SIGNAL_LABELS[selectedSignal.signal_type] ?? selectedSignal.signal_type
+  return null
+}
+
+// ---------------------------------------------------------------------------
 // GlobePage
 // ---------------------------------------------------------------------------
 export default function GlobePage() {
   const FOCUSED_SIGNAL_RADIUS_KM = 2_000
   const EVENT_SIGNAL_REFRESH_MS = 60_000
+  // Below this altitude Cesium renders hundreds of entities at high density,
+  // causing frame-rate degradation.  Signals are hidden and the user is
+  // prompted to switch to the 2D MapPage for tactical inspection.
   const SIGNAL_CLOSE_VIEW_HEIGHT_M = 2_000_000
   const navigate = useNavigate()
   const { asOf, isReplaying } = useReplay()
@@ -219,11 +244,14 @@ export default function GlobePage() {
   const signalEntitiesRef = useRef<Map<string, Cesium.Entity>>(new Map())
   const isRotatingRef    = useRef(false)
 
-  const tasksBySite: Record<string, Task[]> = {}
-  for (const t of tasks) {
-    if (!tasksBySite[t.site_id]) tasksBySite[t.site_id] = []
-    tasksBySite[t.site_id].push(t)
-  }
+  const tasksBySite = useMemo(() => {
+    const map: Record<string, Task[]> = {}
+    for (const t of tasks) {
+      if (!map[t.site_id]) map[t.site_id] = []
+      map[t.site_id].push(t)
+    }
+    return map
+  }, [tasks])
 
   const selectedSite = selectedSiteId ? (sites.find(site => site.id === selectedSiteId) ?? null) : null
   const selectedTasks = selectedSiteId ? (tasksBySite[selectedSiteId] ?? []) : []
@@ -334,6 +362,9 @@ export default function GlobePage() {
     viewer.camera.moveStart.addEventListener(() => {
       isRotatingRef.current = false
     })
+    // Intentionally high-frequency: every camera move fires a React state update
+    // to drive the visibleSignals culling and the toolbar hint swap.
+    // Do NOT throttle without considering that visibleSignals depends on cameraHeight.
     viewer.camera.changed.addEventListener(() => {
       const cartographic = Cesium.Cartographic.fromCartesian(viewer.camera.position)
       setCameraHeight(cartographic.height)
@@ -552,11 +583,10 @@ export default function GlobePage() {
 
       const existing = signalEntitiesRef.current.get(key)
       if (existing) {
+        // Only update position — color is derived from signal_type which never
+        // changes for a given signal, so skip ConstantProperty allocations on
+        // every tick (was 2 × N allocs per visibleSignals update).
         existing.position = position
-        if (existing.point) {
-          existing.point.color = new Cesium.ConstantProperty(color.withAlpha(0.95))
-          existing.point.outlineColor = new Cesium.ConstantProperty(color.withAlpha(0.35))
-        }
         continue
       }
 
@@ -746,19 +776,7 @@ export default function GlobePage() {
       : selectedSignal
         ? `/map?signal_id=${selectedSignal.id}`
         : '/map'
-  const inspectorTitle = selectedSite
-    ? selectedSite.name
-    : selectedAsset
-      ? selectedAsset.name
-      : selectedVessel?.name
-        ? selectedVessel.name
-        : selectedSignal?.signal_type === 'disaster_alert' && typeof selectedSignal.raw_payload.name === 'string'
-          ? selectedSignal.raw_payload.name
-          : selectedSignal?.signal_type === 'conflict_event' && typeof selectedSignal.raw_payload.sub_event_type === 'string'
-            ? selectedSignal.raw_payload.sub_event_type
-            : selectedSignal
-              ? (GLOBE_SIGNAL_LABELS[selectedSignal.signal_type] ?? selectedSignal.signal_type)
-              : null
+  const inspectorTitle = getInspectorTitle(selectedSite, selectedAsset, selectedSignal, selectedVessel)
 
   // -------------------------------------------------------------------------
   // Render
@@ -867,7 +885,7 @@ export default function GlobePage() {
                       <li key={t.id} className="globe-task-item">
                         <span className="globe-task-title">{t.title}</span>
                         <Tag minimal intent={workflowIntent(t.workflow_status)}>
-                          {t.workflow_status.replace('_', ' ')}
+                          {t.workflow_status.replaceAll('_', ' ')}
                         </Tag>
                       </li>
                     ))}
@@ -942,7 +960,7 @@ export default function GlobePage() {
                         <span className="globe-threat-dot" style={{ background: '#00d4ff' }} />
                         <div className="globe-threat-body">
                           <div className="globe-threat-name">
-                            {asset.name} · {asset.status.replace('_', ' ')}
+                            {asset.name} · {asset.status.replaceAll('_', ' ')}
                           </div>
                           <div className="globe-threat-meta bp6-text-muted">
                             {distanceKm.toFixed(1)} km
@@ -982,7 +1000,7 @@ export default function GlobePage() {
                     : 'danger'
                   }
                 >
-                  {selectedAsset.status.replace('_', ' ')}
+                  {selectedAsset.status.replaceAll('_', ' ')}
                 </Tag>
                 <Tag minimal intent={telemetryConnected ? 'success' : 'warning'}>
                   {isReplaying ? 'Replay snapshot' : telemetryConnected ? 'Telemetry live' : 'Telemetry reconnecting'}
@@ -1063,7 +1081,7 @@ export default function GlobePage() {
                     color: (GLOBE_SIGNAL_COLORS[selectedSignal.signal_type] ?? Cesium.Color.WHITE).toCssHexString(),
                   }}
                 >
-                  {selectedSignal.signal_type.replace(/_/g, ' ')}
+                  {selectedSignal.signal_type.replaceAll('_', ' ')}
                 </Tag>
                 <Tag minimal>{SOURCE_LABELS[selectedSignal.source] ?? selectedSignal.source}</Tag>
                 {selectedSignal.signal_type === 'disaster_alert' &&
