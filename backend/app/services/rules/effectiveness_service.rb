@@ -24,13 +24,17 @@ module Rules
     def call
       rows = ApplicationRecord.connection.exec_query(STATS_SQL)
 
+      # Build sparkline lookup: rule_id → 30-element array (day -29 .. day 0)
+      sparklines = build_sparklines
+
       stats = rows.map do |row|
         total          = row["total_fires"].to_i
         task_rate      = row["task_creation_rate"]&.to_f
         closure_rate   = row["alert_closure_rate"]&.to_f
+        rule_id        = row["rule_id"]
 
         {
-          rule_id:              row["rule_id"],
+          rule_id:              rule_id,
           total_fires:          total,
           fires_last_30d:       row["fires_last_30d"].to_i,
           fires_last_7d:        row["fires_last_7d"].to_i,
@@ -39,7 +43,8 @@ module Rules
           task_resolution_rate: row["task_resolution_rate"]&.to_f,
           alert_closure_rate:   closure_rate,
           avg_hours_to_ack:     row["avg_hours_to_ack"]&.to_f,
-          low_value_flag:       low_value?(total, task_rate, closure_rate)
+          low_value_flag:       low_value?(total, task_rate, closure_rate),
+          sparkline:            sparklines[rule_id] || Array.new(30, 0)
         }
       end
 
@@ -48,12 +53,41 @@ module Rules
 
     private
 
+    # Returns hash of rule_id → [count_day_minus_29, ..., count_today] (30 integers).
+    # Uses a single query across all rules; missing days are filled with 0.
+    def build_sparklines
+      rows = ApplicationRecord.connection.exec_query(SPARKLINE_SQL)
+      # Group rows by rule_id
+      by_rule = rows.each_with_object(Hash.new { |h, k| h[k] = {} }) do |row, acc|
+        acc[row["rule_id"]][row["day_offset"].to_i] = row["count"].to_i
+      end
+
+      by_rule.transform_values do |offsets|
+        # day_offset 0 = today → index 29; day_offset 29 = oldest → index 0
+        (0..29).map { |i| offsets[29 - i] || 0 }
+      end
+    end
+
     def low_value?(fires, task_rate, closure_rate)
       return false if fires < LOW_VALUE_MIN_FIRES
       return false if task_rate.nil? || closure_rate.nil?
 
       task_rate < LOW_VALUE_MAX_TASK_RATE && closure_rate < LOW_VALUE_MAX_CLOSURE
     end
+
+    # Per-day fire counts for the last 30 days across all rules.
+    # day_offset 0 = today (UTC), 1 = yesterday, ..., 29 = 29 days ago.
+    # Only rows with fires are returned; caller fills missing days with 0.
+    SPARKLINE_SQL = <<~SQL.freeze
+      SELECT
+        srm.correlation_rule_id                                     AS rule_id,
+        (NOW()::date - srm.fired_at::date)                         AS day_offset,
+        COUNT(*)                                                    AS count
+      FROM signal_rule_matches srm
+      WHERE srm.fired_at >= NOW() - INTERVAL '30 days'
+        AND srm.correlation_rule_id IS NOT NULL
+      GROUP BY srm.correlation_rule_id, day_offset
+    SQL
 
     # Single query for all rules.
     # LEFT JOIN ensures rules with no fires still appear (all counts = 0, rates = nil).

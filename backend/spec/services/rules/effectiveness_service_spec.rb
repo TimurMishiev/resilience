@@ -142,6 +142,34 @@ RSpec.describe Rules::EffectivenessService, type: :service do
         expect(stats_for(rule)[:avg_hours_to_ack]).to be_within(0.2).of(2.0)
       end
     end
+
+    context "sparkline" do
+      it "returns a 30-element array of zeros when there are no fires" do
+        sparkline = stats_for(rule)[:sparkline]
+        expect(sparkline).to be_a(Array)
+        expect(sparkline.length).to eq(30)
+        expect(sparkline.all?(&:zero?)).to be true
+      end
+
+      it "places today's fire count at index 29" do
+        create(:signal_rule_match, :without_task,
+               correlation_rule: rule, site: site,
+               fired_at: Time.current.utc)
+
+        sparkline = stats_for(rule)[:sparkline]
+        expect(sparkline[29]).to eq(1)
+      end
+
+      it "places a fire from 5 days ago at index 24" do
+        create(:signal_rule_match, :without_task,
+               correlation_rule: rule, site: site,
+               fired_at: 5.days.ago.utc)
+
+        sparkline = stats_for(rule)[:sparkline]
+        expect(sparkline[24]).to eq(1)
+        expect(sparkline.sum).to eq(1)
+      end
+    end
   end
 
   private

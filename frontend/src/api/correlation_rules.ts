@@ -67,6 +67,7 @@ export interface RuleEffectivenessStats {
   alert_closure_rate:   number | null   // 0.0–1.0
   avg_hours_to_ack:     number | null
   low_value_flag:       boolean
+  sparkline:            number[]        // 30 daily fire counts, index 0 = 29 days ago, index 29 = today
 }
 
 // Returns a map of rule_id → stats for O(1) lookup

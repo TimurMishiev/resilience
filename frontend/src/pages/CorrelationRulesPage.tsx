@@ -31,6 +31,7 @@ import type { DryRunResult } from '../api/correlation_rules'
 import { useAuth } from '../context/AuthContext'
 import type { CorrelationRule, SignalType, TaskPriority, RuleConditions } from '../api/types'
 import { isCompoundRule } from '../api/types'
+import { RuleSparkline } from '../components/RuleSparkline'
 
 const SKELETON_ROWS = 7
 
@@ -696,6 +697,8 @@ export default function CorrelationRulesPage() {
               <th>Active</th>
               <th>Last Fired</th>
               <th>Fires (30d)</th>
+              <th>Trend</th>
+              <th>Precision</th>
               <th>Cooldown</th>
               <th></th>
               {isCommander && <th>Actions</th>}
@@ -711,6 +714,8 @@ export default function CorrelationRulesPage() {
                     <td><span className={Classes.SKELETON} style={{ width: 48, display: 'inline-block' }}>&nbsp;</span></td>
                     <td><span className={Classes.SKELETON} style={{ width: 48, display: 'inline-block' }}>&nbsp;</span></td>
                     <td><span className={Classes.SKELETON} style={{ width: 64, display: 'inline-block' }}>&nbsp;</span></td>
+                    <td><span className={Classes.SKELETON} style={{ width: 40, display: 'inline-block' }}>&nbsp;</span></td>
+                    <td><span className={Classes.SKELETON} style={{ width: 80, display: 'inline-block' }}>&nbsp;</span></td>
                     <td><span className={Classes.SKELETON} style={{ width: 40, display: 'inline-block' }}>&nbsp;</span></td>
                     <td><span className={Classes.SKELETON} style={{ width: 56, display: 'inline-block' }}>&nbsp;</span></td>
                   </tr>
@@ -791,6 +796,30 @@ export default function CorrelationRulesPage() {
                                       title="Low signal — fires frequently but rarely produces actionable outcomes" />
                               )}
                             </span>
+                          )
+                        })()}
+                      </td>
+                      <td style={{ verticalAlign: 'middle', padding: '4px 8px' }}>
+                        {(() => {
+                          const eff = effectivenessData?.[rule.id]
+                          if (!eff || eff.sparkline.every(v => v === 0)) {
+                            return <span className="bp6-text-muted" style={{ fontSize: 11 }}>—</span>
+                          }
+                          return <RuleSparkline data={eff.sparkline} width={80} height={26} />
+                        })()}
+                      </td>
+                      <td>
+                        {(() => {
+                          const eff = effectivenessData?.[rule.id]
+                          if (!eff || eff.task_creation_rate === null) {
+                            return <span className="bp6-text-muted">—</span>
+                          }
+                          const pct = Math.round(eff.task_creation_rate * 100)
+                          return (
+                            <Tag minimal intent={pct >= 50 ? 'success' : pct >= 20 ? 'warning' : 'danger'}
+                                 title="Task creation rate — fraction of fires that produced a task">
+                              {pct}%
+                            </Tag>
                           )
                         })()}
                       </td>
@@ -1185,6 +1214,15 @@ export default function CorrelationRulesPage() {
                     Low signal — this rule fires frequently but rarely generates tasks or closed alerts.
                     Consider tightening conditions or raising the proximity threshold.
                   </Callout>
+                )}
+                {eff.sparkline.some(v => v > 0) && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div className="bp6-text-muted" style={{ fontSize: 11, marginBottom: 4 }}>
+                      30-day fire trend
+                    </div>
+                    <RuleSparkline data={eff.sparkline} width="100%" height={40} />
+
+                  </div>
                 )}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px', fontSize: 12 }}>
                   <span className="bp6-text-muted">Total fires</span>
