@@ -310,6 +310,7 @@ module Api
         title:           t.title,
         workflow_status: t.workflow_status,
         priority:        t.priority,
+        asset_id:        t.asset_id,
       }
     end
 

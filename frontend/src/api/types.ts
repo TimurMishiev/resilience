@@ -137,6 +137,7 @@ export interface UpdateTaskBody {
   title?: string
   description?: string | null
   priority?: TaskPriority
+  asset_id?: string | null
 }
 
 export interface TransitionTaskBody {

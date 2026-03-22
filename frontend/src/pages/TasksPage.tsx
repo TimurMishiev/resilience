@@ -13,8 +13,9 @@ import {
   Tag,
   TextArea,
 } from '@blueprintjs/core'
-import { useTasks, useAllowedTransitions, useTransitionTask } from '../hooks/useTasks'
+import { useTasks, useAllowedTransitions, useTransitionTask, useUpdateTask } from '../hooks/useTasks'
 import { useSites } from '../hooks/useSites'
+import { useAssets } from '../hooks/useAssets'
 import { getAiFilter } from '../api/ai'
 import AuditTimeline from '../components/AuditTimeline'
 import { useReplay } from '../context/ReplayContext'
@@ -94,16 +95,23 @@ export default function TasksPage() {
 
   const { data: taskRes, error, isPending } = useTasks(taskParams)
   const { data: siteRes } = useSites({ per_page: 200, ...(asOf ? { as_of: asOf } : {}) })
+  const { data: assetRes } = useAssets({ per_page: 200 })
   const { data: transitionsData } = useAllowedTransitions(
     selectedTask && !isReplaying ? selectedTask.id : null
   )
   const transitionMutation = useTransitionTask()
+  const updateMutation = useUpdateTask()
+  const [pendingAsset, setPendingAsset] = useState<string | null | undefined>(undefined)
 
   const tasks = taskRes?.data ?? []
   const total = taskRes?.meta?.total ?? tasks.length
 
   const siteMap: Record<string, string> = {}
   for (const site of siteRes?.data ?? []) siteMap[site.id] = site.name
+
+  const assetMap: Record<string, string> = {}
+  for (const asset of assetRes?.data ?? []) assetMap[asset.id] = asset.name
+  const assets = assetRes?.data ?? []
 
   const allowedTransitions    = transitionsData?.allowed        ?? []
   const commanderOnlyTransitions = transitionsData?.commander_only ?? []
@@ -234,6 +242,7 @@ export default function TasksPage() {
               <tr>
                 <th>Title</th>
                 <th>Site</th>
+                <th>Asset</th>
                 <th>Priority</th>
                 <th>Status</th>
               </tr>
@@ -244,6 +253,7 @@ export default function TasksPage() {
                     <tr key={i}>
                       <td><span className={Classes.SKELETON} style={{ display: 'block' }}>&nbsp;</span></td>
                       <td><span className={Classes.SKELETON} style={{ width: 96, display: 'inline-block' }}>&nbsp;</span></td>
+                      <td><span className={Classes.SKELETON} style={{ width: 80, display: 'inline-block' }}>&nbsp;</span></td>
                       <td><span className={Classes.SKELETON} style={{ width: 64, display: 'inline-block' }}>&nbsp;</span></td>
                       <td><span className={Classes.SKELETON} style={{ width: 72, display: 'inline-block' }}>&nbsp;</span></td>
                     </tr>
@@ -261,6 +271,7 @@ export default function TasksPage() {
                     >
                       <td>{task.title}</td>
                       <td className="bp6-text-muted">{siteMap[task.site_id] ?? task.site_id}</td>
+                      <td className="bp6-text-muted">{task.asset_id ? assetMap[task.asset_id] ?? '—' : '—'}</td>
                       <td>
                         <Tag minimal intent={priorityIntent(task.priority)}>{task.priority}</Tag>
                       </td>
@@ -284,6 +295,7 @@ export default function TasksPage() {
           setPendingStatus(null)
           setBlockedReason('')
           setTransitionError(null)
+          setPendingAsset(undefined)
         }}
         size={DrawerSize.SMALL}
         title={selectedTask?.title ?? ''}
@@ -364,6 +376,42 @@ export default function TasksPage() {
 
                 {transitionError && (
                   <Callout intent="danger" compact>{transitionError}</Callout>
+                )}
+              </div>
+            )}
+
+            {/* Asset assignment */}
+            {!isReplaying && (
+              <div className="drawer-asset-row">
+                <span className="drawer-section-label bp6-text-muted">Asset</span>
+                <HTMLSelect
+                  value={pendingAsset !== undefined ? (pendingAsset ?? '') : (selectedTask.asset_id ?? '')}
+                  onChange={(e) => setPendingAsset(e.currentTarget.value || null)}
+                  options={[
+                    { label: '— Unassigned —', value: '' },
+                    ...assets.map(a => ({ label: `${a.name} (${a.status})`, value: a.id })),
+                  ]}
+                  small
+                />
+                {pendingAsset !== undefined && pendingAsset !== selectedTask.asset_id && (
+                  <Button
+                    small
+                    intent="primary"
+                    loading={updateMutation.isPending}
+                    onClick={() => {
+                      updateMutation.mutate(
+                        { id: selectedTask.id, body: { asset_id: pendingAsset } },
+                        {
+                          onSuccess: (updated) => {
+                            setSelectedTask(updated)
+                            setPendingAsset(undefined)
+                          },
+                        }
+                      )
+                    }}
+                  >
+                    Assign
+                  </Button>
                 )}
               </div>
             )}

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getTasks, createTask, transitionTask, getAllowedTransitions } from '../api/tasks'
-import type { PaginationParams, AsOfParam, WorkflowStatus, TransitionTaskBody, CreateTaskBody } from '../api/types'
+import { getTasks, createTask, updateTask, transitionTask, getAllowedTransitions } from '../api/tasks'
+import type { PaginationParams, AsOfParam, WorkflowStatus, TransitionTaskBody, CreateTaskBody, UpdateTaskBody } from '../api/types'
 
 type Params = PaginationParams &
   AsOfParam & {
@@ -36,6 +36,17 @@ export function useCreateTask() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
       queryClient.invalidateQueries({ queryKey: ['readiness'] })
+    },
+  })
+}
+
+export function useUpdateTask() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdateTaskBody }) =>
+      updateTask(id, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
     },
   })
 }

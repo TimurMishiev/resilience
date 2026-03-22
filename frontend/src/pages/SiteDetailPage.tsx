@@ -440,16 +440,25 @@ function CreateTaskDialog({ siteId, isOpen, onClose }: { siteId: string; isOpen:
   const [title, setTitle]         = useState('')
   const [description, setDesc]    = useState('')
   const [priority, setPriority]   = useState<TaskPriority>('normal')
+  const [assetId, setAssetId]     = useState<string>('')
   const [error, setError]         = useState<string | null>(null)
   const { mutate, isPending }     = useCreateTask()
+  const { data: assetRes }        = useAssets({ per_page: 200 })
+  const assets                    = assetRes?.data ?? []
 
   function handleSubmit() {
     if (!title.trim()) { setError('Title is required'); return }
     setError(null)
     mutate(
-      { site_id: siteId, title: title.trim(), description: description.trim() || undefined, priority },
       {
-        onSuccess: () => { onClose(); setTitle(''); setDesc(''); setPriority('normal') },
+        site_id:     siteId,
+        title:       title.trim(),
+        description: description.trim() || undefined,
+        priority,
+        asset_id:    assetId || undefined,
+      },
+      {
+        onSuccess: () => { onClose(); setTitle(''); setDesc(''); setPriority('normal'); setAssetId('') },
         onError: (e: Error) => setError(e.message),
       }
     )
@@ -486,6 +495,19 @@ function CreateTaskDialog({ siteId, isOpen, onClose }: { siteId: string; isOpen:
             fill
           >
             {PRIORITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </HTMLSelect>
+        </FormGroup>
+        <FormGroup label="Assign Asset" labelFor="ct-asset">
+          <HTMLSelect
+            id="ct-asset"
+            value={assetId}
+            onChange={e => setAssetId(e.target.value)}
+            fill
+          >
+            <option value="">— Unassigned —</option>
+            {assets.map(a => (
+              <option key={a.id} value={a.id}>{a.name} ({a.status})</option>
+            ))}
           </HTMLSelect>
         </FormGroup>
       </DialogBody>

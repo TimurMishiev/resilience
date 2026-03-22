@@ -42,6 +42,7 @@ export interface IncidentTask {
   title:           string
   workflow_status: string
   priority:        string
+  asset_id:        string | null
 }
 
 export interface Incident {

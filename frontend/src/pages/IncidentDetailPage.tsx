@@ -10,6 +10,7 @@ import {
 } from '../hooks/useIncidents'
 import IntelChainPanel from '../components/IntelChainPanel'
 import { useAuth } from '../context/AuthContext'
+import { useAssets } from '../hooks/useAssets'
 import AuditTimeline from '../components/AuditTimeline'
 import IncidentNotesPanel from '../components/IncidentNotesPanel'
 import IncidentRecommendationsPanel from '../components/IncidentRecommendationsPanel'
@@ -118,6 +119,10 @@ function AlertsTab({ alerts }: { alerts: IncidentAlert[] }) {
 }
 
 function TasksTab({ tasks }: { tasks: IncidentTask[] }) {
+  const { data: assetRes } = useAssets({ per_page: 200 })
+  const assetMap: Record<string, string> = {}
+  for (const a of assetRes?.data ?? []) assetMap[a.id] = a.name
+
   if (tasks.length === 0) {
     return (
       <NonIdealState
@@ -133,6 +138,7 @@ function TasksTab({ tasks }: { tasks: IncidentTask[] }) {
       <thead>
         <tr>
           <th>Title</th>
+          <th>Asset</th>
           <th>Priority</th>
           <th>Status</th>
         </tr>
@@ -141,6 +147,9 @@ function TasksTab({ tasks }: { tasks: IncidentTask[] }) {
         {tasks.map((t) => (
           <tr key={t.id}>
             <td>{t.title}</td>
+            <td className="bp6-text-muted" style={{ fontSize: 12 }}>
+              {t.asset_id ? (assetMap[t.asset_id] ?? '—') : '—'}
+            </td>
             <td>
               <Tag minimal intent={TASK_PRIORITY_INTENT[t.priority] ?? 'none'} style={{ fontSize: 10 }}>
                 {t.priority}

@@ -233,6 +233,14 @@ body {
   gap: 8px;
 }
 
+.drawer-asset-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 4px;
+  flex-wrap: wrap;
+}
+
 .drawer-section-label {
   font-size: 11px;
   text-transform: uppercase;

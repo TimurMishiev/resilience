@@ -33,7 +33,7 @@ export function createTask(body: CreateTaskBody): Promise<Task> {
 }
 
 export function updateTask(id: string, body: UpdateTaskBody): Promise<Task> {
-  return api.put(`/api/tasks/${id}`, body)
+  return api.put(`/api/tasks/${id}`, { task: body })
 }
 
 export function transitionTask(id: string, body: TransitionTaskBody): Promise<Task> {

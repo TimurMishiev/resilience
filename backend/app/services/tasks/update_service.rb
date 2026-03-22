@@ -6,8 +6,8 @@ module Tasks
   #   - Commanders may update title, description, and priority.
   #   - Operators may update title and description only; priority is command-level authority.
   class UpdateService < ApplicationService
-    COMMANDER_FIELDS = %w[title description priority].freeze
-    OPERATOR_FIELDS  = %w[title description].freeze
+    COMMANDER_FIELDS = %w[title description priority asset_id].freeze
+    OPERATOR_FIELDS  = %w[title description asset_id].freeze
 
     def initialize(task:, params:, actor:, actor_role: "operator")
       permitted = actor_role == "commander" ? COMMANDER_FIELDS : OPERATOR_FIELDS

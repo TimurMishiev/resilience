@@ -120,7 +120,7 @@ module Api
     end
 
     def task_update_params
-      params.require(:task).permit(:title, :description, :priority)
+      params.require(:task).permit(:title, :description, :priority, :asset_id)
     end
 
     def transition_params
