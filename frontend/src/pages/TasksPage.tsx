@@ -391,7 +391,6 @@ export default function TasksPage() {
                     { label: '— Unassigned —', value: '' },
                     ...assets.map(a => ({ label: `${a.name} (${a.status})`, value: a.id })),
                   ]}
-                  small
                 />
                 {pendingAsset !== undefined && pendingAsset !== selectedTask.asset_id && (
                   <Button
