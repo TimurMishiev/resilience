@@ -399,16 +399,17 @@ export default function MapPage() {
   const { data: vesselTrackRes } = useVesselTracks(selectedVessel?.id ?? null, { limit: 300 })
   const vesselTracks = useMemo(() => vesselTrackRes?.data ?? [], [vesselTrackRes?.data])
 
-  // Active geofence breach alerts — used to highlight breached rings on the map
-  const { data: breachMatchesRes } = useSignalRuleMatches({ per_page: 200 })
+  // Active geofence breach alerts — filtered server-side to only breach records,
+  // so the cap never hides an older-but-still-active unacknowledged breach.
+  const { data: breachMatchesRes } = useSignalRuleMatches({
+    geofence_breach:  true,
+    workflow_status:  'unacknowledged',
+    per_page:         200,
+  })
   const breachedSiteIds = useMemo(() => {
     const ids = new Set<string>()
     for (const m of breachMatchesRes?.data ?? []) {
-      if (m.metadata?.geofence_breach === true &&
-          m.workflow_status === 'unacknowledged' &&
-          m.site?.id) {
-        ids.add(m.site.id)
-      }
+      if (m.site?.id) ids.add(m.site.id)
     }
     return ids
   }, [breachMatchesRes?.data])

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import { getSignalRuleMatches, transitionAlert, bulkTransitionAlerts } from '../api/signal_rule_matches'
 import type { SignalRuleMatchesParams, TransitionAlertBody } from '../api/types'
 import type { BulkTransitionBody } from '../api/signal_rule_matches'
@@ -8,6 +8,24 @@ export function useSignalRuleMatches(params?: SignalRuleMatchesParams) {
     queryKey: ['signal_rule_matches', params],
     queryFn: () => getSignalRuleMatches(params),
     refetchInterval: 10000, // refresh every 10s to catch new rule firings
+  })
+}
+
+const INFINITE_PER_PAGE = 100
+
+// Infinite-scroll variant for the Alert Triage page.
+// Fetches 100 rows per page; changing filter params resets to page 1.
+export function useSignalRuleMatchesInfinite(params?: Omit<SignalRuleMatchesParams, 'page' | 'per_page'>) {
+  return useInfiniteQuery({
+    queryKey: ['signal_rule_matches', 'infinite', params],
+    queryFn: ({ pageParam }) =>
+      getSignalRuleMatches({ ...params, page: pageParam as number, per_page: INFINITE_PER_PAGE }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => {
+      const { page, total_pages } = lastPage.meta
+      return page < total_pages ? page + 1 : undefined
+    },
+    refetchInterval: 15_000, // slower than point query — avoids re-pagination thrash
   })
 }
 

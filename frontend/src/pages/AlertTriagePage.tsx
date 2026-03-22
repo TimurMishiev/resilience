@@ -11,7 +11,7 @@ import {
   Tag,
   Tooltip,
 } from '@blueprintjs/core'
-import { useSignalRuleMatches, useTransitionAlert, useBulkTransitionAlerts } from '../hooks/useSignalRuleMatches'
+import { useSignalRuleMatchesInfinite, useTransitionAlert, useBulkTransitionAlerts } from '../hooks/useSignalRuleMatches'
 import AlertChainDrawer from '../components/AlertChainDrawer'
 import { SIGNAL_ICON_NAME } from '../lib/signalIcons'
 import { Icon } from '@blueprintjs/core'
@@ -228,11 +228,23 @@ export default function AlertTriagePage() {
   // Index of the last row clicked — used to resolve shift-click ranges
   const lastClickedIdxRef = useRef<number | null>(null)
 
-  const { data, isLoading, error } = useSignalRuleMatches({
+  const {
+    data,
+    isLoading,
+    error,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useSignalRuleMatchesInfinite({
     workflow_status: (statusFilter || undefined) as AlertStatus | undefined,
-    per_page: 200,
   })
-  const matches = useMemo(() => data?.data ?? [], [data?.data])
+
+  // Flatten pages into a single array; stable reference via useMemo
+  const matches = useMemo(
+    () => data?.pages.flatMap(p => p.data) ?? [],
+    [data?.pages],
+  )
+  const totalCount = data?.pages[0]?.meta.total ?? null
 
   const bulkMutate = useBulkTransitionAlerts()
 
@@ -299,9 +311,9 @@ export default function AlertTriagePage() {
       {/* ── Header ── */}
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <h2 className="bp6-heading" style={{ margin: 0 }}>Alert Triage</h2>
-        {data?.meta && (
+        {totalCount !== null && (
           <Tag minimal className="bp6-text-muted" style={{ fontSize: 11 }}>
-            {data.meta.total} total
+            {matches.length} / {totalCount}
           </Tag>
         )}
         <div style={{ marginLeft: 'auto' }}>
@@ -407,6 +419,25 @@ export default function AlertTriagePage() {
             />
           ))}
         </div>
+      )}
+
+      {/* ── Load more ── */}
+      {hasNextPage && !isLoading && (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0' }}>
+          <Button
+            loading={isFetchingNextPage}
+            onClick={() => void fetchNextPage()}
+            icon="chevron-down"
+            minimal
+          >
+            Load more ({totalCount !== null ? totalCount - matches.length : '…'} remaining)
+          </Button>
+        </div>
+      )}
+      {!hasNextPage && !isLoading && matches.length > 0 && (
+        <p className="bp6-text-muted" style={{ textAlign: 'center', fontSize: 12, padding: '8px 0' }}>
+          All {matches.length} alerts loaded
+        </p>
       )}
 
       {/* ── Bulk close confirmation ── */}

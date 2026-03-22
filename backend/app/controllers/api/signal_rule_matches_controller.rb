@@ -1,7 +1,7 @@
 module Api
   class SignalRuleMatchesController < BaseController
     # GET /api/signal_rule_matches
-    # Query params: rule_id, site_id, workflow_status, from, to, page, per_page
+    # Query params: rule_id, site_id, workflow_status, geofence_breach, from, to, page, per_page
     def index
       matches = SignalRuleMatch.order(fired_at: :desc)
                                .includes(:signal, :correlation_rule, :site, :task, :acknowledged_by)
@@ -11,6 +11,14 @@ module Api
       matches = matches.by_status(params[:workflow_status]) if params[:workflow_status].present?
       matches = matches.where("fired_at >= ?", safe_parse_datetime(params[:from])) if params[:from].present?
       matches = matches.where("fired_at <= ?", safe_parse_datetime(params[:to]))   if params[:to].present?
+      # geofence_breach=true → only geofence-triggered matches (metadata flag, not pagination-driven)
+      if params[:geofence_breach].present?
+        if ActiveModel::Type::Boolean.new.cast(params[:geofence_breach])
+          matches = matches.where("(metadata->>'geofence_breach')::boolean = true")
+        else
+          matches = matches.where("(metadata->>'geofence_breach') IS DISTINCT FROM 'true'")
+        end
+      end
 
       records, meta = paginate(matches)
       render json: { data: records.map { |m| serialize_match(m) }, meta: meta }

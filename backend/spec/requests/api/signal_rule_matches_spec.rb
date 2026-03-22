@@ -96,6 +96,29 @@ RSpec.describe "Api::SignalRuleMatches", type: :request do
       get "/api/signal_rule_matches"
       expect(response).to have_http_status(:unauthorized)
     end
+
+    context "geofence_breach filter" do
+      let!(:breach_match) do
+        create(:signal_rule_match,
+               site: site_a, correlation_rule: nil,
+               fired_at: 5.minutes.ago,
+               metadata: { geofence_breach: true, distance_km: 12.5,
+                           signal_type: "vessel_position", signal_source: "ais" })
+      end
+
+      it "returns only geofence breach matches when geofence_breach=true" do
+        get "/api/signal_rule_matches", params: { geofence_breach: true }, headers: auth_headers(user)
+        ids = JSON.parse(response.body)["data"].map { |m| m["id"] }
+        expect(ids).to contain_exactly(breach_match.id)
+      end
+
+      it "excludes geofence breach matches when geofence_breach=false" do
+        get "/api/signal_rule_matches", params: { geofence_breach: false }, headers: auth_headers(user)
+        ids = JSON.parse(response.body)["data"].map { |m| m["id"] }
+        expect(ids).to include(match1.id, match2.id, match3.id)
+        expect(ids).not_to include(breach_match.id)
+      end
+    end
   end
 
   describe "GET /api/signal_rule_matches/:id" do

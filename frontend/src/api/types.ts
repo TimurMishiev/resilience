@@ -339,6 +339,8 @@ export interface SignalRuleMatchesParams extends PaginationParams {
   rule_id?: string
   site_id?: string
   workflow_status?: AlertStatus
+  /** When true, only return matches created by the geofence breach detector (not correlation rules). */
+  geofence_breach?: boolean
   from?: string
   to?: string
 }

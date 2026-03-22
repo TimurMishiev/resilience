@@ -522,13 +522,12 @@ export default function SiteDetailPage() {
   const { mutate: toggleStatus, isPending: togglingStatus } = useToggleSiteStatus()
   const { mutate: updateGeofence, isPending: savingGeofence } = useUpdateSiteGeofence()
 
-  // Active geofence breach count — shown as a header callout when > 0
+  // Active geofence breach count — filtered server-side so the cap never
+  // hides an older still-unacknowledged breach behind newer rule-fire records.
   const { data: breachMatchesRes } = useSignalRuleMatches(
-    id ? { site_id: id, per_page: 50 } : undefined,
+    id ? { site_id: id, geofence_breach: true, workflow_status: 'unacknowledged', per_page: 50 } : undefined,
   )
-  const activeBreachCount = (breachMatchesRes?.data ?? []).filter(
-    m => m.metadata?.geofence_breach === true && m.workflow_status === 'unacknowledged',
-  ).length
+  const activeBreachCount = breachMatchesRes?.data?.length ?? 0
 
   if (isPending) {
     return (
