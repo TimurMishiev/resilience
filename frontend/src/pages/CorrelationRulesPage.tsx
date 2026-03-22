@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import {
+  Alert,
   Button,
   ButtonGroup,
   Callout,
@@ -250,6 +251,7 @@ function formatLastFired(iso: string | null): string {
 // ── Compound builder types ───────────────────────────────────────────────────
 
 interface ConditionRow {
+  _key?:               string
   signal_type:         SignalType | ''
   proximity_km:        number
   magnitude_min:       number | ''
@@ -263,6 +265,10 @@ const DEFAULT_CONDITION: ConditionRow = {
   magnitude_min:       '',
   count_threshold:     1,
   time_window_minutes: 60,
+}
+
+function newCondition(overrides?: Partial<ConditionRow>): ConditionRow {
+  return { ...DEFAULT_CONDITION, ...overrides, _key: crypto.randomUUID() }
 }
 
 // ── Form state ───────────────────────────────────────────────────────────────
@@ -307,7 +313,7 @@ const DEFAULT_FORM: RuleFormState = {
   count_threshold:     1,
   time_window_minutes: 10,
   compound_operator:   'AND',
-  compound_conditions: [{ ...DEFAULT_CONDITION }, { ...DEFAULT_CONDITION }],
+  compound_conditions: [newCondition(), newCondition()],
   area_of_operation_id: null,
   mitre_tags: [],
 }
@@ -333,7 +339,7 @@ function ruleToForm(rule: CorrelationRule): RuleFormState {
       ...base,
       condition_mode:      'compound',
       compound_operator:   c.operator,
-      compound_conditions: c.conditions.map(sub => ({
+      compound_conditions: c.conditions.map(sub => newCondition({
         signal_type:         (sub.signal_type as SignalType | undefined) ?? '',
         proximity_km:        sub.proximity_km        ?? 50,
         magnitude_min:       sub.magnitude_min       ?? '',
@@ -401,7 +407,7 @@ function CompoundBuilder({
 
       {/* Condition rows */}
       {conditions.map((cond, i) => (
-        <div key={i} className="compound-condition-row">
+        <div key={cond._key ?? String(i)} className="compound-condition-row">
           <div className="compound-condition-header">
             <span className="bp6-text-muted" style={{ fontSize: 10, fontWeight: 600 }}>
               CONDITION {i + 1}
@@ -495,6 +501,7 @@ export default function CorrelationRulesPage() {
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
   const [editingRule, setEditingRule]       = useState<CorrelationRule | null>(null)
   const [form, setForm]                     = useState<RuleFormState>(DEFAULT_FORM)
+  const [deleteTarget, setDeleteTarget] = useState<CorrelationRule | null>(null)
   const [dryRunRule_,  setDryRunRule]   = useState<CorrelationRule | null>(null)
   const [dryRunResult, setDryRunResult] = useState<DryRunResult | null>(null)
   const [dryRunError,  setDryRunError]  = useState<string | null>(null)
@@ -605,8 +612,12 @@ export default function CorrelationRulesPage() {
   }
 
   function handleDelete(rule: CorrelationRule) {
-    if (!window.confirm(`Delete rule "${rule.name}"? This cannot be undone.`)) return
-    deleteMutation.mutate(rule.id)
+    setDeleteTarget(rule)
+  }
+
+  function confirmDelete() {
+    if (deleteTarget) deleteMutation.mutate(deleteTarget.id)
+    setDeleteTarget(null)
   }
 
   function updateCompoundCondition(index: number, field: keyof ConditionRow, value: unknown) {
@@ -621,7 +632,7 @@ export default function CorrelationRulesPage() {
   function addCompoundCondition() {
     setForm(f => ({
       ...f,
-      compound_conditions: [...f.compound_conditions, { ...DEFAULT_CONDITION }],
+      compound_conditions: [...f.compound_conditions, newCondition()],
     }))
   }
 
@@ -636,6 +647,18 @@ export default function CorrelationRulesPage() {
 
   return (
     <div className="page-content">
+      <Alert
+        isOpen={deleteTarget !== null}
+        intent="danger"
+        icon="trash"
+        confirmButtonText="Delete"
+        cancelButtonText="Cancel"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      >
+        <p>Delete rule <strong>{deleteTarget?.name}</strong>? This cannot be undone.</p>
+      </Alert>
+
       <div className="page-header">
         <h2 className="bp6-heading">Correlation Rules</h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -698,7 +721,7 @@ export default function CorrelationRulesPage() {
               <th>Last Fired</th>
               <th>Fires (30d)</th>
               <th>Trend</th>
-              <th>Precision</th>
+              <th title="Task rate — fraction of fires that produced a task (proxy for signal actionability)">Task Rate</th>
               <th>Cooldown</th>
               <th></th>
               {isCommander && <th>Actions</th>}
@@ -817,7 +840,7 @@ export default function CorrelationRulesPage() {
                           const pct = Math.round(eff.task_creation_rate * 100)
                           return (
                             <Tag minimal intent={pct >= 50 ? 'success' : pct >= 20 ? 'warning' : 'danger'}
-                                 title="Task creation rate — fraction of fires that produced a task">
+                                 title="Task rate — fraction of fires that produced a task (proxy for signal actionability)">
                               {pct}%
                             </Tag>
                           )

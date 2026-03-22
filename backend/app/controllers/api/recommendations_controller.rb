@@ -118,11 +118,6 @@ module Api
       rec
     end
 
-    def require_commander!
-      return if current_user&.role == "commander"
-      render json: { errors: ["Commander role required"] }, status: :forbidden
-    end
-
     def serialize(rec)
       {
         id:                    rec.id,

@@ -29,29 +29,21 @@ export default function App() {
           <Route element={<ProtectedRoute />}>
             <Route path="/" element={<AppShell />}>
               <Route index element={<Navigate to="/dashboard" replace />} />
-              <Route path="dashboard" element={<DashboardPage />} />
-              <Route path="sites" element={<SitesPage />} />
-              <Route path="sites/:id" element={<SiteDetailPage />} />
-              <Route path="tasks" element={<TasksPage />} />
-              <Route path="assets" element={<AssetsPage />} />
-              <Route path="map" element={<MapPage />} />
-              <Route path="graph" element={<GraphPage />} />
-              <Route path="globe" element={
-                <PageErrorBoundary pageName="Globe">
-                  <GlobePage />
-                </PageErrorBoundary>
-              } />
-              <Route path="briefing" element={
-                <PageErrorBoundary pageName="Briefing">
-                  <BriefingPage />
-                </PageErrorBoundary>
-              } />
-              <Route path="incidents" element={<IncidentsPage />} />
-              <Route path="incidents/:id" element={<IncidentDetailPage />} />
-              <Route path="recommendations" element={<RecommendationsPage />} />
-              <Route path="signals" element={<SignalFeedPage />} />
-              <Route path="rules" element={<CorrelationRulesPage />} />
-              <Route path="areas" element={<AreasPage />} />
+              <Route path="dashboard" element={<PageErrorBoundary pageName="Dashboard"><DashboardPage /></PageErrorBoundary>} />
+              <Route path="sites" element={<PageErrorBoundary pageName="Sites"><SitesPage /></PageErrorBoundary>} />
+              <Route path="sites/:id" element={<PageErrorBoundary pageName="Site Detail"><SiteDetailPage /></PageErrorBoundary>} />
+              <Route path="tasks" element={<PageErrorBoundary pageName="Tasks"><TasksPage /></PageErrorBoundary>} />
+              <Route path="assets" element={<PageErrorBoundary pageName="Assets"><AssetsPage /></PageErrorBoundary>} />
+              <Route path="map" element={<PageErrorBoundary pageName="Map"><MapPage /></PageErrorBoundary>} />
+              <Route path="graph" element={<PageErrorBoundary pageName="Graph"><GraphPage /></PageErrorBoundary>} />
+              <Route path="globe" element={<PageErrorBoundary pageName="Globe"><GlobePage /></PageErrorBoundary>} />
+              <Route path="briefing" element={<PageErrorBoundary pageName="Briefing"><BriefingPage /></PageErrorBoundary>} />
+              <Route path="incidents" element={<PageErrorBoundary pageName="Incidents"><IncidentsPage /></PageErrorBoundary>} />
+              <Route path="incidents/:id" element={<PageErrorBoundary pageName="Incident Detail"><IncidentDetailPage /></PageErrorBoundary>} />
+              <Route path="recommendations" element={<PageErrorBoundary pageName="Recommendations"><RecommendationsPage /></PageErrorBoundary>} />
+              <Route path="signals" element={<PageErrorBoundary pageName="Signals"><SignalFeedPage /></PageErrorBoundary>} />
+              <Route path="rules" element={<PageErrorBoundary pageName="Rules"><CorrelationRulesPage /></PageErrorBoundary>} />
+              <Route path="areas" element={<PageErrorBoundary pageName="Areas"><AreasPage /></PageErrorBoundary>} />
             </Route>
           </Route>
         </Routes>

@@ -1,6 +1,7 @@
 import { Drawer, DrawerSize, Tag, Icon, Classes } from '@blueprintjs/core'
 import type { IconName } from '@blueprintjs/icons'
 import type { Recommendation, EvidenceItem } from '../api/recommendations'
+import { REC_TYPE_LABEL } from '../utils/recommendationLabels'
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -18,14 +19,6 @@ const TYPE_INTENT: Record<EvidenceItem['type'], 'primary' | 'warning' | 'danger'
   task:     'none',
 }
 
-const REC_TYPE_LABEL: Record<string, string> = {
-  close_stale_alert:  'Close Stale Alert',
-  acknowledge_alert:  'Acknowledge Alert',
-  escalate_incident:  'Escalate Incident',
-  create_task:        'Create Task',
-  flag_site:          'Flag Site',
-  bulk_triage_alerts: 'Bulk Triage Alerts',
-}
 
 function fmt(iso: string) {
   return new Date(iso).toLocaleString(undefined, {

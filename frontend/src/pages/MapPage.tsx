@@ -126,7 +126,7 @@ function priorityIntent(p: Task['priority']): Intent {
 }
 
 function transitionLabel(s: WorkflowStatus): string {
-  return s.replace('_', ' ')
+  return s.replaceAll('_', ' ')
 }
 
 function transitionIntent(s: WorkflowStatus): Intent {
@@ -239,7 +239,7 @@ function TaskRow({ task, disabled, onTransitioned }: TaskRowProps) {
         <span className="map-task-title">{task.title}</span>
         <div className="map-task-tags">
           <Tag minimal intent={workflowIntent(task.workflow_status)}>
-            {task.workflow_status.replace('_', ' ')}
+            {task.workflow_status.replaceAll('_', ' ')}
           </Tag>
           <Tag minimal intent={priorityIntent(task.priority)}>
             {task.priority}
@@ -380,11 +380,14 @@ export default function MapPage() {
   // Live telemetry — disabled in replay mode
   const { readings, connected: telemetryConnected } = useTelemetryStream(!isReplaying)
 
-  const tasksBySite: Record<string, Task[]> = {}
-  for (const task of allTasks) {
-    if (!tasksBySite[task.site_id]) tasksBySite[task.site_id] = []
-    tasksBySite[task.site_id].push(task)
-  }
+  const tasksBySite = useMemo(() => {
+    const map: Record<string, Task[]> = {}
+    for (const task of allTasks) {
+      if (!map[task.site_id]) map[task.site_id] = []
+      map[task.site_id].push(task)
+    }
+    return map
+  }, [allTasks])
 
   const selectedSite  = sites.find(s => s.id === selectedSiteId) ?? null
   const selectedTasks = selectedSiteId ? (tasksBySite[selectedSiteId] ?? []) : []
@@ -416,10 +419,12 @@ export default function MapPage() {
   }, [])
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- Reset selection state on replay timestamp change; no callback path exists for this synchronous reset */
     setSelectedSiteId(null)
     setSelectedAssetId(null)
     setSelectedSignal(null)
     setSelectedVesselMmsi(null)
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [asOf])
 
   // -------------------------------------------------------------------------
@@ -429,6 +434,7 @@ export default function MapPage() {
     const map = mapRef.current
     if (!map) return
     if (!mapStyleInitRef.current) { mapStyleInitRef.current = true; return }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Must synchronously clear mapLoaded before setStyle so dependent effects don't fire against the old style
     setMapLoaded(false)
     const cfg = MAP_STYLE_CONFIGS[mapStyle]
     map.setStyle(cfg.style as StyleSpecification)
@@ -463,8 +469,7 @@ export default function MapPage() {
       })
       siteMarkersRef.current.push(marker)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sites, allTasks])
+  }, [sites, tasksBySite])
 
   // -------------------------------------------------------------------------
   // AO polygon overlays — GeoJSON fill + dashed stroke
@@ -917,6 +922,7 @@ export default function MapPage() {
     if (map.getLayer('signal-symbols')) {
       map.setLayoutProperty('signal-symbols', 'visibility', showSignals ? 'visible' : 'none')
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Synchronously clear signal selection when signals are hidden
     if (!showSignals) { setSelectedSignal(null); setSelectedVesselMmsi(null) }
   }, [showSignals, mapLoaded])
 
