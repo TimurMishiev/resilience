@@ -91,7 +91,7 @@ module Feeds
         next if signal_level < MIN_SIGNAL
 
         h3_index = hex_str.to_i(16)
-        lat, lng = H3.h3_to_geo_coords(h3_index)
+        lat, lng = H3.to_geo_coordinates(h3_index)
         next unless lat && lng
         next unless in_any_theater?(lat, lng)
 
