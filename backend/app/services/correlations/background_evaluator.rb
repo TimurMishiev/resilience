@@ -21,12 +21,14 @@ module Correlations
 
         loop do
           begin
-            window_start = (POLL_INTERVAL + 2).seconds.ago
-            recent = ExternalSignal.where(ingested_at: window_start..Time.current)
+            ActiveRecord::Base.connection_pool.with_connection do
+              window_start = (POLL_INTERVAL + 2).seconds.ago
+              recent = ExternalSignal.where(ingested_at: window_start..Time.current)
 
-            recent.find_each do |signal|
-              Correlations::EvaluatorService.call(signal: signal)
-              Sites::GeofenceBreachService.call(signal: signal)
+              recent.find_each do |signal|
+                Correlations::EvaluatorService.call(signal: signal)
+                Sites::GeofenceBreachService.call(signal: signal)
+              end
             end
 
             consecutive_errors = 0

@@ -327,15 +327,17 @@ export default function SignalFeedPage() {
               ? `${allSignals.length.toLocaleString()} of ${total.toLocaleString()} loaded`
               : `${total} signals`}
         </span>
-        <Button
-          icon="lightning"
-          intent="warning"
-          small
-          style={{ marginLeft: 'auto' }}
-          onClick={() => setInjectOpen(true)}
-        >
-          Inject Signal
-        </Button>
+        {isCommander && (
+          <Button
+            icon="lightning"
+            intent="warning"
+            small
+            style={{ marginLeft: 'auto' }}
+            onClick={() => setInjectOpen(true)}
+          >
+            Inject Signal
+          </Button>
+        )}
       </div>
 
       {/* Filters */}

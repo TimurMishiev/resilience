@@ -18,6 +18,7 @@ import { useSites } from '../hooks/useSites'
 import { getAiFilter } from '../api/ai'
 import AuditTimeline from '../components/AuditTimeline'
 import { useReplay } from '../context/ReplayContext'
+import { useAuth } from '../context/AuthContext'
 import type { Task, TaskPriority, WorkflowStatus } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
 
@@ -61,6 +62,8 @@ function statusLabel(status: WorkflowStatus): string {
 
 export default function TasksPage() {
   const { asOf, isReplaying } = useReplay()
+  const { currentUser } = useAuth()
+  const isCommander = currentUser?.role === 'commander'
   const [statusFilter, setStatusFilter]     = useState<WorkflowStatus | ''>('')
   const [siteFilter, setSiteFilter]         = useState<string | null>(null)
   const [priorityFilter, setPriorityFilter] = useState<TaskPriority | null>(null)
@@ -127,6 +130,14 @@ export default function TasksPage() {
       .finally(() => setNlLoading(false))
   }
 
+  function clearNlConstraints() {
+    setNlApplied(false)
+    setNlError(null)
+    setSiteFilter(null)
+    setDateFrom(null)
+    setDateTo(null)
+  }
+
   function clearNlFilter() {
     setNlQuery('')
     setNlApplied(false)
@@ -181,34 +192,36 @@ export default function TasksPage() {
             onChange={(e) => {
               setStatusFilter(e.currentTarget.value as WorkflowStatus | '')
               setPriorityFilter(null)
-              setNlApplied(false)
+              clearNlConstraints()
             }}
             options={WORKFLOW_STATUS_OPTIONS.map((o) => ({ label: o.label, value: o.value }))}
           />
         </div>
 
-        {/* AI natural-language filter */}
-        <div className="nl-filter-row">
-          <InputGroup
-            inputRef={inputRef}
-            placeholder="e.g. show blocked tasks at Site Alpha"
-            value={nlQuery}
-            onChange={(e) => setNlQuery(e.currentTarget.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleNlSearch() }}
-            rightElement={
-              nlApplied
-                ? <Button minimal icon="cross" onClick={clearNlFilter} title="Clear AI filter" />
-                : <Button minimal icon="search" loading={nlLoading} onClick={handleNlSearch} title="Apply AI filter" />
-            }
-            disabled={nlLoading}
-          />
-          {nlApplied && (
-            <Tag intent="primary" minimal icon="predictive-analysis">AI filter applied</Tag>
-          )}
-          {nlError && (
-            <span className="nl-filter-error bp6-text-muted">{nlError}</span>
-          )}
-        </div>
+        {/* AI natural-language filter — commander-only (backend enforces same restriction) */}
+        {isCommander && (
+          <div className="nl-filter-row">
+            <InputGroup
+              inputRef={inputRef}
+              placeholder="e.g. show blocked tasks at Site Alpha"
+              value={nlQuery}
+              onChange={(e) => setNlQuery(e.currentTarget.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleNlSearch() }}
+              rightElement={
+                nlApplied
+                  ? <Button minimal icon="cross" onClick={clearNlFilter} title="Clear AI filter" />
+                  : <Button minimal icon="search" loading={nlLoading} onClick={handleNlSearch} title="Apply AI filter" />
+              }
+              disabled={nlLoading}
+            />
+            {nlApplied && (
+              <Tag intent="primary" minimal icon="predictive-analysis">AI filter applied</Tag>
+            )}
+            {nlError && (
+              <span className="nl-filter-error bp6-text-muted">{nlError}</span>
+            )}
+          </div>
+        )}
 
         {!isPending && tasks.length === 0 ? (
           <NonIdealState
