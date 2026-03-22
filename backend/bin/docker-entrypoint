@@ -4,8 +4,8 @@
 if [ "${@: -2:1}" == "./bin/rails" ] && [ "${@: -1:1}" == "server" ]; then
   ./bin/rails db:prepare
 
-  # Seed demo data on first run only (skipped if users already exist)
-  if ./bin/rails runner "exit(User.any? ? 0 : 1)" 2>/dev/null; then
+  # FORCE_RESEED=true bypasses the guard (use to re-seed a live deployment)
+  if [ -z "$FORCE_RESEED" ] && ./bin/rails runner "exit(User.any? ? 0 : 1)" 2>/dev/null; then
     echo "Database already seeded — skipping."
   else
     echo "Seeding demo data…"
