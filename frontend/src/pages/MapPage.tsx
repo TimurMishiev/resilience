@@ -24,6 +24,7 @@ import type { Site, Task, Asset, WorkflowStatus, Signal, RiskLevel } from '../ap
 import type { Intent } from '@blueprintjs/core'
 import { Icon } from '@blueprintjs/core'
 import { SIGNAL_ICON_NAME, SIGNAL_ICON_CHAR } from '../lib/signalIcons'
+import { useLocation } from 'react-router-dom'
 
 // ---------------------------------------------------------------------------
 // Signal layer config
@@ -300,6 +301,7 @@ function TaskRow({ task, disabled, onTransitioned }: TaskRowProps) {
 // MapPage
 // ---------------------------------------------------------------------------
 export default function MapPage() {
+  const location              = useLocation()
   const { asOf, isReplaying } = useReplay()
   const queryClient           = useQueryClient()
 
@@ -319,6 +321,7 @@ export default function MapPage() {
   const [mapLoaded,       setMapLoaded]         = useState(false)
   const [mapStyle,        setMapStyle]          = useState<MapStyleKey>('tactical')
   const mapStyleInitRef = useRef(false)
+  const urlSelectionAppliedRef = useRef(false)
 
   const { data: riskData } = useRiskScores()
   const riskBySiteId       = useMemo(
@@ -401,6 +404,10 @@ export default function MapPage() {
     queryClient.invalidateQueries({ queryKey: ['readiness'] })
   }, [queryClient])
 
+  useEffect(() => {
+    urlSelectionAppliedRef.current = false
+  }, [location.search])
+
   // -------------------------------------------------------------------------
   // Map init
   // -------------------------------------------------------------------------
@@ -428,6 +435,56 @@ export default function MapPage() {
     setSelectedVesselMmsi(null)
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [asOf])
+
+  useEffect(() => {
+    if (!mapLoaded || !mapRef.current || urlSelectionAppliedRef.current) return
+
+    const params = new URLSearchParams(location.search)
+    const siteId = params.get('site_id')
+    const assetId = params.get('asset_id')
+    const signalId = params.get('signal_id')
+
+    /* eslint-disable react-hooks/set-state-in-effect -- URL handoff must synchronously hydrate map selection state before the first focused flyTo */
+    if (siteId) {
+      const site = sites.find(s => s.id === siteId)
+      if (!site) return
+      setSelectedSiteId(site.id)
+      setSelectedAssetId(null)
+      setSelectedSignal(null)
+      setSelectedVesselMmsi(null)
+      mapRef.current.flyTo({ center: [Number(site.longitude), Number(site.latitude)], zoom: 6 })
+      urlSelectionAppliedRef.current = true
+      return
+    }
+
+    if (assetId) {
+      const asset = assets.find(a => a.id === assetId)
+      if (!asset) return
+      const reading = readings.get(asset.id)
+      const homeSite = sites.find(s => s.id === asset.home_site_id)
+      const lat = reading?.lat ?? (homeSite ? Number(homeSite.latitude) : 0)
+      const lng = reading?.lng ?? (homeSite ? Number(homeSite.longitude) : 0)
+      setSelectedSiteId(null)
+      setSelectedAssetId(asset.id)
+      setSelectedSignal(null)
+      setSelectedVesselMmsi(null)
+      mapRef.current.flyTo({ center: [lng, lat], zoom: 7 })
+      urlSelectionAppliedRef.current = true
+      return
+    }
+
+    if (signalId) {
+      const signal = signals.find(s => s.id === signalId)
+      if (!signal) return
+      setSelectedSiteId(null)
+      setSelectedAssetId(null)
+      setSelectedSignal(signal)
+      setSelectedVesselMmsi(signal.signal_type === 'vessel_position' ? signal.external_id : null)
+      mapRef.current.flyTo({ center: [Number(signal.lng), Number(signal.lat)], zoom: 7 })
+      urlSelectionAppliedRef.current = true
+    }
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [assets, location.search, mapLoaded, readings, signals, sites])
 
   // -------------------------------------------------------------------------
   // Style switching — skip first render (map init already loaded tactical)

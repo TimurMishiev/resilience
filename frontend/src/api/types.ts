@@ -332,6 +332,7 @@ export interface SignalsParams extends PaginationParams {
   from?: string
   to?: string
   site_id?: string
+  as_of?: string
 }
 
 export interface SignalRuleMatchesParams extends PaginationParams {

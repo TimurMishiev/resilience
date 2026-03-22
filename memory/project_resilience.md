@@ -9,9 +9,9 @@ type: project
 ## Stack
 
 - **Backend:** Ruby on Rails (API mode), PostgreSQL, Sidekiq, Redis, SSE for real-time push
-- **Frontend:** React + TypeScript, Tailwind CSS, shadcn/ui components
+- **Frontend:** React + TypeScript, Vite, Blueprint UI, CesiumJS, MapLibre GL
 - **Deployment:** Fly.io (backend + postgres), Vite dev server locally
-- **Testing:** RSpec (backend), Vitest (frontend)
+- **Testing:** RSpec (backend), ESLint + TypeScript build validation (frontend)
 
 ---
 
@@ -39,7 +39,7 @@ Every new entity must answer: "Is this an entity, a property, a relationship, or
 - **AisIngestionService** — ingests AIS pings, creates ExternalSignal, calls Vessel.upsert_from_signal!. Lives in `feeds/` namespace to preserve SRP.
 - **IngestService** — generic ingestion coordinator.
 - **EvaluatorService** — evaluates SignalRules against incoming signals. Will be extended for compound conditions.
-- **Tasks::UpdateService** — needs string-keyed params, not symbol keys (known quirk).
+- **Tasks::UpdateService** — needs string-keyed params, not symbol keys (known quirk). Accepts `actor_role:` keyword ("commander" / "operator"); operators are restricted to title+description only; priority is commander authority. Correlation engine passes `actor_role: "commander"` for automated escalations.
 
 ---
 
@@ -59,6 +59,10 @@ Every new entity must answer: "Is this an entity, a property, a relationship, or
 | backend/spec/models/vessel_track_spec.rb | RSpec examples for VesselTrack |
 | backend/spec/jobs/vessels/track_retention_job_spec.rb | RSpec examples for TrackRetentionJob |
 | backend/spec/factories/vessel_tracks.rb | FactoryBot factory for VesselTrack |
+| frontend/src/pages/GlobePage.tsx | Cesium globe, replay-aware signals, entity picking, inspector panel |
+| frontend/src/pages/MapPage.tsx | MapLibre operational map, vessel tracks, signal/site/asset panels |
+| frontend/src/hooks/useSignals.ts | Signal query hook with configurable refetch interval |
+| frontend/src/hooks/useTelemetryStream.ts | SSE asset telemetry stream with token exchange + reconnect |
 
 ---
 
@@ -75,6 +79,9 @@ Every new entity must answer: "Is this an entity, a property, a relationship, or
 - Security fix: serialize-javascript CVE patched via yarn resolutions
 - Atomic cooldown claim (prevents concurrent rule-fire race condition)
 - Auth guards, error propagation, type safety, dry-run error display
+- 3D Cesium globe with AO polygons, live asset telemetry, replay-aware signal cutoffs, and direct inspection for sites/assets/signals
+- Globe inspector supports asset telemetry, signal metadata, and maritime vessel enrichment for vessel-position signals
+- `/api/signals` now treats `as_of` as a first-class upper bound; if both `to` and `as_of` are supplied, the earlier timestamp wins
 
 ### Phase 1 — Intelligence Layer (IN PROGRESS)
 
@@ -160,6 +167,25 @@ Key engineering decisions from Step 3:
 - ServiceResult (Data.define) exposes result.success (boolean), NOT result.success? (method). Using .success? raises NoMethodError.
 - AIS raw_payload uses key "dest" for destination, not "destination".
 - Tasks::UpdateService requires string-keyed params, not symbol keys.
+- Backend request specs currently cannot be run in this environment because `bundler 2.7.2` from `Gemfile.lock` is not installed locally.
+
+---
+
+## Globe Notes
+
+- Globe and replay are now aligned at both layers:
+  - Frontend disables live signal polling during replay and queries signals with `to=as_of`
+  - Backend `Api::SignalsController#index` applies `as_of` as an upper bound
+- Globe signal rendering no longer tears down every entity on refresh; signals are diffed and updated in place.
+- Globe selection is no longer site-only:
+  - `site-*` opens readiness + task context
+  - `asset-*` opens live telemetry context
+  - `signal-*` opens source/type metadata and vessel enrichment when applicable
+- Cesium attribution is visible again via a custom credit container; prior hidden-credit behavior was removed.
+- Remaining “next level” work if resumed later:
+  - selection highlighting on the globe
+  - track trails for moving assets / vessels
+  - batched or clustered signal rendering if density grows beyond entity comfort
 
 ---
 

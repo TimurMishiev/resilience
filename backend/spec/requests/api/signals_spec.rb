@@ -76,6 +76,27 @@ RSpec.describe "Api::Signals", type: :request do
       expect(ids).not_to include(seismic2.id)
     end
 
+    it "filters by as_of datetime" do
+      as_of = 45.minutes.ago.iso8601
+      get "/api/signals", params: { as_of: as_of }, headers: auth_headers(user)
+      ids = JSON.parse(response.body)["data"].map { |s| s["id"] }
+      expect(ids).to include(seismic1.id, wildfire.id, aircraft.id)
+      expect(ids).not_to include(seismic2.id)
+    end
+
+    it "applies the earlier of to and as_of as the upper bound" do
+      get "/api/signals",
+          params: {
+            to: 30.minutes.ago.iso8601,
+            as_of: 1.5.hours.ago.iso8601,
+          },
+          headers: auth_headers(user)
+
+      ids = JSON.parse(response.body)["data"].map { |s| s["id"] }
+      expect(ids).to include(seismic1.id, wildfire.id)
+      expect(ids).not_to include(seismic2.id, aircraft.id)
+    end
+
     it "filters by site_id using proximity bounding box" do
       # Site near London (51.5, 0.0) — should match seismic1 and aircraft but not wildfire
       site = create(:site, latitude: 51.5, longitude: 0.0)

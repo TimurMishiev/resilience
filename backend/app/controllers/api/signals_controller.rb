@@ -6,11 +6,12 @@ module Api
     # Query params: source, signal_type, from, to, site_id (proximity filter), page, per_page
     def index
       signals = ExternalSignal.all.order(occurred_at: :desc)
+      upper_bound = [safe_parse_datetime(params[:to]), as_of].compact.min
 
       signals = signals.by_source(params[:source])      if params[:source].present?
       signals = signals.by_type(params[:signal_type])   if params[:signal_type].present?
       signals = signals.where("occurred_at >= ?", safe_parse_datetime(params[:from])) if params[:from].present?
-      signals = signals.where("occurred_at <= ?", safe_parse_datetime(params[:to]))   if params[:to].present?
+      signals = signals.where("occurred_at <= ?", upper_bound) if upper_bound.present?
 
       if params[:site_id].present?
         site = Site.find_by(id: params[:site_id])

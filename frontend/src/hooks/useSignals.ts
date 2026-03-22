@@ -2,11 +2,15 @@ import { useQuery, useInfiniteQuery } from '@tanstack/react-query'
 import { getSignals } from '../api/signals'
 import type { SignalsParams } from '../api/types'
 
-export function useSignals(params?: SignalsParams) {
+interface UseSignalsOptions {
+  refetchInterval?: number | false
+}
+
+export function useSignals(params?: SignalsParams, options?: UseSignalsOptions) {
   return useQuery({
     queryKey: ['signals', params],
     queryFn: () => getSignals(params),
-    refetchInterval: 5000, // auto-refresh every 5s so the feed stays live
+    refetchInterval: options?.refetchInterval ?? 5000, // auto-refresh every 5s so the feed stays live
   })
 }
 
