@@ -2,6 +2,7 @@ require "net/http"
 require "csv"
 require "zlib"
 require "stringio"
+require "h3"
 
 module Feeds
   # Polls gpsjam.org for GPS interference heatmap data and ingests high-confidence

@@ -73,4 +73,4 @@ group :development, :test do
   gem "rubocop-rails-omakase", require: false
 end
 
-gem "h3", "~> 3.7"
+gem "h3", "~> 3.7", require: false
