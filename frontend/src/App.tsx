@@ -13,6 +13,7 @@ import LoginPage from './pages/LoginPage'
 // route.  PageErrorBoundary (which wraps every route) embeds a <Suspense>
 // fallback so load errors are caught and displayed in-page rather than
 // crashing the whole shell.
+const AlertTriagePage     = lazy(() => import('./pages/AlertTriagePage'))
 const AssetsPage          = lazy(() => import('./pages/AssetsPage'))
 const BriefingPage        = lazy(() => import('./pages/BriefingPage'))
 const AreasPage           = lazy(() => import('./pages/AreasPage'))
@@ -50,6 +51,7 @@ export default function App() {
               <Route path="incidents" element={<PageErrorBoundary pageName="Incidents"><IncidentsPage /></PageErrorBoundary>} />
               <Route path="incidents/:id" element={<PageErrorBoundary pageName="Incident Detail"><IncidentDetailPage /></PageErrorBoundary>} />
               <Route path="recommendations" element={<PageErrorBoundary pageName="Recommendations"><RecommendationsPage /></PageErrorBoundary>} />
+              <Route path="alerts" element={<PageErrorBoundary pageName="Alert Triage"><AlertTriagePage /></PageErrorBoundary>} />
               <Route path="signals" element={<PageErrorBoundary pageName="Signals"><SignalFeedPage /></PageErrorBoundary>} />
               <Route path="rules" element={<PageErrorBoundary pageName="Rules"><CorrelationRulesPage /></PageErrorBoundary>} />
               <Route path="areas" element={<PageErrorBoundary pageName="Areas"><AreasPage /></PageErrorBoundary>} />

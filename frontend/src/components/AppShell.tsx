@@ -247,6 +247,12 @@ export default function AppShell() {
               onClick={() => navigate('/incidents')}
             />
             <MenuItem
+              icon="notifications"
+              text="Alert Triage"
+              active={pathname.startsWith('/alerts')}
+              onClick={() => navigate('/alerts')}
+            />
+            <MenuItem
               icon="lightbulb"
               text="Recommendations"
               active={pathname.startsWith('/recommendations')}
