@@ -522,12 +522,12 @@ export default function SiteDetailPage() {
   const { mutate: toggleStatus, isPending: togglingStatus } = useToggleSiteStatus()
   const { mutate: updateGeofence, isPending: savingGeofence } = useUpdateSiteGeofence()
 
-  // Active geofence breach count — filtered server-side so the cap never
-  // hides an older still-unacknowledged breach behind newer rule-fire records.
+  // Active geofence breach count — use meta.total (the true server-side count)
+  // rather than data.length so the badge is accurate even when total > per_page.
   const { data: breachMatchesRes } = useSignalRuleMatches(
     id ? { site_id: id, geofence_breach: true, workflow_status: 'unacknowledged', per_page: 50 } : undefined,
   )
-  const activeBreachCount = breachMatchesRes?.data?.length ?? 0
+  const activeBreachCount = breachMatchesRes?.meta?.total ?? 0
 
   if (isPending) {
     return (

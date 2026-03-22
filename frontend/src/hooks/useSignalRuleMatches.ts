@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
-import { getSignalRuleMatches, transitionAlert, bulkTransitionAlerts } from '../api/signal_rule_matches'
+import { getSignalRuleMatches, transitionAlert, bulkTransitionAlerts, getActiveBreachSiteIds } from '../api/signal_rule_matches'
 import type { SignalRuleMatchesParams, TransitionAlertBody } from '../api/types'
 import type { BulkTransitionBody } from '../api/signal_rule_matches'
 
@@ -38,6 +38,16 @@ export function useTransitionAlert() {
       queryClient.invalidateQueries({ queryKey: ['signal_rule_matches'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
     },
+  })
+}
+
+// Returns the set of site IDs with at least one unacknowledged geofence breach.
+// Backed by an unpaginated backend query — never subject to page-cap omission.
+export function useActiveBreachSiteIds() {
+  return useQuery({
+    queryKey: ['signal_rule_matches', 'active_breach_sites'],
+    queryFn:  () => getActiveBreachSiteIds(),
+    refetchInterval: 10_000,
   })
 }
 

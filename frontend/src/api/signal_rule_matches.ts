@@ -38,3 +38,7 @@ export interface BulkTransitionResult {
 export function bulkTransitionAlerts(body: BulkTransitionBody): Promise<BulkTransitionResult> {
   return api.post('/api/signal_rule_matches/bulk_transition', body)
 }
+
+export function getActiveBreachSiteIds(): Promise<{ site_ids: string[] }> {
+  return api.get<{ site_ids: string[] }>('/api/signal_rule_matches/active_breach_sites')
+}

@@ -31,6 +31,20 @@ module Api
       render json: serialize_match(match)
     end
 
+    # GET /api/signal_rule_matches/active_breach_sites
+    # Returns all site IDs with at least one unacknowledged geofence breach.
+    # Unpaginated by design — used by the map to render breach rings without
+    # any risk of a page cap silently omitting an active breach site.
+    def active_breach_sites
+      site_ids = SignalRuleMatch
+                   .where("(metadata->>'geofence_breach')::boolean = true")
+                   .where(workflow_status: :unacknowledged)
+                   .where.not(site_id: nil)
+                   .distinct
+                   .pluck(:site_id)
+      render json: { site_ids: site_ids }
+    end
+
     # POST /api/signal_rule_matches/bulk_transition
     # Body: { ids: [...], to_status: "acknowledged", notes: "..." }
     # Runs each alert through the same TransitionService used for single transitions.

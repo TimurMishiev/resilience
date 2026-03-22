@@ -70,6 +70,7 @@ Rails.application.routes.draw do
     resources :signal_rule_matches, only: %i[index show] do
       collection do
         post :bulk_transition
+        get  :active_breach_sites
       end
       member do
         post :transition

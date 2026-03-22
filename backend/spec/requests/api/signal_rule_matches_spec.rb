@@ -121,6 +121,44 @@ RSpec.describe "Api::SignalRuleMatches", type: :request do
     end
   end
 
+  describe "GET /api/signal_rule_matches/active_breach_sites" do
+    let!(:breach_match) do
+      create(:signal_rule_match,
+             site: site_a, correlation_rule: nil,
+             fired_at: 5.minutes.ago,
+             metadata: { geofence_breach: true, distance_km: 8.2,
+                         signal_type: "vessel_position", signal_source: "ais" })
+    end
+    let!(:acked_breach) do
+      create(:signal_rule_match,
+             site: site_b, correlation_rule: nil,
+             fired_at: 10.minutes.ago,
+             workflow_status: "acknowledged",
+             metadata: { geofence_breach: true, distance_km: 3.1,
+                         signal_type: "aircraft_position", signal_source: "opensky" })
+    end
+
+    it "returns only site IDs with unacknowledged geofence breaches" do
+      get "/api/signal_rule_matches/active_breach_sites", headers: auth_headers(user)
+      expect(response).to have_http_status(:ok)
+      ids = JSON.parse(response.body)["site_ids"]
+      expect(ids).to include(site_a.id)
+      expect(ids).not_to include(site_b.id) # acknowledged breach excluded
+    end
+
+    it "never includes regular rule-fire matches" do
+      get "/api/signal_rule_matches/active_breach_sites", headers: auth_headers(user)
+      ids = JSON.parse(response.body)["site_ids"]
+      # match1/match2/match3 are plain rule fires with no geofence_breach metadata
+      expect(ids).not_to include(match2.site_id)
+    end
+
+    it "returns 401 for unauthenticated requests" do
+      get "/api/signal_rule_matches/active_breach_sites"
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
+
   describe "GET /api/signal_rule_matches/:id" do
     it "returns 200 with the match and associations" do
       get "/api/signal_rule_matches/#{match1.id}", headers: auth_headers(user)

@@ -19,7 +19,7 @@ import { useAreasOfOperation } from '../hooks/useAreasOfOperation'
 import { useSignals } from '../hooks/useSignals'
 import { useVessels, useVesselTracks } from '../hooks/useVessels'
 import { useRiskScores } from '../hooks/useRiskScores'
-import { useSignalRuleMatches } from '../hooks/useSignalRuleMatches'
+import { useActiveBreachSiteIds } from '../hooks/useSignalRuleMatches'
 import { useReplay } from '../context/ReplayContext'
 import type { Site, Task, Asset, WorkflowStatus, Signal, RiskLevel } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
@@ -399,20 +399,13 @@ export default function MapPage() {
   const { data: vesselTrackRes } = useVesselTracks(selectedVessel?.id ?? null, { limit: 300 })
   const vesselTracks = useMemo(() => vesselTrackRes?.data ?? [], [vesselTrackRes?.data])
 
-  // Active geofence breach alerts — filtered server-side to only breach records,
-  // so the cap never hides an older-but-still-active unacknowledged breach.
-  const { data: breachMatchesRes } = useSignalRuleMatches({
-    geofence_breach:  true,
-    workflow_status:  'unacknowledged',
-    per_page:         200,
-  })
-  const breachedSiteIds = useMemo(() => {
-    const ids = new Set<string>()
-    for (const m of breachMatchesRes?.data ?? []) {
-      if (m.site?.id) ids.add(m.site.id)
-    }
-    return ids
-  }, [breachMatchesRes?.data])
+  // Active geofence breach site IDs — backed by an unpaginated backend query
+  // so no page cap can silently omit an active breach site from the ring layer.
+  const { data: activeBreachRes } = useActiveBreachSiteIds()
+  const breachedSiteIds = useMemo(
+    () => new Set<string>(activeBreachRes?.site_ids ?? []),
+    [activeBreachRes?.site_ids],
+  )
 
   const sites    = useMemo(() => sitesQuery.data?.data  ?? [], [sitesQuery.data?.data])
   const allTasks = useMemo(() => tasksQuery.data?.data  ?? [], [tasksQuery.data?.data])
