@@ -27,7 +27,7 @@ module Api
       if result.success?
         render json: { created: result.created, invalid_count: result.invalid_count }, status: :ok
       else
-        render json: { errors: result.errors }, status: :unprocessable_entity
+        render json: { errors: result.errors }, status: :unprocessable_content
       end
     end
 
@@ -61,7 +61,7 @@ module Api
       rec = Recommendation.find(params[:id])
 
       unless rec.pending? || rec.accepted?
-        render json: { errors: ["Recommendation is #{rec.status} — cannot execute"] }, status: :unprocessable_entity
+        render json: { errors: ["Recommendation is #{rec.status} — cannot execute"] }, status: :unprocessable_content
         return
       end
 
@@ -71,7 +71,7 @@ module Api
       if result.success?
         render json: serialize(rec.reload)
       else
-        render json: { errors: result.errors }, status: :unprocessable_entity
+        render json: { errors: result.errors }, status: :unprocessable_content
       end
     end
 
@@ -117,7 +117,7 @@ module Api
     def find_pending_rec
       rec = Recommendation.find(params[:id])
       unless rec.pending?
-        render json: { errors: ["Recommendation is already #{rec.status}"] }, status: :unprocessable_entity
+        render json: { errors: ["Recommendation is already #{rec.status}"] }, status: :unprocessable_content
         return nil
       end
       rec

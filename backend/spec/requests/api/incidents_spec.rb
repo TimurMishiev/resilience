@@ -89,7 +89,7 @@ RSpec.describe "Api::Incidents", type: :request do
       patch "/api/incidents/#{incident.id}",
             params: { incident: { title: "" } },
             headers: auth_headers(operator)
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
     end
   end
 
@@ -122,7 +122,7 @@ RSpec.describe "Api::Incidents", type: :request do
       post "/api/incidents/#{incident.id}/transition",
            params: { to_status: "acknowledged" },
            headers: auth_headers(operator)
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
     end
   end
 
@@ -256,7 +256,7 @@ RSpec.describe "Api::Incidents", type: :request do
            params:  { body: "   " },
            headers: auth_headers(operator), as: :json
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
     end
 
     it "writes an audit event" do

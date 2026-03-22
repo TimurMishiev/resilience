@@ -37,7 +37,7 @@ module Api
       if result.success?
         render json: serialize_incident(result.incident)
       else
-        render json: { errors: result.errors }, status: :unprocessable_entity
+        render json: { errors: result.errors }, status: :unprocessable_content
       end
     end
 
@@ -56,7 +56,7 @@ module Api
       if result.success?
         render json: serialize_incident(result.incident)
       else
-        render json: { errors: result.errors }, status: :unprocessable_entity
+        render json: { errors: result.errors }, status: :unprocessable_content
       end
     end
 
@@ -100,7 +100,7 @@ module Api
       if result.success?
         render json: serialize_incident(result.incident)
       else
-        render json: { errors: result.errors }, status: :unprocessable_entity
+        render json: { errors: result.errors }, status: :unprocessable_content
       end
     end
 
@@ -124,7 +124,7 @@ module Api
       if result.success?
         render json: serialize_note(result.note), status: :created
       else
-        render json: { errors: result.errors }, status: :unprocessable_entity
+        render json: { errors: result.errors }, status: :unprocessable_content
       end
     end
 

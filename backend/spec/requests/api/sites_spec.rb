@@ -95,7 +95,7 @@ RSpec.describe "Api::Sites", type: :request do
             params:  { geofence_radius_km: 0 },
             headers: auth_headers(current_user), as: :json
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(JSON.parse(response.body)["errors"]).to be_present
     end
 

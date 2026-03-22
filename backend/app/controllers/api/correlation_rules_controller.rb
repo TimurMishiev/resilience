@@ -32,7 +32,7 @@ module Api
       if rule.save
         render json: serialize_rule(rule), status: :created
       else
-        render json: { errors: rule.errors.full_messages }, status: :unprocessable_entity
+        render json: { errors: rule.errors.full_messages }, status: :unprocessable_content
       end
     end
 
@@ -43,7 +43,7 @@ module Api
       if rule.update(rule_params)
         render json: serialize_rule(rule)
       else
-        render json: { errors: rule.errors.full_messages }, status: :unprocessable_entity
+        render json: { errors: rule.errors.full_messages }, status: :unprocessable_content
       end
     end
 

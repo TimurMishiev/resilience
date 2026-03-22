@@ -169,6 +169,25 @@ RSpec.describe Rules::EffectivenessService, type: :service do
         expect(sparkline[24]).to eq(1)
         expect(sparkline.sum).to eq(1)
       end
+
+      it "places a fire from exactly 29 days ago at index 0 (boundary inclusive)" do
+        create(:signal_rule_match, :without_task,
+               correlation_rule: rule, site: site,
+               fired_at: 29.days.ago.beginning_of_day + 1.hour)
+
+        sparkline = stats_for(rule)[:sparkline]
+        expect(sparkline[0]).to eq(1)
+        expect(sparkline.sum).to eq(1)
+      end
+
+      it "excludes a fire from 30 days ago (boundary exclusive)" do
+        create(:signal_rule_match, :without_task,
+               correlation_rule: rule, site: site,
+               fired_at: 30.days.ago.utc)
+
+        sparkline = stats_for(rule)[:sparkline]
+        expect(sparkline.sum).to eq(0)
+      end
     end
   end
 

@@ -35,7 +35,7 @@ module Api
     end
 
     def render_service_failure(result)
-      render json: { errors: result.errors }, status: :unprocessable_entity
+      render json: { errors: result.errors }, status: :unprocessable_content
     end
 
     # Safely parses a datetime string, returning nil on any error.

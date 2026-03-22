@@ -24,7 +24,7 @@ module Api
       if area.save
         render json: serialize_area(area), status: :created
       else
-        render json: { errors: area.errors.full_messages }, status: :unprocessable_entity
+        render json: { errors: area.errors.full_messages }, status: :unprocessable_content
       end
     end
 
@@ -35,7 +35,7 @@ module Api
       if area.update(area_params)
         render json: serialize_area(area)
       else
-        render json: { errors: area.errors.full_messages }, status: :unprocessable_entity
+        render json: { errors: area.errors.full_messages }, status: :unprocessable_content
       end
     end
 

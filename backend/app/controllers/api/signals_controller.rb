@@ -47,7 +47,7 @@ module Api
       )
 
       unless result.success
-        render json: { errors: result.errors }, status: :unprocessable_entity
+        render json: { errors: result.errors }, status: :unprocessable_content
         return
       end
 

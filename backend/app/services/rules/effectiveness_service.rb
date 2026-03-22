@@ -79,17 +79,17 @@ module Rules
     # day_offset 0 = today (UTC), 1 = yesterday, ..., 29 = 29 days ago.
     # Only rows with fires are returned; caller fills missing days with 0.
     #
-    # Uses a DATE comparison so day_offset is always 0–29.  A timestamp
-    # comparison (fired_at >= NOW() - INTERVAL '30 days') can include records
-    # from calendar-day 30 (e.g. a fire at 22:00 on day-30 when NOW() is 21:00)
-    # whose day_offset=30 would be silently dropped by build_sparklines.
+    # Uses a DATE boundary so day_offset is always 0–29.  The boundary is cast
+    # to timestamptz rather than casting the column, so Postgres can use the
+    # btree index on fired_at.  Casting the column (fired_at::date) would force
+    # a full index scan because the function call is not index-sargable.
     SPARKLINE_SQL = <<~SQL.freeze
       SELECT
         srm.correlation_rule_id                                     AS rule_id,
         (NOW()::date - srm.fired_at::date)                         AS day_offset,
         COUNT(*)                                                    AS count
       FROM signal_rule_matches srm
-      WHERE srm.fired_at::date >= NOW()::date - INTERVAL '29 days'
+      WHERE srm.fired_at >= (NOW()::date - INTERVAL '29 days')::timestamptz
         AND srm.correlation_rule_id IS NOT NULL
       GROUP BY srm.correlation_rule_id, day_offset
     SQL

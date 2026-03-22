@@ -89,13 +89,17 @@ const MITRE_BY_ID = new Map(MITRE_TECHNIQUES.map(t => [t.id, t]))
 
 // ── Rule templates ───────────────────────────────────────────────────────────
 
+type TemplateFormState = Omit<Partial<RuleFormState>, 'compound_conditions'> & {
+  compound_conditions?: Omit<ConditionRow, '_key'>[]
+}
+
 interface RuleTemplate {
   id:          string
   name:        string
   description: string
   icon:        string
   tags:        string[]
-  form:        Partial<RuleFormState>
+  form:        TemplateFormState
 }
 
 const RULE_TEMPLATES: RuleTemplate[] = [
@@ -251,7 +255,7 @@ function formatLastFired(iso: string | null): string {
 // ── Compound builder types ───────────────────────────────────────────────────
 
 interface ConditionRow {
-  _key?:               string
+  _key:                string
   signal_type:         SignalType | ''
   proximity_km:        number
   magnitude_min:       number | ''
@@ -259,7 +263,7 @@ interface ConditionRow {
   time_window_minutes: number
 }
 
-const DEFAULT_CONDITION: ConditionRow = {
+const DEFAULT_CONDITION: Omit<ConditionRow, '_key'> = {
   signal_type:         '',
   proximity_km:        50,
   magnitude_min:       '',
@@ -407,7 +411,7 @@ function CompoundBuilder({
 
       {/* Condition rows */}
       {conditions.map((cond, i) => (
-        <div key={cond._key ?? String(i)} className="compound-condition-row">
+        <div key={cond._key} className="compound-condition-row">
           <div className="compound-condition-header">
             <span className="bp6-text-muted" style={{ fontSize: 10, fontWeight: 600 }}>
               CONDITION {i + 1}
@@ -546,7 +550,9 @@ export default function CorrelationRulesPage() {
 
   function openFromTemplate(template: RuleTemplate) {
     setEditingRule(null)
-    setForm({ ...DEFAULT_FORM, ...template.form })
+    const conditions = (template.form.compound_conditions ?? DEFAULT_FORM.compound_conditions)
+      .map(c => newCondition(c))
+    setForm({ ...DEFAULT_FORM, ...template.form, compound_conditions: conditions })
     setTemplateDialogOpen(false)
     setDrawerOpen(true)
   }

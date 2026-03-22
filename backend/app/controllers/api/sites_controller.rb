@@ -80,21 +80,21 @@ module Api
       radius = params[:geofence_radius_km].to_f
 
       if radius <= 0
-        render json: { errors: ["geofence_radius_km must be greater than 0"] }, status: :unprocessable_entity
+        render json: { errors: ["geofence_radius_km must be greater than 0"] }, status: :unprocessable_content
         return
       end
 
       site.update!(geofence_radius_km: radius)
       render json: serialize_site(site)
     rescue ActiveRecord::RecordInvalid => e
-      render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
+      render json: { errors: e.record.errors.full_messages }, status: :unprocessable_content
     end
 
     def unflag
       site = Site.find(params[:id])
 
       unless site.flagged_at
-        render json: { errors: ["Site is not flagged"] }, status: :unprocessable_entity
+        render json: { errors: ["Site is not flagged"] }, status: :unprocessable_content
         return
       end
 

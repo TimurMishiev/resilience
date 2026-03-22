@@ -37,7 +37,7 @@ module Api
 
       if ids.blank? || to_status.blank?
         return render json: { errors: ["ids and to_status are required"] },
-                      status: :unprocessable_entity
+                      status: :unprocessable_content
       end
 
       succeeded = []

@@ -418,6 +418,8 @@ export default function MapPage() {
     return () => { mapRef.current?.remove(); mapRef.current = null; setMapLoaded(false) }
   }, [])
 
+  // React 18 automatically batches all setState calls within a single effect
+  // into one re-render, so the four calls below produce exactly one paint.
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect -- Reset selection state on replay timestamp change; no callback path exists for this synchronous reset */
     setSelectedSiteId(null)

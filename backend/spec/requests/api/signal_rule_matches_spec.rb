@@ -144,7 +144,7 @@ RSpec.describe "Api::SignalRuleMatches", type: :request do
       post "/api/signal_rule_matches/bulk_transition",
            params:  { to_status: "acknowledged" },
            headers: auth_headers(user), as: :json
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
     end
 
     it "returns 401 for unauthenticated requests" do

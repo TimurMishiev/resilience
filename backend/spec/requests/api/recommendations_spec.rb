@@ -58,7 +58,7 @@ RSpec.describe "Api::Recommendations", type: :request do
     it "returns 422 for already-reviewed rec" do
       rec.update!(status: "accepted")
       post "/api/recommendations/#{rec.id}/accept", headers: auth_headers(commander)
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
     end
 
     it "forbids operator" do
