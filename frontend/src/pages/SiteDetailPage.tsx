@@ -522,6 +522,14 @@ export default function SiteDetailPage() {
   const { mutate: toggleStatus, isPending: togglingStatus } = useToggleSiteStatus()
   const { mutate: updateGeofence, isPending: savingGeofence } = useUpdateSiteGeofence()
 
+  // Active geofence breach count — shown as a header callout when > 0
+  const { data: breachMatchesRes } = useSignalRuleMatches(
+    id ? { site_id: id, per_page: 50 } : undefined,
+  )
+  const activeBreachCount = (breachMatchesRes?.data ?? []).filter(
+    m => m.metadata?.geofence_breach === true && m.workflow_status === 'unacknowledged',
+  ).length
+
   if (isPending) {
     return (
       <div className="page-content">
@@ -619,6 +627,24 @@ export default function SiteDetailPage() {
           )}
         </div>
       </div>
+
+      {/* ── geofence breach callout ── */}
+      {activeBreachCount > 0 && site.geofence_radius_km > 0 && (
+        <Callout
+          intent="warning"
+          icon="locate"
+          compact
+          style={{ marginBottom: 8 }}
+        >
+          <strong>
+            {activeBreachCount} active geofence breach{activeBreachCount !== 1 ? 'es' : ''}
+          </strong>
+          {' '}— {activeBreachCount} unacknowledged signal{activeBreachCount !== 1 ? 's' : ''} within the {site.geofence_radius_km} km perimeter.
+          {' '}<span className="bp6-text-muted" style={{ fontSize: 11 }}>
+            See the Rule Fires tab for details.
+          </span>
+        </Callout>
+      )}
 
       {/* ── meta row ── */}
       <div className="site-detail-meta">

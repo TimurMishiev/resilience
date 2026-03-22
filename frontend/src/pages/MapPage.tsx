@@ -19,6 +19,7 @@ import { useAreasOfOperation } from '../hooks/useAreasOfOperation'
 import { useSignals } from '../hooks/useSignals'
 import { useVessels, useVesselTracks } from '../hooks/useVessels'
 import { useRiskScores } from '../hooks/useRiskScores'
+import { useSignalRuleMatches } from '../hooks/useSignalRuleMatches'
 import { useReplay } from '../context/ReplayContext'
 import type { Site, Task, Asset, WorkflowStatus, Signal, RiskLevel } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
@@ -298,6 +299,28 @@ function TaskRow({ task, disabled, onTransitioned }: TaskRowProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Geofence helpers (module-level — used in both ring effects below)
+// ---------------------------------------------------------------------------
+
+// Approximate GeoJSON circle polygon for a site geofence.
+// Uses flat-earth approximation — accurate to ~1% for radii ≤ 500 km.
+function geofencePolygon(lat: number, lng: number, radiusKm: number, steps = 64): GeoJSON.Feature {
+  const coords: [number, number][] = []
+  const latRad = (lat * Math.PI) / 180
+  for (let i = 0; i <= steps; i++) {
+    const angle = (i / steps) * 2 * Math.PI
+    const dLat = ((radiusKm / 6371) * Math.cos(angle) * 180) / Math.PI
+    const dLng = ((radiusKm / 6371) * Math.sin(angle) * 180) / Math.PI / Math.cos(latRad)
+    coords.push([lng + dLng, lat + dLat])
+  }
+  return {
+    type: 'Feature',
+    properties: {},
+    geometry: { type: 'Polygon', coordinates: [coords] },
+  }
+}
+
+// ---------------------------------------------------------------------------
 // MapPage
 // ---------------------------------------------------------------------------
 export default function MapPage() {
@@ -312,6 +335,8 @@ export default function MapPage() {
   const assetMarkersRef  = useRef<Map<string, maplibregl.Marker>>(new Map())
   // Ref so the signal click handler always reads fresh data without re-registering
   const signalsRef       = useRef<Signal[]>([])
+  // setInterval handle for the breach ring pulse animation
+  const breachPulseRef   = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const [selectedSiteId,    setSelectedSiteId]    = useState<string | null>(null)
   const [selectedAssetId,   setSelectedAssetId]   = useState<string | null>(null)
@@ -373,6 +398,20 @@ export default function MapPage() {
   // Track history for the selected vessel (rendered as a polyline on the map)
   const { data: vesselTrackRes } = useVesselTracks(selectedVessel?.id ?? null, { limit: 300 })
   const vesselTracks = useMemo(() => vesselTrackRes?.data ?? [], [vesselTrackRes?.data])
+
+  // Active geofence breach alerts — used to highlight breached rings on the map
+  const { data: breachMatchesRes } = useSignalRuleMatches({ per_page: 200 })
+  const breachedSiteIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const m of breachMatchesRes?.data ?? []) {
+      if (m.metadata?.geofence_breach === true &&
+          m.workflow_status === 'unacknowledged' &&
+          m.site?.id) {
+        ids.add(m.site.id)
+      }
+    }
+    return ids
+  }, [breachMatchesRes?.data])
 
   const sites    = useMemo(() => sitesQuery.data?.data  ?? [], [sitesQuery.data?.data])
   const allTasks = useMemo(() => tasksQuery.data?.data  ?? [], [tasksQuery.data?.data])
@@ -580,29 +619,11 @@ export default function MapPage() {
   }, [mapLoaded, areaOfOperations])
 
   // -------------------------------------------------------------------------
-  // Geofence rings — dashed circle for each site's geofence_radius_km
+  // Geofence rings — dashed blue circle for each site's geofence_radius_km
   // -------------------------------------------------------------------------
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapLoaded) return
-
-    // Generate approximate GeoJSON circle polygon for a site geofence.
-    // Uses flat-earth approximation (accurate to ~1% for radii ≤ 500 km).
-    function geofencePolygon(lat: number, lng: number, radiusKm: number, steps = 64): GeoJSON.Feature {
-      const coords: [number, number][] = []
-      const latRad = (lat * Math.PI) / 180
-      for (let i = 0; i <= steps; i++) {
-        const angle = (i / steps) * 2 * Math.PI
-        const dLat = ((radiusKm / 6371) * Math.cos(angle) * 180) / Math.PI
-        const dLng = ((radiusKm / 6371) * Math.sin(angle) * 180) / Math.PI / Math.cos(latRad)
-        coords.push([lng + dLng, lat + dLat])
-      }
-      return {
-        type: 'Feature',
-        properties: {},
-        geometry: { type: 'Polygon', coordinates: [coords] },
-      }
-    }
 
     const geojsonData: GeoJSON.FeatureCollection = {
       type: 'FeatureCollection',
@@ -644,6 +665,79 @@ export default function MapPage() {
       },
     })
   }, [mapLoaded, sites])
+
+  // -------------------------------------------------------------------------
+  // Geofence breach rings — solid red ring for sites with active breaches
+  // Data updates whenever breachedSiteIds or sites change.
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapLoaded) return
+
+    const geojsonData: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: sites
+        .filter(s => s.geofence_radius_km > 0 && breachedSiteIds.has(s.id))
+        .map(s => geofencePolygon(Number(s.latitude), Number(s.longitude), s.geofence_radius_km)),
+    }
+
+    const existing = map.getSource('geofence-breach-rings') as maplibregl.GeoJSONSource | undefined
+    if (existing) {
+      existing.setData(geojsonData)
+      return
+    }
+
+    map.addSource('geofence-breach-rings', { type: 'geojson', data: geojsonData })
+
+    // Faint red fill
+    map.addLayer({
+      id:     'geofence-breach-fill',
+      type:   'fill',
+      source: 'geofence-breach-rings',
+      paint:  { 'fill-color': '#fa5252', 'fill-opacity': 0.06 },
+    })
+
+    // Solid red stroke — opacity animated by the pulse effect below
+    map.addLayer({
+      id:     'geofence-breach-stroke',
+      type:   'line',
+      source: 'geofence-breach-rings',
+      paint:  { 'line-color': '#fa5252', 'line-width': 2, 'line-opacity': 0.7 },
+    })
+  }, [mapLoaded, sites, breachedSiteIds])
+
+  // -------------------------------------------------------------------------
+  // Breach ring pulse animation — sine-wave opacity on the red stroke layer.
+  // Starts when any site has an active breach, stops when none do.
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    if (!mapLoaded || breachedSiteIds.size === 0) {
+      if (breachPulseRef.current !== null) {
+        clearInterval(breachPulseRef.current)
+        breachPulseRef.current = null
+        // Reset opacity so the ring doesn't freeze mid-fade
+        try { mapRef.current?.setPaintProperty('geofence-breach-stroke', 'line-opacity', 0.7) } catch { /* layer may not exist yet */ }
+      }
+      return
+    }
+
+    breachPulseRef.current = setInterval(() => {
+      const map = mapRef.current
+      if (!map) return
+      try {
+        // Oscillates between 0.15 and 0.85 at ~0.8 Hz — noticeable but not jarring
+        const opacity = 0.5 + 0.35 * Math.sin((Date.now() / 630) * Math.PI)
+        map.setPaintProperty('geofence-breach-stroke', 'line-opacity', opacity)
+      } catch { /* layer not yet initialised */ }
+    }, 50)
+
+    return () => {
+      if (breachPulseRef.current !== null) {
+        clearInterval(breachPulseRef.current)
+        breachPulseRef.current = null
+      }
+    }
+  }, [mapLoaded, breachedSiteIds.size])
 
   // -------------------------------------------------------------------------
   // Asset markers — created once from DB positions, then moved by telemetry
