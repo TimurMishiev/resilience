@@ -1,24 +1,33 @@
+import { lazy } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { ReplayProvider } from './context/ReplayContext'
 import AppShell from './components/AppShell'
 import PageErrorBoundary from './components/PageErrorBoundary'
 import ProtectedRoute from './components/ProtectedRoute'
-import AssetsPage from './pages/AssetsPage'
-import BriefingPage from './pages/BriefingPage'
-import AreasPage from './pages/AreasPage'
-import CorrelationRulesPage from './pages/CorrelationRulesPage'
-import GraphPage from './pages/GraphPage'
-import GlobePage from './pages/GlobePage'
-import DashboardPage from './pages/DashboardPage'
+// LoginPage is eagerly loaded — it is the first thing an unauthenticated user
+// sees and must render without a network round-trip for the JS chunk.
 import LoginPage from './pages/LoginPage'
-import MapPage from './pages/MapPage'
-import SignalFeedPage from './pages/SignalFeedPage'
-import SiteDetailPage from './pages/SiteDetailPage'
-import SitesPage from './pages/SitesPage'
-import TasksPage from './pages/TasksPage'
-import IncidentsPage from './pages/IncidentsPage'
-import IncidentDetailPage from './pages/IncidentDetailPage'
-import RecommendationsPage from './pages/RecommendationsPage'
+
+// All protected pages are lazy-loaded so Vite can split them into separate
+// chunks.  Each chunk is only downloaded when the user first navigates to that
+// route.  PageErrorBoundary (which wraps every route) embeds a <Suspense>
+// fallback so load errors are caught and displayed in-page rather than
+// crashing the whole shell.
+const AssetsPage          = lazy(() => import('./pages/AssetsPage'))
+const BriefingPage        = lazy(() => import('./pages/BriefingPage'))
+const AreasPage           = lazy(() => import('./pages/AreasPage'))
+const CorrelationRulesPage = lazy(() => import('./pages/CorrelationRulesPage'))
+const GraphPage           = lazy(() => import('./pages/GraphPage'))
+const GlobePage           = lazy(() => import('./pages/GlobePage'))
+const DashboardPage       = lazy(() => import('./pages/DashboardPage'))
+const MapPage             = lazy(() => import('./pages/MapPage'))
+const SignalFeedPage      = lazy(() => import('./pages/SignalFeedPage'))
+const SiteDetailPage      = lazy(() => import('./pages/SiteDetailPage'))
+const SitesPage           = lazy(() => import('./pages/SitesPage'))
+const TasksPage           = lazy(() => import('./pages/TasksPage'))
+const IncidentsPage       = lazy(() => import('./pages/IncidentsPage'))
+const IncidentDetailPage  = lazy(() => import('./pages/IncidentDetailPage'))
+const RecommendationsPage = lazy(() => import('./pages/RecommendationsPage'))
 
 export default function App() {
   return (

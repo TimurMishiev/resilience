@@ -1,6 +1,16 @@
-import { Component } from 'react'
+import { Component, Suspense } from 'react'
 import type { ReactNode, ErrorInfo } from 'react'
-import { Callout, Button, Icon } from '@blueprintjs/core'
+import { Callout, Button, Icon, Spinner } from '@blueprintjs/core'
+
+// ── Per-page loading fallback ────────────────────────────────────────────────
+function PageLoadingFallback({ pageName }: { pageName: string }) {
+  return (
+    <div className="page-loading-fallback bp6-dark" aria-label={`Loading ${pageName}`}>
+      <Spinner size={36} />
+      <p className="bp6-text-muted page-loading-fallback__label">{pageName}</p>
+    </div>
+  )
+}
 
 interface Props {
   /** Human-readable label shown in the fallback UI, e.g. "Globe" */
@@ -67,6 +77,12 @@ export default class PageErrorBoundary extends Component<Props, State> {
       )
     }
 
-    return children
+    // Suspense here so lazy-load network failures propagate up to THIS
+    // error boundary rather than to a distant ancestor.
+    return (
+      <Suspense fallback={<PageLoadingFallback pageName={pageName} />}>
+        {children}
+      </Suspense>
+    )
   }
 }
