@@ -18,7 +18,7 @@ import { useSites } from '../hooks/useSites'
 import { getAiFilter } from '../api/ai'
 import AuditTimeline from '../components/AuditTimeline'
 import { useReplay } from '../context/ReplayContext'
-import { useAuth } from '../context/AuthContext'
+import { useRole } from '../hooks/useRole'
 import type { Task, TaskPriority, WorkflowStatus } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
 
@@ -62,8 +62,7 @@ function statusLabel(status: WorkflowStatus): string {
 
 export default function TasksPage() {
   const { asOf, isReplaying } = useReplay()
-  const { currentUser } = useAuth()
-  const isCommander = currentUser?.role === 'commander'
+  const { isCommander } = useRole()
   const [statusFilter, setStatusFilter]     = useState<WorkflowStatus | ''>('')
   const [siteFilter, setSiteFilter]         = useState<string | null>(null)
   const [priorityFilter, setPriorityFilter] = useState<TaskPriority | null>(null)

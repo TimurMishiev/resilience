@@ -1273,6 +1273,33 @@ body {
   margin-right: 4px;
 }
 
+/* ── Classification banner ────────────────────────────────── */
+
+.classification-banner {
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 3px 8px;
+  user-select: none;
+}
+
+.classification-banner--success {
+  background: #1d7324;
+  color: #fff;
+}
+
+.classification-banner--warning {
+  background: #935610;
+  color: #fff;
+}
+
+.classification-banner--danger {
+  background: #ac2f33;
+  color: #fff;
+}
+
 /* ── Offline banner ────────────────────────────────────────── */
 
 .offline-banner {

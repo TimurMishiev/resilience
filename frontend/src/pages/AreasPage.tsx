@@ -21,7 +21,7 @@ import {
 } from '../hooks/useAreasOfOperation'
 import { useSites } from '../hooks/useSites'
 import { useCorrelationRules } from '../hooks/useCorrelationRules'
-import { useAuth } from '../context/AuthContext'
+import { useRole } from '../hooks/useRole'
 import type { AreaOfOperation, ThreatLevel } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
 
@@ -77,8 +77,7 @@ function formFromArea(area: AreaOfOperation): AreaFormState {
 
 // ── AreasPage ─────────────────────────────────────────────────────────────────
 export default function AreasPage() {
-  const { currentUser } = useAuth()
-  const isCommander     = currentUser?.role === 'commander'
+  const { isCommander } = useRole()
 
   const areasQuery = useAreasOfOperation({ per_page: 200 })
   const sitesQuery = useSites({ per_page: 200 })

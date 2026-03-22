@@ -8,7 +8,7 @@ import {
   useRecommendationMetrics,
   useGenerateRecommendations,
 } from '../hooks/useRecommendations'
-import { useAuth } from '../context/AuthContext'
+import { useRole } from '../hooks/useRole'
 import RecommendationCard from '../components/RecommendationCard'
 import EvidenceDrawer from '../components/EvidenceDrawer'
 import type { Recommendation } from '../api/recommendations'
@@ -27,8 +27,7 @@ const STATUS_OPTIONS = [
 // ── page ─────────────────────────────────────────────────────────────────────
 
 export default function RecommendationsPage() {
-  const { currentUser }     = useAuth()
-  const isCommander         = currentUser?.role === 'commander'
+  const { isCommander } = useRole()
   const [statusFilter, setStatusFilter] = useState('')
   const [evidenceRec, setEvidenceRec]   = useState<Recommendation | null>(null)
 

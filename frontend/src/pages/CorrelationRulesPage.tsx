@@ -29,7 +29,7 @@ import { useSignalRuleMatches } from '../hooks/useSignalRuleMatches'
 import { useAreasOfOperation } from '../hooks/useAreasOfOperation'
 import { dryRunRule } from '../api/correlation_rules'
 import type { DryRunResult } from '../api/correlation_rules'
-import { useAuth } from '../context/AuthContext'
+import { useRole } from '../hooks/useRole'
 import type { CorrelationRule, SignalType, TaskPriority, RuleConditions } from '../api/types'
 import { isCompoundRule } from '../api/types'
 import { RuleSparkline } from '../components/RuleSparkline'
@@ -483,8 +483,7 @@ function CompoundBuilder({
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CorrelationRulesPage() {
-  const { currentUser } = useAuth()
-  const isCommander = currentUser?.role === 'commander'
+  const { isCommander } = useRole()
 
   const { data, error, isPending } = useCorrelationRules()
   const { data: matchesData }      = useSignalRuleMatches({ per_page: 5 })

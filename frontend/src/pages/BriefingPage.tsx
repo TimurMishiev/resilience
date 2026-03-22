@@ -1,10 +1,9 @@
 import { Callout } from '@blueprintjs/core'
 import BriefingPanel from '../components/BriefingPanel'
-import { useAuth } from '../context/AuthContext'
+import { useRole } from '../hooks/useRole'
 
 export default function BriefingPage() {
-  const { currentUser } = useAuth()
-  const isCommander = currentUser?.role === 'commander'
+  const { isCommander } = useRole()
 
   return (
     <div className="page-content">

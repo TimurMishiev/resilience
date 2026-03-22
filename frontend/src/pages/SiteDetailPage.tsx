@@ -26,7 +26,7 @@ import { useSignals } from '../hooks/useSignals'
 import { useSignalRuleMatches, useTransitionAlert, useBulkTransitionAlerts } from '../hooks/useSignalRuleMatches'
 import { useAssets } from '../hooks/useAssets'
 import { useReadiness } from '../hooks/useReadiness'
-import { useAuth } from '../context/AuthContext'
+import { useRole } from '../hooks/useRole'
 import AuditTimeline from '../components/AuditTimeline'
 import SiteTimeline from '../components/SiteTimeline'
 import AlertChainDrawer from '../components/AlertChainDrawer'
@@ -512,8 +512,7 @@ export default function SiteDetailPage() {
   const [geofenceInput, setGeofenceInput]     = useState('')
   const [chainMatch, setChainMatch]           = useState<import('../api/types').SignalRuleMatch | null>(null)
 
-  const { currentUser } = useAuth()
-  const isCommander = currentUser?.role === 'commander'
+  const { isCommander } = useRole()
 
   const { data: site, isPending, error } = useSite(id)
   const { data: readinessData } = useReadiness()

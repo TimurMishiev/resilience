@@ -21,7 +21,7 @@ import { useRiskScores } from '../hooks/useRiskScores'
 import { useTasks } from '../hooks/useTasks'
 import { useSignalRuleMatches, useTransitionAlert, useBulkTransitionAlerts } from '../hooks/useSignalRuleMatches'
 import { useReplay } from '../context/ReplayContext'
-import { useAuth } from '../context/AuthContext'
+import { useRole } from '../hooks/useRole'
 import { useRecommendations } from '../hooks/useRecommendations'
 import type { Recommendation } from '../api/recommendations'
 import type { WorkflowStatus, TaskPriority, SignalRuleMatch, AlertStatus, RiskLevel } from '../api/types'
@@ -309,8 +309,7 @@ function AlertsPanel({ matches }: { matches: SignalRuleMatch[] }) {
 export default function DashboardPage() {
   const { asOf } = useReplay()
   const navigate  = useNavigate()
-  const { currentUser } = useAuth()
-  const isCommander = currentUser?.role === 'commander'
+  const { isCommander } = useRole()
   const [evidenceRec, setEvidenceRec] = useState<Recommendation | null>(null)
 
   const { data: recData } = useRecommendations()

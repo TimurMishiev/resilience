@@ -17,6 +17,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { useReplay } from '../context/ReplayContext'
 import { useAuth } from '../context/AuthContext'
+import { useRole } from '../hooks/useRole'
 import ReplaySelector from './ReplaySelector'
 import { useEventSource } from '../hooks/useEventSource'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
@@ -37,6 +38,7 @@ export default function AppShell() {
   const { pathname } = useLocation()
   const { isReplaying, asOf } = useReplay()
   const { currentUser, logout } = useAuth()
+  const { isCommander } = useRole()
   const queryClient  = useQueryClient()
   const [searchOpen, setSearchOpen] = useState(false)
   const isOnline = useOnlineStatus()
@@ -157,8 +159,20 @@ export default function AppShell() {
     navigate('/login', { replace: true })
   }
 
+  const classLevel = (import.meta.env.VITE_CLASSIFICATION_LEVEL ?? 'UNCLASSIFIED').toUpperCase()
+  const classLabel = classLevel === 'UNCLASSIFIED'
+    ? 'UNCLASSIFIED // FOR DEMONSTRATION PURPOSES ONLY'
+    : classLevel
+  const classIntent =
+    classLevel === 'SECRET'      ? 'danger'  :
+    classLevel === 'CUI'         ? 'warning' :
+    /* UNCLASSIFIED / default */   'success'
+
   return (
     <div className="shell">
+      <div className={`classification-banner classification-banner--${classIntent}`}>
+        {classLabel}
+      </div>
       <Navbar className="shell-navbar">
         <NavbarGroup align={Alignment.LEFT}>
           <NavbarHeading className="shell-brand">RESILIENCE</NavbarHeading>
@@ -186,7 +200,7 @@ export default function AppShell() {
             <div className="shell-user">
               <Tag
                 minimal
-                intent={currentUser.role === 'commander' ? 'warning' : 'none'}
+                intent={isCommander ? 'warning' : 'none'}
                 className="shell-role-tag"
               >
                 {currentUser.role}
@@ -287,7 +301,7 @@ export default function AppShell() {
               text="Briefing"
               active={pathname.startsWith('/briefing')}
               onClick={() => navigate('/briefing')}
-              labelElement={currentUser?.role !== 'commander'
+              labelElement={!isCommander
                 ? <Icon icon="lock" size={10} className="shell-menu-lock" />
                 : undefined
               }
@@ -303,7 +317,7 @@ export default function AppShell() {
               text="Rules"
               active={pathname.startsWith('/rules')}
               onClick={() => navigate('/rules')}
-              labelElement={currentUser?.role !== 'commander'
+              labelElement={!isCommander
                 ? <Icon icon="lock" size={10} className="shell-menu-lock" />
                 : undefined
               }
@@ -313,7 +327,7 @@ export default function AppShell() {
               text="Areas"
               active={pathname.startsWith('/areas')}
               onClick={() => navigate('/areas')}
-              labelElement={currentUser?.role !== 'commander'
+              labelElement={!isCommander
                 ? <Icon icon="lock" size={10} className="shell-menu-lock" />
                 : undefined
               }
@@ -341,6 +355,9 @@ export default function AppShell() {
           </button>
         ))}
       </nav>
+      <div className={`classification-banner classification-banner--${classIntent}`}>
+        {classLabel}
+      </div>
     </div>
   )
 }

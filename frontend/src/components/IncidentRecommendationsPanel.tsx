@@ -9,7 +9,7 @@
 import { useState } from 'react'
 import { NonIdealState, Spinner, Callout } from '@blueprintjs/core'
 import { useRecommendations } from '../hooks/useRecommendations'
-import { useAuth } from '../context/AuthContext'
+import { useRole } from '../hooks/useRole'
 import RecommendationCard from './RecommendationCard'
 import EvidenceDrawer from './EvidenceDrawer'
 import type { Recommendation } from '../api/recommendations'
@@ -20,8 +20,7 @@ interface Props {
 
 export default function IncidentRecommendationsPanel({ incidentId }: Props) {
   const [evidenceRec, setEvidenceRec] = useState<Recommendation | null>(null)
-  const { currentUser } = useAuth()
-  const isCommander = currentUser?.role === 'commander'
+  const { isCommander } = useRole()
 
   const { data, isPending, error } = useRecommendations({
     affected_entity_type: 'Incident',

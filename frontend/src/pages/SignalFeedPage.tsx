@@ -18,7 +18,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { useSignalsInfinite } from '../hooks/useSignals'
 import { injectSignal } from '../api/signals'
 import { getAiFilter } from '../api/ai'
-import { useAuth } from '../context/AuthContext'
+import { useRole } from '../hooks/useRole'
 import type { Signal, SignalSource, SignalType } from '../api/types'
 
 // ---------------------------------------------------------------------------
@@ -188,8 +188,7 @@ function InjectDialog({ isOpen, onClose }: { isOpen: boolean; onClose: () => voi
 // ---------------------------------------------------------------------------
 
 export default function SignalFeedPage() {
-  const { currentUser } = useAuth()
-  const isCommander = currentUser?.role === 'commander'
+  const { isCommander } = useRole()
 
   const [sourceFilter, setSourceFilter] = useState<SignalSource | ''>('')
   const [typeFilter,   setTypeFilter]   = useState<SignalType   | ''>('')
