@@ -15,3 +15,7 @@ export function getAssets(params?: AssetsParams): Promise<PaginatedResponse<Asse
 export function getAsset(id: string, params?: AsOfParam): Promise<Asset> {
   return api.get(`/api/assets/${id}`, params as QueryParams)
 }
+
+export function updateAssetStatus(id: string, status: string): Promise<Asset> {
+  return api.patch(`/api/assets/${id}`, { asset: { status } })
+}

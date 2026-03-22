@@ -28,7 +28,7 @@ Rails.application.routes.draw do
         get   :risk_history
       end
     end
-    resources :assets, only: %i[index show]
+    resources :assets, only: %i[index show update]
 
     resources :tasks, only: %i[index show create update] do
       member do

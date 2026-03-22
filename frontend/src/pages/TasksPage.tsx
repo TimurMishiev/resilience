@@ -20,8 +20,17 @@ import { getAiFilter } from '../api/ai'
 import AuditTimeline from '../components/AuditTimeline'
 import { useReplay } from '../context/ReplayContext'
 import { useRole } from '../hooks/useRole'
-import type { Task, TaskPriority, WorkflowStatus } from '../api/types'
+import type { Asset, Task, TaskPriority, WorkflowStatus, AssetStatus } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
+
+function assetStatusIntent(status: AssetStatus): Intent {
+  switch (status) {
+    case 'available':   return 'success'
+    case 'in_use':      return 'primary'
+    case 'maintenance': return 'warning'
+    case 'offline':     return 'danger'
+  }
+}
 
 
 const WORKFLOW_STATUS_OPTIONS: { label: string; value: WorkflowStatus | '' }[] = [
@@ -59,6 +68,43 @@ function statusLabel(status: WorkflowStatus): string {
     case 'blocked':     return 'Blocked'
     case 'resolved':    return 'Resolved'
   }
+}
+
+interface AssetPickerProps {
+  selectedTask: Task
+  assets: Asset[]
+  pendingAsset: string | null | undefined
+  setPendingAsset: (v: string | null) => void
+  onAssign: (assetId: string | null) => void
+  isPending: boolean
+}
+
+function AssetPicker({ selectedTask, assets, pendingAsset, setPendingAsset, onAssign, isPending }: AssetPickerProps) {
+  const pickedId    = pendingAsset !== undefined ? (pendingAsset ?? '') : (selectedTask.asset_id ?? '')
+  const pickedAsset = assets.find(a => a.id === pickedId)
+  return (
+    <div className="drawer-asset-row">
+      <span className="drawer-section-label bp6-text-muted">Asset</span>
+      <HTMLSelect
+        value={pickedId}
+        onChange={(e) => setPendingAsset(e.currentTarget.value || null)}
+        options={[
+          { label: '— Unassigned —', value: '' },
+          ...assets.map(a => ({ label: `${a.name} · ${a.status.replace('_', ' ')}`, value: a.id })),
+        ]}
+      />
+      {pickedAsset && (
+        <Tag minimal intent={assetStatusIntent(pickedAsset.status)} style={{ fontSize: 10 }}>
+          {pickedAsset.status.replace('_', ' ')}
+        </Tag>
+      )}
+      {pendingAsset !== undefined && pendingAsset !== selectedTask.asset_id && (
+        <Button small intent="primary" loading={isPending} onClick={() => onAssign(pendingAsset)}>
+          Assign
+        </Button>
+      )}
+    </div>
+  )
 }
 
 export default function TasksPage() {
@@ -382,37 +428,24 @@ export default function TasksPage() {
 
             {/* Asset assignment */}
             {!isReplaying && (
-              <div className="drawer-asset-row">
-                <span className="drawer-section-label bp6-text-muted">Asset</span>
-                <HTMLSelect
-                  value={pendingAsset !== undefined ? (pendingAsset ?? '') : (selectedTask.asset_id ?? '')}
-                  onChange={(e) => setPendingAsset(e.currentTarget.value || null)}
-                  options={[
-                    { label: '— Unassigned —', value: '' },
-                    ...assets.map(a => ({ label: `${a.name} (${a.status})`, value: a.id })),
-                  ]}
-                />
-                {pendingAsset !== undefined && pendingAsset !== selectedTask.asset_id && (
-                  <Button
-                    small
-                    intent="primary"
-                    loading={updateMutation.isPending}
-                    onClick={() => {
-                      updateMutation.mutate(
-                        { id: selectedTask.id, body: { asset_id: pendingAsset } },
-                        {
-                          onSuccess: (updated) => {
-                            setSelectedTask(updated)
-                            setPendingAsset(undefined)
-                          },
-                        }
-                      )
-                    }}
-                  >
-                    Assign
-                  </Button>
-                )}
-              </div>
+              <AssetPicker
+                selectedTask={selectedTask}
+                assets={assets}
+                pendingAsset={pendingAsset}
+                setPendingAsset={setPendingAsset}
+                onAssign={(assetId) => {
+                  updateMutation.mutate(
+                    { id: selectedTask.id, body: { asset_id: assetId } },
+                    {
+                      onSuccess: (updated) => {
+                        setSelectedTask(updated)
+                        setPendingAsset(undefined)
+                      },
+                    }
+                  )
+                }}
+                isPending={updateMutation.isPending}
+              />
             )}
 
             <Divider />

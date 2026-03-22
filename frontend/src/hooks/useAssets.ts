@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
-import { getAssets } from '../api/assets'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { getAssets, updateAssetStatus } from '../api/assets'
 import type { PaginationParams, AsOfParam } from '../api/types'
 
 type Params = PaginationParams & AsOfParam & {
@@ -12,5 +12,16 @@ export function useAssets(params?: Params) {
   return useQuery({
     queryKey: ['assets', params],
     queryFn: () => getAssets(params),
+  })
+}
+
+export function useUpdateAssetStatus() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      updateAssetStatus(id, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['assets'] })
+    },
   })
 }
