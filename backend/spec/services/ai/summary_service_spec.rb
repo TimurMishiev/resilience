@@ -12,6 +12,7 @@ RSpec.describe Ai::SummaryService, type: :service do
   let(:fake_client)   { double("anthropic_client", messages: fake_messages) }
 
   before do
+    stub_const("ENV", ENV.to_h.merge("ANTHROPIC_API_KEY" => "test_key_for_specs"))
     allow(Anthropic::Client).to receive(:new).and_return(fake_client)
   end
 
