@@ -108,3 +108,43 @@ export function getIncidentNotes(id: string): Promise<IncidentNote[]> {
 export function addIncidentNote(id: string, body: string): Promise<IncidentNote> {
   return api.post(`/api/incidents/${id}/notes`, { body })
 }
+
+// ── Intelligence chain ─────────────────────────────────────────────────────
+
+export type ChainNodeType = 'signal' | 'rule' | 'alert' | 'incident' | 'task'
+
+export interface ChainNodeData {
+  label:       string
+  // common optional fields
+  status?:     string
+  severity?:   string
+  priority?:   string
+  fired_at?:   string
+  confidence?: number
+  source?:     string
+  occurred_at?: string
+  lat?:        string
+  lng?:        string
+}
+
+export interface ChainNode {
+  id:   string
+  type: ChainNodeType
+  data: ChainNodeData
+}
+
+export interface ChainEdge {
+  id:     string
+  source: string
+  target: string
+  label:  string
+}
+
+export interface IncidentChainResponse {
+  nodes: ChainNode[]
+  edges: ChainEdge[]
+}
+
+export function getIncidentChain(id: string): Promise<IncidentChainResponse> {
+  return api.get(`/api/incidents/${id}/chain`)
+}

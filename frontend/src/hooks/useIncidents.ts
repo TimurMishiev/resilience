@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   getIncidents, getIncident, updateIncident, transitionIncident,
   getIncidentAllowedTransitions, assignIncident, getIncidentNotes, addIncidentNote,
+  getIncidentChain,
 } from '../api/incidents'
 import type { IncidentParams, IncidentStatus, Incident } from '../api/incidents'
 
@@ -91,5 +92,14 @@ export function useAddIncidentNote() {
     onSuccess: (_data, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['incident-notes', id] })
     },
+  })
+}
+
+export function useIncidentChain(id: string | undefined) {
+  return useQuery({
+    queryKey: ['incident-chain', id],
+    queryFn:  () => getIncidentChain(id!),
+    enabled:  Boolean(id),
+    refetchInterval: 30_000,
   })
 }

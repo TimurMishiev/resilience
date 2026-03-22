@@ -217,6 +217,65 @@ RSpec.describe "Api::Incidents", type: :request do
     end
   end
 
+  describe "GET /api/incidents/:id/chain" do
+    it "requires authentication" do
+      get "/api/incidents/#{incident.id}/chain"
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "returns nodes and edges for an incident with no matches" do
+      get "/api/incidents/#{incident.id}/chain", headers: auth_headers(operator)
+
+      expect(response).to have_http_status(:ok)
+      body = JSON.parse(response.body)
+      expect(body).to have_key("nodes")
+      expect(body).to have_key("edges")
+
+      # Only the incident node itself
+      expect(body["nodes"].length).to eq 1
+      expect(body["nodes"].first["type"]).to eq "incident"
+      expect(body["nodes"].first["id"]).to eq incident.id
+      expect(body["edges"]).to be_empty
+    end
+
+    it "includes signal, rule, alert, and task nodes for a linked match" do
+      match = create(:signal_rule_match, site: site)
+      incident.signal_rule_matches << match
+
+      get "/api/incidents/#{incident.id}/chain", headers: auth_headers(operator)
+
+      expect(response).to have_http_status(:ok)
+      body  = JSON.parse(response.body)
+      types = body["nodes"].map { |n| n["type"] }
+
+      expect(types).to include("incident", "alert", "signal", "rule", "task")
+    end
+
+    it "deduplicates shared signal nodes across multiple alerts" do
+      signal = create(:external_signal)
+      rule   = create(:correlation_rule)
+      match1 = create(:signal_rule_match, :without_task, signal: signal, correlation_rule: rule, site: site)
+      match2 = create(:signal_rule_match, :without_task, signal: signal, correlation_rule: rule, site: site)
+      incident.signal_rule_matches << match1
+      incident.signal_rule_matches << match2
+
+      get "/api/incidents/#{incident.id}/chain", headers: auth_headers(operator)
+
+      body         = JSON.parse(response.body)
+      signal_nodes = body["nodes"].select { |n| n["type"] == "signal" }
+      rule_nodes   = body["nodes"].select { |n| n["type"] == "rule"   }
+
+      expect(signal_nodes.length).to eq 1
+      expect(rule_nodes.length).to  eq 1
+    end
+
+    it "returns 404 for a non-existent incident" do
+      get "/api/incidents/00000000-0000-0000-0000-000000000000/chain",
+          headers: auth_headers(operator)
+      expect(response).to have_http_status(:not_found)
+    end
+  end
+
   describe "GET /api/incidents/:id/notes" do
     let!(:note) { create(:incident_note, incident: incident, author: operator, body: "Situation developing.") }
 

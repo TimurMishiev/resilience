@@ -13,8 +13,11 @@ import type {
 
 type TasksParams = PaginationParams &
   AsOfParam & {
-    site_id?: string
+    site_id?:        string
     workflow_status?: WorkflowStatus
+    priority?:       string
+    created_after?:  string
+    created_before?: string
   }
 
 export function getTasks(params?: TasksParams): Promise<PaginatedResponse<Task>> {

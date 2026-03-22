@@ -164,11 +164,17 @@ export interface AsOfParam {
 export interface AiFilterResult {
   original_query: string
   filters: {
-    site_id: string | null
+    // Task filters
+    site_id:         string | null
     workflow_status: WorkflowStatus | null
-    priority: TaskPriority | null
-    created_after: string | null
-    created_before: string | null
+    priority:        TaskPriority | null
+    created_after:   string | null
+    created_before:  string | null
+    // Signal filters
+    signal_type: SignalType | null
+    source:      SignalSource | null
+    from:        string | null
+    to:          string | null
   }
 }
 

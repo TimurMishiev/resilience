@@ -76,6 +76,8 @@ export default function TasksPage() {
   const [nlLoading, setNlLoading] = useState(false)
   const [nlError, setNlError]     = useState<string | null>(null)
   const [nlApplied, setNlApplied] = useState(false)
+  const [dateFrom, setDateFrom]   = useState<string | null>(null)
+  const [dateTo, setDateTo]       = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const taskParams = {
@@ -83,6 +85,8 @@ export default function TasksPage() {
     ...(statusFilter   ? { workflow_status: statusFilter } : {}),
     ...(siteFilter     ? { site_id: siteFilter }           : {}),
     ...(priorityFilter ? { priority: priorityFilter }      : {}),
+    ...(dateFrom       ? { created_after:  dateFrom }      : {}),
+    ...(dateTo         ? { created_before: dateTo }        : {}),
     ...(asOf           ? { as_of: asOf }                   : {}),
   }
 
@@ -113,6 +117,8 @@ export default function TasksPage() {
         setStatusFilter((filters.workflow_status as WorkflowStatus | null) ?? '')
         setSiteFilter(filters.site_id)
         setPriorityFilter(filters.priority as TaskPriority | null)
+        setDateFrom(filters.created_after)
+        setDateTo(filters.created_before)
         setNlApplied(true)
       })
       .catch((err: unknown) => {
@@ -128,6 +134,8 @@ export default function TasksPage() {
     setStatusFilter('')
     setSiteFilter(null)
     setPriorityFilter(null)
+    setDateFrom(null)
+    setDateTo(null)
     inputRef.current?.focus()
   }
 

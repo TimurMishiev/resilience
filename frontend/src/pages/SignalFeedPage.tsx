@@ -17,6 +17,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useSignalsInfinite } from '../hooks/useSignals'
 import { injectSignal } from '../api/signals'
+import { getAiFilter } from '../api/ai'
 import type { Signal, SignalSource, SignalType } from '../api/types'
 
 // ---------------------------------------------------------------------------
@@ -190,10 +191,56 @@ export default function SignalFeedPage() {
   const [typeFilter,   setTypeFilter]   = useState<SignalType   | ''>('')
   const [injectOpen,   setInjectOpen]   = useState(false)
 
+  // AI natural-language filter state (commander-only — returns 403 for operators)
+  const [nlQuery,   setNlQuery]   = useState('')
+  const [nlLoading, setNlLoading] = useState(false)
+  const [nlError,   setNlError]   = useState<string | null>(null)
+  const [nlApplied, setNlApplied] = useState(false)
+  const [nlSiteId,  setNlSiteId]  = useState<string | null>(null)
+  const [nlFrom,    setNlFrom]    = useState<string | null>(null)
+  const [nlTo,      setNlTo]      = useState<string | null>(null)
+  const nlInputRef = useRef<HTMLInputElement>(null)
+
+  function handleNlSearch() {
+    const q = nlQuery.trim()
+    if (!q) return
+    setNlLoading(true)
+    setNlError(null)
+    getAiFilter(q, 'signals')
+      .then(({ data }) => {
+        const { filters } = data
+        if (filters.signal_type) setTypeFilter(filters.signal_type)
+        if (filters.source)      setSourceFilter(filters.source)
+        setNlSiteId(filters.site_id)
+        setNlFrom(filters.from)
+        setNlTo(filters.to)
+        setNlApplied(true)
+      })
+      .catch((err: unknown) => {
+        setNlError(err instanceof Error ? err.message : 'AI filter failed')
+      })
+      .finally(() => setNlLoading(false))
+  }
+
+  function clearNlFilter() {
+    setNlQuery('')
+    setNlApplied(false)
+    setNlError(null)
+    setNlSiteId(null)
+    setNlFrom(null)
+    setNlTo(null)
+    setTypeFilter('')
+    setSourceFilter('')
+    nlInputRef.current?.focus()
+  }
+
   const filterParams = useMemo(() => ({
-    ...(sourceFilter ? { source: sourceFilter } : {}),
-    ...(typeFilter   ? { signal_type: typeFilter } : {}),
-  }), [sourceFilter, typeFilter])
+    ...(sourceFilter ? { source:      sourceFilter }    : {}),
+    ...(typeFilter   ? { signal_type: typeFilter }      : {}),
+    ...(nlSiteId     ? { site_id:     nlSiteId }        : {}),
+    ...(nlFrom       ? { from:        nlFrom }          : {}),
+    ...(nlTo         ? { to:          nlTo }            : {}),
+  }), [sourceFilter, typeFilter, nlSiteId, nlFrom, nlTo])
 
   const {
     data,
@@ -277,10 +324,10 @@ export default function SignalFeedPage() {
       </div>
 
       {/* Filters */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
         <HTMLSelect
           value={sourceFilter}
-          onChange={e => setSourceFilter(e.target.value as SignalSource | '')}
+          onChange={e => { setSourceFilter(e.target.value as SignalSource | ''); setNlApplied(false) }}
           style={{ minWidth: 140 }}
         >
           <option value="">All sources</option>
@@ -291,7 +338,7 @@ export default function SignalFeedPage() {
 
         <HTMLSelect
           value={typeFilter}
-          onChange={e => setTypeFilter(e.target.value as SignalType | '')}
+          onChange={e => { setTypeFilter(e.target.value as SignalType | ''); setNlApplied(false) }}
           style={{ minWidth: 140 }}
         >
           <option value="">All types</option>
@@ -299,6 +346,29 @@ export default function SignalFeedPage() {
             <option key={val} value={val}>{label}</option>
           ))}
         </HTMLSelect>
+      </div>
+
+      {/* AI natural-language filter */}
+      <div className="nl-filter-row">
+        <InputGroup
+          inputRef={nlInputRef}
+          placeholder="e.g. show GPS jamming signals from last 6 hours"
+          value={nlQuery}
+          onChange={e => setNlQuery(e.currentTarget.value)}
+          onKeyDown={e => { if (e.key === 'Enter') handleNlSearch() }}
+          rightElement={
+            nlApplied
+              ? <Button minimal icon="cross" onClick={clearNlFilter} title="Clear AI filter" />
+              : <Button minimal icon="search" loading={nlLoading} onClick={handleNlSearch} title="Apply AI filter" />
+          }
+          disabled={nlLoading}
+        />
+        {nlApplied && (
+          <Tag intent="primary" minimal icon="predictive-analysis">AI filter applied</Tag>
+        )}
+        {nlError && (
+          <Tag intent="danger" minimal icon="error">{nlError}</Tag>
+        )}
       </div>
 
       {/* Empty state */}

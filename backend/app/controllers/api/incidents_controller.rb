@@ -104,6 +104,121 @@ module Api
       end
     end
 
+    # GET /api/incidents/:id/chain
+    # Returns the directed graph of nodes and edges that form this incident's
+    # intelligence chain: Signals → Rules → Alerts → Incident + Tasks.
+    # Nodes are deduplicated — a rule or signal shared across multiple alerts
+    # appears only once.  The frontend assigns layout positions.
+    def chain
+      incident = Incident.find(params[:id])
+      matches  = incident.signal_rule_matches.includes(:signal, :correlation_rule, :task)
+
+      nodes = []
+      edges = []
+      seen  = Set.new
+
+      # Incident node (always present — anchor of the graph)
+      nodes << {
+        id:   incident.id,
+        type: "incident",
+        data: { label: incident.title, status: incident.status, severity: incident.severity }
+      }
+      seen.add(incident.id)
+
+      matches.each do |match|
+        # Alert node
+        unless seen.include?("match-#{match.id}")
+          seen.add("match-#{match.id}")
+          nodes << {
+            id:   "match-#{match.id}",
+            type: "alert",
+            data: {
+              label:      match.correlation_rule&.name || "Geofence Breach",
+              status:     match.workflow_status,
+              fired_at:   match.fired_at,
+              confidence: match.confidence.round(2)
+            }
+          }
+        end
+
+        edges << {
+          id:     "e-match-#{match.id}-incident",
+          source: "match-#{match.id}",
+          target: incident.id,
+          label:  "escalated"
+        }
+
+        # Signal node + edge
+        if match.signal
+          unless seen.include?("signal-#{match.signal.id}")
+            seen.add("signal-#{match.signal.id}")
+            nodes << {
+              id:   "signal-#{match.signal.id}",
+              type: "signal",
+              data: {
+                label:       match.signal.signal_type.gsub("_", " ").capitalize,
+                source:      match.signal.source,
+                occurred_at: match.signal.occurred_at,
+                lat:         match.signal.lat&.to_s,
+                lng:         match.signal.lng&.to_s
+              }
+            }
+          end
+
+          edges << {
+            id:     "e-signal-#{match.signal.id}-match-#{match.id}",
+            source: "signal-#{match.signal.id}",
+            target: "match-#{match.id}",
+            label:  "triggered"
+          }
+        end
+
+        # Rule node + edge (geofence breaches have no rule)
+        if match.correlation_rule
+          unless seen.include?("rule-#{match.correlation_rule.id}")
+            seen.add("rule-#{match.correlation_rule.id}")
+            nodes << {
+              id:   "rule-#{match.correlation_rule.id}",
+              type: "rule",
+              data: { label: match.correlation_rule.name }
+            }
+          end
+
+          edges << {
+            id:     "e-rule-#{match.correlation_rule.id}-match-#{match.id}",
+            source: "rule-#{match.correlation_rule.id}",
+            target: "match-#{match.id}",
+            label:  "fired"
+          }
+        end
+
+        # Task node + edge (one per match at most)
+        if match.task
+          unless seen.include?("task-#{match.task.id}")
+            seen.add("task-#{match.task.id}")
+            nodes << {
+              id:   "task-#{match.task.id}",
+              type: "task",
+              data: {
+                label:    match.task.title,
+                status:   match.task.workflow_status,
+                priority: match.task.priority
+              }
+            }
+          end
+
+          edges << {
+            id:     "e-match-#{match.id}-task-#{match.task.id}",
+            source: "match-#{match.id}",
+            target: "task-#{match.task.id}",
+            label:  "created"
+          }
+        end
+      end
+
+      render json: { nodes: nodes, edges: edges }
+    end
+
     # GET /api/incidents/:id/notes
     def list_notes
       incident = Incident.find(params[:id])

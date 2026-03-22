@@ -4,9 +4,11 @@ module Api
     # and the per-IP rate limit alone is insufficient if operators share an IP.
     before_action :require_commander!
 
-    # GET /api/ai/filter?q=show+blocked+tasks+at+Site+Alpha
+    # GET /api/ai/filter?q=...&entity_type=tasks|signals
+    # entity_type defaults to 'tasks' for backward compatibility.
     def filter
-      result = Ai::FilterService.call(query: params.require(:q))
+      service = params[:entity_type] == "signals" ? Ai::SignalFilterService : Ai::FilterService
+      result  = service.call(query: params.require(:q))
 
       if result.success
         render json: { data: result.payload }

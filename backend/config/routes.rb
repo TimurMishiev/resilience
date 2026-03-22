@@ -84,6 +84,7 @@ Rails.application.routes.draw do
         patch :assign
         get   'notes', action: :list_notes
         post  'notes', action: :add_note
+        get   :chain
       end
     end
 

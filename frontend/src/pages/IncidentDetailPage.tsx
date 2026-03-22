@@ -8,6 +8,7 @@ import {
   useIncident, useTransitionIncident, useUpdateIncident,
   useIncidentAllowedTransitions, useAssignIncident,
 } from '../hooks/useIncidents'
+import IntelChainPanel from '../components/IntelChainPanel'
 import { useAuth } from '../context/AuthContext'
 import AuditTimeline from '../components/AuditTimeline'
 import IncidentNotesPanel from '../components/IncidentNotesPanel'
@@ -396,6 +397,11 @@ export default function IncidentDetailPage() {
           id="notes"
           title="Notes"
           panel={<IncidentNotesPanel incidentId={incident.id} />}
+        />
+        <Tab
+          id="chain"
+          title="Chain"
+          panel={<IntelChainPanel incidentId={incident.id} />}
         />
         <Tab
           id="history"
