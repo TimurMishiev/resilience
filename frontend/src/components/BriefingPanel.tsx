@@ -9,7 +9,7 @@ import {
   Tag,
   Tooltip,
 } from '@blueprintjs/core'
-import { postAiSummary } from '../api/ai'
+import { postAiSummary, exportBriefing } from '../api/ai'
 import { useSites } from '../hooks/useSites'
 import { useReplay } from '../context/ReplayContext'
 import type { AiSummaryType, AiSummaryResult } from '../api/types'
@@ -67,6 +67,8 @@ export default function BriefingPanel() {
   const [loading, setLoading]         = useState(false)
   const [error, setError]             = useState<string | null>(null)
   const [result, setResult]           = useState<AiSummaryResult | null>(null)
+  const [pdfLoading, setPdfLoading]   = useState(false)
+  const [pdfError, setPdfError]       = useState<string | null>(null)
 
   const mountedRef = useRef(true)
   useEffect(() => { return () => { mountedRef.current = false } }, [])
@@ -75,6 +77,7 @@ export default function BriefingPanel() {
     setLoading(true)
     setError(null)
     setResult(null)
+    setPdfError(null)
 
     postAiSummary({
       summary_type: summaryType,
@@ -84,6 +87,38 @@ export default function BriefingPanel() {
       .then(({ data }) => { if (mountedRef.current) setResult(data) })
       .catch((err: unknown) => { if (mountedRef.current) setError(err instanceof Error ? err.message : 'Failed to generate briefing') })
       .finally(() => { if (mountedRef.current) setLoading(false) })
+  }
+
+  function handleExport() {
+    if (!result) return
+    setPdfLoading(true)
+    setPdfError(null)
+
+    const siteName = siteId ? sites.find(s => s.id === siteId)?.name : undefined
+
+    exportBriefing({
+      summary_type:   summaryType,
+      summary:        result.summary,
+      citations:      result.citations,
+      context_counts: result.context_counts,
+      site_name:      siteName,
+    })
+      .then(blob => {
+        // Trigger browser download without navigating away
+        const url  = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href     = url
+        link.download = `briefing-${new Date().toISOString().slice(0, 16).replace('T', '-')}.pdf`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        URL.revokeObjectURL(url)
+      })
+      .catch((err: unknown) => {
+        if (mountedRef.current)
+          setPdfError(err instanceof Error ? err.message : 'PDF export failed')
+      })
+      .finally(() => { if (mountedRef.current) setPdfLoading(false) })
   }
 
   return (
@@ -117,6 +152,16 @@ export default function BriefingPanel() {
           onClick={generate}
           text="Generate briefing"
         />
+
+        {result && (
+          <Button
+            icon="export"
+            loading={pdfLoading}
+            onClick={handleExport}
+            text="Export PDF"
+            title="Download as classified PDF briefing"
+          />
+        )}
       </div>
 
       {/* context hint */}
@@ -135,6 +180,10 @@ export default function BriefingPanel() {
 
       {error && (
         <Callout intent="danger" compact style={{ marginTop: 12 }}>{error}</Callout>
+      )}
+
+      {pdfError && (
+        <Callout intent="danger" compact style={{ marginTop: 12 }}>PDF export failed: {pdfError}</Callout>
       )}
 
       {result && (

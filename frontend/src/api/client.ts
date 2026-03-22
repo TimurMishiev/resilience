@@ -109,6 +109,40 @@ async function request<T>(
   return payload as T
 }
 
+// ---------------------------------------------------------------------------
+// Raw blob POST — used for endpoints that return binary (e.g. PDF export).
+// Bypasses the JSON parsing in request() and returns the raw Response Blob.
+// ---------------------------------------------------------------------------
+
+export async function postBlob(path: string, body: unknown): Promise<Blob> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Accept: 'application/pdf',
+  }
+  const token = getToken()
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(path, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  })
+
+  if (res.status === 401) {
+    onUnauthorized?.()
+    throw new ApiError(res.status, null, 'Unauthorized')
+  }
+
+  if (!res.ok) {
+    // Try to read JSON error body for a useful message
+    let body: unknown
+    try { body = await res.json() } catch { body = null }
+    throw new ApiError(res.status, body, `API POST ${path} → ${res.status}`)
+  }
+
+  return res.blob()
+}
+
 export const api = {
   get<T>(path: string, params?: QueryParams): Promise<T> {
     return request<T>('GET', path, { params })

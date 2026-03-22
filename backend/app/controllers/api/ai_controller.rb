@@ -17,6 +17,33 @@ module Api
       end
     end
 
+    # POST /api/ai/export
+    # Body: { summary_type:, summary:, citations:[], context_counts:{...}, site_name?: }
+    # Returns: application/pdf attachment
+    def export
+      counts = params.require(:context_counts)
+                     .permit(:audit_events, :signals, :rule_fires)
+                     .to_h
+
+      result = Briefings::ExportService.call(
+        summary:        params.require(:summary),
+        citations:      Array(params[:citations]),
+        context_counts: counts,
+        summary_type:   params.require(:summary_type),
+        site_name:      params[:site_name]
+      )
+
+      if result.success
+        filename = "briefing-#{Time.zone.now.strftime('%Y%m%d-%H%M')}.pdf"
+        send_data result.payload[:pdf],
+                  filename:    filename,
+                  type:        "application/pdf",
+                  disposition: "attachment"
+      else
+        render_service_failure(result)
+      end
+    end
+
     # POST /api/ai/summary
     # Body: { summary_type:, site_id:, from:, to: }
     def summary

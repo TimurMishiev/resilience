@@ -74,3 +74,7 @@ group :development, :test do
 end
 
 gem "h3", "~> 3.7", require: false
+
+# PDF generation for operational briefing exports
+gem "prawn",       "~> 2.5"
+gem "prawn-table", "~> 0.2"

@@ -18,6 +18,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { useSignalsInfinite } from '../hooks/useSignals'
 import { injectSignal } from '../api/signals'
 import { getAiFilter } from '../api/ai'
+import { useAuth } from '../context/AuthContext'
 import type { Signal, SignalSource, SignalType } from '../api/types'
 
 // ---------------------------------------------------------------------------
@@ -187,11 +188,14 @@ function InjectDialog({ isOpen, onClose }: { isOpen: boolean; onClose: () => voi
 // ---------------------------------------------------------------------------
 
 export default function SignalFeedPage() {
+  const { currentUser } = useAuth()
+  const isCommander = currentUser?.role === 'commander'
+
   const [sourceFilter, setSourceFilter] = useState<SignalSource | ''>('')
   const [typeFilter,   setTypeFilter]   = useState<SignalType   | ''>('')
   const [injectOpen,   setInjectOpen]   = useState(false)
 
-  // AI natural-language filter state (commander-only — returns 403 for operators)
+  // AI natural-language filter state — rendered only for commanders (backend enforces via require_commander!)
   const [nlQuery,   setNlQuery]   = useState('')
   const [nlLoading, setNlLoading] = useState(false)
   const [nlError,   setNlError]   = useState<string | null>(null)
@@ -200,6 +204,17 @@ export default function SignalFeedPage() {
   const [nlFrom,    setNlFrom]    = useState<string | null>(null)
   const [nlTo,      setNlTo]      = useState<string | null>(null)
   const nlInputRef = useRef<HTMLInputElement>(null)
+
+  // Clears only the hidden NL-derived constraints (site_id / from / to) without touching
+  // the source/type dropdowns — called whenever the user manually adjusts a dropdown so that
+  // AI-applied constraints do not silently persist behind a misleading "no filter active" state.
+  function clearNlConstraints() {
+    setNlApplied(false)
+    setNlError(null)
+    setNlSiteId(null)
+    setNlFrom(null)
+    setNlTo(null)
+  }
 
   function handleNlSearch() {
     const q = nlQuery.trim()
@@ -327,7 +342,7 @@ export default function SignalFeedPage() {
       <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
         <HTMLSelect
           value={sourceFilter}
-          onChange={e => { setSourceFilter(e.target.value as SignalSource | ''); setNlApplied(false) }}
+          onChange={e => { setSourceFilter(e.target.value as SignalSource | ''); clearNlConstraints() }}
           style={{ minWidth: 140 }}
         >
           <option value="">All sources</option>
@@ -338,7 +353,7 @@ export default function SignalFeedPage() {
 
         <HTMLSelect
           value={typeFilter}
-          onChange={e => { setTypeFilter(e.target.value as SignalType | ''); setNlApplied(false) }}
+          onChange={e => { setTypeFilter(e.target.value as SignalType | ''); clearNlConstraints() }}
           style={{ minWidth: 140 }}
         >
           <option value="">All types</option>
@@ -348,8 +363,8 @@ export default function SignalFeedPage() {
         </HTMLSelect>
       </div>
 
-      {/* AI natural-language filter */}
-      <div className="nl-filter-row">
+      {/* AI natural-language filter — commanders only (backend also enforces via require_commander!) */}
+      {isCommander && <div className="nl-filter-row">
         <InputGroup
           inputRef={nlInputRef}
           placeholder="e.g. show GPS jamming signals from last 6 hours"
@@ -369,7 +384,7 @@ export default function SignalFeedPage() {
         {nlError && (
           <Tag intent="danger" minimal icon="error">{nlError}</Tag>
         )}
-      </div>
+      </div>}
 
       {/* Empty state */}
       {!isPending && allSignals.length === 0 && (

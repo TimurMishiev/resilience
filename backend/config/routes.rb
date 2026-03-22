@@ -49,6 +49,7 @@ Rails.application.routes.draw do
     namespace :ai do
       get  :filter
       post :summary
+      post :export
     end
 
     get  "events",    to: "events#stream"
