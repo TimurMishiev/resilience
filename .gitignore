@@ -36,6 +36,9 @@ frontend/.vite/
 *.swp
 *.swo
 
+# Claude Code local config (machine-specific, not for source control)
+.claude/settings.local.json
+
 # Gems installed locally
 backend/vendor/bundle/
 
