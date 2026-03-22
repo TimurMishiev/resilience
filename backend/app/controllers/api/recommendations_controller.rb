@@ -77,11 +77,16 @@ module Api
 
     # GET /api/recommendations/metrics
     def metrics
-      accepted = Recommendation.where(status: "accepted").count
-      rejected = Recommendation.where(status: "rejected").count
-      deferred = Recommendation.where(status: "deferred").count
-      executed = Recommendation.where(status: "executed").count
-      expired  = Recommendation.where(status: "expired").count
+      # Single grouped query replaces 7 individual per-status counts.
+      by_status  = Recommendation.group(:status).count
+      by_tier    = Recommendation.group(:tier).count
+
+      accepted = by_status["accepted"].to_i
+      rejected = by_status["rejected"].to_i
+      deferred = by_status["deferred"].to_i
+      executed = by_status["executed"].to_i
+      expired  = by_status["expired"].to_i
+      # active = pending + not yet expired; requires the scope's WHERE clause
       pending  = Recommendation.active.count
 
       # `executed` recommendations were accepted-and-run in a single step, so
@@ -100,8 +105,8 @@ module Api
         expired:     expired,
         accept_rate: accept_rate,
         by_tier: {
-          rule: Recommendation.by_tier("rule").count,
-          llm:  Recommendation.by_tier("llm").count,
+          rule: by_tier["rule"].to_i,
+          llm:  by_tier["llm"].to_i,
         },
         by_type: Recommendation.group(:recommendation_type).count,
       }

@@ -1,12 +1,18 @@
 module Tasks
   # Updates mutable metadata fields on a Task and writes an audit event in the same transaction.
   # Workflow transitions are handled exclusively by TransitionService — not here.
+  #
+  # Authorization policy (enforced here, controller passes actor_role):
+  #   - Commanders may update title, description, and priority.
+  #   - Operators may update title and description only; priority is command-level authority.
   class UpdateService < ApplicationService
-    PERMITTED_FIELDS = %w[title description priority].freeze
+    COMMANDER_FIELDS = %w[title description priority].freeze
+    OPERATOR_FIELDS  = %w[title description].freeze
 
-    def initialize(task:, params:, actor:)
+    def initialize(task:, params:, actor:, actor_role: "operator")
+      permitted = actor_role == "commander" ? COMMANDER_FIELDS : OPERATOR_FIELDS
       @task   = task
-      @params = params.to_h.slice(*PERMITTED_FIELDS)
+      @params = params.to_h.slice(*permitted)
       @actor  = actor
     end
 

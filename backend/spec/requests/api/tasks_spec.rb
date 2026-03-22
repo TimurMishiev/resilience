@@ -123,6 +123,32 @@ RSpec.describe "Api::Tasks", type: :request do
       expect(task.workflow_status).to eq("new")
     end
 
+    context "role-based field restrictions" do
+      it "allows commander to update priority" do
+        patch "/api/tasks/#{task.id}", params: { task: { priority: "high" } },
+              headers: auth_headers(current_user), as: :json
+        expect(response).to have_http_status(:ok)
+        expect(task.reload.priority).to eq("high")
+      end
+
+      it "silently ignores priority when sent by an operator" do
+        operator = create(:user, :operator)
+        patch "/api/tasks/#{task.id}", params: { task: { title: "Op Title", priority: "high" } },
+              headers: auth_headers(operator), as: :json
+        expect(response).to have_http_status(:ok)
+        expect(task.reload.priority).to eq("normal")
+        expect(task.reload.title).to eq("Op Title")
+      end
+
+      it "allows operator to update title and description" do
+        operator = create(:user, :operator)
+        patch "/api/tasks/#{task.id}", params: { task: { title: "New Title", description: "New Desc" } },
+              headers: auth_headers(operator), as: :json
+        expect(response).to have_http_status(:ok)
+        expect(task.reload.title).to eq("New Title")
+      end
+    end
+
     it "returns 404 for an unknown id" do
       patch "/api/tasks/00000000-0000-0000-0000-000000000000",
             params: { task: { title: "x" } }, headers: auth_headers(current_user), as: :json

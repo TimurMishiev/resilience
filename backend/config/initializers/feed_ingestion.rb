@@ -39,19 +39,39 @@ unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAM
 
       loop do
         begin
-          result = block.call
+          # with_connection ensures the thread checks out and returns a DB
+          # connection on every poll cycle rather than holding one indefinitely.
+          # This prevents pool starvation under load and makes connection
+          # management explicit for background threads outside Puma's normal
+          # request lifecycle.
+          result = ActiveRecord::Base.connection_pool.with_connection { block.call }
 
           if result.success
             count = result.payload[:ingested]
             Rails.logger.info "#{tag} ingested #{count} new records" if count.to_i > 0
-          else
-            Rails.logger.warn "#{tag} errors: #{result.errors.join(', ')}"
-          end
 
-          # Success — reset backoff
-          consecutive_errors = 0
-          backoff            = 5
-          sleep poll_interval
+            # Success — reset backoff
+            consecutive_errors = 0
+            backoff            = 5
+            sleep poll_interval
+          else
+            # Soft failure (service returned errors without raising) — apply the
+            # same backoff as a hard error so a persistently broken feed does not
+            # hammer the external API or DB at full poll rate.
+            consecutive_errors += 1
+            wait = [backoff, 300].min
+            Rails.logger.warn "#{tag} errors (attempt #{consecutive_errors}): #{result.errors.join(', ')} — retrying in #{wait}s"
+            backoff = [backoff * 2, 300].min
+
+            if consecutive_errors >= MAX_CONSECUTIVE_ERRORS
+              Rails.logger.error "#{tag} CRITICAL: #{MAX_CONSECUTIVE_ERRORS} consecutive soft failures — pausing #{DEAD_SLEEP_SECONDS}s"
+              sleep DEAD_SLEEP_SECONDS
+              consecutive_errors = 0
+              backoff            = 5
+            else
+              sleep wait
+            end
+          end
 
         rescue ActiveRecord::StatementInvalid, PG::Error => e
           consecutive_errors += 1

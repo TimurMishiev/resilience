@@ -156,9 +156,10 @@ module Correlations
       return ServiceResult.success(task: open_task) if new_priority == open_task.priority
 
       Tasks::UpdateService.call(
-        task:   open_task,
-        params: { "priority" => new_priority },
-        actor:  "correlation_engine"
+        task:       open_task,
+        params:     { "priority" => new_priority },
+        actor:      "correlation_engine",
+        actor_role: "commander"
       )
     end
 

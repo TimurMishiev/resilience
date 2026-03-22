@@ -34,7 +34,7 @@ module Api
 
     def update
       task = Task.find(params[:id])
-      result = Tasks::UpdateService.call(task: task, params: task_update_params, actor: actor)
+      result = Tasks::UpdateService.call(task: task, params: task_update_params, actor: actor, actor_role: current_user.role)
       if result.success
         task = result.payload[:task]
         broadcast("task_updated", task)
