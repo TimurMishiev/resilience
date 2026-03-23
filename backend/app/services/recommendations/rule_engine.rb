@@ -64,19 +64,43 @@ module Recommendations
     end
 
     # ── Rule: escalate_incident ─────────────────────────────────────────────────
-    # Open incidents (not yet acknowledged) with high severity or many alerts → escalate
+    # Open incidents (not yet acknowledged) with high severity or many alerts → escalate.
+    # Confidence is adjusted downward when the site AO is in Observe posture —
+    # Observe = eyes only, active response not yet authorised by ROE.
     def escalate_incidents
+      posture_map = @ctx.fetch(:posture_by_site_id, {})
+
       @ctx[:open_incidents]
         .select { |i| i[:status] == "open" && %w[high critical].include?(i[:severity]) }
         .reject { |i| already_pending?("escalate_incident", "Incident", i[:id]) }
         .map do |i|
+          posture_info = posture_map[i[:site_id]]
+          posture      = posture_info&.[](:posture)
+
+          # Downgrade confidence for Observe AOs — awareness recommended but
+          # ROE does not yet authorise active escalation response.
+          base_conf  = i[:confidence].to_f
+          confidence = posture == "observe" ? (base_conf * 0.7).round(4) : base_conf
+
+          posture_note =
+            case posture
+            when "observe"
+              " ROE posture: Observe (#{posture_info[:ao_name]}) — awareness recommended; " \
+              "active response not yet authorised."
+            when "defensive"
+              " ROE posture: Defensive (#{posture_info[:ao_name]}) — defensive actions authorised."
+            when "weapons_free"
+              " ROE posture: Weapons Free (#{posture_info[:ao_name]}) — immediate action authorised."
+            end
+
           build_rec(
             type:        "escalate_incident",
             tier:        "rule",
-            confidence:  i[:confidence].to_f,
+            confidence:  confidence,
             rationale:   "#{i[:severity].capitalize} incident '#{i[:title]}' has been open since " \
                          "#{Time.parse(i[:opened_at]).strftime('%b %-d %H:%M')} with #{i[:alert_count]} " \
-                         "alert(s). Recommend acknowledging and beginning containment.",
+                         "alert(s). Recommend acknowledging and beginning containment." \
+                         "#{posture_note}",
             evidence:    [{ type: "incident", id: i[:id], detail: "severity=#{i[:severity]}, alerts=#{i[:alert_count]}" }],
             payload:     { incident_id: i[:id], to_status: "acknowledged" },
             entity_type: "Incident",
@@ -106,17 +130,34 @@ module Recommendations
     end
 
     # ── Rule: flag_site ─────────────────────────────────────────────────────────
-    # Sites with high risk score not yet flagged
+    # Sites with high risk score not yet flagged.
+    # Confidence is boosted slightly when the fleet has no actionable assets —
+    # a high-risk site with zero coverage is more urgent than one with coverage.
     def flag_high_risk_sites
+      assets     = @ctx.fetch(:asset_availability, { available: 0, assigned: 0 })
+      actionable = assets[:available].to_i + assets[:assigned].to_i
+
       @ctx[:flaggable_sites]
         .reject { |s| already_pending?("flag_site", "Site", s[:id]) }
         .map do |s|
+          base_conf  = [s[:risk_score].to_f, 0.95].min
+          # No available/assigned assets → site is exposed and uncovered → boost urgency
+          confidence = actionable.zero? ? [base_conf + 0.05, 0.95].min : base_conf
+
+          coverage_note =
+            if actionable.zero?
+              " No operational assets are currently available or assigned — site has no coverage."
+            elsif assets[:available].to_i > 0
+              " #{assets[:available]} asset(s) currently available for tasking."
+            end
+
           build_rec(
             type:        "flag_site",
             tier:        "rule",
-            confidence:  [s[:risk_score].to_f, 0.95].min,
+            confidence:  confidence,
             rationale:   "#{s[:name]} has a risk score of #{(s[:risk_score] * 100).round}% but is not yet flagged. " \
-                         "Flagging will prioritise it in operational views and trigger additional monitoring.",
+                         "Flagging will prioritise it in operational views and trigger additional monitoring." \
+                         "#{coverage_note}",
             evidence:    [{ type: "site", id: s[:id], detail: "risk_score=#{s[:risk_score]}" }],
             payload:     { site_id: s[:id] },
             entity_type: "Site",

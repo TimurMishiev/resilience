@@ -37,12 +37,14 @@ module Recommendations
 
     def build_prompt
       ctx_summary = JSON.pretty_generate({
-        stale_alerts:      @ctx[:stale_alerts].first(5),
-        high_conf_alerts:  @ctx[:high_conf_alerts].first(5),
-        open_incidents:    @ctx[:open_incidents].first(5),
-        overdue_tasks:     @ctx[:overdue_tasks].first(5),
-        flaggable_sites:   @ctx[:flaggable_sites].first(5),
-        bulk_triage_sites: @ctx[:bulk_triage_sites].first(5),
+        stale_alerts:       @ctx[:stale_alerts].first(5),
+        high_conf_alerts:   @ctx[:high_conf_alerts].first(5),
+        open_incidents:     @ctx[:open_incidents].first(5),
+        overdue_tasks:      @ctx[:overdue_tasks].first(5),
+        flaggable_sites:    @ctx[:flaggable_sites].first(5),
+        bulk_triage_sites:  @ctx[:bulk_triage_sites].first(5),
+        asset_availability: @ctx.fetch(:asset_availability, {}),
+        roe_posture:        active_postures,
       })
 
       <<~PROMPT
@@ -56,12 +58,20 @@ module Recommendations
         - Tasks that should be created to address open incidents with no associated tasks
         - Incidents that could be contained or resolved based on the evidence pattern
 
+        IMPORTANT CONSTRAINTS — factor these into every recommendation:
+        - ROE posture: the `roe_posture` field lists each Area of Operation and its current
+          engagement posture (observe/defensive/weapons_free). Do NOT recommend kinetic or
+          active-response actions for sites whose AO is in Observe posture.
+        - Asset availability: the `asset_availability` field shows how many assets are
+          currently available/assigned/degraded/offline. Do NOT recommend creating tasks
+          if available + assigned = 0, as the task cannot be staffed.
+
         Respond ONLY with valid JSON (no markdown, no preamble) matching this schema exactly:
         [
           {
             "recommendation_type": "<one of: #{VALID_REC_TYPES.join(' | ')}>",
             "confidence": <float 0.0–1.0>,
-            "rationale": "<2–3 sentence explainable rationale referencing specific entities by name>",
+            "rationale": "<2–3 sentence explainable rationale referencing specific entities by name and current ROE posture>",
             "evidence": [{"type": "<site|incident|alert|task>", "id": "<uuid>", "detail": "<short note>"}],
             "action_payload": { ... },
             "affected_entity_type": "<Site|Incident|SignalRuleMatch|Task>",
@@ -75,6 +85,15 @@ module Recommendations
         OPERATIONAL SNAPSHOT:
         #{ctx_summary}
       PROMPT
+    end
+
+    # Deduplicates posture_by_site_id to one entry per AO for a concise LLM summary.
+    def active_postures
+      @ctx.fetch(:posture_by_site_id, {})
+        .values
+        .uniq { |v| v[:ao_id] }
+        .map  { |v| { ao: v[:ao_name], posture: v[:posture] } }
+        .first(10)
     end
 
     def call_anthropic(prompt)

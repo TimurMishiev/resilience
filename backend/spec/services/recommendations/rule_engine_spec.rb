@@ -8,13 +8,15 @@ RSpec.describe Recommendations::RuleEngine, type: :service do
 
   def base_context
     {
-      stale_alerts:      [],
-      high_conf_alerts:  [],
-      open_incidents:    [],
-      overdue_tasks:     [],
-      flaggable_sites:   [],
-      bulk_triage_sites: [],
-      risk_snapshots:    [],
+      stale_alerts:        [],
+      high_conf_alerts:    [],
+      open_incidents:      [],
+      overdue_tasks:       [],
+      flaggable_sites:     [],
+      bulk_triage_sites:   [],
+      risk_snapshots:      [],
+      posture_by_site_id:  {},
+      asset_availability:  { available: 2, assigned: 1, degraded: 0, offline: 0 },
     }
   end
 
@@ -137,6 +139,89 @@ RSpec.describe Recommendations::RuleEngine, type: :service do
       )
       expect(described_class.call(context: ctx)).to be_success
       expect(described_class.call(context: ctx).recommendations).to be_empty
+    end
+  end
+
+  describe "escalate_incident — posture awareness" do
+    let(:incident) { create(:incident, :critical, status: "open", site: site, confidence: 0.80) }
+
+    def incident_context(posture_map)
+      base_context.merge(
+        open_incidents: [{
+          id:          incident.id,
+          title:       incident.title,
+          status:      "open",
+          severity:    "critical",
+          confidence:  0.80,
+          alert_count: 2,
+          site_id:     site.id,
+          site_name:   site.name,
+          opened_at:   incident.opened_at.iso8601,
+        }],
+        posture_by_site_id: posture_map,
+      )
+    end
+
+    it "reduces confidence by 30% when AO posture is observe" do
+      ctx = incident_context(site.id => { ao_id: "ao-1", ao_name: "EUCOM", posture: "observe" })
+      rec = described_class.call(context: ctx).recommendations.first
+      expect(rec[:confidence]).to be_within(0.001).of(0.80 * 0.7)
+    end
+
+    it "includes observe posture note in rationale" do
+      ctx = incident_context(site.id => { ao_id: "ao-1", ao_name: "EUCOM", posture: "observe" })
+      rec = described_class.call(context: ctx).recommendations.first
+      expect(rec[:rationale]).to include("Observe")
+      expect(rec[:rationale]).to include("not yet authorised")
+    end
+
+    it "does not reduce confidence for defensive posture" do
+      ctx = incident_context(site.id => { ao_id: "ao-1", ao_name: "EUCOM", posture: "defensive" })
+      rec = described_class.call(context: ctx).recommendations.first
+      expect(rec[:confidence]).to be_within(0.001).of(0.80)
+      expect(rec[:rationale]).to include("Defensive")
+    end
+
+    it "notes Weapons Free posture in rationale" do
+      ctx = incident_context(site.id => { ao_id: "ao-1", ao_name: "EUCOM", posture: "weapons_free" })
+      rec = described_class.call(context: ctx).recommendations.first
+      expect(rec[:confidence]).to be_within(0.001).of(0.80)
+      expect(rec[:rationale]).to include("Weapons Free")
+    end
+
+    it "produces recommendation without posture note when site has no AO" do
+      ctx = incident_context({})
+      rec = described_class.call(context: ctx).recommendations.first
+      expect(rec[:confidence]).to be_within(0.001).of(0.80)
+      expect(rec[:rationale]).not_to include("posture")
+    end
+  end
+
+  describe "flag_high_risk_sites — asset coverage" do
+    let(:context) do
+      base_context.merge(flaggable_sites: [{ id: site.id, name: site.name, risk_score: 0.80 }])
+    end
+
+    it "boosts confidence when no actionable assets exist" do
+      ctx = context.merge(asset_availability: { available: 0, assigned: 0, degraded: 1, offline: 2 })
+      rec = described_class.call(context: ctx).recommendations.first
+      expect(rec[:confidence]).to be > 0.80
+      expect(rec[:rationale]).to include("no coverage")
+    end
+
+    it "notes available asset count in rationale when assets exist" do
+      ctx = context.merge(asset_availability: { available: 3, assigned: 1, degraded: 0, offline: 0 })
+      rec = described_class.call(context: ctx).recommendations.first
+      expect(rec[:rationale]).to include("3 asset(s) currently available")
+    end
+
+    it "does not exceed 0.95 confidence cap even when boosted" do
+      ctx = context.merge(
+        flaggable_sites:   [{ id: site.id, name: site.name, risk_score: 0.94 }],
+        asset_availability: { available: 0, assigned: 0, degraded: 0, offline: 0 },
+      )
+      rec = described_class.call(context: ctx).recommendations.first
+      expect(rec[:confidence]).to be <= 0.95
     end
   end
 

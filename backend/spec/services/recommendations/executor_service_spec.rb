@@ -121,6 +121,7 @@ RSpec.describe Recommendations::ExecutorService, type: :service do
     end
 
     it "creates the task via Tasks::CreationService with audit metadata" do
+      create(:asset, status: "available")   # ensure pre-flight passes
       expect(Tasks::CreationService).to receive(:call).with(
         params:   hash_including(title: "AI-generated task", priority: "high"),
         actor:    commander,
@@ -130,6 +131,14 @@ RSpec.describe Recommendations::ExecutorService, type: :service do
       result = execute(rec)
       expect(result).to be_success
       expect(AuditEvent.where(event_type: "task.created").count).to eq 1
+    end
+
+    it "fails pre-flight when no available or assigned assets exist" do
+      # Ensure only degraded/offline assets in DB
+      Asset.update_all(status: "offline")
+      result = execute(rec)
+      expect(result).not_to be_success
+      expect(result.errors.first).to include("No available or assigned assets")
     end
   end
 

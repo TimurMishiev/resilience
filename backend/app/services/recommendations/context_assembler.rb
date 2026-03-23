@@ -18,14 +18,16 @@ module Recommendations
 
     def build_context
       {
-        assembled_at:       Time.current.iso8601,
-        stale_alerts:       stale_alerts,
-        high_conf_alerts:   high_conf_unacked_alerts,
-        open_incidents:     open_incidents,
-        overdue_tasks:      overdue_tasks,
-        flaggable_sites:    flaggable_sites,
-        bulk_triage_sites:  bulk_triage_sites,
-        risk_snapshots:     risk_snapshots,
+        assembled_at:        Time.current.iso8601,
+        stale_alerts:        stale_alerts,
+        high_conf_alerts:    high_conf_unacked_alerts,
+        open_incidents:      open_incidents,
+        overdue_tasks:       overdue_tasks,
+        flaggable_sites:     flaggable_sites,
+        bulk_triage_sites:   bulk_triage_sites,
+        risk_snapshots:      risk_snapshots,
+        posture_by_site_id:  posture_by_site_id,
+        asset_availability:  asset_availability,
       }
     end
 
@@ -116,6 +118,37 @@ module Recommendations
     rescue => e
       Rails.logger.debug "[ContextAssembler] risk_snapshots error: #{e.message}"
       []
+    end
+
+    # Current ROE posture per site, keyed by site id.
+    # Used by the rule engine to factor posture into confidence + rationale.
+    def posture_by_site_id
+      Site
+        .includes(:area_of_operation)
+        .where.not(area_of_operation_id: nil)
+        .each_with_object({}) do |site, h|
+          ao = site.area_of_operation
+          next unless ao
+          h[site.id] = { ao_id: ao.id, ao_name: ao.name, posture: ao.posture }
+        end
+    rescue => e
+      Rails.logger.debug "[ContextAssembler] posture_by_site_id error: #{e.message}"
+      {}
+    end
+
+    # Global asset availability snapshot — used to warn when recommended tasks
+    # cannot be staffed and to surface coverage gaps in flag_site rationales.
+    def asset_availability
+      counts = Asset.group(:status).count
+      {
+        available: counts["available"].to_i,
+        assigned:  counts["assigned"].to_i,
+        degraded:  counts["degraded"].to_i,
+        offline:   counts["offline"].to_i,
+      }
+    rescue => e
+      Rails.logger.debug "[ContextAssembler] asset_availability error: #{e.message}"
+      { available: 0, assigned: 0, degraded: 0, offline: 0 }
     end
 
     # ── Serializers ─────────────────────────────────────────────────────────────
