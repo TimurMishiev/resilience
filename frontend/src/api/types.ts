@@ -41,8 +41,8 @@ export interface UpdateAreaOfOperationBody {
 export interface AreasOfOperationParams extends PaginationParams {
   threat_level?: ThreatLevel
 }
-export type AssetStatus = 'available' | 'in_use' | 'maintenance' | 'offline'
-export const ASSET_STATUSES: AssetStatus[] = ['available', 'in_use', 'maintenance', 'offline']
+export type AssetStatus = 'available' | 'assigned' | 'degraded' | 'offline'
+export const ASSET_STATUSES: AssetStatus[] = ['available', 'assigned', 'degraded', 'offline']
 export type TaskPriority = 'low' | 'normal' | 'high' | 'critical'
 export type WorkflowStatus = 'new' | 'triaged' | 'in_progress' | 'blocked' | 'resolved'
 
@@ -66,6 +66,7 @@ export interface Asset {
   asset_type: string
   status: AssetStatus
   home_site_id: string | null
+  last_reported_at: string | null
   created_at: string
   updated_at: string
 }

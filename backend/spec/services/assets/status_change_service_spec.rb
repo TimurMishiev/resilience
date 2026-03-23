@@ -4,21 +4,27 @@ RSpec.describe Assets::StatusChangeService do
   let(:asset) { create(:asset, status: "available") }
   let(:actor) { "commander@resilience.mil" }
 
-  def call(to_status: "in_use")
+  def call(to_status: "assigned")
     described_class.new(asset: asset, to_status: to_status, actor: actor).call
   end
 
   # ── Happy path ─────────────────────────────────────────────────────────────
 
   it "changes the asset status and returns success" do
-    result = call(to_status: "in_use")
+    result = call(to_status: "assigned")
     expect(result.success?).to be true
-    expect(asset.reload.status).to eq("in_use")
+    expect(asset.reload.status).to eq("assigned")
   end
 
   it "returns the updated asset in the result" do
     result = call(to_status: "offline")
     expect(result.asset.status).to eq("offline")
+  end
+
+  it "sets last_reported_at on success" do
+    before = Time.current
+    result = call(to_status: "assigned")
+    expect(result.asset.last_reported_at).to be >= before
   end
 
   it "accepts all valid statuses" do
@@ -31,7 +37,7 @@ RSpec.describe Assets::StatusChangeService do
   end
 
   it "writes an audit event with correct metadata" do
-    expect { call(to_status: "maintenance") }.to change(AuditEvent, :count).by(1)
+    expect { call(to_status: "degraded") }.to change(AuditEvent, :count).by(1)
 
     event = AuditEvent.last
     expect(event.event_type).to eq("asset.status_changed")
@@ -39,13 +45,14 @@ RSpec.describe Assets::StatusChangeService do
     expect(event.entity_id).to eq(asset.id)
     expect(event.actor).to eq(actor)
     expect(event.metadata["from_status"]).to eq("available")
-    expect(event.metadata["to_status"]).to eq("maintenance")
+    expect(event.metadata["to_status"]).to eq("degraded")
   end
 
   it "is atomic — rolls back if audit write fails" do
     allow(Audit::EventWriter).to receive(:write).and_raise(ActiveRecord::StatementInvalid)
     expect { call }.to raise_error(ActiveRecord::StatementInvalid)
     expect(asset.reload.status).to eq("available")
+    expect(asset.reload.last_reported_at).to be_nil
   end
 
   # ── Failure cases ──────────────────────────────────────────────────────────

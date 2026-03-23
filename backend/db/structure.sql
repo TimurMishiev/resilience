@@ -94,7 +94,8 @@ CREATE TABLE public.assets (
     status text DEFAULT 'available'::text NOT NULL,
     home_site_id uuid,
     created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL
+    updated_at timestamp(6) without time zone NOT NULL,
+    last_reported_at timestamp(6) without time zone
 );
 
 
@@ -1068,6 +1069,8 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260323100001'),
+('20260323100000'),
 ('20260321234646'),
 ('20260321225132'),
 ('20260321150001'),

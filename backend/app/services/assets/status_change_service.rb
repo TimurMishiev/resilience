@@ -20,7 +20,7 @@ module Assets
       correlation_id = SecureRandom.uuid
 
       ActiveRecord::Base.transaction do
-        @asset.update!(status: @to_status)
+        @asset.update!(status: @to_status, last_reported_at: Time.current)
 
         Audit::EventWriter.write(
           actor: @actor,

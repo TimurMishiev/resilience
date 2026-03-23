@@ -200,13 +200,13 @@ puts "  Assigned all 9 sites to their AOs"
 # ---------------------------------------------------------------------------
 
 assets_data = [
-  { name: "MRAP-01",           asset_type: "vehicle",   status: "in_use",      home_site: alpha   }, # deployed at Alpha
-  { name: "MRAP-07",           asset_type: "vehicle",   status: "available",   home_site: charlie }, # standby at Charlie
-  { name: "Comms Array B3",    asset_type: "equipment", status: "in_use",      home_site: bravo   }, # active relay, Ramstein
-  { name: "Comms Array F1",    asset_type: "equipment", status: "maintenance", home_site: foxtrot }, # offline for repair
-  { name: "UAV Recon-3",       asset_type: "equipment", status: "in_use",      home_site: echo    }, # airborne, Tel Aviv
-  { name: "Field Team 7",      asset_type: "personnel", status: "available",   home_site: golf    }, # Diego Garcia
-  { name: "Field Team 12",     asset_type: "personnel", status: "in_use",      home_site: hotel   }, # deployed, Seoul
+  { name: "MRAP-01",           asset_type: "vehicle",   status: "assigned",  home_site: alpha   }, # deployed at Alpha
+  { name: "MRAP-07",           asset_type: "vehicle",   status: "available",  home_site: charlie }, # standby at Charlie
+  { name: "Comms Array B3",    asset_type: "equipment", status: "assigned",  home_site: bravo   }, # active relay, Ramstein
+  { name: "Comms Array F1",    asset_type: "equipment", status: "degraded",  home_site: foxtrot }, # degraded, needs repair
+  { name: "UAV Recon-3",       asset_type: "equipment", status: "assigned",  home_site: echo    }, # airborne, Tel Aviv
+  { name: "Field Team 7",      asset_type: "personnel", status: "available",  home_site: golf    }, # Diego Garcia
+  { name: "Field Team 12",     asset_type: "personnel", status: "assigned",  home_site: hotel   }, # deployed, Seoul
 ]
 
 assets = assets_data.map do |attrs|

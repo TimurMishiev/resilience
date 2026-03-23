@@ -5,7 +5,7 @@ RSpec.describe "Api::Assets", type: :request do
   let!(:site_a) { create(:site) }
   let!(:site_b) { create(:site) }
   let!(:vehicle)   { create(:asset, name: "MRAP-01", asset_type: "vehicle",   status: "available", home_site: site_a) }
-  let!(:equipment) { create(:asset, name: "Comms-B", asset_type: "equipment", status: "in_use",    home_site: site_b) }
+  let!(:equipment) { create(:asset, name: "Comms-B", asset_type: "equipment", status: "assigned",  home_site: site_b) }
   let!(:orphan)    { create(:asset, name: "Spare",   asset_type: "equipment", status: "offline",   home_site: nil) }
 
   describe "GET /api/assets" do
@@ -23,7 +23,7 @@ RSpec.describe "Api::Assets", type: :request do
     end
 
     it "filters by status" do
-      get "/api/assets", params: { status: "in_use" }, headers: auth_headers(current_user)
+      get "/api/assets", params: { status: "assigned" }, headers: auth_headers(current_user)
       ids = JSON.parse(response.body)["data"].map { |a| a["id"] }
       expect(ids).to eq([equipment.id])
     end
@@ -78,14 +78,14 @@ RSpec.describe "Api::Assets", type: :request do
       it "writes an audit event for the status change" do
         expect {
           patch "/api/assets/#{vehicle.id}",
-                params:  { asset: { status: "maintenance" } },
+                params:  { asset: { status: "degraded" } },
                 headers: auth_headers(current_user)
         }.to change(AuditEvent, :count).by(1)
 
         event = AuditEvent.last
         expect(event.event_type).to eq("asset.status_changed")
         expect(event.entity_id).to eq(vehicle.id)
-        expect(event.metadata["to_status"]).to eq("maintenance")
+        expect(event.metadata["to_status"]).to eq("degraded")
       end
 
       it "returns 422 when transitioning to the current status" do

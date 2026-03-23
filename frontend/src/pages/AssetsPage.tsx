@@ -21,19 +21,19 @@ import type { Intent } from '@blueprintjs/core'
 
 function statusIntent(status: AssetStatus): Intent {
   switch (status) {
-    case 'available':   return 'success'
-    case 'in_use':      return 'primary'
-    case 'maintenance': return 'warning'
-    case 'offline':     return 'danger'
+    case 'available': return 'success'
+    case 'assigned':  return 'primary'
+    case 'degraded':  return 'warning'
+    case 'offline':   return 'danger'
   }
 }
 
 function statusLabel(status: AssetStatus): string {
   switch (status) {
-    case 'available':   return 'Available'
-    case 'in_use':      return 'In use'
-    case 'maintenance': return 'Maintenance'
-    case 'offline':     return 'Offline'
+    case 'available': return 'Available'
+    case 'assigned':  return 'Assigned'
+    case 'degraded':  return 'Degraded'
+    case 'offline':   return 'Offline'
   }
 }
 
@@ -41,9 +41,12 @@ function typeLabel(t: string): string {
   return t.charAt(0).toUpperCase() + t.slice(1)
 }
 
-/** Returns a human-readable staleness string, or null if fresh (< 6 h) */
-function stalenessLabel(updatedAt: string): { label: string; intent: Intent } | null {
-  const ageMs  = Date.now() - new Date(updatedAt).getTime()
+/** Returns a human-readable staleness string based on last_reported_at (telemetry freshness).
+ *  Falls back to updated_at only when no report has ever been received.
+ *  Returns null when fresh (< 6 h). */
+function stalenessLabel(asset: { last_reported_at: string | null; updated_at: string }): { label: string; intent: Intent } | null {
+  const ts     = asset.last_reported_at ?? asset.updated_at
+  const ageMs  = Date.now() - new Date(ts).getTime()
   const ageH   = ageMs / 3_600_000
   if (ageH < 6)  return null
   if (ageH < 24) return { label: `${Math.round(ageH)}h ago`, intent: 'warning' }
@@ -114,7 +117,7 @@ export default function AssetsPage() {
     )
   }
 
-  const stale = selectedAsset ? stalenessLabel(selectedAsset.updated_at) : null
+  const stale = selectedAsset ? stalenessLabel(selectedAsset) : null
 
   return (
     <>
@@ -150,7 +153,7 @@ export default function AssetsPage() {
                   </tr>
                 ))
               : assets.map((asset) => {
-                  const staleInfo = stalenessLabel(asset.updated_at)
+                  const staleInfo = stalenessLabel(asset)
                   return (
                     <tr key={asset.id} onClick={() => openDrawer(asset)} className="clickable-row">
                       <td>{asset.name}</td>

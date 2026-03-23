@@ -11,11 +11,13 @@ import {
 import IntelChainPanel from '../components/IntelChainPanel'
 import { useAuth } from '../context/AuthContext'
 import { useAssets } from '../hooks/useAssets'
+import { useUpdateTask } from '../hooks/useTasks'
 import AuditTimeline from '../components/AuditTimeline'
 import IncidentNotesPanel from '../components/IncidentNotesPanel'
 import IncidentRecommendationsPanel from '../components/IncidentRecommendationsPanel'
 import { SIGNAL_ICON_NAME } from '../lib/signalIcons'
 import type { IncidentStatus, IncidentSeverity, IncidentAlert, IncidentTask } from '../api/incidents'
+import { humanize } from '../utils/humanize'
 
 // ── constants ─────────────────────────────────────────────────────────────
 
@@ -100,7 +102,7 @@ function AlertsTab({ alerts }: { alerts: IncidentAlert[] }) {
               {a.signal ? (
                 <>
                   <Icon icon={SIGNAL_ICON_NAME[a.signal.signal_type] ?? 'dot'} size={12} style={{ marginRight: 5 }} />
-                  {a.signal.signal_type.replace(/_/g, ' ')}
+                  {humanize(a.signal.signal_type)}
                 </>
               ) : <span className="bp6-text-muted">—</span>}
             </td>
@@ -120,8 +122,8 @@ function AlertsTab({ alerts }: { alerts: IncidentAlert[] }) {
 
 function TasksTab({ tasks }: { tasks: IncidentTask[] }) {
   const { data: assetRes } = useAssets({ per_page: 200 })
-  const assetMap: Record<string, string> = {}
-  for (const a of assetRes?.data ?? []) assetMap[a.id] = a.name
+  const updateTask = useUpdateTask()
+  const assets = assetRes?.data ?? []
 
   if (tasks.length === 0) {
     return (
@@ -147,8 +149,21 @@ function TasksTab({ tasks }: { tasks: IncidentTask[] }) {
         {tasks.map((t) => (
           <tr key={t.id}>
             <td>{t.title}</td>
-            <td className="bp6-text-muted" style={{ fontSize: 12 }}>
-              {t.asset_id ? (assetMap[t.asset_id] ?? '—') : '—'}
+            <td style={{ minWidth: 140 }}>
+              <HTMLSelect
+                minimal
+                value={t.asset_id ?? ''}
+                onChange={e => {
+                  const val = e.target.value
+                  updateTask.mutate({ id: t.id, body: { asset_id: val || null } })
+                }}
+                style={{ fontSize: 12, height: 24 }}
+              >
+                <option value="">— unassigned —</option>
+                {assets.map(a => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
+                ))}
+              </HTMLSelect>
             </td>
             <td>
               <Tag minimal intent={TASK_PRIORITY_INTENT[t.priority] ?? 'none'} style={{ fontSize: 10 }}>
@@ -157,7 +172,7 @@ function TasksTab({ tasks }: { tasks: IncidentTask[] }) {
             </td>
             <td>
               <Tag minimal style={{ fontSize: 10 }}>
-                {t.workflow_status.replace(/_/g, ' ')}
+                {humanize(t.workflow_status)}
               </Tag>
             </td>
           </tr>
