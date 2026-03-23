@@ -5,6 +5,7 @@ Rails.application.routes.draw do
   # that React Router handles deep links (/map, /signals, etc.) correctly.
   # Only active when public/index.html exists (i.e. in the production Docker image).
   if File.exist?(Rails.root.join("public/index.html"))
+    root to: "static#index"
     get "*path",
         to:          "static#index",
         constraints: ->(req) {

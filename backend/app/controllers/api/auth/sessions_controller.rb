@@ -15,7 +15,7 @@ module Api
             value:     token,
             httponly:  true,
             same_site: :lax,
-            secure:    Rails.env.production?,
+            secure:    request.ssl?,
             path:      "/",
             expires:   JwtAuthenticatable::TTL.from_now
           )

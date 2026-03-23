@@ -47,6 +47,9 @@ end
 # Clear all seed data — idempotent on re-run
 # ---------------------------------------------------------------------------
 puts "  Clearing existing data..."
+Recommendation.delete_all
+IncidentNote.delete_all    # must precede Incident
+Incident.delete_all        # must precede Site and SignalRuleMatch
 SignalRuleMatch.delete_all
 AuditEvent.delete_all
 Task.delete_all
@@ -1172,6 +1175,208 @@ sites_with_history.each do |site|
     inserted += 1
   end
 end
+
+# ---------------------------------------------------------------------------
+# Recommendations — seeded so the page is populated on a fresh local DB.
+# Covers all 6 recommendation_types across both tiers (rule + llm).
+# SignalRuleMatches are created here too so alert-scoped types have real FKs.
+# ---------------------------------------------------------------------------
+puts "\nSeeding recommendations..."
+
+alpha   = Site.find_by(name: "Site Alpha")
+echo    = Site.find_by(name: "Site Echo")
+foxtrot = Site.find_by(name: "Site Foxtrot")
+hotel   = Site.find_by(name: "Site Hotel")
+india   = Site.find_by(name: "Site India")
+
+gps_rule      = CorrelationRule.find_by(name: "GPS Jamming Detected")
+seismic_rule  = CorrelationRule.find_by(name: "Seismic Event Near Site")
+vessel_rule   = CorrelationRule.find_by(name: "Vessel Activity Near Site")
+wildfire_rule = CorrelationRule.find_by(name: "Wildfire Proximity Alert")
+
+gps_signal      = ExternalSignal.where(signal_type: "gps_jamming").first
+seismic_signal  = ExternalSignal.where(signal_type: "seismic_event").first
+vessel_signal   = ExternalSignal.where(signal_type: "vessel_position").first
+wildfire_signal = ExternalSignal.where(signal_type: "wildfire").first
+
+# Create a handful of SignalRuleMatches to back the alert-scoped recommendations
+stale_match = if alpha && gps_rule && gps_signal
+  SignalRuleMatch.find_or_create_by(
+    signal: gps_signal, correlation_rule: gps_rule, site: alpha
+  ) do |m|
+    m.fired_at        = T12H
+    m.confidence      = 0.38
+    m.workflow_status = "unacknowledged"
+    m.metadata        = {}
+  end
+end
+
+high_conf_match = if echo && seismic_rule && seismic_signal
+  SignalRuleMatch.find_or_create_by(
+    signal: seismic_signal, correlation_rule: seismic_rule, site: echo
+  ) do |m|
+    m.fired_at        = T4H
+    m.confidence      = 0.84
+    m.workflow_status = "unacknowledged"
+    m.metadata        = {}
+  end
+end
+
+vessel_match = if foxtrot && vessel_rule && vessel_signal
+  SignalRuleMatch.find_or_create_by(
+    signal: vessel_signal, correlation_rule: vessel_rule, site: foxtrot
+  ) do |m|
+    m.fired_at        = T24H
+    m.confidence      = 0.61
+    m.workflow_status = "unacknowledged"
+    m.metadata        = {}
+  end
+end
+
+wildfire_match = if india && wildfire_rule && wildfire_signal
+  SignalRuleMatch.find_or_create_by(
+    signal: wildfire_signal, correlation_rule: wildfire_rule, site: india
+  ) do |m|
+    m.fired_at        = T4H
+    m.confidence      = 0.77
+    m.workflow_status = "unacknowledged"
+    m.metadata        = {}
+  end
+end
+
+seed_recs = []
+
+# close_stale_alert — low-confidence GPS jamming alert at Alpha, 12h old
+if stale_match
+  seed_recs << {
+    recommendation_type:  "close_stale_alert",
+    tier:                 "rule",
+    confidence:           0.85,
+    rationale:            "Alert 'GPS Jamming Detected' at Site Alpha has been unacknowledged for 12h with low confidence (38%). Recommend closing to reduce noise.",
+    evidence:             [{ type: "alert", id: stale_match.id, detail: "fired_at=#{T12H.iso8601}, conf=0.38" }],
+    action_payload:       { alert_id: stale_match.id, to_status: "closed" },
+    affected_entity_type: "SignalRuleMatch",
+    affected_entity_id:   stale_match.id,
+    status:               "pending",
+    expires_at:           2.hours.from_now,
+  }
+end
+
+# acknowledge_alert — high-confidence seismic alert at Echo
+if high_conf_match
+  seed_recs << {
+    recommendation_type:  "acknowledge_alert",
+    tier:                 "rule",
+    confidence:           0.84,
+    rationale:            "High-confidence seismic alert (84%) from 'Seismic Event Near Site' at Site Echo requires attention. Recommend acknowledging to begin triage.",
+    evidence:             [{ type: "alert", id: high_conf_match.id, detail: "conf=0.84, fired=#{T4H.iso8601}" }],
+    action_payload:       { alert_id: high_conf_match.id, to_status: "acknowledged" },
+    affected_entity_type: "SignalRuleMatch",
+    affected_entity_id:   high_conf_match.id,
+    status:               "pending",
+    expires_at:           2.hours.from_now,
+  }
+end
+
+# acknowledge_alert — vessel match at Foxtrot
+if vessel_match
+  seed_recs << {
+    recommendation_type:  "acknowledge_alert",
+    tier:                 "rule",
+    confidence:           0.61,
+    rationale:            "Vessel activity alert (61%) from 'Vessel Activity Near Site' at Site Foxtrot has been unacknowledged for 24h. Recommend acknowledging to confirm maritime picture.",
+    evidence:             [{ type: "alert", id: vessel_match.id, detail: "conf=0.61, fired=#{T24H.iso8601}" }],
+    action_payload:       { alert_id: vessel_match.id, to_status: "acknowledged" },
+    affected_entity_type: "SignalRuleMatch",
+    affected_entity_id:   vessel_match.id,
+    status:               "pending",
+    expires_at:           2.hours.from_now,
+  }
+end
+
+# flag_site — Site Hotel elevated risk (rule tier)
+if hotel
+  seed_recs << {
+    recommendation_type:  "flag_site",
+    tier:                 "rule",
+    confidence:           0.82,
+    rationale:            "Site Hotel has sustained elevated risk indicators over the past 24h but is not yet flagged. Flagging will prioritise it in operational views and trigger additional monitoring.",
+    evidence:             [{ type: "site", id: hotel.id, detail: "risk_level=elevated, signal_density=high" }],
+    action_payload:       { site_id: hotel.id },
+    affected_entity_type: "Site",
+    affected_entity_id:   hotel.id,
+    status:               "pending",
+    expires_at:           2.hours.from_now,
+  }
+end
+
+# create_task — LLM recommendation for Site Echo
+if echo
+  seed_recs << {
+    recommendation_type:  "create_task",
+    tier:                 "llm",
+    confidence:           0.76,
+    rationale:            "Site Echo has multiple unresolved seismic signals and an open blocked task. Based on operational patterns, initiating a structural integrity assessment now reduces incident risk by an estimated 40%.",
+    evidence:             [{ type: "site", id: echo.id, detail: "open_blocked_tasks=1, recent_seismic_signals=3" }],
+    action_payload:       { site_id: echo.id, suggested_title: "Structural integrity check — Site Echo", priority: "high" },
+    affected_entity_type: "Site",
+    affected_entity_id:   echo.id,
+    status:               "pending",
+    expires_at:           4.hours.from_now,
+  }
+end
+
+# bulk_triage_alerts — Site Alpha alert backlog
+if alpha
+  seed_recs << {
+    recommendation_type:  "bulk_triage_alerts",
+    tier:                 "rule",
+    confidence:           0.80,
+    rationale:            "6 unacknowledged alerts are queued at Site Alpha. Bulk triage can resolve noise and surface actionable items faster.",
+    evidence:             [{ type: "site", id: alpha.id, detail: "unacked_count=6" }],
+    action_payload:       { site_id: alpha.id, unacked_count: 6 },
+    affected_entity_type: "Site",
+    affected_entity_id:   alpha.id,
+    status:               "pending",
+    expires_at:           2.hours.from_now,
+  }
+end
+
+# create_task — LLM recommendation for Site Foxtrot (maritime posture)
+if foxtrot
+  seed_recs << {
+    recommendation_type:  "create_task",
+    tier:                 "llm",
+    confidence:           0.69,
+    rationale:            "Persistent vessel activity near Site Foxtrot (Djibouti) combined with recent AIS gap signals in the Gulf of Aden suggests coordinated maritime activity. Recommend tasking a maritime patrol assessment.",
+    evidence:             [{ type: "site", id: foxtrot.id, detail: "vessel_signals=4, ais_gap_signals=2, last_24h=true" }],
+    action_payload:       { site_id: foxtrot.id, suggested_title: "Maritime patrol assessment — Gulf of Aden corridor", priority: "high" },
+    affected_entity_type: "Site",
+    affected_entity_id:   foxtrot.id,
+    status:               "pending",
+    expires_at:           4.hours.from_now,
+  }
+end
+
+# wildfire match acknowledgment
+if wildfire_match
+  seed_recs << {
+    recommendation_type:  "acknowledge_alert",
+    tier:                 "rule",
+    confidence:           0.77,
+    rationale:            "High-confidence wildfire alert (77%) from 'Wildfire Proximity Alert' at Site India has not been acknowledged. Recommend acknowledging and assessing base perimeter risk.",
+    evidence:             [{ type: "alert", id: wildfire_match.id, detail: "conf=0.77, fired=#{T4H.iso8601}" }],
+    action_payload:       { alert_id: wildfire_match.id, to_status: "acknowledged" },
+    affected_entity_type: "SignalRuleMatch",
+    affected_entity_id:   wildfire_match.id,
+    status:               "pending",
+    expires_at:           2.hours.from_now,
+  }
+end
+
+seed_recs.compact.each { |attrs| Recommendation.create!(attrs) }
+puts "  Recommendations: #{Recommendation.count}  (#{Recommendation.where(tier: 'rule').count} rule, #{Recommendation.where(tier: 'llm').count} llm)"
+puts "  SignalRuleMatches: #{SignalRuleMatch.count}  (seeded to back alert recommendations)"
 
 puts "  Risk snapshots:   #{SiteRiskSnapshot.count}  (#{SNAPSHOT_COUNT} per site × #{sites_with_history.count} sites)"
 puts "  Areas:            #{AreaOfOperation.count}  (EUCOM amber, CENTCOM red, AFRICOM amber, INDOPACOM green)"

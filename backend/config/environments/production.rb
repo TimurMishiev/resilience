@@ -20,7 +20,8 @@ Rails.application.configure do
 
   # Fly.io terminates TLS at the edge and forwards plain HTTP internally.
   # Telling Rails to assume SSL ensures cookies and redirects use https://.
-  config.assume_ssl = true
+  # Set ASSUME_SSL=false for local Docker testing over plain HTTP.
+  config.assume_ssl = ENV.fetch("ASSUME_SSL", "true") != "false"
 
   # Force all access to the app over SSL, use Strict-Transport-Security, and use secure cookies.
   # Fly handles the HTTP→HTTPS redirect at the proxy layer, so we leave this off

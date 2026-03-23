@@ -22,6 +22,7 @@ services:
       # Non-secret dev key — fine for local demo, not for production deployment
       SECRET_KEY_BASE: "resilience-dev-key-000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
       RAILS_LOG_TO_STDOUT: "true"
+      ASSUME_SSL: "false"
       # Optional — enables AI Briefing page. Get a free key at https://console.anthropic.com/
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
     depends_on:
