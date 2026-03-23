@@ -33,6 +33,9 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff,woff2}'],
         globIgnores: ['**/Cesium.js', '**/cesium/**'],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024, // 6 MB
+        // Remove stale precache entries from old deploys so old chunk URLs
+        // are never served after a new SW activates.
+        cleanupOutdatedCaches: true,
         // Network-first for API — serve cached data when offline
         runtimeCaching: [
           {

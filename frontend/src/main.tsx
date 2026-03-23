@@ -8,6 +8,15 @@ import './index.css'
 import App from './App.tsx'
 import { AuthProvider } from './context/AuthContext.tsx'
 
+// When a new service worker activates and claims this page, reload immediately so
+// the fresh index.html is served. Without this, the old page tries to lazy-load
+// stale chunk URLs that no longer exist on the server after a new deploy.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    window.location.reload()
+  })
+}
+
 // Only show focus outlines when navigating with a keyboard (Blueprint best practice).
 FocusStyleManager.onlyShowFocusOnTabs()
 
