@@ -115,5 +115,7 @@ Rails.application.routes.draw do
         get :tracks
       end
     end
+
+    get "planning", to: "planning#index"
   end
 end

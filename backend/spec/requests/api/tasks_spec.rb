@@ -16,6 +16,19 @@ RSpec.describe "Api::Tasks", type: :request do
       expect(ids).to include(task_new.id, task_resolved.id, task_other_site.id)
     end
 
+    it "includes site_name on each task record" do
+      get "/api/tasks", params: { site_id: site.id }, headers: auth_headers(current_user)
+      task_json = JSON.parse(response.body)["data"].find { |t| t["id"] == task_new.id }
+      expect(task_json["site_name"]).to eq(site.name)
+    end
+
+    it "includes ao_posture as nil when site has no AO" do
+      get "/api/tasks", params: { site_id: site.id }, headers: auth_headers(current_user)
+      task_json = JSON.parse(response.body)["data"].find { |t| t["id"] == task_new.id }
+      expect(task_json).to have_key("ao_posture")
+      expect(task_json["ao_posture"]).to be_nil
+    end
+
     it "filters by site_id" do
       get "/api/tasks", params: { site_id: site.id }, headers: auth_headers(current_user)
       ids = JSON.parse(response.body)["data"].map { |t| t["id"] }

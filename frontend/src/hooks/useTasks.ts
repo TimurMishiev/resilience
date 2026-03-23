@@ -47,6 +47,7 @@ export function useUpdateTask() {
       updateTask(id, body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['planning'] })
     },
   })
 }

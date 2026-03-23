@@ -16,7 +16,7 @@ module Api
         return render json: { errors: ["Task not found"] }, status: :not_found unless snapshot
         render json: snapshot
       else
-        task = Task.find(params[:id])
+        task = Task.includes(:asset, site: :area_of_operation).find(params[:id])
         render json: serialize_task(task)
       end
     end
@@ -80,7 +80,7 @@ module Api
     private
 
     def scoped_tasks
-      tasks = Task.includes(:site, :asset)
+      tasks = Task.includes(:asset, site: :area_of_operation)
       tasks = tasks.where(site_id: params[:site_id]) if params[:site_id].present?
       tasks = tasks.where(workflow_status: params[:workflow_status]) if params[:workflow_status].present?
       tasks = tasks.where(priority: params[:priority]) if params[:priority].present?
@@ -111,6 +111,11 @@ module Api
     def serialize_task(task)
       task.as_json(only: %i[id site_id asset_id title description priority
                              workflow_status blocked_reason resolved_at created_at])
+          .merge(
+            "site_name"  => task.site&.name,
+            "ao_id"      => task.site&.area_of_operation_id,
+            "ao_posture" => task.site&.area_of_operation&.posture
+          )
     end
 
     def task_create_params

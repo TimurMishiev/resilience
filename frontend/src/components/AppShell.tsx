@@ -49,6 +49,7 @@ export default function AppShell() {
     onEvent: (e) => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
       queryClient.invalidateQueries({ queryKey: ['readiness'] })
+      queryClient.invalidateQueries({ queryKey: ['planning'] })
 
       if (e.event === 'rule_fired') {
         const d = e.data as {
@@ -345,6 +346,14 @@ export default function AppShell() {
                 : undefined
               }
             />
+            {isCommander && (
+              <MenuItem
+                icon="gantt-chart"
+                text="Planning"
+                active={pathname.startsWith('/planning')}
+                onClick={() => navigate('/planning')}
+              />
+            )}
           </Menu>
         </nav>
 

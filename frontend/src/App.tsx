@@ -29,6 +29,7 @@ const TasksPage           = lazy(() => import('./pages/TasksPage'))
 const IncidentsPage       = lazy(() => import('./pages/IncidentsPage'))
 const IncidentDetailPage  = lazy(() => import('./pages/IncidentDetailPage'))
 const RecommendationsPage = lazy(() => import('./pages/RecommendationsPage'))
+const PlanningPage        = lazy(() => import('./pages/PlanningPage'))
 
 export default function App() {
   return (
@@ -55,6 +56,7 @@ export default function App() {
               <Route path="signals" element={<PageErrorBoundary pageName="Signals"><SignalFeedPage /></PageErrorBoundary>} />
               <Route path="rules" element={<PageErrorBoundary pageName="Rules"><CorrelationRulesPage /></PageErrorBoundary>} />
               <Route path="areas" element={<PageErrorBoundary pageName="Areas"><AreasPage /></PageErrorBoundary>} />
+              <Route path="planning" element={<PageErrorBoundary pageName="Planning"><PlanningPage /></PageErrorBoundary>} />
             </Route>
           </Route>
         </Routes>

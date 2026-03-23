@@ -87,6 +87,38 @@ export interface Task {
   resolved_at: string | null
   created_at: string
   updated_at: string
+  // Enriched fields — present on all task responses (null when site has no AO)
+  site_name:  string | null
+  ao_id:      string | null
+  ao_posture: Posture | null
+}
+
+// ---------------------------------------------------------------------------
+// Planning Surface types
+// ---------------------------------------------------------------------------
+
+export interface PlanningIncidentStub {
+  id:          string
+  title:       string
+  severity:    string
+  status:      string
+  site_id:     string | null
+  ao_id:       string | null
+  assigned_to: { id: string; email: string; role: string } | null
+}
+
+export interface PlanningAoStub {
+  id:      string
+  name:    string
+  posture: Posture
+}
+
+export interface PlanningResponse {
+  tasks:               Task[]
+  assets:              Asset[]
+  areas_of_operation:  PlanningAoStub[]
+  open_incidents:      PlanningIncidentStub[]
+  meta: { truncated: boolean; task_count: number }
 }
 
 export interface AuditEvent {
