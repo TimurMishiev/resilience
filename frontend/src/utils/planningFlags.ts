@@ -1,4 +1,4 @@
-import type { Task, Asset, PlanningIncidentStub } from '../api/types'
+import type { Task, Asset, PlanningIncidentStub, PlanningAoStub } from '../api/types'
 
 export type FlagType =
   | 'double_assigned'
@@ -41,15 +41,17 @@ function detectDoubleAssignments(tasks: Task[]): OvercommitmentFlag[] {
 }
 
 // Returns one flag per weapons_free AO that has no available asset covering any of its tasks.
-function detectWeaponsFreeNoAssets(tasks: Task[], assets: Asset[]): OvercommitmentFlag[] {
+function detectWeaponsFreeNoAssets(tasks: Task[], assets: Asset[], areas: PlanningAoStub[]): OvercommitmentFlag[] {
   const assetById = new Map(assets.map(a => [a.id, a]))
+  // AO name lookup — avoids using site_name as a proxy for the AO name
+  const aoNameById = new Map(areas.map(ao => [ao.id, ao.name]))
 
   // Group non-resolved tasks by AO where posture is weapons_free
   const aoTasks = new Map<string, { aoName: string; tasks: Task[] }>()
   for (const task of tasks) {
     if (task.workflow_status === 'resolved') continue
     if (task.ao_posture !== 'weapons_free' || !task.ao_id) continue
-    const entry = aoTasks.get(task.ao_id) ?? { aoName: task.site_name ?? task.ao_id, tasks: [] }
+    const entry = aoTasks.get(task.ao_id) ?? { aoName: aoNameById.get(task.ao_id) ?? task.ao_id, tasks: [] }
     entry.tasks.push(task)
     aoTasks.set(task.ao_id, entry)
   }
@@ -96,10 +98,11 @@ export function computeFlags(
   tasks:     Task[],
   assets:    Asset[],
   incidents: PlanningIncidentStub[],
+  areas:     PlanningAoStub[] = [],
 ): OvercommitmentFlag[] {
   return [
     ...detectDoubleAssignments(tasks),
-    ...detectWeaponsFreeNoAssets(tasks, assets),
+    ...detectWeaponsFreeNoAssets(tasks, assets, areas),
     ...detectCriticalUnassigned(incidents),
   ]
 }

@@ -70,8 +70,14 @@ export default function BriefingPanel() {
   const [pdfLoading, setPdfLoading]   = useState(false)
   const [pdfError, setPdfError]       = useState<string | null>(null)
 
-  const mountedRef = useRef(true)
-  useEffect(() => { return () => { mountedRef.current = false } }, [])
+  // mountedRef guards async callbacks against setting state after unmount.
+  // Initialized to false and set to true inside the effect so it survives
+  // React 19 StrictMode's synthetic unmount/remount cycle in development.
+  const mountedRef = useRef(false)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
 
   function generate() {
     setLoading(true)

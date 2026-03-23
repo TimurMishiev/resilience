@@ -1,5 +1,6 @@
 import { lazy } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { NonIdealState } from '@blueprintjs/core'
 import { ReplayProvider } from './context/ReplayContext'
 import AppShell from './components/AppShell'
 import PageErrorBoundary from './components/PageErrorBoundary'
@@ -57,6 +58,7 @@ export default function App() {
               <Route path="rules" element={<PageErrorBoundary pageName="Rules"><CorrelationRulesPage /></PageErrorBoundary>} />
               <Route path="areas" element={<PageErrorBoundary pageName="Areas"><AreasPage /></PageErrorBoundary>} />
               <Route path="planning" element={<PageErrorBoundary pageName="Planning"><PlanningPage /></PageErrorBoundary>} />
+              <Route path="*" element={<NonIdealState icon="error" title="Page not found" description="The URL you entered does not match any page in this application." />} />
             </Route>
           </Route>
         </Routes>

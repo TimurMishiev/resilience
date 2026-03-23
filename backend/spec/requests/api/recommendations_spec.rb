@@ -89,6 +89,39 @@ RSpec.describe "Api::Recommendations", type: :request do
     end
   end
 
+  describe "POST /api/recommendations/:id/execute" do
+    let!(:rec) { create(:recommendation, status: "pending", expires_at: 2.hours.from_now) }
+
+    it "accepts and executes a pending recommendation" do
+      allow(Recommendations::ExecutorService).to receive(:call) do |args|
+        args[:recommendation].mark_executed!
+        ServiceResult.success
+      end
+      post "/api/recommendations/#{rec.id}/execute", headers: auth_headers(commander)
+      expect(response).to have_http_status(:ok)
+      expect(json["status"]).to eq "executed"
+    end
+
+    it "returns 422 for a non-pending/accepted recommendation" do
+      rec.update!(status: "rejected")
+      post "/api/recommendations/#{rec.id}/execute", headers: auth_headers(commander)
+      expect(response).to have_http_status(:unprocessable_content)
+    end
+
+    it "rolls back accept! when ExecutorService fails — rec stays pending" do
+      allow(Recommendations::ExecutorService).to receive(:call)
+        .and_return(ServiceResult.failure(errors: ["dispatch error"]))
+      post "/api/recommendations/#{rec.id}/execute", headers: auth_headers(commander)
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(rec.reload.status).to eq "pending"
+    end
+
+    it "forbids operator" do
+      post "/api/recommendations/#{rec.id}/execute", headers: auth_headers(operator)
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
+
   describe "GET /api/recommendations/metrics" do
     before do
       create(:recommendation, status: "accepted")

@@ -59,8 +59,13 @@ module Api
     # Accepts (if pending) and immediately executes the recommendation.
     # Uses a row-level lock (SELECT FOR UPDATE) to prevent concurrent double-execution:
     # the second request will find status='executed' after the first commits and fail.
+    #
+    # Atomicity: with_lock wraps the block in a savepoint-backed transaction.
+    # If ExecutorService fails we raise ActiveRecord::Rollback so the accept!
+    # write is rolled back and the recommendation stays in its original status.
     def execute
-      rec = Recommendation.find(params[:id])
+      rec    = Recommendation.find(params[:id])
+      result = nil
 
       rec.with_lock do
         unless rec.pending? || rec.accepted?
@@ -71,11 +76,13 @@ module Api
         rec.accept!(user: current_user, reason: "auto-accepted for execution") if rec.pending?
 
         result = Recommendations::ExecutorService.call(recommendation: rec, user: current_user)
-        if result.success?
-          render json: serialize(rec.reload)
-        else
-          render json: { errors: result.errors }, status: :unprocessable_content
-        end
+        raise ActiveRecord::Rollback unless result.success?
+      end
+
+      if result&.success?
+        render json: serialize(rec.reload)
+      else
+        render json: { errors: result&.errors || ["Execution failed"] }, status: :unprocessable_content
       end
     end
 

@@ -67,6 +67,7 @@ export default function RecommendationsPage() {
           <MetricPill label="Pending"  value={metrics.pending}  intent="primary" />
           <MetricPill label="Accepted" value={metrics.accepted} intent="success" />
           <MetricPill label="Executed" value={metrics.executed} intent="success" />
+          <MetricPill label="Deferred" value={metrics.deferred} intent="none"    />
           <MetricPill label="Rejected" value={metrics.rejected} intent="danger"  />
           <MetricPill label="Expired"  value={metrics.expired}  intent="none"    />
           {metrics.accept_rate != null && (

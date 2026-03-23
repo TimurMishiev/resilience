@@ -51,7 +51,7 @@ export default function PlanningPage() {
 
   // ── Derived values (dataset is small; no memoization needed) ────────────
 
-  const flags = computeFlags(tasks, assets, open_incidents)
+  const flags = computeFlags(tasks, assets, open_incidents, areas_of_operation)
 
   const assetCounts = (() => {
     const counts = { available: 0, assigned: 0, degraded: 0, offline: 0, total: 0 }
