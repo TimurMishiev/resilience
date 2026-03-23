@@ -14,7 +14,7 @@ module Api
             :_resilience_session,
             value:     token,
             httponly:  true,
-            same_site: :strict,
+            same_site: :lax,
             secure:    Rails.env.production?,
             expires:   JwtAuthenticatable::TTL.from_now
           )

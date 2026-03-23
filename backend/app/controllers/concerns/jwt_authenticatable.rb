@@ -60,7 +60,7 @@ module JwtAuthenticatable
       # Priority: Authorization header (API clients / tests) → httpOnly cookie
       # (browser-originated requests) → query param (SSE only).
       token = request.headers["Authorization"]&.delete_prefix("Bearer ")&.strip
-      token = request.cookie_jar[:_resilience_session]&.strip if token.blank? && !sse_endpoint?
+      token = request.cookies["_resilience_session"]&.strip if token.blank? && !sse_endpoint?
       token = params[:token]&.strip                           if token.blank? && sse_endpoint?
       token
     end
