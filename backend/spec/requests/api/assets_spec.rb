@@ -60,4 +60,71 @@ RSpec.describe "Api::Assets", type: :request do
       expect(response).to have_http_status(:not_found)
     end
   end
+
+  describe "PATCH /api/assets/:id" do
+    let(:operator) { create(:user, :operator) }
+
+    context "as commander" do
+      it "changes status and returns updated asset" do
+        patch "/api/assets/#{vehicle.id}",
+              params:  { asset: { status: "offline" } },
+              headers: auth_headers(current_user)
+        expect(response).to have_http_status(:ok)
+        body = JSON.parse(response.body)
+        expect(body["status"]).to eq("offline")
+        expect(body["updated_at"]).to be_present
+      end
+
+      it "writes an audit event for the status change" do
+        expect {
+          patch "/api/assets/#{vehicle.id}",
+                params:  { asset: { status: "maintenance" } },
+                headers: auth_headers(current_user)
+        }.to change(AuditEvent, :count).by(1)
+
+        event = AuditEvent.last
+        expect(event.event_type).to eq("asset.status_changed")
+        expect(event.entity_id).to eq(vehicle.id)
+        expect(event.metadata["to_status"]).to eq("maintenance")
+      end
+
+      it "returns 422 when transitioning to the current status" do
+        patch "/api/assets/#{vehicle.id}",
+              params:  { asset: { status: "available" } },
+              headers: auth_headers(current_user)
+        expect(response).to have_http_status(422)
+        expect(JSON.parse(response.body)["errors"]).to be_present
+      end
+
+      it "returns 422 for an invalid status value" do
+        patch "/api/assets/#{vehicle.id}",
+              params:  { asset: { status: "destroyed" } },
+              headers: auth_headers(current_user)
+        expect(response).to have_http_status(422)
+      end
+
+      it "returns 404 for an unknown asset id" do
+        patch "/api/assets/00000000-0000-0000-0000-000000000000",
+              params:  { asset: { status: "offline" } },
+              headers: auth_headers(current_user)
+        expect(response).to have_http_status(:not_found)
+      end
+    end
+
+    context "as operator" do
+      it "returns 403 Forbidden" do
+        patch "/api/assets/#{vehicle.id}",
+              params:  { asset: { status: "offline" } },
+              headers: auth_headers(operator)
+        expect(response).to have_http_status(:forbidden)
+      end
+    end
+
+    context "unauthenticated" do
+      it "returns 401" do
+        patch "/api/assets/#{vehicle.id}", params: { asset: { status: "offline" } }
+        expect(response).to have_http_status(:unauthorized)
+      end
+    end
+  end
 end

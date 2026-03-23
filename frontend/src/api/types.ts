@@ -42,6 +42,7 @@ export interface AreasOfOperationParams extends PaginationParams {
   threat_level?: ThreatLevel
 }
 export type AssetStatus = 'available' | 'in_use' | 'maintenance' | 'offline'
+export const ASSET_STATUSES: AssetStatus[] = ['available', 'in_use', 'maintenance', 'offline']
 export type TaskPriority = 'low' | 'normal' | 'high' | 'critical'
 export type WorkflowStatus = 'new' | 'triaged' | 'in_progress' | 'blocked' | 'resolved'
 

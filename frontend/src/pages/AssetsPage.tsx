@@ -6,7 +6,6 @@ import {
   Divider,
   Drawer,
   DrawerSize,
-  HTMLSelect,
   HTMLTable,
   NonIdealState,
   Tag,
@@ -16,6 +15,7 @@ import { useSites } from '../hooks/useSites'
 import { useReplay } from '../context/ReplayContext'
 import { useRole } from '../hooks/useRole'
 import AuditTimeline from '../components/AuditTimeline'
+import { ASSET_STATUSES } from '../api/types'
 import type { Asset, AssetStatus } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
 
@@ -51,7 +51,6 @@ function stalenessLabel(updatedAt: string): { label: string; intent: Intent } | 
   return { label: `${ageD}d ago`, intent: 'danger' }
 }
 
-const STATUS_OPTIONS: AssetStatus[] = ['available', 'in_use', 'maintenance', 'offline']
 const SKELETON_ROWS = 7
 
 export default function AssetsPage() {
@@ -97,10 +96,12 @@ export default function AssetsPage() {
 
   async function handleStatusChange() {
     if (!selectedAsset || !pendingStatus) return
+    const assetId = selectedAsset.id
     setUpdateError(null)
     try {
-      const updated = await updateStatus.mutateAsync({ id: selectedAsset.id, status: pendingStatus })
-      setSelectedAsset(updated)
+      const updated = await updateStatus.mutateAsync({ id: assetId, status: pendingStatus })
+      // Only update drawer if it's still showing the same asset
+      setSelectedAsset(prev => prev?.id === assetId ? updated : prev)
       setPendingStatus(null)
     } catch (err: unknown) {
       setUpdateError(err instanceof Error ? err.message : 'Update failed')
@@ -207,7 +208,7 @@ export default function AssetsPage() {
               <div className="drawer-transitions" style={{ marginTop: 16 }}>
                 <span className="drawer-section-label bp6-text-muted">Change status</span>
                 <div className="transition-buttons">
-                  {STATUS_OPTIONS.filter(s => s !== selectedAsset.status).map(s => (
+                  {ASSET_STATUSES.filter(s => s !== selectedAsset.status).map(s => (
                     <Button
                       key={s}
                       small

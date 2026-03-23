@@ -20,6 +20,7 @@ import { getAiFilter } from '../api/ai'
 import AuditTimeline from '../components/AuditTimeline'
 import { useReplay } from '../context/ReplayContext'
 import { useRole } from '../hooks/useRole'
+import { humanize } from '../utils/humanize'
 import type { Asset, Task, TaskPriority, WorkflowStatus, AssetStatus } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
 
@@ -90,12 +91,12 @@ function AssetPicker({ selectedTask, assets, pendingAsset, setPendingAsset, onAs
         onChange={(e) => setPendingAsset(e.currentTarget.value || null)}
         options={[
           { label: '— Unassigned —', value: '' },
-          ...assets.map(a => ({ label: `${a.name} · ${a.status.replace('_', ' ')}`, value: a.id })),
+          ...assets.map(a => ({ label: `${a.name} · ${humanize(a.status)}`, value: a.id })),
         ]}
       />
       {pickedAsset && (
         <Tag minimal intent={assetStatusIntent(pickedAsset.status)} style={{ fontSize: 10 }}>
-          {pickedAsset.status.replace('_', ' ')}
+          {humanize(pickedAsset.status)}
         </Tag>
       )}
       {pendingAsset !== undefined && pendingAsset !== selectedTask.asset_id && (
@@ -323,7 +324,7 @@ export default function TasksPage() {
                       </td>
                       <td>
                         <Tag minimal intent={workflowIntent(task.workflow_status)}>
-                          {task.workflow_status.replace('_', ' ')}
+                          {humanize(task.workflow_status)}
                         </Tag>
                       </td>
                     </tr>
@@ -351,7 +352,7 @@ export default function TasksPage() {
           <div className="drawer-body">
             <div className="drawer-tags">
               <Tag minimal intent={workflowIntent(selectedTask.workflow_status)}>
-                {selectedTask.workflow_status.replace('_', ' ')}
+                {humanize(selectedTask.workflow_status)}
               </Tag>
               <Tag minimal intent={priorityIntent(selectedTask.priority)}>
                 {selectedTask.priority}

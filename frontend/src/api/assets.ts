@@ -1,6 +1,6 @@
 import { api } from './client'
 import type { QueryParams } from './client'
-import type { Asset, PaginatedResponse, PaginationParams, AsOfParam } from './types'
+import type { Asset, AssetStatus, PaginatedResponse, PaginationParams, AsOfParam } from './types'
 
 type AssetsParams = PaginationParams & AsOfParam & {
   home_site_id?: string
@@ -16,6 +16,6 @@ export function getAsset(id: string, params?: AsOfParam): Promise<Asset> {
   return api.get(`/api/assets/${id}`, params as QueryParams)
 }
 
-export function updateAssetStatus(id: string, status: string): Promise<Asset> {
+export function updateAssetStatus(id: string, status: AssetStatus): Promise<Asset> {
   return api.patch(`/api/assets/${id}`, { asset: { status } })
 }

@@ -15,7 +15,7 @@ module Api
     end
 
     def update
-      require_commander!
+      return require_commander! unless current_user&.role == "commander"
       asset = Asset.find(params[:id])
       new_status = params.require(:asset).permit(:status)[:status]
 
@@ -28,7 +28,7 @@ module Api
       if result.success?
         render json: serialize_asset(result.asset)
       else
-        render json: { errors: result.errors }, status: :unprocessable_entity
+        render json: { errors: result.errors }, status: 422
       end
     end
 
