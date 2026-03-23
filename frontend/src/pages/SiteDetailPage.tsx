@@ -399,7 +399,7 @@ function AssetsTab({ siteId }: { siteId: string }) {
   }
 
   const STATUS_COLOR: Record<string, 'success' | 'warning' | 'danger' | 'none'> = {
-    available: 'success', assigned: 'primary', degraded: 'warning', offline: 'danger',
+    available: 'success', assigned: 'none', degraded: 'warning', offline: 'danger',
   }
 
   return (
