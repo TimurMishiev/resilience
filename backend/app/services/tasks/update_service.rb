@@ -19,6 +19,11 @@ module Tasks
     def call
       return ServiceResult.failure(errors: ["No updatable fields provided"]) if @params.empty?
 
+      if @params.key?("asset_id") && @params["asset_id"].present?
+        posture_error = validate_posture_allows_assignment(@params["asset_id"])
+        return posture_error if posture_error
+      end
+
       before = task_snapshot(@task)
       correlation_id = SecureRandom.uuid
 
@@ -56,6 +61,24 @@ module Tasks
 
     def task_snapshot(task)
       task.attributes.except("updated_at")
+    end
+
+    # Returns a ServiceResult failure if the task's AO posture forbids this assignment,
+    # nil if the assignment is permitted.
+    def validate_posture_allows_assignment(asset_id)
+      ao = @task.site&.area_of_operation
+      return nil unless ao  # no AO scoping → no posture constraint
+
+      case ao.posture
+      when "observe"
+        ServiceResult.failure(errors: ["Assignment not permitted: area is in Observe posture"])
+      when "defensive"
+        asset = Asset.find_by(id: asset_id)
+        if asset && asset.status != "available"
+          ServiceResult.failure(errors: ["Assignment not permitted: Defensive posture requires an available asset (#{asset.name} is #{asset.status})"])
+        end
+      end
+      # weapons_free: no restriction
     end
   end
 end

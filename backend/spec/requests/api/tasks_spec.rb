@@ -154,6 +154,59 @@ RSpec.describe "Api::Tasks", type: :request do
             params: { task: { title: "x" } }, headers: auth_headers(current_user), as: :json
       expect(response).to have_http_status(:not_found)
     end
+
+    context "posture enforcement on asset assignment" do
+      let!(:asset)    { create(:asset, status: "available") }
+      let!(:degraded) { create(:asset, status: "degraded") }
+      let!(:ao)       { create(:area_of_operation, posture: "observe") }
+      let!(:ao_site)  { create(:site, area_of_operation: ao) }
+      let!(:ao_task)  { create(:task, site: ao_site) }
+
+      it "rejects assignment when AO posture is observe" do
+        patch "/api/tasks/#{ao_task.id}",
+              params:  { task: { asset_id: asset.id } },
+              headers: auth_headers(current_user), as: :json
+        expect(response).to have_http_status(:unprocessable_content)
+        body = JSON.parse(response.body)
+        expect(body["errors"].first).to match(/Observe posture/)
+      end
+
+      it "rejects assignment of non-available asset when AO posture is defensive" do
+        ao.update!(posture: "defensive")
+        patch "/api/tasks/#{ao_task.id}",
+              params:  { task: { asset_id: degraded.id } },
+              headers: auth_headers(current_user), as: :json
+        expect(response).to have_http_status(:unprocessable_content)
+        body = JSON.parse(response.body)
+        expect(body["errors"].first).to match(/Defensive posture/)
+      end
+
+      it "permits assignment of available asset when AO posture is defensive" do
+        ao.update!(posture: "defensive")
+        patch "/api/tasks/#{ao_task.id}",
+              params:  { task: { asset_id: asset.id } },
+              headers: auth_headers(current_user), as: :json
+        expect(response).to have_http_status(:ok)
+        expect(ao_task.reload.asset_id).to eq(asset.id)
+      end
+
+      it "permits assignment of any asset when AO posture is weapons_free" do
+        ao.update!(posture: "weapons_free")
+        patch "/api/tasks/#{ao_task.id}",
+              params:  { task: { asset_id: degraded.id } },
+              headers: auth_headers(current_user), as: :json
+        expect(response).to have_http_status(:ok)
+        expect(ao_task.reload.asset_id).to eq(degraded.id)
+      end
+
+      it "permits assignment when the task has no AO" do
+        task_no_ao = create(:task, site: create(:site, area_of_operation: nil))
+        patch "/api/tasks/#{task_no_ao.id}",
+              params:  { task: { asset_id: asset.id } },
+              headers: auth_headers(current_user), as: :json
+        expect(response).to have_http_status(:ok)
+      end
+    end
   end
 
   describe "POST /api/tasks/:id/transition" do

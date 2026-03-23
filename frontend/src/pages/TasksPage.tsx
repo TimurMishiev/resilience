@@ -16,13 +16,14 @@ import {
 import { useTasks, useAllowedTransitions, useTransitionTask, useUpdateTask } from '../hooks/useTasks'
 import { useSites } from '../hooks/useSites'
 import { useAssets } from '../hooks/useAssets'
+import { useAreasOfOperation } from '../hooks/useAreasOfOperation'
 import { getAiFilter } from '../api/ai'
 import AuditTimeline from '../components/AuditTimeline'
 import { AssetPicker } from '../components/AssetPicker'
 import { useReplay } from '../context/ReplayContext'
 import { useRole } from '../hooks/useRole'
 import { humanize } from '../utils/humanize'
-import type { Task, TaskPriority, WorkflowStatus } from '../api/types'
+import type { Task, TaskPriority, WorkflowStatus, Posture } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
 
 
@@ -97,8 +98,9 @@ export default function TasksPage() {
   }
 
   const { data: taskRes, error, isPending } = useTasks(taskParams)
-  const { data: siteRes } = useSites({ per_page: 200, ...(asOf ? { as_of: asOf } : {}) })
+  const { data: siteRes }  = useSites({ per_page: 200, ...(asOf ? { as_of: asOf } : {}) })
   const { data: assetRes } = useAssets({ per_page: 200 })
+  const { data: aoRes }    = useAreasOfOperation({ per_page: 200 })
   const { data: transitionsData } = useAllowedTransitions(
     selectedTask && !isReplaying ? selectedTask.id : null
   )
@@ -115,6 +117,18 @@ export default function TasksPage() {
   const assetMap: Record<string, string> = {}
   for (const asset of assetRes?.data ?? []) assetMap[asset.id] = asset.name
   const assets = assetRes?.data ?? []
+
+  const aoPostureMap: Record<string, Posture> = {}
+  for (const ao of aoRes?.data ?? []) aoPostureMap[ao.id] = ao.posture
+
+  const siteAoMap: Record<string, string> = {}
+  for (const site of siteRes?.data ?? []) {
+    if (site.area_of_operation_id) siteAoMap[site.id] = site.area_of_operation_id
+  }
+
+  const selectedTaskPosture: Posture | undefined = selectedTask
+    ? aoPostureMap[siteAoMap[selectedTask.site_id]]
+    : undefined
 
   const allowedTransitions    = transitionsData?.allowed        ?? []
   const commanderOnlyTransitions = transitionsData?.commander_only ?? []
@@ -394,6 +408,7 @@ export default function TasksPage() {
                   )
                 }}
                 isPending={updateMutation.isPending}
+                posture={selectedTaskPosture}
               />
             )}
 
