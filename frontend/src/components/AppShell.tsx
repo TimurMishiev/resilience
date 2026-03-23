@@ -23,7 +23,7 @@ import { useEventSource } from '../hooks/useEventSource'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import GlobalSearch from './GlobalSearch'
 import type { IconName } from '@blueprintjs/icons'
-import { humanize } from '../utils/humanize'
+import { humanize, POSTURE_LABELS } from '../utils/humanize'
 
 // Bottom nav tabs — shown on mobile only (hidden via CSS on desktop)
 const TABS: { icon: IconName; label: string; path: string }[] = [
@@ -144,11 +144,6 @@ export default function AppShell() {
         const d = e.data as { area_of_operation_id: string; name: string; posture: string }
         queryClient.invalidateQueries({ queryKey: ['areas_of_operation'] })
         queryClient.invalidateQueries({ queryKey: ['incidents'] })
-        const POSTURE_LABELS: Record<string, string> = {
-          observe:      'Observe',
-          defensive:    'Defensive',
-          weapons_free: 'Weapons Free',
-        }
         AppToaster.then(t => t.show({
           message: `🔰 ${d.name}: ROE posture → ${POSTURE_LABELS[d.posture] ?? d.posture}`,
           intent:  d.posture === 'weapons_free' ? 'danger' : d.posture === 'defensive' ? 'warning' : 'none',

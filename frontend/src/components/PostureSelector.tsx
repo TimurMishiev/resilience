@@ -3,14 +3,9 @@ import { Button, HTMLSelect, FormGroup } from '@blueprintjs/core'
 import { useRole } from '../hooks/useRole'
 import { useUpdateAreaOfOperationPosture } from '../hooks/useAreasOfOperation'
 import { PostureBadge } from './PostureBadge'
+import { POSTURE_LABELS } from '../utils/humanize'
 import type { Posture, AreaOfOperation } from '../api/types'
 import { POSTURES } from '../api/types'
-
-const POSTURE_LABELS: Record<Posture, string> = {
-  observe:      'Observe',
-  defensive:    'Defensive',
-  weapons_free: 'Weapons Free',
-}
 
 interface Props {
   area: AreaOfOperation

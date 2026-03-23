@@ -77,8 +77,9 @@ module Tasks
         if asset && asset.status != "available"
           ServiceResult.failure(errors: ["Assignment not permitted: Defensive posture requires an available asset (#{asset.name} is #{asset.status})"])
         end
+        # asset is available → nil (permitted)
+      # when "weapons_free" → nil (permitted, no restriction)
       end
-      # weapons_free: no restriction
     end
   end
 end

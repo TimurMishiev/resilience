@@ -1,11 +1,6 @@
 import { Tag } from '@blueprintjs/core'
+import { POSTURE_LABELS } from '../utils/humanize'
 import type { Posture } from '../api/types'
-
-const POSTURE_LABELS: Record<Posture, string> = {
-  observe:      'Observe',
-  defensive:    'Defensive',
-  weapons_free: 'Weapons Free',
-}
 
 // Using explicit hex colors matching Blueprint's dark-theme palette since
 // Blueprint doesn't have a named intent that maps cleanly to all three states.
