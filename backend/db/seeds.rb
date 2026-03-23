@@ -48,9 +48,9 @@ end
 # ---------------------------------------------------------------------------
 puts "  Clearing existing data..."
 Recommendation.delete_all
-IncidentNote.delete_all    # must precede Incident
-Incident.delete_all        # must precede Site and SignalRuleMatch
-SignalRuleMatch.delete_all
+SignalRuleMatch.delete_all # must precede Incident (FK: signal_rule_matches.incident_id)
+IncidentNote.delete_all if ActiveRecord::Base.connection.table_exists?("incident_notes")
+Incident.delete_all        # must precede Site (FK: incidents.site_id)
 AuditEvent.delete_all
 Task.delete_all
 Asset.delete_all
@@ -1258,7 +1258,7 @@ if stale_match
     affected_entity_type: "SignalRuleMatch",
     affected_entity_id:   stale_match.id,
     status:               "pending",
-    expires_at:           2.hours.from_now,
+    expires_at:           24.hours.from_now,
   }
 end
 
@@ -1274,7 +1274,7 @@ if high_conf_match
     affected_entity_type: "SignalRuleMatch",
     affected_entity_id:   high_conf_match.id,
     status:               "pending",
-    expires_at:           2.hours.from_now,
+    expires_at:           24.hours.from_now,
   }
 end
 
@@ -1290,7 +1290,7 @@ if vessel_match
     affected_entity_type: "SignalRuleMatch",
     affected_entity_id:   vessel_match.id,
     status:               "pending",
-    expires_at:           2.hours.from_now,
+    expires_at:           24.hours.from_now,
   }
 end
 
@@ -1306,7 +1306,7 @@ if hotel
     affected_entity_type: "Site",
     affected_entity_id:   hotel.id,
     status:               "pending",
-    expires_at:           2.hours.from_now,
+    expires_at:           24.hours.from_now,
   }
 end
 
@@ -1322,7 +1322,7 @@ if echo
     affected_entity_type: "Site",
     affected_entity_id:   echo.id,
     status:               "pending",
-    expires_at:           4.hours.from_now,
+    expires_at:           48.hours.from_now,
   }
 end
 
@@ -1338,7 +1338,7 @@ if alpha
     affected_entity_type: "Site",
     affected_entity_id:   alpha.id,
     status:               "pending",
-    expires_at:           2.hours.from_now,
+    expires_at:           24.hours.from_now,
   }
 end
 
@@ -1354,7 +1354,7 @@ if foxtrot
     affected_entity_type: "Site",
     affected_entity_id:   foxtrot.id,
     status:               "pending",
-    expires_at:           4.hours.from_now,
+    expires_at:           48.hours.from_now,
   }
 end
 
@@ -1370,7 +1370,7 @@ if wildfire_match
     affected_entity_type: "SignalRuleMatch",
     affected_entity_id:   wildfire_match.id,
     status:               "pending",
-    expires_at:           2.hours.from_now,
+    expires_at:           24.hours.from_now,
   }
 end
 
