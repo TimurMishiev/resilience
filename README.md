@@ -217,9 +217,12 @@ yarn dev
 Open **[http://localhost:5176](http://localhost:5176)**
 
 **Running the test suite**
+
+Tests run locally only — the Docker image is a production build and does not include test tooling. Run from your local checkout:
+
 ```bash
 cd backend
-bundle exec rspec                         # 653 examples, ~8s
+bundle exec rspec                         # 765 examples, ~8s
 bundle exec brakeman --no-progress -q     # security scan
 bundle exec bundler-audit check           # CVE check
 

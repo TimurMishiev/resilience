@@ -238,11 +238,7 @@ export default function SignalFeedPage() {
 
   function clearNlFilter() {
     setNlQuery('')
-    setNlApplied(false)
-    setNlError(null)
-    setNlSiteId(null)
-    setNlFrom(null)
-    setNlTo(null)
+    clearNlConstraints()
     setTypeFilter('')
     setSourceFilter('')
     nlInputRef.current?.focus()
