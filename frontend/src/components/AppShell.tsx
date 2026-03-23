@@ -24,6 +24,8 @@ import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import GlobalSearch from './GlobalSearch'
 import type { IconName } from '@blueprintjs/icons'
 import { humanize, POSTURE_LABELS } from '../utils/humanize'
+import { useAreasOfOperation } from '../hooks/useAreasOfOperation'
+import type { Posture } from '../api/types'
 
 // Bottom nav tabs — shown on mobile only (hidden via CSS on desktop)
 const TABS: { icon: IconName; label: string; path: string }[] = [
@@ -43,6 +45,16 @@ export default function AppShell() {
   const queryClient  = useQueryClient()
   const [searchOpen, setSearchOpen] = useState(false)
   const isOnline = useOnlineStatus()
+
+  // Mission posture — highest-severity active AO posture; updates live via SSE
+  const { data: areasData } = useAreasOfOperation()
+  const areas = areasData?.data ?? []
+  const POSTURE_RANK: Record<Posture, number> = { observe: 0, defensive: 1, weapons_free: 2 }
+  const missionPosture: Posture = areas.reduce<Posture>(
+    (best, ao) => POSTURE_RANK[ao.posture] > POSTURE_RANK[best] ? ao.posture : best,
+    'observe'
+  )
+  const hasMissionPosture = areas.length > 0
 
   const { status: liveStatus } = useEventSource({
     enabled: !!currentUser && !isReplaying,
@@ -200,6 +212,21 @@ export default function AppShell() {
             className={`live-indicator live-indicator--${liveStatus}`}
             title={`Stream: ${liveStatus}`}
           />
+          {hasMissionPosture && (
+            <Tag
+              minimal={missionPosture === 'observe'}
+              intent={
+                missionPosture === 'weapons_free' ? 'danger' :
+                missionPosture === 'defensive'    ? 'warning' :
+                                                    'none'
+              }
+              icon="shield"
+              style={{ marginRight: 8, fontSize: 11, cursor: 'default' }}
+              title={`Mission posture: ${POSTURE_LABELS[missionPosture] ?? missionPosture} (highest active AO)`}
+            >
+              {POSTURE_LABELS[missionPosture] ?? missionPosture}
+            </Tag>
+          )}
           <Button
             minimal
             small

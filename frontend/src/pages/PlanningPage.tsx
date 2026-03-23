@@ -80,6 +80,21 @@ export default function PlanningPage() {
     return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   })
 
+  // Per-asset allocation map: asset id → open tasks assigned to it
+  const assetTaskMap = (() => {
+    const m = new Map<string, typeof tasks>()
+    for (const t of tasks) {
+      if (!t.asset_id || t.workflow_status === 'resolved') continue
+      const list = m.get(t.asset_id) ?? []
+      list.push(t)
+      m.set(t.asset_id, list)
+    }
+    return m
+  })()
+
+  // Only assets that currently have at least one open task, sorted by name
+  const allocatedAssets = assets.filter(a => assetTaskMap.has(a.id))
+
   // ── Early returns (after all hooks) ─────────────────────────────────────
   if (!isCommander) {
     return (
@@ -166,6 +181,64 @@ export default function PlanningPage() {
             </div>
           ))}
         </div>
+
+        {allocatedAssets.length > 0 && (
+          <>
+            <h3 className="bp6-heading" style={{ fontSize: 14, marginBottom: 10, color: 'var(--bp6-text-muted-color)' }}>
+              ASSET ALLOCATION
+            </h3>
+            <HTMLTable compact bordered style={{ width: '100%', maxWidth: 900, marginBottom: 20 }}>
+              <thead>
+                <tr>
+                  <th>Asset</th>
+                  <th>Type</th>
+                  <th>Status</th>
+                  <th>Assigned Task(s)</th>
+                  <th>Site</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allocatedAssets.map(asset => {
+                  const assignedTasks = assetTaskMap.get(asset.id) ?? []
+                  const conflict = assignedTasks.length > 1
+                  const STATUS_INTENT: Record<string, 'success' | 'primary' | 'warning' | 'danger' | undefined> = {
+                    available: 'success', assigned: 'primary', degraded: 'warning', offline: 'danger',
+                  }
+                  return (
+                    <tr key={asset.id} style={conflict ? { background: 'rgba(219,55,55,0.08)' } : undefined}>
+                      <td style={{ fontWeight: 500 }}>
+                        {conflict && (
+                          <Tag minimal intent="danger" style={{ marginRight: 6, fontSize: 10 }}>CONFLICT</Tag>
+                        )}
+                        {asset.name}
+                      </td>
+                      <td className="bp6-text-muted" style={{ fontSize: 12 }}>{humanize(asset.asset_type)}</td>
+                      <td>
+                        <Tag minimal intent={STATUS_INTENT[asset.status]} style={{ fontSize: 11 }}>
+                          {humanize(asset.status)}
+                        </Tag>
+                      </td>
+                      <td style={{ fontSize: 12 }}>
+                        {assignedTasks.map((t, i) => (
+                          <span key={t.id}>
+                            {i > 0 && <span style={{ margin: '0 4px', color: 'var(--bp6-text-muted-color)' }}>·</span>}
+                            <Tag minimal intent={PRIORITY_INTENT[t.priority]} style={{ fontSize: 11, marginRight: 2 }}>
+                              {humanize(t.priority)}
+                            </Tag>
+                            {t.title}
+                          </span>
+                        ))}
+                      </td>
+                      <td className="bp6-text-muted" style={{ fontSize: 12 }}>
+                        {assignedTasks[0]?.site_name ?? '—'}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </HTMLTable>
+          </>
+        )}
 
         {areas_of_operation.length > 0 && (
           <>

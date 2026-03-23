@@ -56,10 +56,12 @@ function detectWeaponsFreeNoAssets(tasks: Task[], assets: Asset[]): Overcommitme
 
   const flags: OvercommitmentFlag[] = []
   for (const [aoId, { aoName, tasks: aoTaskList }] of aoTasks) {
+    // An asset is "covering" the AO if it is available OR actively assigned —
+    // both statuses represent a committed resource.  Degraded/offline do not count.
     const hasAvailableAsset = aoTaskList.some(t => {
       if (!t.asset_id) return false
       const asset = assetById.get(t.asset_id)
-      return asset?.status === 'available'
+      return asset?.status === 'available' || asset?.status === 'assigned'
     })
     if (!hasAvailableAsset) {
       flags.push({
@@ -74,9 +76,15 @@ function detectWeaponsFreeNoAssets(tasks: Task[], assets: Asset[]): Overcommitme
 }
 
 // Returns one flag per critical or high incident with no assigned operator.
+// Excludes resolved incidents — they are pending formal closure and no longer
+// represent an active operator gap.
 function detectCriticalUnassigned(incidents: PlanningIncidentStub[]): OvercommitmentFlag[] {
   return incidents
-    .filter(i => (i.severity === 'critical' || i.severity === 'high') && i.assigned_to === null)
+    .filter(i =>
+      (i.severity === 'critical' || i.severity === 'high') &&
+      i.assigned_to === null &&
+      i.status !== 'resolved'
+    )
     .map(i => ({
       type:        'critical_unassigned' as FlagType,
       incidentId:  i.id,
