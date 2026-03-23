@@ -9,6 +9,8 @@ import {
   useIncidentAllowedTransitions, useAssignIncident,
 } from '../hooks/useIncidents'
 import IntelChainPanel from '../components/IntelChainPanel'
+import { AssetPicker } from '../components/AssetPicker'
+import { PostureBadge } from '../components/PostureBadge'
 import { useAuth } from '../context/AuthContext'
 import { useAssets } from '../hooks/useAssets'
 import { useUpdateTask } from '../hooks/useTasks'
@@ -17,6 +19,7 @@ import IncidentNotesPanel from '../components/IncidentNotesPanel'
 import IncidentRecommendationsPanel from '../components/IncidentRecommendationsPanel'
 import { SIGNAL_ICON_NAME } from '../lib/signalIcons'
 import type { IncidentStatus, IncidentSeverity, IncidentAlert, IncidentTask } from '../api/incidents'
+import type { Posture } from '../api/types'
 import { humanize } from '../utils/humanize'
 
 // ── constants ─────────────────────────────────────────────────────────────
@@ -120,7 +123,7 @@ function AlertsTab({ alerts }: { alerts: IncidentAlert[] }) {
   )
 }
 
-function TasksTab({ tasks }: { tasks: IncidentTask[] }) {
+function TasksTab({ tasks, posture }: { tasks: IncidentTask[]; posture?: Posture }) {
   const { data: assetRes } = useAssets({ per_page: 200 })
   const updateTask = useUpdateTask()
   const assets = assetRes?.data ?? []
@@ -149,21 +152,21 @@ function TasksTab({ tasks }: { tasks: IncidentTask[] }) {
         {tasks.map((t) => (
           <tr key={t.id}>
             <td>{t.title}</td>
-            <td style={{ minWidth: 140 }}>
-              <HTMLSelect
-                minimal
-                value={t.asset_id ?? ''}
-                onChange={e => {
-                  const val = e.target.value
-                  updateTask.mutate({ id: t.id, body: { asset_id: val || null } })
+            <td style={{ minWidth: 160 }}>
+              <AssetPicker
+                currentAssetId={t.asset_id}
+                assets={assets}
+                pendingAsset={undefined}
+                onPendingChange={(assetId) => {
+                  updateTask.mutate({ id: t.id, body: { asset_id: assetId } })
                 }}
-                style={{ fontSize: 12, height: 24 }}
-              >
-                <option value="">— unassigned —</option>
-                {assets.map(a => (
-                  <option key={a.id} value={a.id}>{a.name}</option>
-                ))}
-              </HTMLSelect>
+                onConfirm={(assetId) => {
+                  updateTask.mutate({ id: t.id, body: { asset_id: assetId } })
+                }}
+                isPending={updateTask.isPending}
+                posture={posture}
+                minimal
+              />
             </td>
             <td>
               <Tag minimal intent={TASK_PRIORITY_INTENT[t.priority] ?? 'none'} style={{ fontSize: 10 }}>
@@ -365,6 +368,13 @@ export default function IncidentDetailPage() {
             Assigned {fmt(incident.assigned_at)}
           </span>
         )}
+        {incident.area_of_operation && (
+          <span className="bp6-text-muted" style={{ fontSize: 12, marginLeft: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <Icon icon="area-of-interest" size={12} />
+            {incident.area_of_operation.name}
+            <PostureBadge posture={incident.area_of_operation.posture} />
+          </span>
+        )}
       </div>
 
       {/* ── status transition buttons ── */}
@@ -410,7 +420,7 @@ export default function IncidentDetailPage() {
         <Tab
           id="tasks"
           title={`Tasks (${tasks.length})`}
-          panel={<TasksTab tasks={tasks} />}
+          panel={<TasksTab tasks={tasks} posture={incident.area_of_operation?.posture} />}
         />
         <Tab
           id="recommendations"

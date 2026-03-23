@@ -4,6 +4,8 @@
 
 export type SiteStatus = 'active' | 'inactive'
 export type ThreatLevel = 'green' | 'amber' | 'red' | 'black'
+export type Posture = 'observe' | 'defensive' | 'weapons_free'
+export const POSTURES: Posture[] = ['observe', 'defensive', 'weapons_free']
 
 export interface GeoJsonPolygon {
   type: 'Polygon'
@@ -15,6 +17,8 @@ export interface AreaOfOperation {
   name: string
   description: string | null
   threat_level: ThreatLevel
+  posture: Posture
+  posture_changed_at: string | null
   color: string               // hex e.g. "#ff4757"
   geometry: GeoJsonPolygon
   created_by: string

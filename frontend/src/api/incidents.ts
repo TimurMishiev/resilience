@@ -61,7 +61,7 @@ export interface Incident {
   assigned_to:      AssignedUser | null
   assigned_at:      string | null
   site:             { id: string; name: string } | null
-  area_of_operation: { id: string; name: string } | null
+  area_of_operation: { id: string; name: string; posture: import('./types').Posture } | null
   created_at:       string
   updated_at:       string
   // only present in show response

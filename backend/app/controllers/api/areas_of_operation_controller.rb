@@ -1,6 +1,6 @@
 module Api
   class AreasOfOperationController < BaseController
-    before_action :require_commander!, only: %i[create update destroy]
+    before_action :require_commander!, only: %i[create update destroy update_posture]
 
     # GET /api/areas_of_operation
     def index
@@ -46,6 +46,40 @@ module Api
       head :no_content
     end
 
+    # PATCH /api/areas_of_operation/:id/posture
+    def update_posture
+      area    = AreaOfOperation.find(params[:id])
+      posture = params.require(:posture)
+
+      unless AreaOfOperation::POSTURES.include?(posture)
+        return render json: { errors: ["posture must be one of: #{AreaOfOperation::POSTURES.join(', ')}"] },
+                      status: :unprocessable_content
+      end
+
+      old_posture = area.posture
+
+      ApplicationRecord.transaction do
+        area.update!(posture: posture, posture_changed_at: Time.current)
+
+        Audit::EventWriter.write(
+          actor:           current_user,
+          entity_type:     "AreaOfOperation",
+          entity_id:       area.id,
+          event_type:      "posture_changed",
+          before_snapshot: { posture: old_posture },
+          after_snapshot:  { posture: posture },
+          correlation_id:  SecureRandom.uuid
+        )
+      end
+
+      Sse::Broadcaster.instance.publish(
+        event: "posture_changed",
+        data:  { area_of_operation_id: area.id, name: area.name, posture: posture }
+      )
+
+      render json: serialize_area(area)
+    end
+
     private
 
     def area_params
@@ -57,7 +91,7 @@ module Api
 
     def serialize_area(area)
       area.as_json(only: %i[
-        id name description threat_level color
+        id name description threat_level color posture posture_changed_at
         created_at updated_at
       ]).merge(
         geometry:   area.geometry,

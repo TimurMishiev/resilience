@@ -124,4 +124,59 @@ RSpec.describe "Api::AreasOfOperation", type: :request do
       expect(response).to have_http_status(:forbidden)
     end
   end
+
+  describe "PATCH /api/areas_of_operation/:id/posture" do
+    it "updates posture and returns the area for commanders" do
+      patch "/api/areas_of_operation/#{eucom.id}/posture",
+            params:  { posture: "defensive" },
+            headers: auth_headers(commander)
+      expect(response).to have_http_status(:ok)
+      body = JSON.parse(response.body)
+      expect(body["posture"]).to eq("defensive")
+      expect(body["posture_changed_at"]).not_to be_nil
+    end
+
+    it "writes an AuditEvent recording the before/after posture" do
+      expect {
+        patch "/api/areas_of_operation/#{eucom.id}/posture",
+              params:  { posture: "weapons_free" },
+              headers: auth_headers(commander)
+      }.to change(AuditEvent, :count).by(1)
+
+      event = AuditEvent.last
+      expect(event.event_type).to eq("posture_changed")
+      expect(event.entity_type).to eq("AreaOfOperation")
+      expect(event.entity_id).to eq(eucom.id)
+      expect(event.before_snapshot["posture"]).to eq("observe")
+      expect(event.after_snapshot["posture"]).to eq("weapons_free")
+    end
+
+    it "returns 403 for operators" do
+      patch "/api/areas_of_operation/#{eucom.id}/posture",
+            params:  { posture: "defensive" },
+            headers: auth_headers(operator)
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "returns 422 for an invalid posture value" do
+      patch "/api/areas_of_operation/#{eucom.id}/posture",
+            params:  { posture: "nuke_everything" },
+            headers: auth_headers(commander)
+      expect(response).to have_http_status(:unprocessable_content)
+      body = JSON.parse(response.body)
+      expect(body["errors"].first).to match(/posture must be one of/)
+    end
+
+    it "returns the posture field in the serialized response" do
+      patch "/api/areas_of_operation/#{eucom.id}/posture",
+            params:  { posture: "observe" },
+            headers: auth_headers(commander)
+      body = JSON.parse(response.body)
+      expect(body.keys).to include("posture", "posture_changed_at")
+    end
+
+    it "AOs default to observe posture" do
+      expect(eucom.posture).to eq("observe")
+    end
+  end
 end

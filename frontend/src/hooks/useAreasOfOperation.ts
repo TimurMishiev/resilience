@@ -4,11 +4,13 @@ import {
   createAreaOfOperation,
   updateAreaOfOperation,
   deleteAreaOfOperation,
+  updateAreaOfOperationPosture,
 } from '../api/areas_of_operation'
 import type {
   AreasOfOperationParams,
   CreateAreaOfOperationBody,
   UpdateAreaOfOperationBody,
+  Posture,
 } from '../api/types'
 
 export function useAreasOfOperation(params?: AreasOfOperationParams) {
@@ -43,6 +45,17 @@ export function useDeleteAreaOfOperation() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => deleteAreaOfOperation(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['areas_of_operation'] })
+    },
+  })
+}
+
+export function useUpdateAreaOfOperationPosture() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, posture }: { id: string; posture: Posture }) =>
+      updateAreaOfOperationPosture(id, posture),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['areas_of_operation'] })
     },

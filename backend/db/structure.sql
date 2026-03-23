@@ -79,6 +79,8 @@ CREATE TABLE public.areas_of_operation (
     created_by_id uuid NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
+    posture character varying DEFAULT 'observe'::character varying NOT NULL,
+    posture_changed_at timestamp(6) without time zone,
     CONSTRAINT areas_of_operation_threat_level_check CHECK ((threat_level = ANY (ARRAY['green'::text, 'amber'::text, 'red'::text, 'black'::text])))
 );
 
@@ -548,6 +550,13 @@ CREATE INDEX index_ao_on_threat_level ON public.areas_of_operation USING btree (
 --
 
 CREATE INDEX index_areas_of_operation_on_created_by_id ON public.areas_of_operation USING btree (created_by_id);
+
+
+--
+-- Name: index_areas_of_operation_on_posture; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_areas_of_operation_on_posture ON public.areas_of_operation USING btree (posture);
 
 
 --
@@ -1069,6 +1078,7 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260323200001'),
 ('20260323100001'),
 ('20260323100000'),
 ('20260321234646'),

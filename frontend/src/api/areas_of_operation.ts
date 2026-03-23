@@ -2,6 +2,7 @@ import { api } from './client'
 import type { QueryParams } from './client'
 import type {
   AreaOfOperation,
+  Posture,
   PaginatedResponse,
   CreateAreaOfOperationBody,
   UpdateAreaOfOperationBody,
@@ -33,4 +34,11 @@ export function updateAreaOfOperation(
 
 export function deleteAreaOfOperation(id: string): Promise<void> {
   return api.delete(`/api/areas_of_operation/${id}`)
+}
+
+export function updateAreaOfOperationPosture(
+  id: string,
+  posture: Posture
+): Promise<AreaOfOperation> {
+  return api.patch(`/api/areas_of_operation/${id}/posture`, { posture })
 }

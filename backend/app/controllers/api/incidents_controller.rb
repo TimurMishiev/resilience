@@ -271,8 +271,9 @@ module Api
         assigned_at:       incident.assigned_at,
         site:              incident.site ? { id: incident.site.id, name: incident.site.name } : nil,
         area_of_operation: incident.area_of_operation ? {
-          id:   incident.area_of_operation.id,
-          name: incident.area_of_operation.name
+          id:      incident.area_of_operation.id,
+          name:    incident.area_of_operation.name,
+          posture: incident.area_of_operation.posture
         } : nil,
         created_at:  incident.created_at,
         updated_at:  incident.updated_at,

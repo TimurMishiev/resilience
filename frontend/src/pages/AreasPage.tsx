@@ -22,6 +22,8 @@ import {
 import { useSites } from '../hooks/useSites'
 import { useCorrelationRules } from '../hooks/useCorrelationRules'
 import { useRole } from '../hooks/useRole'
+import { PostureSelector } from '../components/PostureSelector'
+import { PostureBadge } from '../components/PostureBadge'
 import type { AreaOfOperation, ThreatLevel } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
 
@@ -225,6 +227,7 @@ export default function AreasPage() {
             <tr>
               <th>Name</th>
               <th>Threat Level</th>
+              <th>ROE Posture</th>
               <th>Color</th>
               <th>Sites</th>
               <th>Rules</th>
@@ -235,7 +238,7 @@ export default function AreasPage() {
             {loading
               ? Array.from({ length: SKELETON_ROWS }).map((_, i) => (
                   <tr key={i}>
-                    {Array.from({ length: isCommander ? 6 : 5 }).map((__, j) => (
+                    {Array.from({ length: isCommander ? 7 : 6 }).map((__, j) => (
                       <td key={j}><span className={Classes.SKELETON}>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span></td>
                     ))}
                   </tr>
@@ -254,6 +257,12 @@ export default function AreasPage() {
                       <Tag intent={THREAT_INTENTS[area.threat_level]} minimal>
                         {area.threat_level.toUpperCase()}
                       </Tag>
+                    </td>
+                    <td style={{ minWidth: 180 }}>
+                      {isCommander
+                        ? <PostureSelector area={area} />
+                        : <PostureBadge posture={area.posture} />
+                      }
                     </td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
