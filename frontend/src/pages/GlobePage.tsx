@@ -14,6 +14,7 @@ import type { Asset, Site, Task, WorkflowStatus, Signal } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
 import type { Vessel } from '../api/vessels'
 import { useNavigate } from 'react-router-dom'
+import { humanize } from '../utils/humanize'
 
 // Only set Ion token if explicitly provided — never set to empty string
 // which blocks all rendering in Cesium 1.100+
@@ -762,8 +763,8 @@ export default function GlobePage() {
       .sort((a, b) => {
         const statusRank = (status: Asset['status']) =>
           status === 'available' ? 0
-          : status === 'in_use' ? 1
-          : status === 'maintenance' ? 2
+          : status === 'assigned' ? 1
+          : status === 'degraded' ? 2
           : 3
         return statusRank(a.asset.status) - statusRank(b.asset.status) || a.distanceKm - b.distanceKm
       })
@@ -885,7 +886,7 @@ export default function GlobePage() {
                       <li key={t.id} className="globe-task-item">
                         <span className="globe-task-title">{t.title}</span>
                         <Tag minimal intent={workflowIntent(t.workflow_status)}>
-                          {t.workflow_status.replaceAll('_', ' ')}
+                          {humanize(t.workflow_status)}
                         </Tag>
                       </li>
                     ))}
@@ -960,7 +961,7 @@ export default function GlobePage() {
                         <span className="globe-threat-dot" style={{ background: '#00d4ff' }} />
                         <div className="globe-threat-body">
                           <div className="globe-threat-name">
-                            {asset.name} · {asset.status.replaceAll('_', ' ')}
+                            {asset.name} · {humanize(asset.status)}
                           </div>
                           <div className="globe-threat-meta bp6-text-muted">
                             {distanceKm.toFixed(1)} km
@@ -995,12 +996,12 @@ export default function GlobePage() {
                   minimal
                   intent={
                     selectedAsset.status === 'available' ? 'success'
-                    : selectedAsset.status === 'in_use' ? 'primary'
-                    : selectedAsset.status === 'maintenance' ? 'warning'
+                    : selectedAsset.status === 'assigned' ? 'primary'
+                    : selectedAsset.status === 'degraded' ? 'warning'
                     : 'danger'
                   }
                 >
-                  {selectedAsset.status.replaceAll('_', ' ')}
+                  {humanize(selectedAsset.status)}
                 </Tag>
                 <Tag minimal intent={telemetryConnected ? 'success' : 'warning'}>
                   {isReplaying ? 'Replay snapshot' : telemetryConnected ? 'Telemetry live' : 'Telemetry reconnecting'}
@@ -1081,7 +1082,7 @@ export default function GlobePage() {
                     color: (GLOBE_SIGNAL_COLORS[selectedSignal.signal_type] ?? Cesium.Color.WHITE).toCssHexString(),
                   }}
                 >
-                  {selectedSignal.signal_type.replaceAll('_', ' ')}
+                  {humanize(selectedSignal.signal_type)}
                 </Tag>
                 <Tag minimal>{SOURCE_LABELS[selectedSignal.source] ?? selectedSignal.source}</Tag>
                 {selectedSignal.signal_type === 'disaster_alert' &&

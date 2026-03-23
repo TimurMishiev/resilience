@@ -33,6 +33,7 @@ import { useRole } from '../hooks/useRole'
 import type { CorrelationRule, SignalType, TaskPriority, RuleConditions } from '../api/types'
 import { isCompoundRule } from '../api/types'
 import { RuleSparkline } from '../components/RuleSparkline'
+import { humanize } from '../utils/humanize'
 
 const SKELETON_ROWS = 7
 
@@ -790,7 +791,7 @@ export default function CorrelationRulesPage() {
                           </Tag>
                         ) : (
                           <Tag minimal intent="primary">
-                            {rule.conditions.signal_type?.replace(/_/g, ' ') ?? 'any'}
+                            {rule.conditions.signal_type ? humanize(rule.conditions.signal_type) : 'any'}
                           </Tag>
                         )}
                       </td>
@@ -987,7 +988,7 @@ export default function CorrelationRulesPage() {
                   <tbody>
                     {dryRunResult.matches.map((m, i) => (
                       <tr key={i}>
-                        <td className="mono">{m.signal_type.replace(/_/g, ' ')}</td>
+                        <td className="mono">{humanize(m.signal_type)}</td>
                         <td className="mono">{m.source}</td>
                         <td>{m.site_name}</td>
                         <td className="mono">{m.distance_km.toFixed(1)} km</td>
@@ -995,7 +996,7 @@ export default function CorrelationRulesPage() {
                         <td>
                           {m.would_fire.map(a => (
                             <Tag key={a} minimal intent="warning" style={{ fontSize: 10, marginRight: 3 }}>
-                              {a.replace(/_/g, ' ')}
+                              {humanize(a)}
                             </Tag>
                           ))}
                         </td>

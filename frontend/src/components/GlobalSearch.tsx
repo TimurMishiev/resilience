@@ -6,6 +6,7 @@ import { useTasks } from '../hooks/useTasks'
 import { useAssets } from '../hooks/useAssets'
 import type { Site, Task, Asset } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
+import { humanize } from '../utils/humanize'
 
 // ---------------------------------------------------------------------------
 // Result types
@@ -76,7 +77,7 @@ function buildResults(
       type:      'task' as EntityType,
       title:     t.title,
       subtitle:  `Task · ${siteMap[t.site_id] ?? 'Unknown site'}`,
-      tag:       t.workflow_status.replace('_', ' '),
+      tag:       humanize(t.workflow_status),
       tagIntent: workflowIntent(t.workflow_status),
       href:      `/sites/${t.site_id}`,
     })),

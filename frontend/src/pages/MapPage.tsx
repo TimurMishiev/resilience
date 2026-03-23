@@ -26,6 +26,7 @@ import type { Intent } from '@blueprintjs/core'
 import { Icon } from '@blueprintjs/core'
 import { SIGNAL_ICON_NAME, SIGNAL_ICON_CHAR } from '../lib/signalIcons'
 import { useLocation } from 'react-router-dom'
+import { humanize } from '../utils/humanize'
 
 // ---------------------------------------------------------------------------
 // Signal layer config
@@ -128,7 +129,7 @@ function priorityIntent(p: Task['priority']): Intent {
 }
 
 function transitionLabel(s: WorkflowStatus): string {
-  return s.replaceAll('_', ' ')
+  return humanize(s)
 }
 
 function transitionIntent(s: WorkflowStatus): Intent {
@@ -241,7 +242,7 @@ function TaskRow({ task, disabled, onTransitioned }: TaskRowProps) {
         <span className="map-task-title">{task.title}</span>
         <div className="map-task-tags">
           <Tag minimal intent={workflowIntent(task.workflow_status)}>
-            {task.workflow_status.replaceAll('_', ' ')}
+            {humanize(task.workflow_status)}
           </Tag>
           <Tag minimal intent={priorityIntent(task.priority)}>
             {task.priority}
@@ -1240,12 +1241,12 @@ export default function MapPage() {
               minimal
               intent={
                 selectedAsset.status === 'available' ? 'success'
-                : selectedAsset.status === 'in_use' ? 'primary'
-                : selectedAsset.status === 'maintenance' ? 'warning'
+                : selectedAsset.status === 'assigned' ? 'primary'
+                : selectedAsset.status === 'degraded' ? 'warning'
                 : 'danger'
               }
             >
-              {selectedAsset.status.replace('_', ' ')}
+              {humanize(selectedAsset.status)}
             </Tag>
           </div>
 
@@ -1334,7 +1335,7 @@ export default function MapPage() {
                 color:      SIGNAL_COLORS[selectedSignal.signal_type],
               }}
             >
-              {selectedSignal.signal_type.replace(/_/g, ' ')}
+              {humanize(selectedSignal.signal_type)}
             </Tag>
             <Tag minimal>{SOURCE_LABELS[selectedSignal.source] ?? selectedSignal.source}</Tag>
             {selectedSignal.signal_type === 'disaster_alert' &&

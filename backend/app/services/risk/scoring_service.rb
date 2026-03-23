@@ -36,9 +36,14 @@ module Risk
       { max: 100, level: "critical", label: "CRITICAL" }
     ].freeze
 
-    def initialize(site:, readiness_score: nil)
-      @site            = site
-      @readiness_score = readiness_score
+    # preloaded_matches: Array of { confidence: Float } for this site, or nil to query.
+    # preloaded_signals: Array of { lat: Float, lng: Float } for the signal window
+    #                    (all sites combined), or nil to query per site.
+    def initialize(site:, readiness_score: nil, preloaded_matches: nil, preloaded_signals: nil)
+      @site              = site
+      @readiness_score   = readiness_score
+      @preloaded_matches = preloaded_matches
+      @preloaded_signals = preloaded_signals
     end
 
     def call
@@ -68,11 +73,15 @@ module Risk
     # Weighted heavily because a rule firing is an explicit operator-defined signal of danger.
     def alert_score
       @alert_score ||= begin
-        confidences = SignalRuleMatch
-          .for_site(@site.id)
-          .where.not(workflow_status: "closed")
-          .where(fired_at: ALERT_WINDOW_HOURS.hours.ago..Time.current)
-          .pluck(:confidence)
+        confidences = if @preloaded_matches
+          @preloaded_matches.map { |m| m[:confidence] }
+        else
+          SignalRuleMatch
+            .for_site(@site.id)
+            .where.not(workflow_status: "closed")
+            .where(fired_at: ALERT_WINDOW_HOURS.hours.ago..Time.current)
+            .pluck(:confidence)
+        end
 
         raw = confidences.sum * ALERT_MULTIPLIER
         raw.clamp(0, ALERT_CAP).round(2)
@@ -89,19 +98,28 @@ module Risk
     end
 
     # Bounding-box pre-filter + exact Haversine to count nearby signals.
-    # Using the shared Correlations::EvaluatorService.haversine_km avoids
-    # duplicating the formula and keeps the math consistent across the codebase.
+    # Uses preloaded_signals when provided (bulk-loaded for all sites in the
+    # controller) to avoid one DB query per site.
     def signal_density_score
       @signal_density_score ||= begin
-        candidates = ExternalSignal
-          .near_point(@site.latitude, @site.longitude, SIGNAL_RADIUS_KM)
-          .where(occurred_at: SIGNAL_WINDOW_HOURS.hours.ago..Time.current)
+        exact_count = if @preloaded_signals
+          @preloaded_signals.count do |sig|
+            Correlations::EvaluatorService.haversine_km(
+              sig[:lat], sig[:lng],
+              @site.latitude.to_f, @site.longitude.to_f
+            ) <= SIGNAL_RADIUS_KM
+          end
+        else
+          candidates = ExternalSignal
+            .near_point(@site.latitude, @site.longitude, SIGNAL_RADIUS_KM)
+            .where(occurred_at: SIGNAL_WINDOW_HOURS.hours.ago..Time.current)
 
-        exact_count = candidates.count do |sig|
-          Correlations::EvaluatorService.haversine_km(
-            sig.lat.to_f, sig.lng.to_f,
-            @site.latitude.to_f, @site.longitude.to_f
-          ) <= SIGNAL_RADIUS_KM
+          candidates.count do |sig|
+            Correlations::EvaluatorService.haversine_km(
+              sig.lat.to_f, sig.lng.to_f,
+              @site.latitude.to_f, @site.longitude.to_f
+            ) <= SIGNAL_RADIUS_KM
+          end
         end
 
         raw = exact_count * SIGNAL_MULTIPLIER

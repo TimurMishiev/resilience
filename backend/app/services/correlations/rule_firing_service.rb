@@ -261,6 +261,9 @@ module Correlations
         signal_type: cond["signal_type"],
         occurred_at: window_min.minutes.ago..Time.current
       )
+      # Bounding-box pre-filter avoids loading the full signal window into memory.
+      # Exact Haversine is applied below; this just narrows the DB result set.
+      candidates = candidates.near_point(@site.latitude, @site.longitude, proximity_km) if proximity_km > 0
 
       nearby = candidates.select do |s|
         proximity_km.zero? || Correlations::EvaluatorService.haversine_km(

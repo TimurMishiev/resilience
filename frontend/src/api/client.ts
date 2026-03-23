@@ -21,24 +21,6 @@ export class ApiError extends Error {
 export type QueryParams = Record<string, string | number | boolean | undefined | null>
 
 // ---------------------------------------------------------------------------
-// Token storage — simple localStorage slot; AuthContext reads/writes this
-// ---------------------------------------------------------------------------
-
-const TOKEN_KEY = 'resilience_token'
-
-export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY)
-}
-
-export function setToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token)
-}
-
-export function clearToken(): void {
-  localStorage.removeItem(TOKEN_KEY)
-}
-
-// ---------------------------------------------------------------------------
 // 401 callback — AuthContext registers this so it can clear state on expiry
 // ---------------------------------------------------------------------------
 
@@ -50,6 +32,9 @@ export function registerUnauthorizedHandler(fn: () => void): void {
 
 // ---------------------------------------------------------------------------
 // Core request
+// credentials: 'include' sends the httpOnly _resilience_session cookie
+// automatically on every request — no Authorization header needed for browsers.
+// The server still accepts Authorization: Bearer <token> for API clients / tests.
 // ---------------------------------------------------------------------------
 
 function buildUrl(path: string, params?: QueryParams): string {
@@ -76,12 +61,7 @@ async function request<T>(
     Accept: 'application/json',
   }
 
-  const token = getToken()
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
-  }
-
-  const init: RequestInit = { method, headers }
+  const init: RequestInit = { method, headers, credentials: 'include' }
 
   if (options.body !== undefined) {
     init.body = JSON.stringify(options.body)
@@ -119,12 +99,11 @@ export async function postBlob(path: string, body: unknown): Promise<Blob> {
     'Content-Type': 'application/json',
     Accept: 'application/pdf',
   }
-  const token = getToken()
-  if (token) headers['Authorization'] = `Bearer ${token}`
 
   const res = await fetch(path, {
     method: 'POST',
     headers,
+    credentials: 'include',
     body: JSON.stringify(body),
   })
 
@@ -135,9 +114,9 @@ export async function postBlob(path: string, body: unknown): Promise<Blob> {
 
   if (!res.ok) {
     // Try to read JSON error body for a useful message
-    let body: unknown
-    try { body = await res.json() } catch { body = null }
-    throw new ApiError(res.status, body, `API POST ${path} → ${res.status}`)
+    let errBody: unknown
+    try { errBody = await res.json() } catch { errBody = null }
+    throw new ApiError(res.status, errBody, `API POST ${path} → ${res.status}`)
   }
 
   return res.blob()

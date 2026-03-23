@@ -13,6 +13,7 @@ import {
 import { Button, ButtonGroup, NonIdealState, Spinner, Tag } from '@blueprintjs/core'
 import { useSiteRiskHistory } from '../hooks/useSite'
 import type { RiskLevel, SiteRiskSnapshot } from '../api/types'
+import { humanize } from '../utils/humanize'
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
@@ -84,7 +85,7 @@ function CustomTooltip({ active, payload, label }: TooltipProps) {
       {payload.map(p => (
         <div key={p.name} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 2 }}>
           <span style={{ color: p.color, textTransform: 'capitalize' }}>
-            {p.name.replace(/_/g, ' ')}
+            {humanize(p.name)}
           </span>
           <span style={{ color: '#e1e8ed', fontFamily: 'monospace' }}>
             {typeof p.value === 'number' ? p.value.toFixed(1) : p.value}

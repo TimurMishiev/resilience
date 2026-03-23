@@ -26,10 +26,10 @@ import type { Intent } from '@blueprintjs/core'
 
 function assetStatusIntent(status: AssetStatus): Intent {
   switch (status) {
-    case 'available':   return 'success'
-    case 'in_use':      return 'primary'
-    case 'maintenance': return 'warning'
-    case 'offline':     return 'danger'
+    case 'available': return 'success'
+    case 'assigned':  return 'primary'
+    case 'degraded':  return 'warning'
+    case 'offline':   return 'danger'
   }
 }
 
@@ -184,14 +184,6 @@ export default function TasksPage() {
       .finally(() => setNlLoading(false))
   }
 
-  function clearNlConstraints() {
-    setNlApplied(false)
-    setNlError(null)
-    setSiteFilter(null)
-    setDateFrom(null)
-    setDateTo(null)
-  }
-
   function clearNlFilter() {
     setNlQuery('')
     setNlApplied(false)
@@ -246,7 +238,7 @@ export default function TasksPage() {
             onChange={(e) => {
               setStatusFilter(e.currentTarget.value as WorkflowStatus | '')
               setPriorityFilter(null)
-              clearNlConstraints()
+              clearNlFilter()
             }}
             options={WORKFLOW_STATUS_OPTIONS.map((o) => ({ label: o.label, value: o.value }))}
           />

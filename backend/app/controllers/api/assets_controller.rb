@@ -1,5 +1,7 @@
 module Api
   class AssetsController < BaseController
+    before_action :require_commander!, only: [:update]
+
     def index
       assets = Asset.all.order(:name)
       assets = assets.where(home_site_id: params[:home_site_id]) if params[:home_site_id].present?
@@ -15,7 +17,6 @@ module Api
     end
 
     def update
-      return require_commander! unless current_user&.role == "commander"
       asset = Asset.find(params[:id])
       new_status = params.require(:asset).permit(:status)[:status]
 
@@ -28,14 +29,14 @@ module Api
       if result.success?
         render json: serialize_asset(result.asset)
       else
-        render json: { errors: result.errors }, status: 422
+        render json: { errors: result.errors }, status: :unprocessable_content
       end
     end
 
     private
 
     def serialize_asset(asset)
-      asset.as_json(only: %i[id name asset_type status home_site_id created_at updated_at])
+      asset.as_json(only: %i[id name asset_type status home_site_id last_reported_at created_at updated_at])
     end
   end
 end

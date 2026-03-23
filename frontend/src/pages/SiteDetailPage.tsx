@@ -34,6 +34,7 @@ import RiskScoreChart from '../components/RiskScoreChart'
 import { SIGNAL_ICON_NAME } from '../lib/signalIcons'
 import type { TaskPriority, AlertStatus } from '../api/types'
 import type { Task, Signal, SignalRuleMatch, Asset } from '../api/types'
+import { humanize } from '../utils/humanize'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -95,7 +96,7 @@ function TasksTab({ siteId }: { siteId: string }) {
             </td>
             <td>
               <Tag minimal intent={STATUS_INTENT[t.workflow_status] ?? 'none'}>
-                {t.workflow_status.replace('_', ' ')}
+                {humanize(t.workflow_status)}
               </Tag>
             </td>
             <td className="mono">{fmt(t.created_at)}</td>
@@ -141,7 +142,7 @@ function SignalsTab({ siteId }: { siteId: string }) {
           <tr key={s.id}>
             <td>
               <Icon icon={SIGNAL_ICON_NAME[s.signal_type] ?? 'dot'} size={12} style={{ marginRight: 6 }} />
-              {s.signal_type.replace(/_/g, ' ')}
+              {humanize(s.signal_type)}
             </td>
             <td className="mono">{s.source}</td>
             <td className="mono">{s.magnitude != null ? Number(s.magnitude).toFixed(2) : '—'}</td>
@@ -316,7 +317,7 @@ function RuleFiresTab({ siteId, onChain }: { siteId: string; onChain: (m: Signal
                   </td>
                   <td className="mono">
                     {m.signal
-                      ? <><Icon icon={SIGNAL_ICON_NAME[m.signal.signal_type] ?? 'dot'} size={12} style={{ marginRight: 5 }} />{m.signal.signal_type.replace(/_/g, ' ')}</>
+                      ? <><Icon icon={SIGNAL_ICON_NAME[m.signal.signal_type] ?? 'dot'} size={12} style={{ marginRight: 5 }} />{humanize(m.signal.signal_type)}</>
                       : <span className="bp6-text-muted">—</span>}
                   </td>
                   <td>
@@ -329,7 +330,7 @@ function RuleFiresTab({ siteId, onChain }: { siteId: string; onChain: (m: Signal
                       {actions.length > 0
                         ? actions.map((a) => (
                             <Tag key={a} minimal intent="warning" style={{ fontSize: 11 }}>
-                              {a.replace(/_/g, ' ')}
+                              {humanize(a)}
                             </Tag>
                           ))
                         : <span className="bp6-text-muted">—</span>}
@@ -398,7 +399,7 @@ function AssetsTab({ siteId }: { siteId: string }) {
   }
 
   const STATUS_COLOR: Record<string, 'success' | 'warning' | 'danger' | 'none'> = {
-    available: 'success', in_use: 'primary' as never, maintenance: 'warning', offline: 'danger',
+    available: 'success', assigned: 'primary', degraded: 'warning', offline: 'danger',
   }
 
   return (
@@ -417,7 +418,7 @@ function AssetsTab({ siteId }: { siteId: string }) {
             <td className="mono">{a.asset_type}</td>
             <td>
               <Tag minimal intent={STATUS_COLOR[a.status] ?? 'none'}>
-                {a.status.replace('_', ' ')}
+                {humanize(a.status)}
               </Tag>
             </td>
           </tr>

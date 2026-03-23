@@ -16,7 +16,8 @@ Rails.application.routes.draw do
 
   namespace :api do
     namespace :auth do
-      post :login, to: "sessions#create"
+      post   :login,  to: "sessions#create"
+      delete :logout, to: "sessions#destroy"
     end
 
     resources :sites, only: %i[index show] do

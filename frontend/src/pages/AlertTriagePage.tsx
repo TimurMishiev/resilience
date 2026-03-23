@@ -16,6 +16,7 @@ import AlertChainDrawer from '../components/AlertChainDrawer'
 import { SIGNAL_ICON_NAME } from '../lib/signalIcons'
 import { Icon } from '@blueprintjs/core'
 import type { AlertStatus, SignalRuleMatch } from '../api/types'
+import { humanize } from '../utils/humanize'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -169,7 +170,7 @@ function AlertRow({ match: m, isChecked, someSelected, onCheck, rowIndex, onChai
               )}
               {actions.map(a => (
                 <Tag key={a} minimal intent={hasFlag ? 'danger' : 'warning'} style={{ fontSize: 10 }}>
-                  {a.replace(/_/g, ' ')}
+                  {humanize(a)}
                 </Tag>
               ))}
               {distKm != null && (

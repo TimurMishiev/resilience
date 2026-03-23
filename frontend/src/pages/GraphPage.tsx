@@ -7,6 +7,7 @@ import { useAssets } from '../hooks/useAssets'
 import { useReplay } from '../context/ReplayContext'
 import type { Site, Task, Asset, WorkflowStatus } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
+import { humanize } from '../utils/humanize'
 
 // ---------------------------------------------------------------------------
 // Graph data types
@@ -87,7 +88,7 @@ function buildGraph(
         id:       `asset-${a.id}`,
         type:     'asset',
         label:    a.name,
-        sublabel: `${a.asset_type} · ${a.status.replace('_', ' ')}`,
+        sublabel: `${a.asset_type} · ${humanize(a.status)}`,
         data:     a,
       })
       // asset → home site edge
@@ -107,7 +108,7 @@ function buildGraph(
         id:       `task-${t.id}`,
         type:     'task',
         label:    t.title,
-        sublabel: t.workflow_status.replace('_', ' '),
+        sublabel: humanize(t.workflow_status),
         data:     t,
       })
       // site → task edge
@@ -197,7 +198,7 @@ function DetailPanel({ node, onClose }: PanelProps) {
           <div className="graph-panel-field">
             <span className="graph-panel-field-label">Status</span>
             <Tag minimal intent={workflowIntent(task.workflow_status)}>
-              {task.workflow_status.replace('_', ' ')}
+              {humanize(task.workflow_status)}
             </Tag>
           </div>
           <div className="graph-panel-field">
@@ -234,11 +235,11 @@ function DetailPanel({ node, onClose }: PanelProps) {
             <span className="graph-panel-field-label">Status</span>
             <Tag minimal intent={
               asset.status === 'available' ? 'success'
-              : asset.status === 'in_use' ? 'primary'
-              : asset.status === 'maintenance' ? 'warning'
+              : asset.status === 'assigned' ? 'primary'
+              : asset.status === 'degraded' ? 'warning'
               : 'danger'
             }>
-              {asset.status.replace('_', ' ')}
+              {humanize(asset.status)}
             </Tag>
           </div>
         </div>

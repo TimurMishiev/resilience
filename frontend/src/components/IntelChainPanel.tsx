@@ -14,6 +14,7 @@ import '@xyflow/react/dist/style.css'
 import { Tag, Spinner, NonIdealState } from '@blueprintjs/core'
 import { useIncidentChain } from '../hooks/useIncidents'
 import type { ChainNodeType, ChainNodeData } from '../api/incidents'
+import { humanize } from '../utils/humanize'
 
 // ---------------------------------------------------------------------------
 // Node visual config
@@ -65,7 +66,7 @@ function ChainNode({ data, type, selected }: NodeProps) {
 
       {d.status && (
         <div style={{ fontSize: 11, color: STATUS_INTENT[d.status] ?? '#9ca3af' }}>
-          {d.status.replace(/_/g, ' ')}
+          {humanize(d.status)}
         </div>
       )}
       {d.severity && (

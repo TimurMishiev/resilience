@@ -71,13 +71,19 @@ module Api
       end
 
       norm_conds = rule.normalized_conditions
+
+      # Hoist the site query outside the per-signal loop — it never changes.
+      sites = dry_run_target_sites(rule)
+
+      # Preload count-threshold signal windows once per signal_type so
+      # dry_run_count_threshold? never issues a DB query inside the loop.
+      threshold_pool = build_threshold_pool(norm_conds["conditions"], since_time)
+
       hits = []
 
       signals.find_each do |signal|
-        sites = dry_run_target_sites(rule)
-
         sites.each do |site|
-          results = norm_conds["conditions"].map { |cond| dry_run_condition?(signal, site, cond) }
+          results = norm_conds["conditions"].map { |cond| dry_run_condition?(signal, site, cond, threshold_pool) }
           match   = norm_conds["operator"] == "OR" ? results.any? : results.all?
           next unless match
 
@@ -113,6 +119,20 @@ module Api
 
     private
 
+    # Builds a hash of signal_type → array of lightweight signal structs for all
+    # conditions that use count_threshold > 1. Called once per dry_run request so
+    # dry_run_count_threshold? never hits the DB inside the signal loop.
+    def build_threshold_pool(conditions, since_time)
+      threshold_conds = conditions.select { |c| c["count_threshold"].to_i > 1 && c["signal_type"].present? }
+      threshold_conds.group_by { |c| c["signal_type"] }.transform_values do |conds|
+        max_window_min = conds.map { |c| c["time_window_minutes"].to_i.then { |m| m.zero? ? 60 : m } }.max
+        ExternalSignal
+          .where(signal_type: conds.first["signal_type"], occurred_at: max_window_min.minutes.ago..Time.current)
+          .pluck(:signal_type, :occurred_at, :lat, :lng)
+          .map { |st, oa, lt, lg| { signal_type: st, occurred_at: oa, lat: lt.to_f, lng: lg.to_f } }
+      end
+    end
+
     def dry_run_target_sites(rule)
       site_id = rule.conditions["site_id"]
       return Site.where(id: site_id) if site_id.present?
@@ -124,7 +144,7 @@ module Api
 
     # Evaluates a single normalized condition against a signal + site pair.
     # Mirrors EvaluatorService logic but operates on historical signals without side effects.
-    def dry_run_condition?(signal, site, cond)
+    def dry_run_condition?(signal, site, cond, threshold_pool = {})
       signal_type = cond["signal_type"]
 
       # Type filter — skip if this condition targets a different signal type
@@ -132,7 +152,7 @@ module Api
 
       dry_run_proximity?(signal, site, cond) &&
         dry_run_magnitude?(signal, cond)     &&
-        dry_run_count_threshold?(signal, site, cond)
+        dry_run_count_threshold?(signal, site, cond, threshold_pool)
     end
 
     def dry_run_proximity?(signal, site, cond)
@@ -145,24 +165,25 @@ module Api
       ) <= km
     end
 
-    def dry_run_count_threshold?(signal, site, cond)
+    def dry_run_count_threshold?(signal, site, cond, threshold_pool = {})
       threshold = cond["count_threshold"].to_i
       return true if threshold <= 1
 
       window_min   = cond["time_window_minutes"].to_i
       window_min   = 60 if window_min.zero?
       proximity_km = cond["proximity_km"].to_f
+      window_start = window_min.minutes.ago(signal.occurred_at)
 
-      recent = ExternalSignal.where(
-        signal_type: signal.signal_type,
-        occurred_at: window_min.minutes.ago(signal.occurred_at)..signal.occurred_at
-      )
+      # Use preloaded pool — no DB query inside the loop.
+      pool = threshold_pool[signal.signal_type] || []
 
-      count = recent.count do |s|
-        Correlations::EvaluatorService.haversine_km(
-          site.latitude.to_f, site.longitude.to_f,
-          s.lat.to_f,         s.lng.to_f
-        ) <= proximity_km
+      count = pool.count do |s|
+        s[:occurred_at] >= window_start &&
+          s[:occurred_at] <= signal.occurred_at &&
+          (proximity_km.zero? || Correlations::EvaluatorService.haversine_km(
+            site.latitude.to_f, site.longitude.to_f,
+            s[:lat],            s[:lng]
+          ) <= proximity_km)
       end
 
       count >= threshold

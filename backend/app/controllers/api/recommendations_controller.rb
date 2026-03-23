@@ -56,22 +56,26 @@ module Api
     end
 
     # POST /api/recommendations/:id/execute
-    # Accepts (if pending) and immediately executes the recommendation
+    # Accepts (if pending) and immediately executes the recommendation.
+    # Uses a row-level lock (SELECT FOR UPDATE) to prevent concurrent double-execution:
+    # the second request will find status='executed' after the first commits and fail.
     def execute
       rec = Recommendation.find(params[:id])
 
-      unless rec.pending? || rec.accepted?
-        render json: { errors: ["Recommendation is #{rec.status} — cannot execute"] }, status: :unprocessable_content
-        return
-      end
+      rec.with_lock do
+        unless rec.pending? || rec.accepted?
+          render json: { errors: ["Recommendation is #{rec.status} — cannot execute"] }, status: :unprocessable_content
+          return
+        end
 
-      rec.accept!(user: current_user, reason: "auto-accepted for execution") if rec.pending?
+        rec.accept!(user: current_user, reason: "auto-accepted for execution") if rec.pending?
 
-      result = Recommendations::ExecutorService.call(recommendation: rec, user: current_user)
-      if result.success?
-        render json: serialize(rec.reload)
-      else
-        render json: { errors: result.errors }, status: :unprocessable_content
+        result = Recommendations::ExecutorService.call(recommendation: rec, user: current_user)
+        if result.success?
+          render json: serialize(rec.reload)
+        else
+          render json: { errors: result.errors }, status: :unprocessable_content
+        end
       end
     end
 

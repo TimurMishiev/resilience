@@ -1,6 +1,7 @@
 import { Callout, Spinner, Tag } from '@blueprintjs/core'
 import { useAuditEvents } from '../hooks/useAuditEvents'
 import type { AuditEvent } from '../api/types'
+import { humanize } from '../utils/humanize'
 
 interface Props {
   entityType: string
@@ -30,8 +31,8 @@ function changedKeys(
 }
 
 function eventLabel(event: AuditEvent): string {
-  if (event.action) return event.action.replace(/_/g, ' ')
-  return event.event_type.replace(/_/g, ' ')
+  if (event.action) return humanize(event.action)
+  return humanize(event.event_type)
 }
 
 export default function AuditTimeline({ entityType, entityId }: Props) {

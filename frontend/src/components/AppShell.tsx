@@ -23,6 +23,7 @@ import { useEventSource } from '../hooks/useEventSource'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import GlobalSearch from './GlobalSearch'
 import type { IconName } from '@blueprintjs/icons'
+import { humanize } from '../utils/humanize'
 
 // Bottom nav tabs — shown on mobile only (hidden via CSS on desktop)
 const TABS: { icon: IconName; label: string; path: string }[] = [
@@ -92,7 +93,7 @@ export default function AppShell() {
           closed: '✔',
           unacknowledged: '⚠',
         }
-        const label = d.workflow_status.replace(/_/g, ' ')
+        const label = humanize(d.workflow_status)
         const context = d.rule_name ?? 'alert'
         const site = d.site_name ? ` @ ${d.site_name}` : ''
         const notes = d.notes ? ` — "${d.notes}"` : ''
@@ -120,7 +121,7 @@ export default function AppShell() {
           resolved: '✔', blocked: '⛔', in_progress: '▶', triaged: '🔍', new: '•',
         }
         AppToaster.then(t => t.show({
-          message: `${STATUS_ICON[d.workflow_status] ?? '•'} "${d.title}" → ${d.workflow_status.replace('_', ' ')}${d.site_name ? ` @ ${d.site_name}` : ''}`,
+          message: `${STATUS_ICON[d.workflow_status] ?? '•'} "${d.title}" → ${humanize(d.workflow_status)}${d.site_name ? ` @ ${d.site_name}` : ''}`,
           intent:  d.workflow_status === 'resolved' ? 'success' : d.workflow_status === 'blocked' ? 'danger' : 'none',
           icon:    d.workflow_status === 'resolved' ? 'tick' : d.workflow_status === 'blocked' ? 'ban-circle' : 'refresh',
           timeout: 6_000,
@@ -132,7 +133,7 @@ export default function AppShell() {
         queryClient.invalidateQueries({ queryKey: ['incidents'] })
         queryClient.invalidateQueries({ queryKey: ['recommendations'] })
         AppToaster.then(t => t.show({
-          message: `⚠ Geofence breach at ${d.site_name} — ${d.signal_type.replace(/_/g, ' ')} (${d.distance_km} km)`,
+          message: `⚠ Geofence breach at ${d.site_name} — ${humanize(d.signal_type)} (${d.distance_km} km)`,
           intent:  'warning',
           icon:    'locate',
           timeout: 8_000,

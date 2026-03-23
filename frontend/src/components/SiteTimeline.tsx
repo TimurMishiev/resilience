@@ -12,6 +12,7 @@ import {
 import { useSiteTimeline } from '../hooks/useSite'
 import { SIGNAL_ICON_NAME } from '../lib/signalIcons'
 import type { TimelineEvent, TimelineEventKind, SignalType } from '../api/types'
+import { humanize } from '../utils/humanize'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -162,7 +163,7 @@ function EventRow({ event }: { event: TimelineEvent }) {
               const displayVal = Array.isArray(v) ? v.join(', ') : String(v)
               return (
                 <div key={k} className="tt-meta-row">
-                  <span className="tt-meta-key">{k.replace(/_/g, ' ')}</span>
+                  <span className="tt-meta-key">{humanize(k)}</span>
                   <span className="tt-meta-val mono">{displayVal}</span>
                 </div>
               )

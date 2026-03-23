@@ -26,6 +26,7 @@ import { useRecommendations } from '../hooks/useRecommendations'
 import type { Recommendation } from '../api/recommendations'
 import type { WorkflowStatus, TaskPriority, SignalRuleMatch, AlertStatus, RiskLevel } from '../api/types'
 import { SIGNAL_ICON_NAME } from '../lib/signalIcons'
+import { humanize } from '../utils/humanize'
 
 const STATUS_ORDER: WorkflowStatus[] = ['new', 'triaged', 'in_progress', 'blocked', 'resolved']
 const PRIORITY_ORDER: TaskPriority[] = ['critical', 'high', 'normal', 'low']
@@ -261,7 +262,7 @@ function AlertsPanel({ matches }: { matches: SignalRuleMatch[] }) {
                     )}
                     {actions.map((a) => (
                       <Tag key={a} minimal intent={hasFlag ? 'danger' : 'warning'} style={{ fontSize: 10 }}>
-                        {a.replace(/_/g, ' ')}
+                        {humanize(a)}
                       </Tag>
                     ))}
                     {distKm != null && (
@@ -336,7 +337,7 @@ export default function DashboardPage() {
 
   // Aggregate task counts
   const statusCounts = STATUS_ORDER.map((s) => ({
-    status: s.replace('_', ' '),
+    status: humanize(s),
     count:  tasks.filter((t) => t.workflow_status === s).length,
     fill:   STATUS_COLOR[s],
   }))

@@ -9,6 +9,7 @@
 import { Drawer, DrawerSize, Tag, Icon, Divider, Callout } from '@blueprintjs/core'
 import type { SignalRuleMatch } from '../api/types'
 import { SIGNAL_ICON_NAME } from '../lib/signalIcons'
+import { humanize } from '../utils/humanize'
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -98,7 +99,7 @@ export default function AlertChainDrawer({ match, onClose }: Props) {
         <ChainNode
           icon={match.signal ? (SIGNAL_ICON_NAME[match.signal.signal_type] ?? 'dot') : 'dot'}
           label="Signal"
-          title={match.signal ? match.signal.signal_type.replace(/_/g, ' ') : 'Signal deleted'}
+          title={match.signal ? humanize(match.signal.signal_type) : 'Signal deleted'}
           faded={!match.signal}
         >
           {match.signal && (
@@ -139,7 +140,7 @@ export default function AlertChainDrawer({ match, onClose }: Props) {
         <ChainNode
           icon="warning-sign"
           label="Alert"
-          title={`${match.workflow_status.replace(/_/g, ' ')} alert`}
+          title={`${humanize(match.workflow_status)} alert`}
         >
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 4 }}>
             <ConfBadge value={match.confidence} />
@@ -176,7 +177,7 @@ export default function AlertChainDrawer({ match, onClose }: Props) {
                   {match.task.priority}
                 </Tag>
                 <Tag minimal style={{ fontSize: 10 }}>
-                  {match.task.workflow_status.replace(/_/g, ' ')}
+                  {humanize(match.task.workflow_status)}
                 </Tag>
               </div>
             </ChainNode>

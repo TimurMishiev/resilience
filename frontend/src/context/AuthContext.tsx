@@ -1,23 +1,8 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { registerUnauthorizedHandler, getToken } from '../api/client'
-import { logout as apiLogout } from '../api/auth'
+import { registerUnauthorizedHandler } from '../api/client'
+import { logout as apiLogout, restoreUser } from '../api/auth'
 import type { CurrentUser } from '../api/auth'
-
-// Decode the JWT payload to restore user from localStorage on page load.
-// Checks the exp claim so an expired token doesn't appear as a valid session.
-function decodeTokenPayload(token: string): CurrentUser | null {
-  try {
-    const payload = JSON.parse(atob(token.split('.')[1]))
-    if (!payload.sub || !payload.email || !payload.role) return null
-    // Reject expired tokens — prevents stale session appearing valid until
-    // the next API call fails with 401
-    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null
-    return { id: payload.sub, email: payload.email, role: payload.role }
-  } catch {
-    return null
-  }
-}
 
 interface AuthContextValue {
   currentUser: CurrentUser | null
@@ -29,10 +14,8 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(() => {
-    const token = getToken()
-    return token ? decodeTokenPayload(token) : null
-  })
+  // Restore from sessionStorage on page load — user info only, never the token.
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(() => restoreUser())
 
   function handleLogout() {
     apiLogout()
@@ -43,7 +26,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setCurrentUser(user)
   }
 
-  // Register the 401 handler so expired tokens automatically log out
+  // Register the 401 handler so expired cookies automatically log out
   useEffect(() => {
     registerUnauthorizedHandler(handleLogout)
   }, [])
