@@ -16,6 +16,7 @@ module Api
             httponly:  true,
             same_site: :lax,
             secure:    Rails.env.production?,
+            path:      "/",
             expires:   JwtAuthenticatable::TTL.from_now
           )
 
@@ -28,7 +29,7 @@ module Api
 
       # DELETE /api/auth/logout — clears the session cookie
       def destroy
-        response.delete_cookie(:_resilience_session)
+        response.delete_cookie(:_resilience_session, path: "/")
         head :no_content
       end
     end
