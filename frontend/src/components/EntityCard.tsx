@@ -36,6 +36,7 @@ import { ASSET_STATUSES } from '../api/types'
 import { humanize } from '../utils/humanize'
 import type { WorkflowStatus, AssetStatus, Posture } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
+import { workflowIntent, priorityIntent, assetStatusIntent } from '../lib/taskIntents'
 
 export type EntityType = 'task' | 'asset' | 'site' | 'ao'
 
@@ -45,37 +46,6 @@ const AUDIT_ENTITY_TYPE: Record<EntityType, string> = {
   asset: 'Asset',
   site:  'Site',
   ao:    'AreaOfOperation',
-}
-
-// ---------------------------------------------------------------------------
-// Shared helpers
-// ---------------------------------------------------------------------------
-
-function workflowIntent(status: WorkflowStatus): Intent {
-  switch (status) {
-    case 'blocked':     return 'danger'
-    case 'resolved':    return 'success'
-    case 'in_progress': return 'primary'
-    case 'triaged':     return 'warning'
-    default:            return 'none'
-  }
-}
-
-function priorityIntent(priority: string): Intent {
-  switch (priority) {
-    case 'critical': return 'danger'
-    case 'high':     return 'warning'
-    default:         return 'none'
-  }
-}
-
-function assetStatusIntent(status: AssetStatus): Intent {
-  switch (status) {
-    case 'available': return 'success'
-    case 'assigned':  return 'primary'
-    case 'degraded':  return 'warning'
-    case 'offline':   return 'danger'
-  }
 }
 
 function fmt(iso: string) {
@@ -560,7 +530,16 @@ export interface EntityCardProps {
 }
 
 export default function EntityCard({ entityType, entityId }: EntityCardProps) {
+  const { isReplaying } = useReplay()
   const auditType = AUDIT_ENTITY_TYPE[entityType]
+
+  if (isReplaying) {
+    return (
+      <Callout intent="warning" icon="history">
+        Entity detail drawers are unavailable during replay because they still depend on live detail endpoints and would otherwise mix present-time entity state into a historical view.
+      </Callout>
+    )
+  }
 
   function overviewPanel() {
     switch (entityType) {

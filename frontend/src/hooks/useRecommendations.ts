@@ -10,19 +10,26 @@ import {
 } from '../api/recommendations'
 import type { RecommendationParams } from '../api/recommendations'
 
-export function useRecommendations(params?: RecommendationParams) {
+interface RecommendationQueryOptions {
+  enabled?: boolean
+  refetchInterval?: number | false
+}
+
+export function useRecommendations(params?: RecommendationParams, options?: RecommendationQueryOptions) {
   return useQuery({
     queryKey: ['recommendations', params],
     queryFn:  () => getRecommendations(params),
-    refetchInterval: 60_000,
+    enabled: options?.enabled ?? true,
+    refetchInterval: options?.refetchInterval ?? 60_000,
   })
 }
 
-export function useRecommendationMetrics() {
+export function useRecommendationMetrics(options?: RecommendationQueryOptions) {
   return useQuery({
     queryKey: ['recommendations-metrics'],
     queryFn:  getRecommendationMetrics,
-    refetchInterval: 120_000,
+    enabled: options?.enabled ?? true,
+    refetchInterval: options?.refetchInterval ?? 120_000,
   })
 }
 

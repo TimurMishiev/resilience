@@ -3,6 +3,7 @@ module Api
     before_action :require_commander!
 
     TASK_LIMIT = 500
+    INCIDENT_LIMIT = 200
 
     # GET /api/planning
     # Returns a single aggregate payload for the Operational Planning Surface:
@@ -33,12 +34,15 @@ module Api
 
       areas = AreaOfOperation.order(:name).to_a
 
-      open_incidents = Incident
+      raw_incidents = Incident
         .includes(:assigned_to)
         .where.not(status: "closed")
         .by_severity
-        .limit(200)
+        .limit(INCIDENT_LIMIT + 1)
         .to_a
+
+      incidents_truncated = raw_incidents.size > INCIDENT_LIMIT
+      open_incidents      = incidents_truncated ? raw_incidents.first(INCIDENT_LIMIT) : raw_incidents
 
       render json: {
         tasks:               task_records.map { |t| serialize_planning_task(t) },
@@ -46,8 +50,10 @@ module Api
         areas_of_operation:  areas.map  { |ao| serialize_planning_ao(ao) },
         open_incidents:      open_incidents.map { |i| serialize_planning_incident(i) },
         meta: {
-          truncated:  truncated,
-          task_count: task_records.size
+          truncated:           truncated,
+          task_count:          task_records.size,
+          incidents_truncated: incidents_truncated,
+          incident_count:      open_incidents.size,
         }
       }
     end

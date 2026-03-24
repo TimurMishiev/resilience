@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { Button, Callout, Checkbox, Classes, Icon, Tag, Tooltip } from '@blueprintjs/core'
 import AlertChainDrawer from '../components/AlertChainDrawer'
 import RecommendationCard from '../components/RecommendationCard'
@@ -309,21 +309,26 @@ function AlertsPanel({ matches }: { matches: SignalRuleMatch[] }) {
 }
 
 export default function DashboardPage() {
-  const { asOf } = useReplay()
+  const { asOf, isReplaying } = useReplay()
   const navigate  = useNavigate()
   const { isCommander } = useRole()
   const [evidenceRec, setEvidenceRec] = useState<Recommendation | null>(null)
 
-  const { data: recData } = useRecommendations()
+  useEffect(() => {
+    if (!isReplaying) return
+    setEvidenceRec(null)
+  }, [isReplaying])
+
+  const { data: recData } = useRecommendations(undefined, { enabled: !isReplaying, refetchInterval: isReplaying ? false : 60_000 })
   const topRecs = (recData?.data ?? []).slice(0, 3)
 
-  const { data: matchesRes } = useSignalRuleMatches({ per_page: 15 })
+  const { data: matchesRes } = useSignalRuleMatches({ per_page: 15 }, { enabled: !isReplaying, refetchInterval: isReplaying ? false : 10_000 })
   const recentMatches = matchesRes?.data ?? []
 
-  const { data: riskData } = useRiskScores()
+  const { data: riskData } = useRiskScores({ enabled: !isReplaying, refetchInterval: isReplaying ? false : 60_000 })
   const riskBySite = useMemo(
-    () => Object.fromEntries((riskData ?? []).map((r) => [r.site_id, r])),
-    [riskData]
+    () => (isReplaying ? {} : Object.fromEntries((riskData ?? []).map((r) => [r.site_id, r]))),
+    [isReplaying, riskData]
   )
 
   const { data: readinessData, isPending: readinessPending, error: readinessError } = useReadiness(
@@ -333,7 +338,7 @@ export default function DashboardPage() {
     per_page: 500,
     ...(asOf ? { as_of: asOf } : {}),
   })
-  const { data: throughputRes } = useThroughput()
+  const { data: throughputRes } = useThroughput({ enabled: !isReplaying })
 
   const tasks       = taskRes?.data ?? []
   const readiness   = readinessData ?? []
@@ -374,6 +379,12 @@ export default function DashboardPage() {
       <div className="page-header">
         <h2 className="bp6-heading">Dashboard</h2>
       </div>
+
+      {isReplaying && (
+        <Callout intent="warning" icon="history" compact style={{ marginBottom: 16 }}>
+          Recent alerts, recommendations, throughput analytics, and risk-score badges are hidden during replay because those widgets are only available as live state.
+        </Callout>
+      )}
 
       {/* KPI row */}
       <div className="dashboard-kpi-row">
@@ -536,77 +547,81 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Recent alerts — rule fires */}
-        <div className="dashboard-card dashboard-card--wide">
-          <div className="dashboard-card-header">
-            <h4 className="dashboard-card-title bp6-heading">Recent Alerts</h4>
-            <span className="bp6-text-muted" style={{ fontSize: 11 }}>auto-refreshes · click to open site</span>
-          </div>
-          <AlertsPanel matches={recentMatches} />
-        </div>
+        {!isReplaying && (
+          <>
+            {/* Recent alerts — rule fires */}
+            <div className="dashboard-card dashboard-card--wide">
+              <div className="dashboard-card-header">
+                <h4 className="dashboard-card-title bp6-heading">Recent Alerts</h4>
+                <span className="bp6-text-muted" style={{ fontSize: 11 }}>auto-refreshes · click to open site</span>
+              </div>
+              <AlertsPanel matches={recentMatches} />
+            </div>
 
-        {/* Recommendations panel */}
-        <div className="dashboard-card dashboard-card--wide">
-          <div className="dashboard-card-header">
-            <h4 className="dashboard-card-title bp6-heading">
-              <Icon icon="lightbulb" size={14} style={{ marginRight: 6 }} />
-              Recommendations
-            </h4>
-            <Button minimal small onClick={() => navigate('/recommendations')} style={{ fontSize: 11 }}>
-              View all →
-            </Button>
-          </div>
-          {topRecs.length === 0 ? (
-            <p className="bp6-text-muted" style={{ fontSize: 12, margin: 0 }}>
-              No active recommendations. System analyses operational state every 30 minutes.
-            </p>
-          ) : (
-            topRecs.map(rec => (
-              <RecommendationCard
-                key={rec.id}
-                rec={rec}
-                onViewEvidence={setEvidenceRec}
-                isCommander={isCommander}
-              />
-            ))
-          )}
-        </div>
+            {/* Recommendations panel */}
+            <div className="dashboard-card dashboard-card--wide">
+              <div className="dashboard-card-header">
+                <h4 className="dashboard-card-title bp6-heading">
+                  <Icon icon="lightbulb" size={14} style={{ marginRight: 6 }} />
+                  Recommendations
+                </h4>
+                <Button minimal small onClick={() => navigate('/recommendations')} style={{ fontSize: 11 }}>
+                  View all →
+                </Button>
+              </div>
+              {topRecs.length === 0 ? (
+                <p className="bp6-text-muted" style={{ fontSize: 12, margin: 0 }}>
+                  No active recommendations. System analyses operational state every 30 minutes.
+                </p>
+              ) : (
+                topRecs.map(rec => (
+                  <RecommendationCard
+                    key={rec.id}
+                    rec={rec}
+                    onViewEvidence={setEvidenceRec}
+                    isCommander={isCommander}
+                  />
+                ))
+              )}
+            </div>
 
-        {/* Throughput — resolved tasks per day */}
-        <div className="dashboard-card dashboard-card--wide">
-          <h4 className="dashboard-card-title bp6-heading">Resolution Throughput — Last 30 Days</h4>
-          {loading ? (
-            <div className={Classes.SKELETON} style={{ width: '100%', height: 180 }}>&nbsp;</div>
-          ) : (
-            <ResponsiveContainer width="100%" height={180}>
-              <LineChart data={throughput} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={COLORS.chartGrid} />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fill: COLORS.muted, fontSize: 10 }}
-                  tickFormatter={(d: string) => d.slice(5)} // MM-DD
-                  interval={4}
-                />
-                <YAxis tick={{ fill: COLORS.muted, fontSize: 11 }} allowDecimals={false} />
-                <ChartTooltip
-                  contentStyle={{ background: COLORS.chartBg, border: `1px solid ${COLORS.chartBorder}`, fontSize: 12 }}
-                  labelFormatter={(d) => String(d)}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="resolved"
-                  stroke={COLORS.success}
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4, fill: COLORS.success }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </div>
+            {/* Throughput — resolved tasks per day */}
+            <div className="dashboard-card dashboard-card--wide">
+              <h4 className="dashboard-card-title bp6-heading">Resolution Throughput — Last 30 Days</h4>
+              {loading ? (
+                <div className={Classes.SKELETON} style={{ width: '100%', height: 180 }}>&nbsp;</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={180}>
+                  <LineChart data={throughput} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={COLORS.chartGrid} />
+                    <XAxis
+                      dataKey="date"
+                      tick={{ fill: COLORS.muted, fontSize: 10 }}
+                      tickFormatter={(d: string) => d.slice(5)} // MM-DD
+                      interval={4}
+                    />
+                    <YAxis tick={{ fill: COLORS.muted, fontSize: 11 }} allowDecimals={false} />
+                    <ChartTooltip
+                      contentStyle={{ background: COLORS.chartBg, border: `1px solid ${COLORS.chartBorder}`, fontSize: 12 }}
+                      labelFormatter={(d) => String(d)}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="resolved"
+                      stroke={COLORS.success}
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 4, fill: COLORS.success }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
-      <EvidenceDrawer rec={evidenceRec} onClose={() => setEvidenceRec(null)} />
+      {!isReplaying && <EvidenceDrawer rec={evidenceRec} onClose={() => setEvidenceRec(null)} />}
     </div>
   )
 }

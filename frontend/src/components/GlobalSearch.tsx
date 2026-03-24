@@ -4,9 +4,11 @@ import { useNavigate } from 'react-router-dom'
 import { useSites } from '../hooks/useSites'
 import { useTasks } from '../hooks/useTasks'
 import { useAssets } from '../hooks/useAssets'
+import { useReplayParams } from '../hooks/useReplayParams'
 import type { Site, Task, Asset } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
 import { humanize } from '../utils/humanize'
+import { workflowIntent } from '../lib/taskIntents'
 
 // ---------------------------------------------------------------------------
 // Result types
@@ -36,16 +38,6 @@ function score(result: SearchResult, q: string): number {
   if (title.includes(lq))     return 1
   if (sub.includes(lq))       return 0.5
   return -1
-}
-
-function workflowIntent(s: Task['workflow_status']): Intent {
-  switch (s) {
-    case 'blocked':     return 'danger'
-    case 'resolved':    return 'success'
-    case 'in_progress': return 'primary'
-    case 'triaged':     return 'warning'
-    default:            return 'none'
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -123,14 +115,15 @@ export default function GlobalSearch({ open, onClose }: Props) {
   const navigate  = useNavigate()
   const inputRef  = useRef<HTMLInputElement>(null)
   const listRef   = useRef<HTMLUListElement>(null)
+  const { asOfParam } = useReplayParams()
 
   const [query,    setQuery]    = useState('')
   const [selected, setSelected] = useState(0)
 
   // Fetch all data — React Query returns from cache instantly if already loaded
-  const sitesQuery  = useSites({ per_page: 200 })
-  const tasksQuery  = useTasks({ per_page: 200 })
-  const assetsQuery = useAssets({ per_page: 200 })
+  const sitesQuery  = useSites({ per_page: 200, ...asOfParam })
+  const tasksQuery  = useTasks({ per_page: 200, ...asOfParam })
+  const assetsQuery = useAssets({ per_page: 200, ...asOfParam })
 
   const results = useMemo(
     () => buildResults(

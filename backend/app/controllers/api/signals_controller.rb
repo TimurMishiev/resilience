@@ -1,5 +1,7 @@
 module Api
   class SignalsController < BaseController
+    include ActionController::Live
+
     before_action :require_commander!, only: %i[create]
 
     # GET /api/signals
@@ -29,13 +31,63 @@ module Api
       end
 
       records, meta = paginate(signals)
-      render json: { data: records.map { |s| serialize_signal(s) }, meta: meta }
+      render json: { data: records.map { |s| Signals::PayloadSerializer.call(s) }, meta: meta }
     end
 
     # GET /api/signals/:id
     def show
       signal = ExternalSignal.find(params[:id])
-      render json: serialize_signal(signal)
+      render json: Signals::PayloadSerializer.call(signal)
+    end
+
+    # GET /api/signals/stream
+    # Live-only Server-Sent Events stream of newly ingested signals.
+    # Auth via ?token= query param using the same short-lived SSE token flow as telemetry.
+    def stream
+      if params[:since].present? && safe_parse_datetime(params[:since]).nil?
+        render json: { error: "Invalid 'since' datetime" }, status: :bad_request and return
+      end
+
+      response.headers["Content-Type"]      = "text/event-stream"
+      response.headers["Cache-Control"]     = "no-cache"
+      response.headers["X-Accel-Buffering"] = "no"
+
+      broadcaster = Signals::Broadcaster.instance
+      queue       = broadcaster.subscribe
+      since       = safe_parse_datetime(params[:since])
+
+      sse_write(response.stream, event: "connected", data: { message: "signal stream open" })
+
+      if since
+        ExternalSignal
+          .where("ingested_at >= ?", since)
+          .order(:ingested_at, :id)
+          .each do |signal|
+            response.stream.write("event: signal\ndata: #{Signals::PayloadSerializer.call(signal).to_json}\n\n")
+          rescue IOError, ActionController::Live::ClientDisconnected
+            break
+          end
+      end
+
+      heartbeat = Thread.new do
+        loop do
+          sleep 25
+          sse_write(response.stream, event: "heartbeat", data: { ts: Time.current.to_i })
+        rescue IOError, ActionController::Live::ClientDisconnected
+          break
+        end
+      end
+
+      loop do
+        payload = queue.pop
+        response.stream.write("event: signal\ndata: #{payload}\n\n")
+      rescue IOError, ActionController::Live::ClientDisconnected
+        break
+      end
+    ensure
+      heartbeat&.kill
+      broadcaster.unsubscribe(queue) if queue
+      response.stream.close rescue nil
     end
 
     # POST /api/signals
@@ -63,23 +115,23 @@ module Api
       Correlations::EvaluatorService.call(signal: result.signal)
       Sites::GeofenceBreachService.call(signal: result.signal)
 
-      render json: serialize_signal(result.signal), status: :created
+      render json: Signals::PayloadSerializer.call(result.signal), status: :created
     end
 
     private
 
-    def signal_params
-      params.require(:signal).permit(:signal_type, :lat, :lng, :magnitude, :note)
+    def sse_endpoint?
+      action_name == "stream"
     end
 
-    def serialize_signal(signal)
-      signal.as_json(only: %i[
-        id source signal_type external_id
-        lat lng altitude speed heading magnitude
-        occurred_at ingested_at
-      ]).merge(
-        raw_payload: signal.raw_payload
-      )
+    def sse_write(stream, event:, data:)
+      stream.write("event: #{event}\ndata: #{data.to_json}\n\n")
+    rescue IOError, ActionController::Live::ClientDisconnected
+      # client disconnected — caller loop handles cleanup
+    end
+
+    def signal_params
+      params.require(:signal).permit(:signal_type, :lat, :lng, :magnitude, :note)
     end
   end
 end

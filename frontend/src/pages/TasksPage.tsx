@@ -139,7 +139,7 @@ export default function TasksPage() {
 
   const { data: taskRes, error, isPending } = useTasks(taskParams)
   const { data: siteRes }  = useSites({ per_page: 200, ...(asOf ? { as_of: asOf } : {}) })
-  const { data: assetRes } = useAssets({ per_page: 200 })
+  const { data: assetRes } = useAssets({ per_page: 200, ...(asOf ? { as_of: asOf } : {}) })
 
   const tasks = taskRes?.data ?? []
   const total = taskRes?.meta?.total ?? tasks.length

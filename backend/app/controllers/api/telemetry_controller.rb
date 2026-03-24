@@ -1,14 +1,30 @@
 module Api
-  class TelemetryController < ApplicationController
+  class TelemetryController < BaseController
     include ActionController::Live
-    include JwtAuthenticatable
+
+    # GET /api/telemetry
+    # Returns the latest telemetry reading per asset, optionally as of a replay
+    # timestamp. This gives replay mode a deterministic snapshot instead of
+    # suppressing telemetry entirely.
+    def index
+      upper_bound = as_of || Time.current
+
+      readings = TelemetryReading
+        .select("DISTINCT ON (asset_id) telemetry_readings.*")
+        .where("occurred_at <= ?", upper_bound)
+        .includes(:asset)
+        .order("asset_id, occurred_at DESC")
+
+      render json: {
+        data: readings.sort_by { |reading| reading.asset.name }.map { |reading| serialize_reading(reading) },
+        meta: { as_of: upper_bound.iso8601, total: readings.size },
+      }
+    end
 
     # GET /api/telemetry/stream
     # Server-Sent Events stream of asset telemetry readings.
     # Auth via ?token= query param (EventSource can't send custom headers).
     def stream
-      authenticate_request!
-
       response.headers["Content-Type"]      = "text/event-stream"
       response.headers["Cache-Control"]     = "no-cache"
       response.headers["X-Accel-Buffering"] = "no"
@@ -44,14 +60,29 @@ module Api
 
     private
 
-    # Mark this as an SSE endpoint so JwtAuthenticatable reads the ?token=
-    # query param and accepts short-lived sse_only tokens.
-    def sse_endpoint? = true
+    # Only the stream action is an SSE endpoint. Snapshot reads should keep
+    # normal API/browser auth semantics.
+    def sse_endpoint?
+      action_name == "stream"
+    end
 
     def sse_write(stream, event:, data:)
       stream.write("event: #{event}\ndata: #{data.to_json}\n\n")
     rescue IOError, ActionController::Live::ClientDisconnected
       # client gone — let the main loop handle cleanup
+    end
+
+    def serialize_reading(reading)
+      {
+        asset_id: reading.asset_id,
+        name:     reading.asset.name,
+        lat:      reading.lat,
+        lng:      reading.lng,
+        heading:  reading.heading,
+        speed:    reading.speed,
+        battery:  reading.battery,
+        ts:       reading.occurred_at.to_i,
+      }
     end
   end
 end

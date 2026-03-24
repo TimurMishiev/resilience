@@ -57,11 +57,16 @@ Rails.application.routes.draw do
     get  "events",    to: "events#stream"
     post "sse_token", to: "sse_tokens#create"
 
+    get "telemetry", to: "telemetry#index"
     namespace :telemetry do
       get :stream
     end
 
-    resources :signals,               only: %i[index show create]
+    resources :signals, only: %i[index show create] do
+      collection do
+        get :stream
+      end
+    end
     resources :correlation_rules, only: %i[index show create update destroy] do
       collection do
         get :effectiveness

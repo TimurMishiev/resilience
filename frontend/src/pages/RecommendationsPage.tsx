@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Button, Callout, HTMLSelect, NonIdealState, Spinner,
   Tag, Tabs, Tab,
@@ -9,6 +9,7 @@ import {
   useGenerateRecommendations,
 } from '../hooks/useRecommendations'
 import { useRole } from '../hooks/useRole'
+import { useReplay } from '../context/ReplayContext'
 import RecommendationCard from '../components/RecommendationCard'
 import EvidenceDrawer from '../components/EvidenceDrawer'
 import type { Recommendation } from '../api/recommendations'
@@ -28,13 +29,20 @@ const STATUS_OPTIONS = [
 
 export default function RecommendationsPage() {
   const { isCommander } = useRole()
+  const { isReplaying } = useReplay()
   const [statusFilter, setStatusFilter] = useState('')
   const [evidenceRec, setEvidenceRec]   = useState<Recommendation | null>(null)
 
+  useEffect(() => {
+    if (!isReplaying) return
+    setEvidenceRec(null)
+  }, [isReplaying])
+
   const { data, isPending, error } = useRecommendations(
-    statusFilter ? { status: statusFilter } : undefined
+    statusFilter ? { status: statusFilter } : undefined,
+    { enabled: !isReplaying, refetchInterval: isReplaying ? false : 60_000 },
   )
-  const { data: metrics } = useRecommendationMetrics()
+  const { data: metrics } = useRecommendationMetrics({ enabled: !isReplaying, refetchInterval: isReplaying ? false : 120_000 })
   const generate = useGenerateRecommendations()
 
   const recs = data?.data ?? []
@@ -46,7 +54,7 @@ export default function RecommendationsPage() {
         <span className="bp6-text-muted" style={{ fontSize: 13, marginLeft: 8 }}>
           {data?.meta.total ?? '—'} active
         </span>
-        {isCommander && (
+        {isCommander && !isReplaying && (
           <Button
             small
             icon="predictive-analysis"
@@ -61,8 +69,21 @@ export default function RecommendationsPage() {
         )}
       </div>
 
+      {isReplaying && (
+        <>
+          <Callout intent="warning" icon="history" style={{ marginBottom: 16 }}>
+            Recommendations are hidden during replay because they are generated from live operational state and do not yet support historical playback.
+          </Callout>
+          <NonIdealState
+            icon="history"
+            title="Recommendations unavailable in replay"
+            description="Return to live mode to review current recommendations and recommendation metrics."
+          />
+        </>
+      )}
+
       {/* ── metrics bar ── */}
-      {metrics && (
+      {!isReplaying && metrics && (
         <div style={{ display: 'flex', gap: 16, marginBottom: 16, flexWrap: 'wrap', fontSize: 12 }}>
           <MetricPill label="Pending"  value={metrics.pending}  intent="primary" />
           <MetricPill label="Accepted" value={metrics.accepted} intent="success" />
@@ -82,7 +103,7 @@ export default function RecommendationsPage() {
       )}
 
       {/* ── filter bar ── */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
+      {!isReplaying && <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
         <HTMLSelect
           value={statusFilter}
           onChange={e => setStatusFilter(e.target.value)}
@@ -96,12 +117,12 @@ export default function RecommendationsPage() {
         {statusFilter && (
           <Button minimal small onClick={() => setStatusFilter('')}>Clear</Button>
         )}
-      </div>
+      </div>}
 
-      {isPending && <Spinner size={24} style={{ marginTop: 24 }} />}
-      {error && <Callout intent="danger" compact>{error.message}</Callout>}
+      {!isReplaying && isPending && <Spinner size={24} style={{ marginTop: 24 }} />}
+      {!isReplaying && error && <Callout intent="danger" compact>{error.message}</Callout>}
 
-      {!isPending && !error && recs.length === 0 && (
+      {!isReplaying && !isPending && !error && recs.length === 0 && (
         <NonIdealState
           icon="lightbulb"
           title="No recommendations"
@@ -115,7 +136,7 @@ export default function RecommendationsPage() {
         />
       )}
 
-      {!isPending && recs.length > 0 && (
+      {!isReplaying && !isPending && recs.length > 0 && (
         <Tabs id="rec-tier-tabs" defaultSelectedTabId="rule">
           <Tab
             id="rule"
@@ -163,7 +184,7 @@ export default function RecommendationsPage() {
         </Tabs>
       )}
 
-      <EvidenceDrawer rec={evidenceRec} onClose={() => setEvidenceRec(null)} />
+      {!isReplaying && <EvidenceDrawer rec={evidenceRec} onClose={() => setEvidenceRec(null)} />}
     </div>
   )
 }

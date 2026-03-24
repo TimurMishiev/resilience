@@ -34,6 +34,7 @@ module Signals
 
       signal.assign_attributes(@attrs)
       signal.save!
+      Signals::Broadcaster.instance.publish(Signals::PayloadSerializer.call(signal))
       ServiceResult.success(signal: signal, created: true)
 
     rescue ActiveRecord::RecordNotUnique

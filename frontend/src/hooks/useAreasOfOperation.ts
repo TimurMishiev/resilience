@@ -22,10 +22,11 @@ export function useAreaOfOperation(id: string | undefined) {
   })
 }
 
-export function useAreasOfOperation(params?: AreasOfOperationParams) {
+export function useAreasOfOperation(params?: AreasOfOperationParams, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['areas_of_operation', params],
     queryFn:  () => getAreasOfOperation(params),
+    enabled:  options?.enabled ?? true,
   })
 }
 

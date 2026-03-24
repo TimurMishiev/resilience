@@ -118,7 +118,12 @@ export interface PlanningResponse {
   assets:              Asset[]
   areas_of_operation:  PlanningAoStub[]
   open_incidents:      PlanningIncidentStub[]
-  meta: { truncated: boolean; task_count: number }
+  meta: {
+    truncated: boolean
+    task_count: number
+    incidents_truncated: boolean
+    incident_count: number
+  }
 }
 
 export interface AuditEvent {

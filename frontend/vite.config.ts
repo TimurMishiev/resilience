@@ -4,6 +4,16 @@ import { VitePWA } from 'vite-plugin-pwa'
 import cesium from 'vite-plugin-cesium'
 
 export default defineConfig({
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/maplibre-gl')) return 'maplibre-gl'
+          if (id.includes('node_modules/cesium')) return 'cesium'
+        },
+      },
+    },
+  },
   plugins: [
     react(),
     cesium(),

@@ -1,16 +1,7 @@
 import { HTMLSelect, Tag, Button, Tooltip } from '@blueprintjs/core'
 import { humanize } from '../utils/humanize'
-import type { Asset, AssetStatus, Posture, Task } from '../api/types'
-import type { Intent } from '@blueprintjs/core'
-
-function assetStatusIntent(status: AssetStatus): Intent {
-  switch (status) {
-    case 'available': return 'success'
-    case 'assigned':  return 'primary'
-    case 'degraded':  return 'warning'
-    case 'offline':   return 'danger'
-  }
-}
+import type { Asset, Posture, Task } from '../api/types'
+import { assetStatusIntent } from '../lib/taskIntents'
 
 // Returns the subset of assets selectable under the given posture.
 // observe      → nothing selectable (show disabled picker)

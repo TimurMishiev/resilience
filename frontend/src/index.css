@@ -553,31 +553,6 @@ body {
   min-width: 300px;
 }
 
-/* Site markers — tactical diamond shape */
-.map-marker {
-  width: 18px;
-  height: 18px;
-  transform: rotate(45deg);
-  border: 2px solid rgba(255, 255, 255, 0.7);
-  cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-  box-shadow: 0 0 6px rgba(0, 0, 0, 0.5);
-}
-
-.map-marker:hover {
-  transform: rotate(45deg) scale(1.35);
-}
-
-.map-marker--active {
-  background-color: #3dcc91;
-  box-shadow: 0 0 8px rgba(61, 204, 145, 0.5);
-}
-
-.map-marker--inactive {
-  background-color: #5c7080;
-  opacity: 0.6;
-}
-
 /* Site detail panel */
 .map-panel {
   position: absolute;
@@ -1054,30 +1029,6 @@ body {
   50%       { opacity: 0.4; }
 }
 
-/* ── Map marker health states ──────────────────────────────── */
-
-.map-marker--blocked {
-  background-color: #ff5555;
-  border-color: #ff8888;
-  box-shadow: 0 0 10px rgba(255, 85, 85, 0.7);
-  animation: pulse-blocked 1.5s ease-in-out infinite;
-}
-
-.map-marker--resolved {
-  background-color: #3dcc91;
-  box-shadow: 0 0 8px rgba(61, 204, 145, 0.4);
-}
-
-.map-marker--in-progress {
-  background-color: #48aff0;
-  box-shadow: 0 0 8px rgba(72, 175, 240, 0.4);
-}
-
-@keyframes pulse-blocked {
-  0%, 100% { box-shadow: 0 0 10px rgba(255, 85, 85, 0.7); }
-  50%       { box-shadow: 0 0 20px rgba(255, 85, 85, 1); opacity: 0.8; }
-}
-
 /* ── Map task action buttons ───────────────────────────────── */
 
 .map-task-header {
@@ -1318,28 +1269,6 @@ body {
   font-size: 12px;
 }
 
-/* ── Asset marker ────────────────────────────────────────────── */
-
-.map-asset-marker {
-  width: 28px;
-  height: 28px;
-  background: rgba(28, 33, 39, 0.85);
-  border: 1px solid rgba(147, 197, 253, 0.6);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  cursor: pointer;
-  transition: transform 0.3s ease, border-color 0.3s ease;
-  box-shadow: 0 0 6px rgba(147, 197, 253, 0.3);
-}
-
-.map-asset-marker:hover {
-  transform: scale(1.2);
-  border-color: #93c5fd;
-}
-
 /* ── Telemetry badge ─────────────────────────────────────────── */
 
 .map-telemetry-badge {
@@ -1481,6 +1410,79 @@ body {
   background: rgba(82, 130, 255, 0.22);
   color: #a7c0ff;
   border: 1px solid rgba(82, 130, 255, 0.3);
+}
+
+/* ── Coverage toggle & legend ─────────────────────────────────── */
+
+.map-coverage-toggle {
+  position: absolute;
+  top: 96px;
+  right: 10px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(28, 33, 39, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  color: #8f99a8;
+  user-select: none;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.map-coverage-toggle:hover {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.map-coverage-toggle--active {
+  color: #d9f7e8;
+  border-color: rgba(61, 220, 132, 0.35);
+}
+
+.map-coverage-toggle-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.map-coverage-legend {
+  position: absolute;
+  top: 132px;
+  right: 10px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 12px;
+  background: rgba(28, 33, 39, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.map-coverage-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #c5cbd3;
+}
+
+.map-coverage-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.map-coverage-legend-swatch--dashed {
+  border-style: dashed;
 }
 
 /* ── Signal layer toggle & legend ────────────────────────────── */

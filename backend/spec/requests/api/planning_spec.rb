@@ -59,11 +59,12 @@ RSpec.describe "Api::Planning", type: :request do
       expect(task_json["ao_posture"]).to eq("weapons_free")
     end
 
-    it "includes a meta block with truncated and task_count" do
+    it "includes a meta block with task and incident truncation metadata" do
       get "/api/planning", headers: auth_headers(commander)
       meta = JSON.parse(response.body)["meta"]
-      expect(meta).to include("truncated", "task_count")
+      expect(meta).to include("truncated", "task_count", "incidents_truncated", "incident_count")
       expect(meta["truncated"]).to be(false)
+      expect(meta["incidents_truncated"]).to be(false)
     end
 
     it "excludes closed incidents from open_incidents" do
@@ -73,6 +74,17 @@ RSpec.describe "Api::Planning", type: :request do
       ids = JSON.parse(response.body)["open_incidents"].map { |i| i["id"] }
       expect(ids).to include(open_inc.id)
       expect(ids).not_to include(incident.id)
+    end
+
+    it "marks incident results truncated when open incidents exceed the planning cap" do
+      create_list(:incident, 205, site: site, status: "open", severity: "critical")
+
+      get "/api/planning", headers: auth_headers(commander)
+      body = JSON.parse(response.body)
+
+      expect(body["open_incidents"].size).to eq(200)
+      expect(body.dig("meta", "incidents_truncated")).to be(true)
+      expect(body.dig("meta", "incident_count")).to eq(200)
     end
   end
 end

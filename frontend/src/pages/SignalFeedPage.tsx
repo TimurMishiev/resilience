@@ -15,7 +15,8 @@ import {
 } from '@blueprintjs/core'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { useSignalsInfinite } from '../hooks/useSignals'
+import { useSignalsInfinite, useSignalsLive } from '../hooks/useSignals'
+import { useReplayParams } from '../hooks/useReplayParams'
 import { injectSignal } from '../api/signals'
 import { getAiFilter } from '../api/ai'
 import { useRole } from '../hooks/useRole'
@@ -66,6 +67,18 @@ const SIGNAL_TYPES: SignalType[] = [
   'gps_jamming', 'wildfire', 'conflict_event', 'disaster_alert', 'manual',
 ]
 
+const LIVE_FEED_LIMITS: Partial<Record<SignalType, number>> = {
+  aircraft_position: 300,
+  vessel_position: 150,
+  seismic_event: 150,
+  gps_jamming: 150,
+  wildfire: 150,
+  conflict_event: 150,
+  disaster_alert: 150,
+  manual: 75,
+  ais_gap: 75,
+}
+
 // Fixed row height in pixels — required by the virtualizer.
 // All rows render a single line of content so this is safe.
 const ROW_HEIGHT = 40
@@ -74,8 +87,8 @@ const ROW_HEIGHT = 40
 // Helpers
 // ---------------------------------------------------------------------------
 
-function formatRelativeTime(iso: string): string {
-  const diff = (Date.now() - new Date(iso).getTime()) / 1000
+function formatRelativeTime(iso: string, referenceTimeMs: number): string {
+  const diff = Math.max(0, (referenceTimeMs - new Date(iso).getTime()) / 1000)
   if (diff < 60)   return `${Math.floor(diff)}s ago`
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
   return `${Math.floor(diff / 3600)}h ago`
@@ -189,6 +202,8 @@ function InjectDialog({ isOpen, onClose }: { isOpen: boolean; onClose: () => voi
 
 export default function SignalFeedPage() {
   const { isCommander } = useRole()
+  const { asOf, isReplaying, signalQueryParams } = useReplayParams()
+  const referenceTimeMs = asOf ? new Date(asOf).getTime() : Date.now()
 
   const [sourceFilter, setSourceFilter] = useState<SignalSource | ''>('')
   const [typeFilter,   setTypeFilter]   = useState<SignalType   | ''>('')
@@ -203,6 +218,11 @@ export default function SignalFeedPage() {
   const [nlFrom,    setNlFrom]    = useState<string | null>(null)
   const [nlTo,      setNlTo]      = useState<string | null>(null)
   const nlInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!isReplaying) return
+    setInjectOpen(false)
+  }, [isReplaying])
 
   function handleNlSearch() {
     const q = nlQuery.trim()
@@ -238,12 +258,26 @@ export default function SignalFeedPage() {
   }
 
   const filterParams = useMemo(() => ({
+    ...signalQueryParams,
     ...(sourceFilter ? { source:      sourceFilter }    : {}),
     ...(typeFilter   ? { signal_type: typeFilter }      : {}),
     ...(nlSiteId     ? { site_id:     nlSiteId }        : {}),
     ...(nlFrom       ? { from:        nlFrom }          : {}),
     ...(nlTo         ? { to:          nlTo }            : {}),
-  }), [sourceFilter, typeFilter, nlSiteId, nlFrom, nlTo])
+  }), [nlFrom, nlSiteId, nlTo, signalQueryParams, sourceFilter, typeFilter])
+
+  const isUnfilteredMode = useMemo(
+    () => !sourceFilter && !typeFilter && !nlSiteId && !nlFrom && !nlTo,
+    [nlFrom, nlSiteId, nlTo, sourceFilter, typeFilter],
+  )
+  const useStreamFeed = isUnfilteredMode && !isReplaying
+
+  const defaultSignals = useSignalsLive({
+    enabled: useStreamFeed,
+    asOf,
+    replayParams: signalQueryParams,
+    limits: LIVE_FEED_LIMITS,
+  })
 
   const {
     data,
@@ -252,15 +286,18 @@ export default function SignalFeedPage() {
     isFetchingNextPage,
     hasNextPage,
     fetchNextPage,
-  } = useSignalsInfinite(filterParams)
+  } = useSignalsInfinite(filterParams, {
+    enabled: !useStreamFeed,
+    refetchInterval: isReplaying ? false : 30_000,
+  })
 
   // Flatten all pages into a single array for the virtualizer.
   const allSignals: Signal[] = useMemo(
-    () => data?.pages.flatMap(p => p.data) ?? [],
-    [data]
+    () => useStreamFeed ? defaultSignals.signals : (data?.pages.flatMap(p => p.data) ?? []),
+    [data, defaultSignals.signals, useStreamFeed],
   )
 
-  const total = data?.pages[0]?.meta.total ?? 0
+  const total = useStreamFeed ? allSignals.length : (data?.pages[0]?.meta.total ?? 0)
 
   // ── Virtualizer setup ────────────────────────────────────────────────────
   // The scroll container is a fixed-height div wrapping the table body.
@@ -283,8 +320,8 @@ export default function SignalFeedPage() {
   const lastVirtualItem = virtualItems[virtualItems.length - 1]
 
   const fetchMore = useCallback(() => {
-    if (hasNextPage && !isFetchingNextPage) fetchNextPage()
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
+    if (!useStreamFeed && hasNextPage && !isFetchingNextPage) fetchNextPage()
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage, useStreamFeed])
 
   useEffect(() => {
     if (!lastVirtualItem) return
@@ -293,7 +330,7 @@ export default function SignalFeedPage() {
     }
   }, [lastVirtualItem, lastItemIndex, fetchMore])
 
-  if (error) {
+  if (!useStreamFeed && error) {
     return (
       <div className="page-content">
         <Callout intent="danger" title="Failed to load signals">{(error as Error).message}</Callout>
@@ -303,19 +340,23 @@ export default function SignalFeedPage() {
 
   return (
     <div className="page-content signal-feed-page">
-      <InjectDialog isOpen={injectOpen} onClose={() => setInjectOpen(false)} />
+      {!isReplaying && <InjectDialog isOpen={injectOpen} onClose={() => setInjectOpen(false)} />}
 
       {/* Header */}
       <div className="page-header">
         <h2 className="bp6-heading">Signal Feed</h2>
         <span className="bp6-text-muted">
-          {isPending
+          {useStreamFeed
+            ? defaultSignals.isPending
+              ? <span className={Classes.SKELETON} style={{ width: 64, display: 'inline-block' }}>&nbsp;</span>
+              : `${allSignals.length.toLocaleString()} recent live signals`
+            : isPending
             ? <span className={Classes.SKELETON} style={{ width: 64, display: 'inline-block' }}>&nbsp;</span>
             : allSignals.length > 0
               ? `${allSignals.length.toLocaleString()} of ${total.toLocaleString()} loaded`
               : `${total} signals`}
         </span>
-        {isCommander && (
+        {isCommander && !isReplaying && (
           <Button
             icon="lightning"
             intent="warning"
@@ -376,17 +417,27 @@ export default function SignalFeedPage() {
         )}
       </div>}
 
+      {useStreamFeed && defaultSignals.error && (
+        <Callout intent="warning" icon="warning-sign" style={{ marginBottom: 8 }}>
+          Live signal baseline sync is incomplete. Recent signals may be missing while the feed retries automatically.
+        </Callout>
+      )}
+
       {/* Empty state */}
-      {!isPending && allSignals.length === 0 && (
+      {!defaultSignals.error && !defaultSignals.isPending && !isPending && allSignals.length === 0 && (
         <NonIdealState
           icon="feed"
           title="No signals yet"
-          description="Signal ingestion starts automatically when the server boots. Aircraft (OpenSky) and seismic (USGS) data arrive within 60–300 seconds. Vessel (AIS Hub) and wildfire (NASA FIRMS) feeds require API keys in .env."
+          description={
+            useStreamFeed
+              ? 'The live stream is connected but no recent signals are in the current in-memory window yet.'
+              : 'Signal ingestion starts automatically when the server boots. Aircraft (OpenSky) and seismic (USGS) data arrive within 60–300 seconds. Vessel (AIS Hub) and wildfire (NASA FIRMS) feeds require API keys in .env.'
+          }
         />
       )}
 
       {/* Virtual table */}
-      {(isPending || allSignals.length > 0) && (
+      {(isPending || (useStreamFeed && defaultSignals.isPending) || allSignals.length > 0) && (
         <div className="signal-feed-table-wrap">
           {/* Sticky header — sits above the scroll container */}
           <table className="data-table signal-feed-table" style={{ tableLayout: 'fixed', width: '100%' }}>
@@ -420,7 +471,7 @@ export default function SignalFeedPage() {
             className="signal-feed-scroll"
             style={{ height: 560, overflow: 'auto' }}
           >
-            {isPending ? (
+            {isPending || (useStreamFeed && defaultSignals.isPending) ? (
               <table className="data-table signal-feed-table" style={{ tableLayout: 'fixed', width: '100%' }}>
                 <colgroup>
                   <col style={{ width: 110 }} />
@@ -497,7 +548,7 @@ export default function SignalFeedPage() {
                           <td className="mono">{speedOrMag(signal)}</td>
                           <td className="mono">{altOrDepth(signal)}</td>
                           <td className="mono" style={{ whiteSpace: 'nowrap' }}>
-                            {formatRelativeTime(signal.occurred_at)}
+                            {formatRelativeTime(signal.occurred_at, referenceTimeMs)}
                           </td>
                         </tr>
                       )
@@ -518,7 +569,9 @@ export default function SignalFeedPage() {
             )}
             {!isFetchingNextPage && allSignals.length > 0 && (
               <span className="bp6-text-muted" style={{ fontSize: 12 }}>
-                {hasNextPage
+                {useStreamFeed
+                  ? `${allSignals.length.toLocaleString()} recent live signals in stream window`
+                  : hasNextPage
                   ? `${allSignals.length.toLocaleString()} of ${total.toLocaleString()} · scroll for more`
                   : `All ${total.toLocaleString()} signals loaded`}
               </span>

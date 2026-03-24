@@ -12,6 +12,7 @@ import IntelChainPanel from '../components/IntelChainPanel'
 import { AssetPicker } from '../components/AssetPicker'
 import { PostureBadge } from '../components/PostureBadge'
 import { useAuth } from '../context/AuthContext'
+import { useReplay } from '../context/ReplayContext'
 import { useAssets } from '../hooks/useAssets'
 import { useTasks, useUpdateTask } from '../hooks/useTasks'
 import AuditTimeline from '../components/AuditTimeline'
@@ -194,16 +195,32 @@ export default function IncidentDetailPage() {
   const { id }    = useParams<{ id: string }>()
   const navigate  = useNavigate()
   const { currentUser } = useAuth()
+  const { isReplaying } = useReplay()
 
   const [tab,          setTab]          = useState('alerts')
   const [editingTitle, setEditingTitle] = useState(false)
   const [editingSev,   setEditingSev]   = useState(false)
 
-  const { data: incident, isPending, error } = useIncident(id)
-  const { data: txData } = useIncidentAllowedTransitions(id)
+  const { data: incident, isPending, error } = useIncident(id, { enabled: !isReplaying, refetchInterval: isReplaying ? false : 15_000 })
+  const { data: txData } = useIncidentAllowedTransitions(id, { enabled: !isReplaying, refetchInterval: isReplaying ? false : 15_000 })
   const transition = useTransitionIncident()
   const updateMut  = useUpdateIncident()
   const assign     = useAssignIncident()
+
+  if (isReplaying) {
+    return (
+      <div className="page-content">
+        <Callout intent="warning" icon="history" style={{ marginBottom: 16 }}>
+          Incident detail is unavailable during replay because incident status, assignment, notes, recommendations, and intelligence chain state are live-only.
+        </Callout>
+        <NonIdealState
+          icon="history"
+          title="Incident detail unavailable in replay"
+          description="Return to live mode to review and manage incidents."
+        />
+      </div>
+    )
+  }
 
   if (isPending) {
     return (

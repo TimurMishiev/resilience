@@ -1,19 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
-
-export interface TelemetryReading {
-  asset_id: string
-  name:     string
-  lat:      number
-  lng:      number
-  heading:  number
-  speed:    number    // m/s
-  battery:  number    // 0-100
-  ts:       number    // unix seconds
-}
-
-// Map from asset_id → latest reading
-export type TelemetryMap = Map<string, TelemetryReading>
+import { isTelemetryFresh, type TelemetryMap, type TelemetryReading } from '../lib/telemetry'
 
 /**
  * Opens a persistent SSE connection to /api/telemetry/stream.
@@ -119,6 +106,22 @@ export function useTelemetryStream(enabled = true) {
       if (retryRef.current) clearTimeout(retryRef.current)
       setConnected(false)
     }
+  }, [enabled])
+
+  useEffect(() => {
+    if (!enabled) return
+
+    const timer = setInterval(() => {
+      setReadings(prev => {
+        const next = new Map<string, TelemetryReading>()
+        for (const [assetId, reading] of prev) {
+          if (isTelemetryFresh(reading)) next.set(assetId, reading)
+        }
+        return next.size === prev.size ? prev : next
+      })
+    }, 15_000)
+
+    return () => clearInterval(timer)
   }, [enabled])
 
   return { readings, connected }

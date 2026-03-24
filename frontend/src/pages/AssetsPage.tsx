@@ -24,9 +24,12 @@ function statusIntent(status: AssetStatus): Intent {
   }
 }
 
-function stalenessLabel(asset: { last_reported_at: string | null; updated_at: string }): { label: string; intent: Intent } | null {
+function stalenessLabel(
+  asset: { last_reported_at: string | null; updated_at: string },
+  referenceTimeMs: number,
+): { label: string; intent: Intent } | null {
   const ts    = asset.last_reported_at ?? asset.updated_at
-  const ageH  = (Date.now() - new Date(ts).getTime()) / 3_600_000
+  const ageH  = Math.max(0, (referenceTimeMs - new Date(ts).getTime()) / 3_600_000)
   if (ageH < 6)  return null
   if (ageH < 24) return { label: `${Math.round(ageH)}h ago`, intent: 'warning' }
   return { label: `${Math.round(ageH / 24)}d ago`, intent: 'danger' }
@@ -37,6 +40,7 @@ const SKELETON_ROWS = 7
 export default function AssetsPage() {
   const { asOf } = useReplay()
   const params = { per_page: 100, ...(asOf ? { as_of: asOf } : {}) }
+  const referenceTimeMs = asOf ? new Date(asOf).getTime() : Date.now()
 
   const { data: assetRes, error: assetError, isPending: assetsPending } = useAssets(params)
   const { data: siteRes,  isPending: sitesPending } = useSites(params)
@@ -99,7 +103,7 @@ export default function AssetsPage() {
                   </tr>
                 ))
               : assets.map((asset) => {
-                  const staleInfo = stalenessLabel(asset)
+                  const staleInfo = stalenessLabel(asset, referenceTimeMs)
                   return (
                     <tr key={asset.id} onClick={() => setSelectedAsset(asset)} className="clickable-row">
                       <td>{asset.name}</td>

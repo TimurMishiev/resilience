@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Button,
@@ -29,7 +29,9 @@ import { useSignals } from '../hooks/useSignals'
 import { useSignalRuleMatches, useTransitionAlert, useBulkTransitionAlerts } from '../hooks/useSignalRuleMatches'
 import { useAssets } from '../hooks/useAssets'
 import { useReadiness } from '../hooks/useReadiness'
+import { useSites } from '../hooks/useSites'
 import { useRole } from '../hooks/useRole'
+import { useReplay } from '../context/ReplayContext'
 import AuditTimeline from '../components/AuditTimeline'
 import SiteTimeline from '../components/SiteTimeline'
 import AlertChainDrawer from '../components/AlertChainDrawer'
@@ -59,8 +61,8 @@ const STATUS_INTENT: Record<string, 'success' | 'warning' | 'danger' | 'none' | 
 
 // ── sub-panels ────────────────────────────────────────────────────────────────
 
-function TasksTab({ siteId, onSelect }: { siteId: string; onSelect: (task: Task) => void }) {
-  const { data, isPending, error } = useTasks({ site_id: siteId, per_page: 50 })
+function TasksTab({ siteId, asOf, onSelect }: { siteId: string; asOf?: string | null; onSelect: (task: Task) => void }) {
+  const { data, isPending, error } = useTasks({ site_id: siteId, per_page: 50, ...(asOf ? { as_of: asOf } : {}) })
 
   if (isPending) return <Spinner size={20} style={{ marginTop: 24 }} />
   if (error) return <Callout intent="danger" compact>{error.message}</Callout>
@@ -110,8 +112,8 @@ function TasksTab({ siteId, onSelect }: { siteId: string; onSelect: (task: Task)
   )
 }
 
-function SignalsTab({ siteId }: { siteId: string }) {
-  const { data, isPending, error } = useSignals({ site_id: siteId, per_page: 50 })
+function SignalsTab({ siteId, asOf }: { siteId: string; asOf?: string | null }) {
+  const { data, isPending, error } = useSignals({ site_id: siteId, per_page: 50, ...(asOf ? { as_of: asOf } : {}) }, { refetchInterval: asOf ? false : 5000 })
 
   if (isPending) return <Spinner size={20} style={{ marginTop: 24 }} />
   if (error) return <Callout intent="danger" compact>{error.message}</Callout>
@@ -203,11 +205,33 @@ const SITE_BULK_ACTIONS = [
   { to_status: 'closed',        label: 'Close',       intent: 'danger'  },
 ] as const
 
-function RuleFiresTab({ siteId, onChain }: { siteId: string; onChain: (m: SignalRuleMatch) => void }) {
-  const { data, isPending, error } = useSignalRuleMatches({ site_id: siteId, per_page: 50 })
+function RuleFiresTab({
+  siteId,
+  isReplaying,
+  onChain,
+}: {
+  siteId: string
+  isReplaying: boolean
+  onChain: (m: SignalRuleMatch) => void
+}) {
+  const { data, isPending, error } = useSignalRuleMatches(
+    { site_id: siteId, per_page: 50 },
+    { enabled: !isReplaying, refetchInterval: isReplaying ? false : 10_000 },
+  )
   const transition   = useTransitionAlert()
   const bulkTransition = useBulkTransitionAlerts()
   const [selected, setSelected] = useState<Set<string>>(new Set())
+
+  if (isReplaying) {
+    return (
+      <NonIdealState
+        icon="history"
+        title="Rule fires unavailable in replay"
+        description="Alert workflow state and geofence-breach triage are live-only and are hidden during replay."
+        className="tab-empty-state"
+      />
+    )
+  }
 
   if (isPending) return <Spinner size={20} style={{ marginTop: 24 }} />
   if (error) return <Callout intent="danger" compact>{error.message}</Callout>
@@ -382,8 +406,8 @@ function RuleFiresTab({ siteId, onChain }: { siteId: string; onChain: (m: Signal
   )
 }
 
-function AssetsTab({ siteId, onSelect }: { siteId: string; onSelect: (asset: Asset) => void }) {
-  const { data, isPending, error } = useAssets({ home_site_id: siteId, per_page: 50 })
+function AssetsTab({ siteId, asOf, onSelect }: { siteId: string; asOf?: string | null; onSelect: (asset: Asset) => void }) {
+  const { data, isPending, error } = useAssets({ home_site_id: siteId, per_page: 50, ...(asOf ? { as_of: asOf } : {}) })
 
   if (isPending) return <Spinner size={20} style={{ marginTop: 24 }} />
   if (error) return <Callout intent="danger" compact>{error.message}</Callout>
@@ -532,6 +556,7 @@ function CreateTaskDialog({ siteId, isOpen, onClose }: { siteId: string; isOpen:
 export default function SiteDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { asOf, isReplaying } = useReplay()
   const [tab, setTab]             = useState<string>('tasks')
   const [createTaskOpen, setCreateTaskOpen] = useState(false)
   const [editingGeofence, setEditingGeofence] = useState(false)
@@ -541,8 +566,14 @@ export default function SiteDetailPage() {
 
   const { isCommander } = useRole()
 
-  const { data: site, isPending, error } = useSite(id)
-  const { data: readinessData } = useReadiness()
+  const { data: liveSite, isPending: liveSitePending, error: liveSiteError } = useSite(!isReplaying ? id : undefined)
+  const replaySitesQuery = useSites({ per_page: 200, ...(asOf ? { as_of: asOf } : {}) }, isReplaying)
+  const site = isReplaying
+    ? (replaySitesQuery.data?.data.find((candidate) => candidate.id === id) ?? null)
+    : (liveSite ?? null)
+  const isPending = isReplaying ? replaySitesQuery.isPending : liveSitePending
+  const error = isReplaying ? replaySitesQuery.error : liveSiteError
+  const { data: readinessData } = useReadiness(asOf ? { as_of: asOf } : undefined)
   const readiness = readinessData?.find((r) => r.site_id === id) ?? null
   const { mutate: unflag, isPending: unflagging }           = useUnflagSite()
   const { mutate: toggleStatus, isPending: togglingStatus } = useToggleSiteStatus()
@@ -552,8 +583,17 @@ export default function SiteDetailPage() {
   // rather than data.length so the badge is accurate even when total > per_page.
   const { data: breachMatchesRes } = useSignalRuleMatches(
     id ? { site_id: id, geofence_breach: true, workflow_status: 'unacknowledged', per_page: 50 } : undefined,
+    { enabled: !isReplaying, refetchInterval: isReplaying ? false : 10_000 },
   )
-  const activeBreachCount = breachMatchesRes?.meta?.total ?? 0
+  const activeBreachCount = isReplaying ? 0 : (breachMatchesRes?.meta?.total ?? 0)
+
+  useEffect(() => {
+    if (!isReplaying) return
+    setCreateTaskOpen(false)
+    setEditingGeofence(false)
+    setChainMatch(null)
+    if (tab === 'timeline') setTab('tasks')
+  }, [isReplaying, tab])
 
   if (isPending) {
     return (
@@ -585,15 +625,19 @@ export default function SiteDetailPage() {
 
   return (
     <div className="page-content site-detail">
-      <CreateTaskDialog
-        siteId={site.id}
-        isOpen={createTaskOpen}
-        onClose={() => setCreateTaskOpen(false)}
-      />
-      <AlertChainDrawer
-        match={chainMatch}
-        onClose={() => setChainMatch(null)}
-      />
+      {!isReplaying && (
+        <CreateTaskDialog
+          siteId={site.id}
+          isOpen={createTaskOpen}
+          onClose={() => setCreateTaskOpen(false)}
+        />
+      )}
+      {!isReplaying && (
+        <AlertChainDrawer
+          match={chainMatch}
+          onClose={() => setChainMatch(null)}
+        />
+      )}
       <Drawer
         isOpen={entityCard !== null}
         onClose={() => setEntityCard(null)}
@@ -628,7 +672,7 @@ export default function SiteDetailPage() {
             <Tag minimal intent="danger" icon="flag" title={site.flag_reason ?? 'Flagged'}>
               flagged
             </Tag>
-            {isCommander && (
+            {isCommander && !isReplaying && (
               <Button
                 icon="flag"
                 intent="danger"
@@ -645,7 +689,7 @@ export default function SiteDetailPage() {
         )}
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
-          {isCommander && (
+          {isCommander && !isReplaying && (
             <Button
               icon={site.status === 'active' ? 'pause' : 'play'}
               minimal
@@ -665,6 +709,12 @@ export default function SiteDetailPage() {
           )}
         </div>
       </div>
+
+      {isReplaying && (
+        <Callout intent="warning" icon="history" compact style={{ marginBottom: 12 }}>
+          Risk trends, geofence-breach workflow, rule-fire triage, audit trail, and site mutations are hidden during replay because those features are only available as live state.
+        </Callout>
+      )}
 
       {/* ── geofence breach callout ── */}
       {activeBreachCount > 0 && site.geofence_radius_km > 0 && (
@@ -693,7 +743,7 @@ export default function SiteDetailPage() {
         {/* Geofence radius */}
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 12 }}>
           <Icon icon="locate" size={12} style={{ opacity: 0.6 }} />
-          {isCommander && editingGeofence ? (
+          {isCommander && !isReplaying && editingGeofence ? (
             <>
               <InputGroup
                 small
@@ -723,7 +773,7 @@ export default function SiteDetailPage() {
               <span className="bp6-text-muted" style={{ fontSize: 12 }}>
                 Geofence {site.geofence_radius_km} km
               </span>
-              {isCommander && (
+              {isCommander && !isReplaying && (
                 <Button
                   icon="edit"
                   minimal
@@ -753,7 +803,7 @@ export default function SiteDetailPage() {
       </div>
 
       {/* ── risk trend chart ── */}
-      <RiskScoreChart siteId={site.id} />
+      {!isReplaying && <RiskScoreChart siteId={site.id} />}
 
       {/* ── tabs ── */}
       <Tabs
@@ -765,20 +815,20 @@ export default function SiteDetailPage() {
         <Tab id="tasks" title={
           <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             Tasks
-            <Button
+            {!isReplaying && <Button
               icon="plus"
               minimal
               small
               intent="primary"
               onClick={e => { e.stopPropagation(); setCreateTaskOpen(true) }}
               title="New task for this site"
-            />
+            />}
           </span>
-        } panel={<TasksTab siteId={site.id} onSelect={(t) => setEntityCard({ type: 'task', id: t.id, title: t.title })} />} />
-        <Tab id="signals" title="Signals" panel={<SignalsTab siteId={site.id} />} />
-        <Tab id="rule_fires" title="Rule Fires" panel={<RuleFiresTab siteId={site.id} onChain={setChainMatch} />} />
-        <Tab id="assets" title="Assets" panel={<AssetsTab siteId={site.id} onSelect={(a) => setEntityCard({ type: 'asset', id: a.id, title: a.name })} />} />
-        <Tab id="timeline" title={
+        } panel={<TasksTab siteId={site.id} asOf={asOf} onSelect={(t) => setEntityCard({ type: 'task', id: t.id, title: t.title })} />} />
+        <Tab id="signals" title="Signals" panel={<SignalsTab siteId={site.id} asOf={asOf} />} />
+        <Tab id="rule_fires" title="Rule Fires" panel={<RuleFiresTab siteId={site.id} isReplaying={isReplaying} onChain={setChainMatch} />} />
+        <Tab id="assets" title="Assets" panel={<AssetsTab siteId={site.id} asOf={asOf} onSelect={(a) => setEntityCard({ type: 'asset', id: a.id, title: a.name })} />} />
+        {!isReplaying && <Tab id="timeline" title={
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <span>Timeline</span>
             <span style={{
@@ -786,11 +836,20 @@ export default function SiteDetailPage() {
               borderRadius: 3, padding: '1px 4px', fontWeight: 700, letterSpacing: '0.03em'
             }}>NEW</span>
           </span>
-        } panel={<SiteTimeline siteId={site.id} />} />
+        } panel={<SiteTimeline siteId={site.id} />} />}
         <Tab id="audit" title="Audit Trail" panel={
-          <div style={{ paddingTop: 12 }}>
-            <AuditTimeline entityType="Site" entityId={site.id} />
-          </div>
+          isReplaying ? (
+            <NonIdealState
+              icon="history"
+              title="Audit trail unavailable in replay"
+              description="Site audit events are currently live-only and are hidden during replay to avoid mixing present-time changes into a historical snapshot."
+              className="tab-empty-state"
+            />
+          ) : (
+            <div style={{ paddingTop: 12 }}>
+              <AuditTimeline entityType="Site" entityId={site.id} />
+            </div>
+          )
         } />
       </Tabs>
     </div>

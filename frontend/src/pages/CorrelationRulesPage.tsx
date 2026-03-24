@@ -30,6 +30,7 @@ import { useAreasOfOperation } from '../hooks/useAreasOfOperation'
 import { dryRunRule } from '../api/correlation_rules'
 import type { DryRunResult } from '../api/correlation_rules'
 import { useRole } from '../hooks/useRole'
+import { useReplay } from '../context/ReplayContext'
 import type { CorrelationRule, SignalType, TaskPriority, RuleConditions } from '../api/types'
 import { isCompoundRule } from '../api/types'
 import { RuleSparkline } from '../components/RuleSparkline'
@@ -485,16 +486,17 @@ function CompoundBuilder({
 
 export default function CorrelationRulesPage() {
   const { isCommander } = useRole()
+  const { isReplaying } = useReplay()
 
-  const { data, error, isPending } = useCorrelationRules()
-  const { data: matchesData }      = useSignalRuleMatches({ per_page: 5 })
-  const { data: effectivenessData } = useRuleEffectiveness()
+  const { data, error, isPending } = useCorrelationRules(undefined, { enabled: !isReplaying })
+  const { data: matchesData }      = useSignalRuleMatches({ per_page: 5 }, { enabled: !isReplaying })
+  const { data: effectivenessData } = useRuleEffectiveness({ enabled: !isReplaying })
 
   const createMutation = useCreateCorrelationRule()
   const updateMutation = useUpdateCorrelationRule()
   const deleteMutation = useDeleteCorrelationRule()
 
-  const { data: aosData } = useAreasOfOperation()
+  const { data: aosData } = useAreasOfOperation(undefined, { enabled: !isReplaying })
   const aoList    = aosData?.data ?? []
   const aoByIdMap = useMemo(
     () => new Map((aosData?.data ?? []).map(ao => [ao.id, ao.name])),
@@ -519,6 +521,21 @@ export default function CorrelationRulesPage() {
 
   const rules   = data?.data ?? []
   const matches = matchesData?.data ?? []
+
+  if (isReplaying) {
+    return (
+      <div className="page-content">
+        <Callout intent="warning" icon="history" style={{ marginBottom: 16 }}>
+          Correlation rules are unavailable during replay because rule definitions, recent matches, and effectiveness analytics are only available as live alert-engine state.
+        </Callout>
+        <NonIdealState
+          icon="flows"
+          title="Correlation rules unavailable in replay"
+          description="Historical alert-engine configuration and analytics are not replay-scoped, so this console is fail-closed during replay."
+        />
+      </div>
+    )
+  }
 
   if (error) {
     return (

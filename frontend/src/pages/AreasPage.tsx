@@ -22,6 +22,7 @@ import {
 import { useSites } from '../hooks/useSites'
 import { useCorrelationRules } from '../hooks/useCorrelationRules'
 import { useRole } from '../hooks/useRole'
+import { useReplay } from '../context/ReplayContext'
 import { PostureSelector } from '../components/PostureSelector'
 import { PostureBadge } from '../components/PostureBadge'
 import type { AreaOfOperation, ThreatLevel } from '../api/types'
@@ -80,10 +81,11 @@ function formFromArea(area: AreaOfOperation): AreaFormState {
 // ── AreasPage ─────────────────────────────────────────────────────────────────
 export default function AreasPage() {
   const { isCommander } = useRole()
+  const { isReplaying } = useReplay()
 
-  const areasQuery = useAreasOfOperation({ per_page: 200 })
-  const sitesQuery = useSites({ per_page: 200 })
-  const rulesQuery = useCorrelationRules()
+  const areasQuery = useAreasOfOperation({ per_page: 200 }, { enabled: !isReplaying })
+  const sitesQuery = useSites({ per_page: 200 }, !isReplaying)
+  const rulesQuery = useCorrelationRules(undefined, { enabled: !isReplaying })
 
   const createArea = useCreateAreaOfOperation()
   const updateArea = useUpdateAreaOfOperation()
@@ -186,6 +188,24 @@ export default function AreasPage() {
   const isPending = createArea.isPending || updateArea.isPending
 
   // ── Render ──────────────────────────────────────────────────────────────────
+  if (isReplaying) {
+    return (
+      <div className="page-content">
+        <div className="page-header">
+          <h2 className="bp6-heading">Areas of Operation</h2>
+        </div>
+        <Callout intent="warning" icon="history" style={{ marginBottom: 16 }}>
+          Areas of operation are unavailable during replay because AO posture, geometry, and rule membership are only represented as live control-plane state.
+        </Callout>
+        <NonIdealState
+          icon="polygon-filter"
+          title="Areas of Operation unavailable in replay"
+          description="Historical AO configuration is not replay-scoped, so the console is fail-closed to avoid mixing live posture and configuration into historical views."
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="page-content">
       {/* Header */}

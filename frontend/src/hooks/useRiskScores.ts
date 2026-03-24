@@ -1,10 +1,16 @@
 import { useQuery } from '@tanstack/react-query'
 import { getRiskScores } from '../api/riskScores'
 
-export function useRiskScores() {
+interface UseRiskScoresOptions {
+  enabled?: boolean
+  refetchInterval?: number | false
+}
+
+export function useRiskScores(options?: UseRiskScoresOptions) {
   return useQuery({
     queryKey: ['risk_scores'],
     queryFn:  getRiskScores,
-    refetchInterval: 60_000, // risk scores are heavier to compute — refresh every 60s
+    enabled: options?.enabled ?? true,
+    refetchInterval: options?.refetchInterval ?? 60_000, // risk scores are heavier to compute — refresh every 60s
   })
 }

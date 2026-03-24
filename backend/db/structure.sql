@@ -320,6 +320,23 @@ CREATE TABLE public.tasks (
 
 
 --
+-- Name: telemetry_readings; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.telemetry_readings (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    asset_id uuid NOT NULL,
+    lat double precision NOT NULL,
+    lng double precision NOT NULL,
+    speed double precision,
+    heading double precision,
+    battery double precision,
+    occurred_at timestamp(6) without time zone NOT NULL,
+    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: users; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -484,6 +501,14 @@ ALTER TABLE ONLY public.sites
 
 ALTER TABLE ONLY public.tasks
     ADD CONSTRAINT tasks_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: telemetry_readings telemetry_readings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.telemetry_readings
+    ADD CONSTRAINT telemetry_readings_pkey PRIMARY KEY (id);
 
 
 --
@@ -826,6 +851,20 @@ CREATE INDEX index_tasks_on_workflow_status ON public.tasks USING btree (workflo
 
 
 --
+-- Name: index_telemetry_readings_on_asset_id_and_occurred_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_telemetry_readings_on_asset_id_and_occurred_at ON public.telemetry_readings USING btree (asset_id, occurred_at DESC);
+
+
+--
+-- Name: index_telemetry_readings_on_occurred_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_telemetry_readings_on_occurred_at ON public.telemetry_readings USING btree (occurred_at);
+
+
+--
 -- Name: index_users_on_email; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1040,6 +1079,14 @@ ALTER TABLE ONLY public.incidents
 
 
 --
+-- Name: telemetry_readings fk_rails_d477387a3c; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.telemetry_readings
+    ADD CONSTRAINT fk_rails_d477387a3c FOREIGN KEY (asset_id) REFERENCES public.assets(id) ON DELETE CASCADE;
+
+
+--
 -- Name: correlation_rules fk_rails_df82305965; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1078,6 +1125,7 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260324000100'),
 ('20260323200001'),
 ('20260323100001'),
 ('20260323100000'),

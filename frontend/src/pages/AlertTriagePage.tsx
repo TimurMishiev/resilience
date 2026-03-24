@@ -17,6 +17,7 @@ import { SIGNAL_ICON_NAME } from '../lib/signalIcons'
 import { Icon } from '@blueprintjs/core'
 import type { AlertStatus, SignalRuleMatch } from '../api/types'
 import { humanize } from '../utils/humanize'
+import { useReplay } from '../context/ReplayContext'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -219,6 +220,7 @@ function AlertRow({ match: m, isChecked, someSelected, onCheck, rowIndex, onChai
 // ── AlertTriagePage ───────────────────────────────────────────────────────────
 
 export default function AlertTriagePage() {
+  const { isReplaying } = useReplay()
   const [statusFilter,  setStatusFilter]  = useState('unacknowledged')
   const [selectedIds,   setSelectedIds]   = useState<Set<string>>(new Set())
   // Bulk close confirmation dialog state
@@ -238,6 +240,9 @@ export default function AlertTriagePage() {
     isFetchingNextPage,
   } = useSignalRuleMatchesInfinite({
     workflow_status: (statusFilter || undefined) as AlertStatus | undefined,
+  }, {
+    enabled: !isReplaying,
+    refetchInterval: isReplaying ? false : 15_000,
   })
 
   // Flatten pages into a single array; stable reference via useMemo
@@ -309,6 +314,21 @@ export default function AlertTriagePage() {
 
   return (
     <div className="page-content">
+      {isReplaying && (
+        <>
+          <Callout intent="warning" icon="history" style={{ marginBottom: 16 }}>
+            Alert triage is unavailable during replay because alert workflow state is live-only and not replay-scoped.
+          </Callout>
+          <NonIdealState
+            icon="history"
+            title="Alert triage unavailable in replay"
+            description="Return to live mode to review and transition active alerts."
+          />
+        </>
+      )}
+
+      {!isReplaying && (
+        <>
       {/* ── Header ── */}
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <h2 className="bp6-heading" style={{ margin: 0 }}>Alert Triage</h2>
@@ -459,6 +479,8 @@ export default function AlertTriagePage() {
       </Alert>
 
       <AlertChainDrawer match={chainMatch} onClose={() => setChainMatch(null)} />
+        </>
+      )}
     </div>
   )
 }

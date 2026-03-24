@@ -2,6 +2,7 @@ import { Icon, Menu, MenuItem } from '@blueprintjs/core'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useRole } from '../../hooks/useRole'
 import type { IconName } from '@blueprintjs/icons'
+import { preloadGlobeExperience, preloadMapExperience } from '../../lib/preloadRoutes'
 
 const BOTTOM_NAV_TABS: { icon: IconName; label: string; path: string }[] = [
   { icon: 'dashboard',    label: 'Dashboard', path: '/dashboard' },
@@ -16,10 +17,15 @@ function LockLabel() {
   return <Icon icon="lock" size={10} className="shell-menu-lock" />
 }
 
+const ignorePreloadFailure = () => {}
+
 export function AppSidebar() {
   const navigate     = useNavigate()
   const { pathname } = useLocation()
   const { isCommander } = useRole()
+
+  const preloadMap = () => { void preloadMapExperience().catch(ignorePreloadFailure) }
+  const preloadGlobe = () => { void preloadGlobeExperience().catch(ignorePreloadFailure) }
 
   return (
     <nav className="shell-sidebar">
@@ -31,9 +37,23 @@ export function AppSidebar() {
         <MenuItem icon="notifications"      text="Alert Triage"    active={pathname.startsWith('/alerts')}          onClick={() => navigate('/alerts')} />
         <MenuItem icon="lightbulb"          text="Recommendations" active={pathname.startsWith('/recommendations')} onClick={() => navigate('/recommendations')} />
         <MenuItem icon="cube"               text="Assets"          active={pathname.startsWith('/assets')}          onClick={() => navigate('/assets')} />
-        <MenuItem icon="globe"              text="Map"             active={pathname.startsWith('/map')}             onClick={() => navigate('/map')} />
+        <MenuItem
+          icon="globe"
+          text="Map"
+          active={pathname.startsWith('/map')}
+          onClick={() => navigate('/map')}
+          onMouseEnter={preloadMap}
+          onFocus={preloadMap}
+        />
         <MenuItem icon="graph"              text="Graph"           active={pathname.startsWith('/graph')}           onClick={() => navigate('/graph')} />
-        <MenuItem icon="globe-network"      text="Globe"           active={pathname.startsWith('/globe')}           onClick={() => navigate('/globe')} />
+        <MenuItem
+          icon="globe-network"
+          text="Globe"
+          active={pathname.startsWith('/globe')}
+          onClick={() => navigate('/globe')}
+          onMouseEnter={preloadGlobe}
+          onFocus={preloadGlobe}
+        />
         <MenuItem
           icon="predictive-analysis"
           text="Briefing"
@@ -68,6 +88,14 @@ export function AppBottomNav() {
   const navigate     = useNavigate()
   const { pathname } = useLocation()
 
+  function handlePreload(path: string) {
+    if (path === '/map') {
+      void preloadMapExperience().catch(ignorePreloadFailure)
+    } else if (path === '/globe') {
+      void preloadGlobeExperience().catch(ignorePreloadFailure)
+    }
+  }
+
   return (
     <nav className="shell-bottom-nav" aria-label="Main navigation">
       {BOTTOM_NAV_TABS.map(tab => (
@@ -75,6 +103,8 @@ export function AppBottomNav() {
           key={tab.path}
           className={`shell-tab ${pathname.startsWith(tab.path) ? 'shell-tab--active' : ''}`}
           onClick={() => navigate(tab.path)}
+          onMouseEnter={() => handlePreload(tab.path)}
+          onFocus={() => handlePreload(tab.path)}
           aria-label={tab.label}
           aria-current={pathname.startsWith(tab.path) ? 'page' : undefined}
         >

@@ -1,6 +1,8 @@
 require "rails_helper"
 
 RSpec.describe Signals::IngestService do
+  let(:broadcaster) { instance_double(Signals::Broadcaster, publish: true) }
+
   let(:base_attrs) do
     {
       source:      "usgs_seismic",
@@ -14,6 +16,10 @@ RSpec.describe Signals::IngestService do
   end
 
   describe "#call" do
+    before do
+      allow(Signals::Broadcaster).to receive(:instance).and_return(broadcaster)
+    end
+
     context "first ingestion" do
       it "returns success" do
         result = described_class.call(**base_attrs)
@@ -38,6 +44,18 @@ RSpec.describe Signals::IngestService do
         expect(signal.lat.to_f).to    be_within(0.001).of(37.5)
         expect(signal.lng.to_f).to    be_within(0.001).of(-118.2)
       end
+
+      it "publishes the normalized signal payload to the live broadcaster" do
+        described_class.call(**base_attrs)
+
+        expect(broadcaster).to have_received(:publish).with(
+          hash_including(
+            "source" => "usgs_seismic",
+            "signal_type" => "seismic_event",
+            "external_id" => "us2024abc",
+          )
+        )
+      end
     end
 
     context "duplicate ingestion (same source + external_id + occurred_at)" do
@@ -55,6 +73,12 @@ RSpec.describe Signals::IngestService do
       it "marks the result as not created" do
         result = described_class.call(**base_attrs)
         expect(result.payload[:created]).to be false
+      end
+
+      it "does not republish the duplicate signal" do
+        described_class.call(**base_attrs)
+
+        expect(broadcaster).to have_received(:publish).once
       end
     end
 

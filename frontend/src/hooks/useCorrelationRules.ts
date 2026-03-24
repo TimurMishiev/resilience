@@ -8,10 +8,15 @@ import {
 } from '../api/correlation_rules'
 import type { CreateCorrelationRuleBody, UpdateCorrelationRuleBody } from '../api/types'
 
-export function useCorrelationRules(params?: { active_only?: boolean }) {
+interface QueryOptions {
+  enabled?: boolean
+}
+
+export function useCorrelationRules(params?: { active_only?: boolean }, options?: QueryOptions) {
   return useQuery({
     queryKey: ['correlation_rules', params],
     queryFn: () => getCorrelationRules(params),
+    enabled: options?.enabled ?? true,
   })
 }
 
@@ -48,10 +53,11 @@ export function useDeleteCorrelationRule() {
 
 // Returns per-rule effectiveness stats indexed by rule_id.
 // Fetched once per page load; stale after 5 minutes (analytics are not real-time).
-export function useRuleEffectiveness() {
+export function useRuleEffectiveness(options?: QueryOptions) {
   return useQuery({
     queryKey: ['correlation_rules', 'effectiveness'],
     queryFn:  getRuleEffectiveness,
+    enabled: options?.enabled ?? true,
     staleTime: 5 * 60 * 1000,
   })
 }

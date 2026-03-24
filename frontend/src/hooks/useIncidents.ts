@@ -6,29 +6,35 @@ import {
 } from '../api/incidents'
 import type { IncidentParams, IncidentStatus, Incident } from '../api/incidents'
 
-export function useIncidents(params?: IncidentParams) {
+interface IncidentQueryOptions {
+  enabled?: boolean
+  refetchInterval?: number | false
+}
+
+export function useIncidents(params?: IncidentParams, options?: IncidentQueryOptions) {
   return useQuery({
     queryKey: ['incidents', params],
     queryFn:  () => getIncidents(params),
-    refetchInterval: 15_000,
+    enabled: options?.enabled ?? true,
+    refetchInterval: options?.refetchInterval ?? 15_000,
   })
 }
 
-export function useIncident(id: string | undefined) {
+export function useIncident(id: string | undefined, options?: IncidentQueryOptions) {
   return useQuery({
     queryKey: ['incidents', id],
     queryFn:  () => getIncident(id!),
-    enabled:  Boolean(id),
-    refetchInterval: 15_000,
+    enabled:  Boolean(id) && (options?.enabled ?? true),
+    refetchInterval: options?.refetchInterval ?? 15_000,
   })
 }
 
-export function useIncidentAllowedTransitions(id: string | undefined) {
+export function useIncidentAllowedTransitions(id: string | undefined, options?: IncidentQueryOptions) {
   return useQuery({
     queryKey: ['incident-transitions', id],
     queryFn:  () => getIncidentAllowedTransitions(id!),
-    enabled:  Boolean(id),
-    refetchInterval: 15_000,
+    enabled:  Boolean(id) && (options?.enabled ?? true),
+    refetchInterval: options?.refetchInterval ?? 15_000,
   })
 }
 
@@ -75,12 +81,12 @@ export function useAssignIncident(callbacks?: MutationCallbacks<{ id: string; as
   })
 }
 
-export function useIncidentNotes(id: string | undefined) {
+export function useIncidentNotes(id: string | undefined, options?: IncidentQueryOptions) {
   return useQuery({
     queryKey: ['incident-notes', id],
     queryFn:  () => getIncidentNotes(id!),
-    enabled:  Boolean(id),
-    refetchInterval: 30_000,
+    enabled:  Boolean(id) && (options?.enabled ?? true),
+    refetchInterval: options?.refetchInterval ?? 30_000,
   })
 }
 
@@ -95,11 +101,11 @@ export function useAddIncidentNote() {
   })
 }
 
-export function useIncidentChain(id: string | undefined) {
+export function useIncidentChain(id: string | undefined, options?: IncidentQueryOptions) {
   return useQuery({
     queryKey: ['incident-chain', id],
     queryFn:  () => getIncidentChain(id!),
-    enabled:  Boolean(id),
-    refetchInterval: 30_000,
+    enabled:  Boolean(id) && (options?.enabled ?? true),
+    refetchInterval: options?.refetchInterval ?? 30_000,
   })
 }

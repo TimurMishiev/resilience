@@ -58,8 +58,8 @@ function GroundingBadge({ counts }: { counts: AiSummaryResult['context_counts'] 
 // ── main component ────────────────────────────────────────────────────────────
 
 export default function BriefingPanel() {
-  const { asOf }  = useReplay()
-  const { data: sitesData } = useSites({ per_page: 100 })
+  const { asOf, isReplaying }  = useReplay()
+  const { data: sitesData } = useSites({ per_page: 100 }, !isReplaying)
   const sites     = sitesData?.data ?? []
 
   const [summaryType, setSummaryType] = useState<AiSummaryType>('leadership_briefing')
@@ -78,6 +78,16 @@ export default function BriefingPanel() {
     mountedRef.current = true
     return () => { mountedRef.current = false }
   }, [])
+
+  if (isReplaying) {
+    return (
+      <div className="briefing-panel">
+        <Callout intent="warning" icon="history" style={{ marginBottom: 12 }}>
+          Operational briefings are unavailable during replay because briefing generation still depends on live signal and rule-fire context that is not replay-scoped.
+        </Callout>
+      </div>
+    )
+  }
 
   function generate() {
     setLoading(true)

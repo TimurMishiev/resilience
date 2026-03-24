@@ -9,14 +9,18 @@ import {
   Tag,
 } from '@blueprintjs/core'
 import { usePlanning } from '../hooks/usePlanning'
+import { useSites } from '../hooks/useSites'
 import { useUpdateTask } from '../hooks/useTasks'
 import { useRole } from '../hooks/useRole'
 import { useNavigate } from 'react-router-dom'
 import { PostureBadge } from '../components/PostureBadge'
 import { AssetPicker } from '../components/AssetPicker'
 import EntityCard from '../components/EntityCard'
+import { useReplay } from '../context/ReplayContext'
 import { humanize } from '../utils/humanize'
 import { computeFlags } from '../utils/planningFlags'
+import { buildCoverageCircles, coverageBySite } from '../lib/coverage'
+import { useTelemetry } from '../hooks/useTelemetry'
 import type { Posture, TaskPriority } from '../api/types'
 import type { EntityType } from '../components/EntityCard'
 
@@ -36,9 +40,12 @@ const PRIORITY_INTENT: Record<TaskPriority, 'danger' | 'warning' | 'primary' | '
 
 export default function PlanningPage() {
   const { isCommander } = useRole()
+  const { isReplaying } = useReplay()
   const navigate = useNavigate()
-  const { data, isLoading, isError } = usePlanning()
+  const { data, isLoading, isError } = usePlanning(isCommander && !isReplaying)
+  const sitesQuery = useSites({ per_page: 200 }, isCommander && !isReplaying)
   const updateTask = useUpdateTask()
+  const { readings } = useTelemetry(isCommander && !isReplaying)
 
   // Per-row pending asset selection — keyed by task id
   const [pendingAssets, setPendingAssets] = useState<Record<string, string | null | undefined>>({})
@@ -51,8 +58,9 @@ export default function PlanningPage() {
     assets         = [],
     areas_of_operation = [],
     open_incidents = [],
-    meta           = { truncated: false, task_count: 0 },
+    meta           = { truncated: false, task_count: 0, incidents_truncated: false, incident_count: 0 },
   } = data ?? {}
+  const sites = sitesQuery.data?.data ?? []
 
   // ── Derived values (dataset is small; no memoization needed) ────────────
 
@@ -100,6 +108,26 @@ export default function PlanningPage() {
   // Only assets that currently have at least one open task, sorted by name
   const allocatedAssets = assets.filter(a => assetTaskMap.has(a.id))
 
+  const coverageCircles = buildCoverageCircles({ assets, tasks, sites, readings, allowHistoricalTelemetry: isReplaying })
+  const siteCoverage = coverageBySite(sites, coverageCircles)
+  const areasById = new Map(areas_of_operation.map(ao => [ao.id, ao]))
+
+  const siteCoverageRows = sites
+    .map(site => {
+      const circles = siteCoverage.get(site.id) ?? []
+      const openSiteTasks = tasks.filter(task => task.site_id === site.id && task.workflow_status !== 'resolved')
+      const area = site.area_of_operation_id ? areasById.get(site.area_of_operation_id) : null
+      const criticalGap = circles.length === 0 && openSiteTasks.some(task => task.priority === 'critical' || task.priority === 'high')
+      return {
+        site,
+        area,
+        circles,
+        openTaskCount: openSiteTasks.length,
+        criticalGap,
+      }
+    })
+    .sort((a, b) => Number(b.criticalGap) - Number(a.criticalGap) || a.site.name.localeCompare(b.site.name))
+
   // ── Early returns (after all hooks) ─────────────────────────────────────
   if (!isCommander) {
     return (
@@ -111,8 +139,23 @@ export default function PlanningPage() {
     )
   }
 
-  if (isLoading) return <NonIdealState icon={<Spinner />} title="Loading planning data…" />
-  if (isError || !data) return <NonIdealState icon="error" title="Failed to load planning data" />
+  if (isReplaying) {
+    return (
+      <div style={{ padding: '20px 24px', maxWidth: 960 }}>
+        <Callout intent="warning" icon="history" style={{ marginBottom: 16 }}>
+          Operational planning is unavailable during replay because the planning dataset, AO posture state, and task-allocation workflow are live-only.
+        </Callout>
+        <NonIdealState
+          icon="timeline-events"
+          title="Planning unavailable in replay"
+          description="Replay mode does not yet support historical planning snapshots or safe task-allocation actions."
+        />
+      </div>
+    )
+  }
+
+  if (isLoading || sitesQuery.isLoading) return <NonIdealState icon={<Spinner />} title="Loading planning data…" />
+  if (isError || sitesQuery.isError || !data) return <NonIdealState icon="error" title="Failed to load planning data" />
 
   function handlePendingChange(taskId: string, assetId: string | null) {
     setPendingAssets(prev => ({ ...prev, [taskId]: assetId }))
@@ -162,6 +205,12 @@ export default function PlanningPage() {
       {meta.truncated && (
         <Callout intent="warning" icon="warning-sign" compact style={{ marginBottom: 16 }}>
           Showing first 500 tasks — some tasks may not be visible.
+        </Callout>
+      )}
+
+      {meta.incidents_truncated && (
+        <Callout intent="warning" icon="warning-sign" compact style={{ marginBottom: 16 }}>
+          Showing first 200 open incidents — overcommitment warnings may be incomplete.
         </Callout>
       )}
 
@@ -288,6 +337,61 @@ export default function PlanningPage() {
                     </tr>
                   )
                 })}
+              </tbody>
+            </HTMLTable>
+          </>
+        )}
+
+        {siteCoverageRows.length > 0 && (
+          <>
+            <h3 className="bp6-heading" style={{ fontSize: 14, marginBottom: 10, marginTop: 20, color: 'var(--bp6-text-muted-color)' }}>
+              LIVE / PROJECTED SITE SENSOR COVERAGE
+            </h3>
+            <HTMLTable compact bordered style={{ width: '100%', maxWidth: 980 }}>
+              <thead>
+                <tr>
+                  <th>Site</th>
+                  <th>AO / Posture</th>
+                  <th style={{ textAlign: 'right' }}>Open Tasks</th>
+                  <th>Coverage</th>
+                  <th>Projected From</th>
+                </tr>
+              </thead>
+              <tbody>
+                {siteCoverageRows.map(({ site, area, circles, openTaskCount, criticalGap }) => (
+                  <tr key={site.id} style={criticalGap ? { background: 'rgba(219,55,55,0.08)' } : undefined}>
+                    <td style={{ fontWeight: 500 }}>{site.name}</td>
+                    <td>
+                      {area ? <PostureBadge posture={area.posture} /> : <span className="bp6-text-muted" style={{ fontSize: 11 }}>No AO</span>}
+                    </td>
+                    <td style={{ textAlign: 'right' }}>{openTaskCount}</td>
+                    <td>
+                      {circles.length === 0 ? (
+                        <Tag minimal intent={criticalGap ? 'danger' : 'warning'} style={{ fontSize: 11 }}>
+                          {criticalGap ? 'Uncovered critical gap' : 'Uncovered'}
+                        </Tag>
+                      ) : (
+                        <>
+                          <Tag minimal intent="success" style={{ fontSize: 11, marginRight: 6 }}>
+                            Covered by {circles.length}
+                          </Tag>
+                          {circles.some(circle => circle.status === 'degraded') && (
+                            <Tag minimal intent="warning" style={{ fontSize: 11 }}>
+                              degraded footprint
+                            </Tag>
+                          )}
+                        </>
+                      )}
+                    </td>
+                    <td className="bp6-text-muted" style={{ fontSize: 12 }}>
+                      {circles.length === 0
+                        ? '—'
+                        : circles.slice(0, 3).map(circle => `${circle.assetName} @ ${circle.anchorLabel}`).join(' · ')
+                      }
+                      {circles.length > 3 && ` · +${circles.length - 3} more`}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </HTMLTable>
           </>

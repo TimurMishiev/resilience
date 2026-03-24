@@ -4,7 +4,7 @@ import { Button, Callout, Divider, Spinner, Tag } from '@blueprintjs/core'
 import { useSites } from '../hooks/useSites'
 import { useTasks } from '../hooks/useTasks'
 import { useAssets } from '../hooks/useAssets'
-import { useReplay } from '../context/ReplayContext'
+import { useReplayParams } from '../hooks/useReplayParams'
 import type { Site, Task, Asset, WorkflowStatus } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
 import { humanize } from '../utils/humanize'
@@ -252,8 +252,7 @@ function DetailPanel({ node, onClose }: PanelProps) {
 // GraphPage
 // ---------------------------------------------------------------------------
 export default function GraphPage() {
-  const { asOf } = useReplay()
-  const asOfParam = asOf ? { as_of: asOf } : {}
+  const { asOfParam } = useReplayParams()
 
   const sitesQuery  = useSites({ per_page: 200, ...asOfParam })
   const tasksQuery  = useTasks({ per_page: 200, ...asOfParam })

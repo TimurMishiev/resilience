@@ -75,12 +75,17 @@ module Telemetry
 
     def tick
       return if @state.nil? || @state.empty?
-      return if Telemetry::Broadcaster.instance.subscriber_count.zero?
+
+      occurred_at = Time.current
+      rows = []
 
       @state.each do |s|
         update_asset!(s)
-        publish(s)
+        rows << build_row(s, occurred_at)
       end
+
+      persist!(rows, occurred_at)
+      publish(rows) unless Telemetry::Broadcaster.instance.subscriber_count.zero?
     end
 
     def update_asset!(s)
@@ -103,17 +108,51 @@ module Telemetry
       s.battery = clamp(s.battery + 0.5, 0.0, 100.0) if s.battery < 10.0
     end
 
-    def publish(s)
-      Telemetry::Broadcaster.instance.publish(
-        asset_id: s.id,
-        name:     s.name,
-        lat:      s.lat.round(6),
-        lng:      s.lng.round(6),
-        heading:  s.heading,
-        speed:    s.speed.round(1),
-        battery:  s.battery.round(1),
-        ts:       Time.current.to_i,
+    def build_row(s, occurred_at)
+      {
+        asset_id:    s.id,
+        name:        s.name,
+        lat:         s.lat.round(6),
+        lng:         s.lng.round(6),
+        heading:     s.heading,
+        speed:       s.speed.round(1),
+        battery:     s.battery.round(1),
+        occurred_at: occurred_at,
+      }
+    end
+
+    def persist!(rows, occurred_at)
+      TelemetryReading.insert_all!(
+        rows.map do |row|
+          {
+            asset_id:    row[:asset_id],
+            lat:         row[:lat],
+            lng:         row[:lng],
+            heading:     row[:heading],
+            speed:       row[:speed],
+            battery:     row[:battery],
+            occurred_at: row[:occurred_at],
+            created_at:  occurred_at,
+          }
+        end
       )
+
+      Asset.where(id: rows.map { |row| row[:asset_id] }).update_all(last_reported_at: occurred_at)
+    end
+
+    def publish(rows)
+      rows.each do |row|
+        Telemetry::Broadcaster.instance.publish(
+          asset_id: row[:asset_id],
+          name:     row[:name],
+          lat:      row[:lat],
+          lng:      row[:lng],
+          heading:  row[:heading],
+          speed:    row[:speed],
+          battery:  row[:battery],
+          ts:       row[:occurred_at].to_i,
+        )
+      end
     end
 
     def clamp(val, min, max)

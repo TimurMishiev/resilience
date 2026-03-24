@@ -7,6 +7,7 @@ import {
 } from '@blueprintjs/core'
 import { useIncidents, useTransitionIncident, useAssignIncident } from '../hooks/useIncidents'
 import { useAuth } from '../context/AuthContext'
+import { useReplay } from '../context/ReplayContext'
 import type { IncidentStatus, IncidentSeverity, Incident } from '../api/incidents'
 
 // ── constants ─────────────────────────────────────────────────────────────
@@ -66,6 +67,7 @@ function reltime(iso: string) {
 export default function IncidentsPage() {
   const navigate = useNavigate()
   const { currentUser } = useAuth()
+  const { isReplaying } = useReplay()
 
   const [statusFilter,   setStatusFilter]   = useState<IncidentStatus | ''>('')
   const [severityFilter, setSeverityFilter] = useState<IncidentSeverity | ''>('')
@@ -81,7 +83,10 @@ export default function IncidentsPage() {
   const [pendingTx,     setPendingTx]     = useState<string | null>(null)
   const [pendingAssign, setPendingAssign] = useState<string | null>(null)
 
-  const { data, isPending, error } = useIncidents(queryParams)
+  const { data, isPending, error } = useIncidents(queryParams, {
+    enabled: !isReplaying,
+    refetchInterval: isReplaying ? false : 15_000,
+  })
   const transition = useTransitionIncident({
     onMutate:  ({ id }) => setPendingTx(id),
     onSettled: ()       => setPendingTx(null),
@@ -97,6 +102,21 @@ export default function IncidentsPage() {
 
   return (
     <div className="page-content">
+      {isReplaying && (
+        <>
+          <Callout intent="warning" icon="history" style={{ marginBottom: 16 }}>
+            Incidents are unavailable during replay because incident workflow and assignment state are live-only.
+          </Callout>
+          <NonIdealState
+            icon="history"
+            title="Incidents unavailable in replay"
+            description="Return to live mode to review and manage active incidents."
+          />
+        </>
+      )}
+
+      {!isReplaying && (
+        <>
       <div className="page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <h1 className="bp6-heading" style={{ margin: 0 }}>Incidents</h1>
@@ -311,6 +331,8 @@ export default function IncidentsPage() {
             })}
           </tbody>
         </HTMLTable>
+      )}
+        </>
       )}
     </div>
   )
