@@ -87,13 +87,15 @@ Six tabs of operational data for a single site:
 ### Map
 An interactive 2D map (MapLibre GL) showing everything at once:
 - Site markers color-coded by risk level
-- All 7 signal types as colored dots (aircraft = blue, seismic = orange, vessel = green, GPS jam = yellow, wildfire = red, conflict = purple, disaster = pink)
+- All supported signal types as colored dots, including aircraft, vessel, seismic, GPS jamming, wildfire, AIS gap, conflict, disaster, and manual analyst signals
 - Areas of Operation as colored polygons (green / amber / red / black by threat level)
+- Sensor coverage circles derived from live or replay-scoped asset posture
+- Site geofence rings plus live breach pulse overlays
 - Click a vessel signal to see its full track history as a dashed polyline with an intel panel showing MMSI, type, flag, speed, and dark/loitering status
 - Click a site marker to see its risk score, open tasks, and transition task status directly from the map popup
 
 ### Globe
-A 3D globe (CesiumJS) showing live asset telemetry. Asset markers move in real time as their GPS positions update via SSE. No Cesium Ion account required — uses OpenStreetMap tiles.
+A 3D globe (CesiumJS) for the same operational picture in 3D. It renders sites, live asset telemetry, intelligence signals, sensor coverage circles, site geofence and breach rings, and selected-vessel tracks. Map and globe now share deep-link selection state (`site_id`, `asset_id`, `signal_id`) so operators can switch views without losing context. No Cesium Ion account required — uses OpenStreetMap tiles.
 
 ### Signal Feed
 All incoming signals in a filterable infinite-scroll table. The list handles thousands of rows without performance issues — only ~25 DOM nodes are rendered at any scroll position. Commanders can inject synthetic signals through a dialog that runs the full correlation engine immediately, which is useful for testing rules.

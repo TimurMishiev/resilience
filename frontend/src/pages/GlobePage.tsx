@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Callout, Spinner } from '@blueprintjs/core'
 import { useSites } from '../hooks/useSites'
 import { useTasks } from '../hooks/useTasks'
@@ -6,15 +6,17 @@ import { useAssets } from '../hooks/useAssets'
 import { useTelemetry } from '../hooks/useTelemetry'
 import { useAreasOfOperation } from '../hooks/useAreasOfOperation'
 import { useSignalsLive } from '../hooks/useSignals'
-import { useVessels } from '../hooks/useVessels'
+import { useVessels, useVesselTracks } from '../hooks/useVessels'
+import { useActiveBreachSiteIds } from '../hooks/useSignalRuleMatches'
 import { useReplayParams } from '../hooks/useReplayParams'
 import { useGlobeEngine } from '../hooks/useGlobeEngine'
 import type { Asset, Site, Task, Signal } from '../api/types'
 import type { Vessel } from '../api/vessels'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { assetDisplayPosition, getLiveTelemetryReading } from '../lib/assetPresentation'
 import { computeReadiness } from '../lib/formatters'
 import { buildCoverageCircles, haversineKm } from '../lib/coverage'
+import { buildEntitySelectionSearch, parseEntitySelectionRoute } from '../lib/entitySelectionRoute'
 import { isPerfEnabled } from '../lib/perfInstrumentation'
 import { SIGNAL_COLORS, SIGNAL_LABELS } from '../lib/signalConfig'
 import { GlobeInspectorPanel } from '../components/GlobeInspectorPanel'
@@ -119,7 +121,11 @@ function pickBenchmarkTarget(sites: Site[], signals: Signal[]): GlobeBenchmarkTa
 // ---------------------------------------------------------------------------
 export default function GlobePage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { asOf, isReplaying, asOfParam, signalQueryParams } = useReplayParams()
+  const urlSelectionAppliedRef = useRef(false)
+  const replayResetReadyRef = useRef(false)
+  const pendingRouteWriteRef = useRef<string | null>(null)
 
   // ---------------------------------------------------------------------------
   // Selection state — owned here, driven by engine callbacks
@@ -144,6 +150,14 @@ export default function GlobePage() {
   const areaOfOperations = useMemo(
     () => (isReplaying ? [] : (areasRes?.data ?? [])),
     [areasRes?.data, isReplaying],
+  )
+  const { data: activeBreachRes } = useActiveBreachSiteIds({
+    enabled: !isReplaying,
+    refetchInterval: isReplaying ? false : 10_000,
+  })
+  const breachedSiteIds = useMemo(
+    () => new Set<string>(isReplaying ? [] : (activeBreachRes?.site_ids ?? [])),
+    [activeBreachRes?.site_ids, isReplaying],
   )
   const { signals, error: signalError } = useSignalsLive({
     enabled: true,
@@ -171,14 +185,41 @@ export default function GlobePage() {
     allowHistoricalTelemetry: isReplaying,
   }), [assets, isReplaying, readings, sites, tasks])
 
+  const updateSelectionRoute = useCallback((selection: {
+    siteId: string | null
+    assetId: string | null
+    signalId: string | null
+  }) => {
+    const nextSearch = buildEntitySelectionSearch(location.search, selection)
+    if (nextSearch === location.search) return
+
+    pendingRouteWriteRef.current = nextSearch
+    navigate(
+      {
+        pathname: location.pathname,
+        search: nextSearch,
+      },
+      { replace: true },
+    )
+  }, [location.pathname, location.search, navigate])
+
   // ---------------------------------------------------------------------------
   // Reset selection on replay timestamp change
   // ---------------------------------------------------------------------------
   useEffect(() => {
+    if (!replayResetReadyRef.current) {
+      replayResetReadyRef.current = true
+      return
+    }
     setSelectedSiteId(null)
     setSelectedAssetId(null)
     setSelectedSignalId(null)
-  }, [asOf])
+    updateSelectionRoute({ siteId: null, assetId: null, signalId: null })
+  }, [asOf, updateSelectionRoute])
+
+  useEffect(() => {
+    urlSelectionAppliedRef.current = false
+  }, [location.search])
 
   // ---------------------------------------------------------------------------
   // Derived selection
@@ -193,8 +234,11 @@ export default function GlobePage() {
   // Clear signal selection when signals are hidden
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    if (!showSignals) setSelectedSignalId(null)
-  }, [showSignals])
+    if (!showSignals) {
+      setSelectedSignalId(null)
+      updateSelectionRoute({ siteId: selectedSiteId, assetId: selectedAssetId, signalId: null })
+    }
+  }, [selectedAssetId, selectedSiteId, showSignals, updateSelectionRoute])
 
   // ---------------------------------------------------------------------------
   // Vessel enrichment — only when a vessel_position signal is selected
@@ -205,6 +249,8 @@ export default function GlobePage() {
     { enabled: !!selectedVesselMmsi && !isReplaying },
   )
   const selectedVessel = vesselLookup?.data?.[0] ?? null
+  const { data: vesselTrackRes } = useVesselTracks(!isReplaying ? (selectedVessel?.id ?? null) : null, { limit: 300 })
+  const vesselTracks = useMemo(() => vesselTrackRes?.data ?? [], [vesselTrackRes?.data])
 
   // ---------------------------------------------------------------------------
   // Engine refs
@@ -235,7 +281,9 @@ export default function GlobePage() {
     signals,
     tasksBySite,
     areaOfOperations,
+    breachedSiteIds,
     coverageCircles,
+    vesselTracks,
     readings,
     showSignals,
     showCoverage,
@@ -243,10 +291,80 @@ export default function GlobePage() {
     isReplaying,
     signalFocusCenter: selectedCenter,
     selectedSignalId,
-    onSiteClick:   (siteId)   => { setSelectedSiteId(siteId);   setSelectedAssetId(null);  setSelectedSignalId(null) },
-    onAssetClick:  (assetId)  => { setSelectedSiteId(null);    setSelectedAssetId(assetId); setSelectedSignalId(null) },
-    onSignalClick: (signalId) => { setSelectedSiteId(null);    setSelectedAssetId(null);   setSelectedSignalId(signalId) },
+    onSiteClick:   (siteId)   => {
+      const nextSiteId = selectedSiteId === siteId ? null : siteId
+      setSelectedSiteId(nextSiteId)
+      setSelectedAssetId(null)
+      setSelectedSignalId(null)
+      updateSelectionRoute({ siteId: nextSiteId, assetId: null, signalId: null })
+    },
+    onAssetClick:  (assetId)  => {
+      const nextAssetId = selectedAssetId === assetId ? null : assetId
+      setSelectedSiteId(null)
+      setSelectedAssetId(nextAssetId)
+      setSelectedSignalId(null)
+      updateSelectionRoute({ siteId: null, assetId: nextAssetId, signalId: null })
+    },
+    onSignalClick: (signalId) => {
+      const nextSignalId = selectedSignalId === signalId ? null : signalId
+      setSelectedSiteId(null)
+      setSelectedAssetId(null)
+      setSelectedSignalId(nextSignalId)
+      updateSelectionRoute({ siteId: null, assetId: null, signalId: nextSignalId })
+    },
   })
+
+  // ---------------------------------------------------------------------------
+  // URL deep-link selection — fires once per navigation after globe is ready
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (!viewerReady || urlSelectionAppliedRef.current) return
+
+    if (pendingRouteWriteRef.current === location.search) {
+      pendingRouteWriteRef.current = null
+      urlSelectionAppliedRef.current = true
+      return
+    }
+
+    const { siteId, assetId, signalId } = parseEntitySelectionRoute(location.search)
+
+    if (!siteId && !assetId && !signalId) {
+      setSelectedSiteId(null)
+      setSelectedAssetId(null)
+      setSelectedSignalId(null)
+      urlSelectionAppliedRef.current = true
+      return
+    }
+
+    if (siteId) {
+      const site = sites.find(entry => entry.id === siteId)
+      if (!site) return
+      setSelectedSiteId(site.id)
+      setSelectedAssetId(null)
+      setSelectedSignalId(null)
+      urlSelectionAppliedRef.current = true
+      return
+    }
+
+    if (assetId) {
+      const asset = assets.find(entry => entry.id === assetId)
+      if (!asset) return
+      setSelectedSiteId(null)
+      setSelectedAssetId(asset.id)
+      setSelectedSignalId(null)
+      urlSelectionAppliedRef.current = true
+      return
+    }
+
+    if (signalId) {
+      const signal = signals.find(entry => entry.id === signalId)
+      if (!signal) return
+      setSelectedSiteId(null)
+      setSelectedAssetId(null)
+      setSelectedSignalId(signal.id)
+      urlSelectionAppliedRef.current = true
+    }
+  }, [assets, location.search, signals, sites, viewerReady])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -408,6 +526,7 @@ export default function GlobePage() {
             setSelectedSiteId(null)
             setSelectedAssetId(null)
             setSelectedSignalId(null)
+            updateSelectionRoute({ siteId: null, assetId: null, signalId: null })
           }}
         />
         <div
@@ -428,7 +547,7 @@ export default function GlobePage() {
           {signalError && !isReplaying
             ? 'Live signal baseline sync is incomplete. Signals may be temporarily missing while the client retries.'
             : isReplaying
-            ? 'Replay mode hides live-only AO and vessel enrichment data.'
+            ? 'Replay mode hides live-only AO posture, breach overlays, and vessel enrichment data.'
             : isCloseView
             ? 'Signals hidden at close range. Use the 2D map for tactical inspection.'
             : 'Click any site, asset, or signal to inspect it'}
@@ -469,6 +588,7 @@ export default function GlobePage() {
             setSelectedSiteId(null)
             setSelectedAssetId(null)
             setSelectedSignalId(null)
+            updateSelectionRoute({ siteId: null, assetId: null, signalId: null })
           }}
           navigate={navigate}
         />

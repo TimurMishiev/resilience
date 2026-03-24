@@ -17,9 +17,10 @@ import { useRole } from '../hooks/useRole'
 import { useReplayParams } from '../hooks/useReplayParams'
 import { useMapLibreEngine, MAP_STYLE_CONFIGS, type MapStyleKey } from '../hooks/useMapLibreEngine'
 import type { Task, Signal } from '../api/types'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { assetDisplayPosition, getLiveTelemetryReading } from '../lib/assetPresentation'
 import { buildCoverageCircles } from '../lib/coverage'
+import { buildEntitySelectionSearch, parseEntitySelectionRoute } from '../lib/entitySelectionRoute'
 import { computeReadiness } from '../lib/formatters'
 import { SIGNAL_COLORS, SIGNAL_LABELS } from '../lib/signalConfig'
 import { MapSitePanel } from '../components/MapSitePanel'
@@ -28,12 +29,15 @@ import { MapSignalPanel } from '../components/MapSignalPanel'
 
 export default function MapPage() {
   const location    = useLocation()
+  const navigate    = useNavigate()
   const { asOf, isReplaying, asOfParam, signalQueryParams } = useReplayParams()
   const { role }    = useRole()
   const queryClient = useQueryClient()
 
   const mapContainerRef        = useRef<HTMLDivElement>(null)
   const urlSelectionAppliedRef = useRef(false)
+  const replayResetReadyRef    = useRef(false)
+  const pendingRouteWriteRef   = useRef<string | null>(null)
 
   // ---------------------------------------------------------------------------
   // Selection state — owned here, driven by engine callbacks
@@ -116,29 +120,54 @@ export default function MapPage() {
     assets, tasks: allTasks, sites, readings, allowHistoricalTelemetry: isReplaying,
   }), [assets, allTasks, isReplaying, sites, readings])
 
+  const updateSelectionRoute = useCallback((selection: {
+    siteId: string | null
+    assetId: string | null
+    signalId: string | null
+  }) => {
+    const nextSearch = buildEntitySelectionSearch(location.search, selection)
+    if (nextSearch === location.search) return
+
+    pendingRouteWriteRef.current = nextSearch
+    navigate(
+      {
+        pathname: location.pathname,
+        search: nextSearch,
+      },
+      { replace: true },
+    )
+  }, [location.pathname, location.search, navigate])
+
   // ---------------------------------------------------------------------------
   // Selection callbacks — engine fires these, page owns state
   // ---------------------------------------------------------------------------
   const onSiteClick = useCallback((siteId: string | null) => {
+    const nextSiteId = siteId === null ? null : (selectedSiteId === siteId ? null : siteId)
     setSelectedAssetId(null)
     setSelectedSignal(null)
     setSelectedVesselMmsi(null)
-    setSelectedSiteId(prev => siteId === null ? null : (prev === siteId ? null : siteId))
-  }, [])
+    setSelectedSiteId(nextSiteId)
+    updateSelectionRoute({ siteId: nextSiteId, assetId: null, signalId: null })
+  }, [selectedSiteId, updateSelectionRoute])
 
   const onAssetClick = useCallback((assetId: string | null) => {
+    const nextAssetId = assetId === null ? null : (selectedAssetId === assetId ? null : assetId)
     setSelectedSiteId(null)
     setSelectedSignal(null)
     setSelectedVesselMmsi(null)
-    setSelectedAssetId(prev => assetId === null ? null : (prev === assetId ? null : assetId))
-  }, [])
+    setSelectedAssetId(nextAssetId)
+    updateSelectionRoute({ siteId: null, assetId: nextAssetId, signalId: null })
+  }, [selectedAssetId, updateSelectionRoute])
 
   const onSignalClick = useCallback((signal: Signal | null, vesselMmsi: string | null) => {
+    const nextSignal = signal === null ? null : (selectedSignal?.id === signal.id ? null : signal)
+    const nextVesselMmsi = vesselMmsi === null ? null : (selectedVesselMmsi === vesselMmsi ? null : vesselMmsi)
     setSelectedSiteId(null)
     setSelectedAssetId(null)
-    setSelectedSignal(prev => signal === null ? null : (prev?.id === signal.id ? null : signal))
-    setSelectedVesselMmsi(prev => vesselMmsi === null ? null : (prev === vesselMmsi ? null : vesselMmsi))
-  }, [])
+    setSelectedSignal(nextSignal)
+    setSelectedVesselMmsi(nextVesselMmsi)
+    updateSelectionRoute({ siteId: null, assetId: null, signalId: nextSignal?.id ?? null })
+  }, [selectedSignal, selectedVesselMmsi, updateSelectionRoute])
 
   // ---------------------------------------------------------------------------
   // MapLibre engine
@@ -169,13 +198,18 @@ export default function MapPage() {
   // Reset selection on replay timestamp change (React 18 batches these → 1 paint)
   // ---------------------------------------------------------------------------
   useEffect(() => {
+    if (!replayResetReadyRef.current) {
+      replayResetReadyRef.current = true
+      return
+    }
     /* eslint-disable react-hooks/set-state-in-effect -- Reset selection state on replay timestamp change; no callback path exists for this synchronous reset */
     setSelectedSiteId(null)
     setSelectedAssetId(null)
     setSelectedSignal(null)
     setSelectedVesselMmsi(null)
     /* eslint-enable react-hooks/set-state-in-effect */
-  }, [asOf])
+    updateSelectionRoute({ siteId: null, assetId: null, signalId: null })
+  }, [asOf, updateSelectionRoute])
 
   useEffect(() => {
     urlSelectionAppliedRef.current = false
@@ -187,12 +221,23 @@ export default function MapPage() {
   useEffect(() => {
     if (!mapLoaded || urlSelectionAppliedRef.current) return
 
-    const params   = new URLSearchParams(location.search)
-    const siteId   = params.get('site_id')
-    const assetId  = params.get('asset_id')
-    const signalId = params.get('signal_id')
+    if (pendingRouteWriteRef.current === location.search) {
+      pendingRouteWriteRef.current = null
+      urlSelectionAppliedRef.current = true
+      return
+    }
 
-    /* eslint-disable react-hooks/set-state-in-effect -- URL handoff must synchronously hydrate map selection state before the first focused flyTo */
+    const { siteId, assetId, signalId } = parseEntitySelectionRoute(location.search)
+
+    /* eslint-disable react-hooks/set-state-in-effect -- URL handoff must synchronously hydrate or clear map selection state before the first focused flyTo */
+    if (!siteId && !assetId && !signalId) {
+      setSelectedSiteId(null)
+      setSelectedAssetId(null)
+      setSelectedSignal(null)
+      setSelectedVesselMmsi(null)
+      urlSelectionAppliedRef.current = true
+      return
+    }
     if (siteId) {
       const site = sites.find(s => s.id === siteId)
       if (!site) return
@@ -356,7 +401,10 @@ export default function MapPage() {
           isReplaying={isReplaying}
           role={role}
           onTransitioned={handleTransitioned}
-          onClose={() => setSelectedSiteId(null)}
+          onClose={() => {
+            setSelectedSiteId(null)
+            updateSelectionRoute({ siteId: null, assetId: null, signalId: null })
+          }}
         />
       )}
 
@@ -366,7 +414,10 @@ export default function MapPage() {
           asset={selectedAsset}
           liveReading={selectedLiveReading}
           isReplaying={isReplaying}
-          onClose={() => setSelectedAssetId(null)}
+          onClose={() => {
+            setSelectedAssetId(null)
+            updateSelectionRoute({ siteId: null, assetId: null, signalId: null })
+          }}
         />
       )}
 
@@ -377,7 +428,11 @@ export default function MapPage() {
           vessel={selectedVessel}
           vesselTracks={vesselTracks}
           isReplaying={isReplaying}
-          onClose={() => { setSelectedSignal(null); setSelectedVesselMmsi(null) }}
+          onClose={() => {
+            setSelectedSignal(null)
+            setSelectedVesselMmsi(null)
+            updateSelectionRoute({ siteId: null, assetId: null, signalId: null })
+          }}
         />
       )}
     </div>

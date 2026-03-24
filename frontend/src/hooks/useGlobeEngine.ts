@@ -19,6 +19,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo, type RefObject } from 'react'
 import type * as CesiumType from 'cesium'
 import type { Site, Task, Asset, Signal, AreaOfOperation } from '../api/types'
+import type { VesselTrack } from '../api/vessels'
 import { assetDisplayPosition, assetSeedPosition } from '../lib/assetPresentation'
 import { haversineKm, type CoverageCircle } from '../lib/coverage'
 import { nowMs, recordPerfEvent } from '../lib/perfInstrumentation'
@@ -166,6 +167,44 @@ function setEllipseNumericProperty(
   assign(new Cesium.ConstantProperty(value))
 }
 
+function setPolylinePositions(
+  Cesium: CesiumModule,
+  graphics: CesiumType.PolylineGraphics,
+  positions: CesiumType.Cartesian3[],
+) {
+  if (graphics.positions instanceof Cesium.ConstantProperty) {
+    graphics.positions.setValue(positions)
+    return
+  }
+  graphics.positions = new Cesium.ConstantProperty(positions)
+}
+
+function setPolylineNumericProperty(
+  Cesium: CesiumModule,
+  property: CesiumType.Property | undefined,
+  value: number,
+  assign: (next: CesiumType.ConstantProperty) => void,
+) {
+  if (property instanceof Cesium.ConstantProperty) {
+    property.setValue(value)
+    return
+  }
+  assign(new Cesium.ConstantProperty(value))
+}
+
+function setPolylineBooleanProperty(
+  Cesium: CesiumModule,
+  property: CesiumType.Property | undefined,
+  value: boolean,
+  assign: (next: CesiumType.ConstantProperty) => void,
+) {
+  if (property instanceof Cesium.ConstantProperty) {
+    property.setValue(value)
+    return
+  }
+  assign(new Cesium.ConstantProperty(value))
+}
+
 function pruneEntityMap(
   viewer: CesiumType.Viewer,
   entityMap: Map<string, CesiumType.Entity>,
@@ -229,7 +268,9 @@ export interface GlobeEngineInput {
   signals:          Signal[]
   tasksBySite:      Record<string, Task[]>
   areaOfOperations: AreaOfOperation[]
+  breachedSiteIds:  Set<string>
   coverageCircles:  CoverageCircle[]
+  vesselTracks:     VesselTrack[]
   readings:         TelemetryMap
 
   // Feature toggles
@@ -274,7 +315,9 @@ export function useGlobeEngine({
   signals,
   tasksBySite,
   areaOfOperations,
+  breachedSiteIds,
   coverageCircles,
+  vesselTracks,
   readings,
   showSignals,
   showCoverage,
@@ -291,7 +334,11 @@ export function useGlobeEngine({
   const siteEntitiesRef  = useRef<Map<string, CesiumType.Entity>>(new Map())
   const assetEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
   const aoEntitiesRef    = useRef<Map<string, CesiumType.Entity>>(new Map())
+  const geofenceEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
+  const breachEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
   const coverageEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
+  const vesselTrackEntityRef = useRef<CesiumType.Entity | null>(null)
+  const breachPulseRef = useRef<ReturnType<typeof setInterval> | null>(null)
   
   // High-volume point features use PointPrimitiveCollection to avoid Entity API overhead
   const signalCollectionRef = useRef<CesiumType.PointPrimitiveCollection | null>(null)
@@ -413,19 +460,32 @@ export function useGlobeEngine({
     const siteEntities   = siteEntitiesRef.current
     const assetEntities  = assetEntitiesRef.current
     const aoEntities     = aoEntitiesRef.current
+    const geofenceEntities = geofenceEntitiesRef.current
+    const breachEntities = breachEntitiesRef.current
     const coverageEntities = coverageEntitiesRef.current
+    const vesselTrackEntity = vesselTrackEntityRef.current
     const signalPrimitives = signalPrimitivesRef.current
 
     return () => {
       cancelled = true
       setViewerReady(false)
+      if (breachPulseRef.current !== null) {
+        clearInterval(breachPulseRef.current)
+        breachPulseRef.current = null
+      }
+      if (vesselTrackEntity) {
+        viewerRef.current?.entities.remove(vesselTrackEntity)
+      }
       viewerRef.current?.destroy()
       viewerRef.current = null
       cesiumRef.current = null
       siteEntities.clear()
       assetEntities.clear()
       aoEntities.clear()
+      geofenceEntities.clear()
+      breachEntities.clear()
       coverageEntities.clear()
+      vesselTrackEntityRef.current = null
       signalPrimitives.clear()
       signalCollectionRef.current = null
     }
@@ -602,6 +662,149 @@ export function useGlobeEngine({
   }, [viewerReady, areaOfOperations])
 
   // ---------------------------------------------------------------------------
+  // Geofence rings — baseline site geofence footprint
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const Cesium = cesiumRef.current
+    const viewer = viewerRef.current
+    if (!viewerReady || !viewer || !Cesium) return
+
+    const geofenceSites = sites.filter(site => site.geofence_radius_km > 0)
+    const currentIds = new Set(geofenceSites.map(site => `geofence-${site.id}`))
+    pruneEntityMap(viewer, geofenceEntitiesRef.current, currentIds)
+
+    for (const site of geofenceSites) {
+      const key = `geofence-${site.id}`
+      const radiusMeters = site.geofence_radius_km * 1000
+      const fillColor = Cesium.Color.fromCssColorString('#5c7cfa').withAlpha(0.04)
+      const outlineColor = Cesium.Color.fromCssColorString('#5c7cfa').withAlpha(0.6)
+      const existing = geofenceEntitiesRef.current.get(key)
+
+      if (existing?.ellipse) {
+        existing.name = `${site.name} geofence`
+        setEntityPosition(Cesium, existing, Number(site.longitude), Number(site.latitude))
+        setEllipseNumericProperty(Cesium, existing.ellipse.semiMajorAxis, radiusMeters, next => { existing.ellipse!.semiMajorAxis = next })
+        setEllipseNumericProperty(Cesium, existing.ellipse.semiMinorAxis, radiusMeters, next => { existing.ellipse!.semiMinorAxis = next })
+        setEllipseNumericProperty(Cesium, existing.ellipse.height, 0, next => { existing.ellipse!.height = next })
+        setEllipseNumericProperty(Cesium, existing.ellipse.outlineWidth, 1, next => { existing.ellipse!.outlineWidth = next })
+        setEllipseMaterialColor(Cesium, existing.ellipse, fillColor)
+        setEllipseColorProperty(Cesium, existing.ellipse.outlineColor, outlineColor, next => { existing.ellipse!.outlineColor = next })
+        continue
+      }
+
+      const entity = viewer.entities.add({
+        id: key,
+        name: `${site.name} geofence`,
+        position: Cesium.Cartesian3.fromDegrees(Number(site.longitude), Number(site.latitude)),
+        ellipse: {
+          semiMajorAxis: new Cesium.ConstantProperty(radiusMeters),
+          semiMinorAxis: new Cesium.ConstantProperty(radiusMeters),
+          material: new Cesium.ColorMaterialProperty(fillColor),
+          outline: new Cesium.ConstantProperty(true),
+          outlineColor: new Cesium.ConstantProperty(outlineColor),
+          outlineWidth: new Cesium.ConstantProperty(1),
+          height: new Cesium.ConstantProperty(0),
+        },
+      })
+      geofenceEntitiesRef.current.set(key, entity)
+    }
+  }, [sites, viewerReady])
+
+  // ---------------------------------------------------------------------------
+  // Geofence breach rings — live-only active breaches rendered over base geofence
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const Cesium = cesiumRef.current
+    const viewer = viewerRef.current
+    if (!viewerReady || !viewer || !Cesium) return
+
+    const breachedSites = sites.filter(site => site.geofence_radius_km > 0 && breachedSiteIds.has(site.id))
+    const currentIds = new Set(breachedSites.map(site => `geofence-breach-${site.id}`))
+    pruneEntityMap(viewer, breachEntitiesRef.current, currentIds)
+
+    for (const site of breachedSites) {
+      const key = `geofence-breach-${site.id}`
+      const radiusMeters = site.geofence_radius_km * 1000
+      const fillColor = Cesium.Color.fromCssColorString('#fa5252').withAlpha(0.06)
+      const outlineColor = Cesium.Color.fromCssColorString('#fa5252').withAlpha(0.7)
+      const existing = breachEntitiesRef.current.get(key)
+
+      if (existing?.ellipse) {
+        existing.name = `${site.name} geofence breach`
+        setEntityPosition(Cesium, existing, Number(site.longitude), Number(site.latitude))
+        setEllipseNumericProperty(Cesium, existing.ellipse.semiMajorAxis, radiusMeters, next => { existing.ellipse!.semiMajorAxis = next })
+        setEllipseNumericProperty(Cesium, existing.ellipse.semiMinorAxis, radiusMeters, next => { existing.ellipse!.semiMinorAxis = next })
+        setEllipseNumericProperty(Cesium, existing.ellipse.height, 0, next => { existing.ellipse!.height = next })
+        setEllipseNumericProperty(Cesium, existing.ellipse.outlineWidth, 2, next => { existing.ellipse!.outlineWidth = next })
+        setEllipseMaterialColor(Cesium, existing.ellipse, fillColor)
+        setEllipseColorProperty(Cesium, existing.ellipse.outlineColor, outlineColor, next => { existing.ellipse!.outlineColor = next })
+        continue
+      }
+
+      const entity = viewer.entities.add({
+        id: key,
+        name: `${site.name} geofence breach`,
+        position: Cesium.Cartesian3.fromDegrees(Number(site.longitude), Number(site.latitude)),
+        ellipse: {
+          semiMajorAxis: new Cesium.ConstantProperty(radiusMeters),
+          semiMinorAxis: new Cesium.ConstantProperty(radiusMeters),
+          material: new Cesium.ColorMaterialProperty(fillColor),
+          outline: new Cesium.ConstantProperty(true),
+          outlineColor: new Cesium.ConstantProperty(outlineColor),
+          outlineWidth: new Cesium.ConstantProperty(2),
+          height: new Cesium.ConstantProperty(0),
+        },
+      })
+      breachEntitiesRef.current.set(key, entity)
+    }
+  }, [breachedSiteIds, sites, viewerReady])
+
+  // ---------------------------------------------------------------------------
+  // Breach pulse — animate active breach rings only
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const Cesium = cesiumRef.current
+    if (!viewerReady || !Cesium) return
+
+    const applyPulse = (opacity: number) => {
+      const fillAlpha = 0.04 + opacity * 0.04
+      const outlineAlpha = 0.45 + opacity * 0.45
+      const fillColor = Cesium.Color.fromCssColorString('#fa5252').withAlpha(fillAlpha)
+      const outlineColor = Cesium.Color.fromCssColorString('#fa5252').withAlpha(outlineAlpha)
+      for (const entity of breachEntitiesRef.current.values()) {
+        if (!entity.ellipse) continue
+        setEllipseMaterialColor(Cesium, entity.ellipse, fillColor)
+        setEllipseColorProperty(Cesium, entity.ellipse.outlineColor, outlineColor, next => { entity.ellipse!.outlineColor = next })
+      }
+    }
+
+    if (breachedSiteIds.size === 0) {
+      if (breachPulseRef.current !== null) {
+        clearInterval(breachPulseRef.current)
+        breachPulseRef.current = null
+      }
+      applyPulse(0.55)
+      return
+    }
+
+    if (breachPulseRef.current !== null) {
+      clearInterval(breachPulseRef.current)
+    }
+
+    breachPulseRef.current = setInterval(() => {
+      const opacity = 0.5 + 0.35 * Math.sin((Date.now() / 630) * Math.PI)
+      applyPulse(opacity)
+    }, 50)
+
+    return () => {
+      if (breachPulseRef.current !== null) {
+        clearInterval(breachPulseRef.current)
+        breachPulseRef.current = null
+      }
+    }
+  }, [breachedSiteIds, viewerReady])
+
+  // ---------------------------------------------------------------------------
   // Coverage circles — incremental add/update/remove using ellipse entities
   // ---------------------------------------------------------------------------
   useEffect(() => {
@@ -658,6 +861,51 @@ export function useGlobeEngine({
       coverageEntitiesRef.current.set(key, entity)
     }
   }, [coverageCircles, showCoverage, viewerReady])
+
+  // ---------------------------------------------------------------------------
+  // Vessel track — single selected-vessel polyline, updated in place
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const Cesium = cesiumRef.current
+    const viewer = viewerRef.current
+    if (!viewerReady || !viewer || !Cesium) return
+
+    const existing = vesselTrackEntityRef.current
+    if (vesselTracks.length < 2) {
+      if (existing) {
+        viewer.entities.remove(existing)
+        vesselTrackEntityRef.current = null
+      }
+      return
+    }
+
+    const flatCoords = vesselTracks.flatMap(track => [Number(track.lng), Number(track.lat)])
+    const positions = Cesium.Cartesian3.fromDegreesArray(flatCoords)
+    const material = new Cesium.PolylineDashMaterialProperty({
+      color: Cesium.Color.fromCssColorString(SIGNAL_COLORS.vessel_position).withAlpha(0.8),
+      dashLength: 18,
+    })
+
+    if (existing?.polyline) {
+      existing.name = 'Selected vessel track'
+      setPolylinePositions(Cesium, existing.polyline, positions)
+      existing.polyline.material = material
+      setPolylineNumericProperty(Cesium, existing.polyline.width, 2.5, next => { existing.polyline!.width = next })
+      setPolylineBooleanProperty(Cesium, existing.polyline.clampToGround, false, next => { existing.polyline!.clampToGround = next })
+      return
+    }
+
+    vesselTrackEntityRef.current = viewer.entities.add({
+      id: 'vessel-track',
+      name: 'Selected vessel track',
+      polyline: {
+        positions: new Cesium.ConstantProperty(positions),
+        width: new Cesium.ConstantProperty(2.5),
+        material,
+        clampToGround: new Cesium.ConstantProperty(false),
+      },
+    })
+  }, [viewerReady, vesselTracks])
 
   // ---------------------------------------------------------------------------
   // Signal entities — migrate to PointPrimitiveCollection for mass rendering
@@ -774,6 +1022,13 @@ export function useGlobeEngine({
           if (!candidate) continue
           if (candidate.idString.startsWith('coverage-')) {
             sawCoverage = true
+            continue
+          }
+          if (candidate.idString.startsWith('geofence-')) {
+            sawCoverage = true
+            continue
+          }
+          if (candidate.idString === 'vessel-track') {
             continue
           }
           resolvedPick = candidate

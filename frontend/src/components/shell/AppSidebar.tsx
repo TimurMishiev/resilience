@@ -8,6 +8,7 @@ import {
   preloadMapExperience,
   preloadMapPage,
 } from '../../lib/preloadRoutes'
+import { buildMapGlobeSelectionPath } from '../../lib/entitySelectionRoute'
 
 const BOTTOM_NAV_TABS: { icon: IconName; label: string; path: string }[] = [
   { icon: 'dashboard',    label: 'Dashboard', path: '/dashboard' },
@@ -26,13 +27,16 @@ const ignorePreloadFailure = () => {}
 
 export function AppSidebar() {
   const navigate     = useNavigate()
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
   const { isCommander } = useRole()
+  const preserveEntitySelection = pathname.startsWith('/map') || pathname.startsWith('/globe')
 
   const preloadMapPageOnly = () => { void preloadMapPage().catch(ignorePreloadFailure) }
   const preloadGlobePageOnly = () => { void preloadGlobePage().catch(ignorePreloadFailure) }
   const preloadMapRuntime = () => { void preloadMapExperience().catch(ignorePreloadFailure) }
   const preloadGlobeRuntime = () => { void preloadGlobeExperience().catch(ignorePreloadFailure) }
+  const mapPath = preserveEntitySelection ? buildMapGlobeSelectionPath('/map', search) : '/map'
+  const globePath = preserveEntitySelection ? buildMapGlobeSelectionPath('/globe', search) : '/globe'
 
   return (
     <nav className="shell-sidebar">
@@ -48,7 +52,7 @@ export function AppSidebar() {
           icon="globe"
           text="Map"
           active={pathname.startsWith('/map')}
-          onClick={() => navigate('/map')}
+          onClick={() => navigate(mapPath)}
           onMouseEnter={preloadMapPageOnly}
           onFocus={preloadMapPageOnly}
           onPointerDown={preloadMapRuntime}
@@ -58,7 +62,7 @@ export function AppSidebar() {
           icon="globe-network"
           text="Globe"
           active={pathname.startsWith('/globe')}
-          onClick={() => navigate('/globe')}
+          onClick={() => navigate(globePath)}
           onMouseEnter={preloadGlobePageOnly}
           onFocus={preloadGlobePageOnly}
           onPointerDown={preloadGlobeRuntime}
@@ -95,7 +99,9 @@ export function AppSidebar() {
 
 export function AppBottomNav() {
   const navigate     = useNavigate()
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
+  const preserveEntitySelection = pathname.startsWith('/map') || pathname.startsWith('/globe')
+  const mapPath = preserveEntitySelection ? buildMapGlobeSelectionPath('/map', search) : '/map'
 
   function handlePreload(path: string) {
     if (path === '/map') {
@@ -119,7 +125,7 @@ export function AppBottomNav() {
         <button
           key={tab.path}
           className={`shell-tab ${pathname.startsWith(tab.path) ? 'shell-tab--active' : ''}`}
-          onClick={() => navigate(tab.path)}
+          onClick={() => navigate(tab.path === '/map' ? mapPath : tab.path)}
           onMouseEnter={() => handlePreload(tab.path)}
           onFocus={() => handlePreload(tab.path)}
           onPointerDown={() => handleStrongPreload(tab.path)}
