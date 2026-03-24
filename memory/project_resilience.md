@@ -83,60 +83,48 @@ Every new entity must answer: "Is this an entity, a property, a relationship, or
 - Globe inspector supports asset telemetry, signal metadata, and maritime vessel enrichment for vessel-position signals
 - `/api/signals` now treats `as_of` as a first-class upper bound; if both `to` and `as_of` are supplied, the earlier timestamp wins
 
-### Phase 1 — Intelligence Layer (IN PROGRESS)
+### Phase 1 — Intelligence Layer (COMPLETE)
 
 **Step 1 — vessels table** (DONE, committed: af36c08)
-- New table: vessels with mmsi (unique), name, vessel_type, flag, destination, lat, lng, speed, heading, first_seen_at, last_seen_at, last_signal_id (FK to external_signals), loitering_since
-- Indexes: unique on mmsi, index on last_seen_at, partial index on loitering_since (WHERE NOT NULL)
-- Model: Vessel with validations, scopes (dark_since, loitering), upsert_from_signal! class method
-- 23 RSpec examples, all passing
-
 **Step 2 — Wire vessel upsert into AIS ingestion** (DONE, committed: 6fe6352)
-- AisIngestionService now calls Vessel.upsert_from_signal! after every successful AIS ping
-- Design: upsert lives in AisIngestionService (not IngestService) — preserves SRP
-- YAGNI: when manual injection is added, extract Vessels::StateUpdaterService at that point
-- Bug fixed: result.success? doesn't exist on ServiceResult (Data.define) — must use result.success
-- Bug fixed: destination key in AIS raw_payload is "dest", not "destination"
-- Bug fixed: name priority is payload["name"] || payload["callsign"]
-- 29 RSpec examples, all passing
-
 **Step 3 — vessel_tracks table + retention job** (DONE, committed: b7e2323)
-- New table: `vessel_tracks` with fields: vessel_id (FK, CASCADE), lat, lng, speed, heading, occurred_at, created_at (NO updated_at — append-only by design)
-- Indexes: composite (vessel_id, occurred_at) for read queries, separate (occurred_at) for retention deletes
-- Model: VesselTrack — append-only enforced via before_update { throw :abort }, scopes: between(from, to), older_than(duration)
-- Job: Vessels::TrackRetentionJob — batched deletion (BATCH_SIZE=1000), runs daily at 3am via SolidQueue recurring
-- Registered in config/recurring.yml
-- Track insertion wired into AisIngestionService — only on newly created signals (result.payload[:created] == true), not duplicate replays
-- 260 RSpec examples total, 0 failures
-- Files: backend/db/migrate/20260318030001_create_vessel_tracks.rb, backend/app/models/vessel_track.rb, backend/app/jobs/vessels/track_retention_job.rb, backend/spec/models/vessel_track_spec.rb, backend/spec/jobs/vessels/track_retention_job_spec.rb, backend/spec/factories/vessel_tracks.rb
+**Step 4 — AIS gap detection job** (DONE)
+- Vessels::GapDetectionJob synthesizes ais_gap derived signals when vessel unseen > 20 min
+- Confidence scoring: base 0.50, +0.25 if speed ≥ 5kn, -0.20 if speed < 1kn, +0.20 if inside high-threat AO bbox
+- External ID = "gap_#{mmsi}_#{last_seen_at.to_i}" for idempotency; occurred_at anchored to last_seen_at
+- 9 RSpec examples, all passing
 
-Key engineering decisions from Step 3:
-- "Day 2 thinking": build retention policy BEFORE the data, not after
-- Append-only tables have no updated_at column — the absence is a structural signal to readers
-- Composite index leads with vessel_id (not occurred_at) — wrong order would miss the primary query pattern
-- Separate occurred_at index justified because retention job queries across ALL vessels
-- BATCH_SIZE=1000 for deletion — keeps transactions small, avoids lock contention, gives Postgres time to autovacuum
-- BRIN index noted as future optimization for very high write volumes (not needed yet)
-- Track deduplication: only insert when signal is newly created, not on re-polls
+**Step 5 — Compound rule conditions** (DONE)
+- CorrelationRule: VALID_OPERATORS = %w[AND OR], compound? predicate, normalized_conditions coercion
+- Validation: compound rules require ≥ 2 sub-conditions; validates each sub-condition
+- CorrelationRule spec: 12 examples covering legacy and compound AND/OR validation
 
-**Step 4 — AIS gap detection job** (TODO — next)
-- Synthesizes ais_gap derived signals when vessel unseen > 20 minutes
-- Vessels::GapDetectionJob (periodic background job)
-- Gap signals flow through the existing correlation engine unchanged
+**Step 6 — Update EvaluatorService for compound conditions** (DONE)
+- EvaluatorService always calls normalized_conditions → never special-cases format
+- Direct path: signal_type matches → proximity + magnitude + count checks
+- Corroboration path: signal_type differs → query DB for recent nearby signals of that type
+- Operator AND: results.all? | OR: results.any?
+- EvaluatorService spec: 23 examples; haversine math, full AND/OR integration tests
 
-**Step 5 — Compound rule conditions** (TODO)
-- Extend JSONB conditions schema with operator: AND/OR and nested conditions array
+**Step 7 — Confidence scoring on SignalRuleMatch** (DONE)
+- confidence double precision column on signal_rule_matches (indexed)
+- RuleFiringService#compute_confidence: AND→mean of sub-scores, OR→max of sub-scores
+- proximity_confidence: 1.0 at site, 0.0 at boundary; corroboration_confidence: avg(proximity, freshness)
+- RuleFiringService spec: 391 lines, confidence scoring coverage included
 
-**Step 6 — Update EvaluatorService for compound conditions** (TODO)
+**Step 8 — Alert acknowledgment workflow** (DONE)
+- SignalRuleMatch: 4-state machine (unacknowledged→acknowledged→investigating→closed)
+- Alerts::TransitionService: validates transition, records acknowledged_by + acknowledged_at + notes, SSE broadcast
+- signal_rule_matches_controller.rb: transition, bulk_transition (max 100), allowed_transitions endpoints
 
-**Step 7 — Confidence scoring on SignalRuleMatch** (TODO)
-- Add confidence float to SignalRuleMatch
+**Step 9 — Enriched SSE payloads + toasts** (DONE)
+- rule_fired SSE payload includes confidence, workflow_status, distance_km, actions_taken
+- alert_transitioned SSE event broadcast after every transition
 
-**Step 8 — Alert acknowledgment workflow** (TODO)
-
-**Step 9 — Enriched SSE payloads + toasts** (TODO)
-
-**Step 10 — Compound rule builder UI** (TODO)
+**Step 10 — Compound rule builder UI** (DONE)
+- CorrelationRulesPage.tsx (52KB): create/edit rules with AND/OR compound conditions
+- AlertTriagePage.tsx: full triage UI with ALERT_TRANSITIONS state machine, bulk actions, filtering
+- Frontend types: CompoundConditions, RuleConditions, isCompoundRule type guard
 
 ---
 

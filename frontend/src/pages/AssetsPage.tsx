@@ -1,21 +1,17 @@
 import { useState } from 'react'
 import {
-  Button,
   Callout,
   Classes,
-  Divider,
   Drawer,
   DrawerSize,
   HTMLTable,
   NonIdealState,
   Tag,
 } from '@blueprintjs/core'
-import { useAssets, useUpdateAssetStatus } from '../hooks/useAssets'
+import { useAssets } from '../hooks/useAssets'
 import { useSites } from '../hooks/useSites'
 import { useReplay } from '../context/ReplayContext'
-import { useRole } from '../hooks/useRole'
-import AuditTimeline from '../components/AuditTimeline'
-import { ASSET_STATUSES } from '../api/types'
+import EntityCard from '../components/EntityCard'
 import type { Asset, AssetStatus } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
 
@@ -28,46 +24,24 @@ function statusIntent(status: AssetStatus): Intent {
   }
 }
 
-function statusLabel(status: AssetStatus): string {
-  switch (status) {
-    case 'available': return 'Available'
-    case 'assigned':  return 'Assigned'
-    case 'degraded':  return 'Degraded'
-    case 'offline':   return 'Offline'
-  }
-}
-
-function typeLabel(t: string): string {
-  return t.charAt(0).toUpperCase() + t.slice(1)
-}
-
-/** Returns a human-readable staleness string based on last_reported_at (telemetry freshness).
- *  Falls back to updated_at only when no report has ever been received.
- *  Returns null when fresh (< 6 h). */
 function stalenessLabel(asset: { last_reported_at: string | null; updated_at: string }): { label: string; intent: Intent } | null {
-  const ts     = asset.last_reported_at ?? asset.updated_at
-  const ageMs  = Date.now() - new Date(ts).getTime()
-  const ageH   = ageMs / 3_600_000
+  const ts    = asset.last_reported_at ?? asset.updated_at
+  const ageH  = (Date.now() - new Date(ts).getTime()) / 3_600_000
   if (ageH < 6)  return null
   if (ageH < 24) return { label: `${Math.round(ageH)}h ago`, intent: 'warning' }
-  const ageD = Math.round(ageH / 24)
-  return { label: `${ageD}d ago`, intent: 'danger' }
+  return { label: `${Math.round(ageH / 24)}d ago`, intent: 'danger' }
 }
 
 const SKELETON_ROWS = 7
 
 export default function AssetsPage() {
-  const { asOf, isReplaying } = useReplay()
-  const { isCommander } = useRole()
+  const { asOf } = useReplay()
   const params = { per_page: 100, ...(asOf ? { as_of: asOf } : {}) }
 
   const { data: assetRes, error: assetError, isPending: assetsPending } = useAssets(params)
   const { data: siteRes,  isPending: sitesPending } = useSites(params)
-  const updateStatus = useUpdateAssetStatus()
 
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null)
-  const [pendingStatus, setPendingStatus] = useState<AssetStatus | null>(null)
-  const [updateError, setUpdateError]     = useState<string | null>(null)
 
   const loading = assetsPending || sitesPending
 
@@ -85,39 +59,11 @@ export default function AssetsPage() {
   const siteMap: Record<string, string> = {}
   for (const site of siteRes?.data ?? []) siteMap[site.id] = site.name
 
-  function openDrawer(asset: Asset) {
-    setSelectedAsset(asset)
-    setPendingStatus(null)
-    setUpdateError(null)
-  }
-
-  function closeDrawer() {
-    setSelectedAsset(null)
-    setPendingStatus(null)
-    setUpdateError(null)
-  }
-
-  async function handleStatusChange() {
-    if (!selectedAsset || !pendingStatus) return
-    const assetId = selectedAsset.id
-    setUpdateError(null)
-    try {
-      const updated = await updateStatus.mutateAsync({ id: assetId, status: pendingStatus })
-      // Only update drawer if it's still showing the same asset
-      setSelectedAsset(prev => prev?.id === assetId ? updated : prev)
-      setPendingStatus(null)
-    } catch (err: unknown) {
-      setUpdateError(err instanceof Error ? err.message : 'Update failed')
-    }
-  }
-
   if (!loading && assets.length === 0) {
     return (
       <NonIdealState icon="cube" title="No assets" description="No assets found." />
     )
   }
-
-  const stale = selectedAsset ? stalenessLabel(selectedAsset) : null
 
   return (
     <>
@@ -155,15 +101,13 @@ export default function AssetsPage() {
               : assets.map((asset) => {
                   const staleInfo = stalenessLabel(asset)
                   return (
-                    <tr key={asset.id} onClick={() => openDrawer(asset)} className="clickable-row">
+                    <tr key={asset.id} onClick={() => setSelectedAsset(asset)} className="clickable-row">
                       <td>{asset.name}</td>
                       <td>
-                        <Tag minimal>{typeLabel(asset.asset_type)}</Tag>
+                        <Tag minimal>{asset.asset_type}</Tag>
                       </td>
                       <td>
-                        <Tag minimal intent={statusIntent(asset.status)}>
-                          {statusLabel(asset.status)}
-                        </Tag>
+                        <Tag minimal intent={statusIntent(asset.status)}>{asset.status}</Tag>
                       </td>
                       <td>
                         {staleInfo
@@ -184,72 +128,14 @@ export default function AssetsPage() {
 
       <Drawer
         isOpen={selectedAsset !== null}
-        onClose={closeDrawer}
+        onClose={() => setSelectedAsset(null)}
         size={DrawerSize.SMALL}
         title={selectedAsset?.name ?? ''}
         className="bp6-dark"
       >
         {selectedAsset && (
           <div className="drawer-body">
-            <div className="drawer-tags">
-              <Tag minimal intent={statusIntent(selectedAsset.status)}>
-                {statusLabel(selectedAsset.status)}
-              </Tag>
-              <Tag minimal>{typeLabel(selectedAsset.asset_type)}</Tag>
-              {selectedAsset.home_site_id && (
-                <Tag minimal>{siteMap[selectedAsset.home_site_id] ?? selectedAsset.home_site_id}</Tag>
-              )}
-              {stale && (
-                <Tag minimal intent={stale.intent} icon="time">
-                  Updated {stale.label}
-                </Tag>
-              )}
-            </div>
-
-            {/* Status management — commander only, hidden in replay */}
-            {isCommander && !isReplaying && (
-              <div className="drawer-transitions" style={{ marginTop: 16 }}>
-                <span className="drawer-section-label bp6-text-muted">Change status</span>
-                <div className="transition-buttons">
-                  {ASSET_STATUSES.filter(s => s !== selectedAsset.status).map(s => (
-                    <Button
-                      key={s}
-                      small
-                      active={pendingStatus === s}
-                      intent={statusIntent(s)}
-                      onClick={() => {
-                        setPendingStatus(pendingStatus === s ? null : s)
-                        setUpdateError(null)
-                      }}
-                    >
-                      {statusLabel(s)}
-                    </Button>
-                  ))}
-                </div>
-
-                {pendingStatus && (
-                  <Button
-                    intent="primary"
-                    small
-                    fill
-                    loading={updateStatus.isPending}
-                    onClick={handleStatusChange}
-                    className="transition-confirm"
-                  >
-                    Confirm — set to {statusLabel(pendingStatus)}
-                  </Button>
-                )}
-
-                {updateError && (
-                  <Callout intent="danger" compact>{updateError}</Callout>
-                )}
-              </div>
-            )}
-
-            <Divider />
-
-            <h4 className="bp6-heading drawer-section-title">Audit History</h4>
-            <AuditTimeline entityType="Asset" entityId={selectedAsset.id} />
+            <EntityCard entityType="asset" entityId={selectedAsset.id} />
           </div>
         )}
       </Drawer>

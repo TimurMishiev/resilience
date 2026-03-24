@@ -15,8 +15,10 @@ RSpec.describe Recommendations::RuleEngine, type: :service do
       flaggable_sites:     [],
       bulk_triage_sites:   [],
       risk_snapshots:      [],
-      posture_by_site_id:  {},
-      asset_availability:  { available: 2, assigned: 1, degraded: 0, offline: 0 },
+      posture_by_site_id:             {},
+      asset_availability:             { available: 2, assigned: 1, degraded: 0, offline: 0 },
+      available_assets:               [],
+      unassigned_high_priority_tasks: [],
     }
   end
 
@@ -252,6 +254,61 @@ RSpec.describe Recommendations::RuleEngine, type: :service do
       rec = result.recommendations.first
       expect(rec[:recommendation_type]).to eq "flag_site"
       expect(rec[:confidence]).to be_within(0.01).of(0.88)
+    end
+  end
+
+  describe "suggest_asset_assignments" do
+    let(:task)  { create(:task, priority: "critical", workflow_status: "new", asset_id: nil, site: site) }
+    let(:asset) { create(:asset, status: "available") }
+
+    let(:task_stub)  { { id: task.id,  title: task.title,  priority: "critical", workflow_status: "new", site_id: site.id, site_name: site.name, updated_at: task.updated_at.iso8601 } }
+    let(:asset_stub) { { id: asset.id, name: asset.name, asset_type: asset.asset_type } }
+
+    context "when there are unassigned high-priority tasks and available assets" do
+      let(:context) do
+        base_context.merge(
+          available_assets:               [asset_stub],
+          unassigned_high_priority_tasks: [task_stub],
+        )
+      end
+
+      it "produces an assign_asset recommendation" do
+        expect(result).to be_success
+        rec = result.recommendations.first
+        expect(rec[:recommendation_type]).to eq "assign_asset"
+        expect(rec[:action_payload][:task_id]).to eq task.id
+        expect(rec[:action_payload][:asset_id]).to eq asset.id
+        expect(rec[:confidence]).to eq 0.88
+      end
+    end
+
+    context "when no assets are available" do
+      let(:context) do
+        base_context.merge(
+          available_assets:               [],
+          unassigned_high_priority_tasks: [task_stub],
+        )
+      end
+
+      it "produces no recommendations" do
+        expect(result).to be_success
+        expect(result.recommendations).to be_empty
+      end
+    end
+
+    context "when the task's AO is in Observe posture" do
+      let(:context) do
+        base_context.merge(
+          available_assets:               [asset_stub],
+          unassigned_high_priority_tasks: [task_stub],
+          posture_by_site_id:             { site.id => { ao_id: "ao-1", ao_name: "AO Alpha", posture: "observe" } },
+        )
+      end
+
+      it "skips the task" do
+        expect(result).to be_success
+        expect(result.recommendations).to be_empty
+      end
     end
   end
 

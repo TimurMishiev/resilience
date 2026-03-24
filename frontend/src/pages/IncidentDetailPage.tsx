@@ -13,7 +13,7 @@ import { AssetPicker } from '../components/AssetPicker'
 import { PostureBadge } from '../components/PostureBadge'
 import { useAuth } from '../context/AuthContext'
 import { useAssets } from '../hooks/useAssets'
-import { useUpdateTask } from '../hooks/useTasks'
+import { useTasks, useUpdateTask } from '../hooks/useTasks'
 import AuditTimeline from '../components/AuditTimeline'
 import IncidentNotesPanel from '../components/IncidentNotesPanel'
 import IncidentRecommendationsPanel from '../components/IncidentRecommendationsPanel'
@@ -125,8 +125,10 @@ function AlertsTab({ alerts }: { alerts: IncidentAlert[] }) {
 
 function TasksTab({ tasks, posture }: { tasks: IncidentTask[]; posture?: Posture }) {
   const { data: assetRes } = useAssets({ per_page: 200 })
+  const { data: taskRes } = useTasks({ per_page: 200 })
   const updateTask = useUpdateTask()
   const assets = assetRes?.data ?? []
+  const allTasks = taskRes?.data ?? []
 
   if (tasks.length === 0) {
     return (
@@ -165,6 +167,7 @@ function TasksTab({ tasks, posture }: { tasks: IncidentTask[]; posture?: Posture
                 }}
                 isPending={updateTask.isPending}
                 posture={posture}
+                assignedTasks={allTasks}
                 minimal
               />
             </td>

@@ -6,6 +6,7 @@ class Recommendation < ApplicationRecord
     create_task
     flag_site
     bulk_triage_alerts
+    assign_asset
   ].freeze
 
   VALID_STATUSES = %w[pending accepted rejected deferred expired executed].freeze

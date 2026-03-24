@@ -18,6 +18,7 @@ const REC_TYPE_ICON: Record<string, IconName> = {
   create_task:        'add',
   flag_site:          'flag',
   bulk_triage_alerts: 'multi-select',
+  assign_asset:       'person',
 }
 
 // ── component ──────────────────────────────────────────────────────────────

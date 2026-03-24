@@ -173,4 +173,38 @@ RSpec.describe Recommendations::ExecutorService, type: :service do
       expect(second_rec.reload.status).to eq "executed"
     end
   end
+
+  describe "assign_asset" do
+    let!(:task)  { create(:task,  site: site, asset_id: nil, priority: "high", workflow_status: "new") }
+    let!(:asset) { create(:asset, status: "available") }
+    let!(:rec) do
+      create(:recommendation,
+             status:               "accepted",
+             recommendation_type:  "assign_asset",
+             affected_entity_type: "Task",
+             affected_entity_id:   task.id,
+             action_payload:       { "task_id" => task.id, "asset_id" => asset.id },
+             expires_at:           2.hours.from_now)
+    end
+
+    it "assigns the asset to the task and writes an audit event" do
+      expect { execute(rec) }.to change(AuditEvent, :count).by(1)
+      expect(task.reload.asset_id).to eq asset.id
+      expect(rec.reload.status).to eq "executed"
+    end
+
+    it "returns failure when task is not found" do
+      rec.update!(action_payload: { "task_id" => "nonexistent", "asset_id" => asset.id })
+      result = execute(rec)
+      expect(result).not_to be_success
+      expect(result.errors.first).to include("Task nonexistent not found")
+    end
+
+    it "returns failure when asset is not found" do
+      rec.update!(action_payload: { "task_id" => task.id, "asset_id" => "nonexistent" })
+      result = execute(rec)
+      expect(result).not_to be_success
+      expect(result.errors.first).to include("Asset nonexistent not found")
+    end
+  end
 end

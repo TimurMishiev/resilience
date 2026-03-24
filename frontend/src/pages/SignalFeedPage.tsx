@@ -204,17 +204,6 @@ export default function SignalFeedPage() {
   const [nlTo,      setNlTo]      = useState<string | null>(null)
   const nlInputRef = useRef<HTMLInputElement>(null)
 
-  // Clears only the hidden NL-derived constraints (site_id / from / to) without touching
-  // the source/type dropdowns — called whenever the user manually adjusts a dropdown so that
-  // AI-applied constraints do not silently persist behind a misleading "no filter active" state.
-  function clearNlConstraints() {
-    setNlApplied(false)
-    setNlError(null)
-    setNlSiteId(null)
-    setNlFrom(null)
-    setNlTo(null)
-  }
-
   function handleNlSearch() {
     const q = nlQuery.trim()
     if (!q) return
@@ -238,7 +227,11 @@ export default function SignalFeedPage() {
 
   function clearNlFilter() {
     setNlQuery('')
-    clearNlConstraints()
+    setNlApplied(false)
+    setNlError(null)
+    setNlSiteId(null)
+    setNlFrom(null)
+    setNlTo(null)
     setTypeFilter('')
     setSourceFilter('')
     nlInputRef.current?.focus()
@@ -339,7 +332,7 @@ export default function SignalFeedPage() {
       <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
         <HTMLSelect
           value={sourceFilter}
-          onChange={e => { setSourceFilter(e.target.value as SignalSource | ''); clearNlConstraints() }}
+          onChange={e => { setSourceFilter(e.target.value as SignalSource | ''); setNlApplied(false); setNlError(null); setNlSiteId(null); setNlFrom(null); setNlTo(null) }}
           style={{ minWidth: 140 }}
         >
           <option value="">All sources</option>
@@ -350,7 +343,7 @@ export default function SignalFeedPage() {
 
         <HTMLSelect
           value={typeFilter}
-          onChange={e => { setTypeFilter(e.target.value as SignalType | ''); clearNlConstraints() }}
+          onChange={e => { setTypeFilter(e.target.value as SignalType | ''); setNlApplied(false); setNlError(null); setNlSiteId(null); setNlFrom(null); setNlTo(null) }}
           style={{ minWidth: 140 }}
         >
           <option value="">All types</option>

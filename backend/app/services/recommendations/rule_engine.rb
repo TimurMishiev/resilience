@@ -14,6 +14,7 @@ module Recommendations
       recs.concat escalate_incidents
       recs.concat bulk_triage_suggestions
       recs.concat flag_high_risk_sites
+      recs.concat suggest_asset_assignments
       ServiceResult.success(recommendations: recs)
     end
 
@@ -164,6 +165,51 @@ module Recommendations
             entity_id:   s[:id],
           )
         end
+    end
+
+    # ── Rule: assign_asset ──────────────────────────────────────────────────────
+    # Unassigned high/critical tasks with available assets in the fleet → suggest assignment.
+    # Skipped when the task's AO is in Observe posture (ROE forbids assignment).
+    def suggest_asset_assignments
+      # Dup so we can shift candidates off the front without mutating context
+      candidates  = @ctx.fetch(:available_assets, []).dup
+      return [] if candidates.empty?
+
+      posture_map = @ctx.fetch(:posture_by_site_id, {})
+      recs        = []
+
+      @ctx.fetch(:unassigned_high_priority_tasks, [])
+        .reject { |t| already_pending?("assign_asset", "Task", t[:id]) }
+        .reject { |t| posture_map.dig(t[:site_id], :posture) == "observe" }
+        .each do |t|
+          break if candidates.empty?  # no more assets to allocate this pass
+
+          asset        = candidates.shift  # consume candidate — prevents same asset appearing twice
+          posture_info = posture_map[t[:site_id]]
+          posture_note =
+            case posture_info&.[](:posture)
+            when "defensive"    then " AO posture is Defensive — available assets only."
+            when "weapons_free" then " AO posture is Weapons Free — all assets eligible."
+            end
+
+          recs << build_rec(
+            type:        "assign_asset",
+            tier:        "rule",
+            confidence:  t[:priority] == "critical" ? 0.88 : 0.75,
+            rationale:   "#{t[:priority].capitalize} task '#{t[:title]}' at #{t[:site_name] || 'unknown site'} " \
+                         "has no assigned asset. Recommend assigning #{asset[:name]} (#{asset[:asset_type]})." \
+                         "#{posture_note}",
+            evidence:    [
+              { type: "task",  id: t[:id],     detail: "priority=#{t[:priority]}, status=#{t[:workflow_status]}" },
+              { type: "asset", id: asset[:id], detail: "status=available" },
+            ],
+            payload:     { task_id: t[:id], asset_id: asset[:id] },
+            entity_type: "Task",
+            entity_id:   t[:id],
+          )
+        end
+
+      recs
     end
 
     # ── Helpers ──────────────────────────────────────────────────────────────────

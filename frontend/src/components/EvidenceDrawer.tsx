@@ -10,6 +10,7 @@ const TYPE_ICONS: Record<EvidenceItem['type'], IconName> = {
   incident: 'warning-sign',
   alert:    'lightning',
   task:     'clipboard',
+  asset:    'person',
 }
 
 const TYPE_INTENT: Record<EvidenceItem['type'], 'primary' | 'warning' | 'danger' | 'none'> = {
@@ -17,6 +18,7 @@ const TYPE_INTENT: Record<EvidenceItem['type'], 'primary' | 'warning' | 'danger'
   incident: 'danger',
   alert:    'warning',
   task:     'none',
+  asset:    'primary',
 }
 
 

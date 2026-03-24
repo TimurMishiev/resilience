@@ -2689,3 +2689,86 @@ body {
   justify-content: space-between;
   margin-bottom: 8px;
 }
+
+/* ── EntityCard ──────────────────────────────────────────────────────────── */
+
+.entity-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.entity-tab-panel {
+  padding: 16px 0 0;
+}
+
+.entity-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.entity-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.entity-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.entity-field-label {
+  min-width: 96px;
+  font-size: 11px;
+  color: var(--color-muted, #8f99a8);
+  padding-top: 2px;
+  flex-shrink: 0;
+}
+
+.entity-field-value {
+  flex: 1;
+  font-size: 13px;
+}
+
+.entity-meta {
+  font-size: 11px;
+  color: var(--color-muted, #8f99a8);
+  margin-top: 4px;
+}
+
+.entity-raw {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: #abb3bf;
+}
+
+.entity-relations {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.relation-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.relation-label {
+  min-width: 80px;
+  font-size: 11px;
+  color: var(--color-muted, #8f99a8);
+  flex-shrink: 0;
+}
+
+.relation-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}

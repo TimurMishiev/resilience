@@ -60,6 +60,12 @@ RSpec.describe Recommendations::Validator, type: :service do
       expect(result.invalid.first[:errors].first).to include("does not exist")
     end
 
+    it "rejects evidence items with non-existent asset IDs" do
+      attrs = valid_attrs(evidence: [{ "type" => "asset", "id" => SecureRandom.uuid }])
+      result = described_class.call(recommendations: [attrs])
+      expect(result.invalid.first[:errors].first).to include("does not exist")
+    end
+
     it "accepts evidence items with unknown type strings (not in ENTITY_CLASSES)" do
       # Unknown types are skipped (not rejected) so forward compatibility is preserved
       attrs = valid_attrs(evidence: [{ "type" => "unknown_future_type", "id" => SecureRandom.uuid }])
@@ -236,6 +242,69 @@ RSpec.describe Recommendations::Validator, type: :service do
       )
       result = described_class.call(recommendations: [attrs])
       expect(result.valid.size).to eq 1
+    end
+  end
+
+  describe "assign_asset payload validation" do
+    let(:task)  { create(:task,  site: site) }
+    let(:asset) { create(:asset, status: "available") }
+
+    it "accepts a valid assign_asset recommendation" do
+      attrs = valid_attrs(
+        recommendation_type:  "assign_asset",
+        affected_entity_type: "Task",
+        affected_entity_id:   task.id,
+        action_payload:       { "task_id" => task.id, "asset_id" => asset.id },
+        evidence:             [
+          { "type" => "task", "id" => task.id, "detail" => "priority=high" },
+          { "type" => "asset", "id" => asset.id, "detail" => "status=available" },
+        ],
+      )
+      result = described_class.call(recommendations: [attrs])
+      expect(result.valid.size).to eq 1
+      expect(result.invalid).to be_empty
+    end
+
+    it "rejects when task_id is missing from payload" do
+      attrs = valid_attrs(
+        recommendation_type:  "assign_asset",
+        affected_entity_type: "Task",
+        affected_entity_id:   task.id,
+        action_payload:       { "asset_id" => asset.id },
+        evidence:             [],
+      )
+      result = described_class.call(recommendations: [attrs])
+      expect(result.valid).to be_empty
+      expect(result.invalid.first[:errors]).to include("action_payload missing required key 'task_id'")
+    end
+
+    it "rejects when asset_id does not exist" do
+      attrs = valid_attrs(
+        recommendation_type:  "assign_asset",
+        affected_entity_type: "Task",
+        affected_entity_id:   task.id,
+        action_payload:       { "task_id" => task.id, "asset_id" => SecureRandom.uuid },
+        evidence:             [],
+      )
+      result = described_class.call(recommendations: [attrs])
+      expect(result.valid).to be_empty
+      expect(result.invalid.first[:errors].first).to match(/asset_id .* does not exist/)
+    end
+
+    it "rejects when payload task_id does not match affected_entity_id" do
+      other_task = create(:task, site: site)
+      attrs = valid_attrs(
+        recommendation_type:  "assign_asset",
+        affected_entity_type: "Task",
+        affected_entity_id:   task.id,
+        action_payload:       { "task_id" => other_task.id, "asset_id" => asset.id },
+        evidence:             [],
+      )
+      result = described_class.call(recommendations: [attrs])
+      expect(result.valid).to be_empty
+      expect(result.invalid.first[:errors]).to include(
+        "action_payload task_id does not match affected_entity_id"
+      )
     end
   end
 

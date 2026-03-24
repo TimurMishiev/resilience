@@ -34,10 +34,12 @@ module Vessels
     HIGH_THREAT_AO = %w[red black].freeze
 
     def perform
-      dark_vessels = Vessel.dark_since(GAP_THRESHOLD)
-                           .includes(:last_signal)
+      # Load to array once — avoids three separate DB round-trips (.none?, .each, .count).
+      # Speed, lat, and lng are denormalized onto vessels by upsert_from_signal!, so no
+      # association eager-loading is needed here.
+      dark_vessels = Vessel.dark_since(GAP_THRESHOLD).to_a
 
-      return if dark_vessels.none?
+      return if dark_vessels.empty?
 
       # Load high-threat AO geometries once — used for location context scoring
       high_threat_aos = AreaOfOperation.where(threat_level: HIGH_THREAT_AO)
@@ -73,7 +75,7 @@ module Vessels
         synthesized += 1 if result.success && result.payload[:created]
       end
 
-      Rails.logger.info "[GapDetection] scanned #{dark_vessels.count} dark vessels, synthesized #{synthesized} new gap signals"
+      Rails.logger.info "[GapDetection] scanned #{dark_vessels.size} dark vessels, synthesized #{synthesized} new gap signals"
     end
 
     private

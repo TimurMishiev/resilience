@@ -413,7 +413,7 @@ export interface SiteReadiness {
 export type RiskLevel = 'low' | 'moderate' | 'high' | 'critical'
 
 export interface SiteRiskScore {
-  site_id:    number
+  site_id:    string
   site_name:  string
   score:      number
   risk_level: RiskLevel

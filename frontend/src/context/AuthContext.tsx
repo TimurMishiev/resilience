@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { registerUnauthorizedHandler } from '../api/client'
 import { logout as apiLogout, restoreUser } from '../api/auth'
@@ -17,10 +17,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Restore from sessionStorage on page load — user info only, never the token.
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(() => restoreUser())
 
-  function handleLogout() {
+  const handleLogout = useCallback(() => {
     apiLogout()
     setCurrentUser(null)
-  }
+  }, [])
 
   function handleLogin(user: CurrentUser) {
     setCurrentUser(user)
@@ -29,7 +29,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Register the 401 handler so expired cookies automatically log out
   useEffect(() => {
     registerUnauthorizedHandler(handleLogout)
-  }, [])
+  }, [handleLogout])
 
   return (
     <AuthContext.Provider value={{

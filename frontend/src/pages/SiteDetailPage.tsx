@@ -8,6 +8,8 @@ import {
   Dialog,
   DialogBody,
   DialogFooter,
+  Drawer,
+  DrawerSize,
   FormGroup,
   HTMLSelect,
   HTMLTable,
@@ -20,6 +22,7 @@ import {
   Tag,
   TextArea,
 } from '@blueprintjs/core'
+import EntityCard from '../components/EntityCard'
 import { useSite, useUnflagSite, useToggleSiteStatus, useUpdateSiteGeofence } from '../hooks/useSite'
 import { useTasks, useCreateTask } from '../hooks/useTasks'
 import { useSignals } from '../hooks/useSignals'
@@ -56,7 +59,7 @@ const STATUS_INTENT: Record<string, 'success' | 'warning' | 'danger' | 'none' | 
 
 // ── sub-panels ────────────────────────────────────────────────────────────────
 
-function TasksTab({ siteId }: { siteId: string }) {
+function TasksTab({ siteId, onSelect }: { siteId: string; onSelect: (task: Task) => void }) {
   const { data, isPending, error } = useTasks({ site_id: siteId, per_page: 50 })
 
   if (isPending) return <Spinner size={20} style={{ marginTop: 24 }} />
@@ -76,7 +79,7 @@ function TasksTab({ siteId }: { siteId: string }) {
   }
 
   return (
-    <HTMLTable className="data-table" striped>
+    <HTMLTable className="data-table" striped interactive>
       <thead>
         <tr>
           <th>Title</th>
@@ -87,7 +90,7 @@ function TasksTab({ siteId }: { siteId: string }) {
       </thead>
       <tbody>
         {tasks.map((t: Task) => (
-          <tr key={t.id}>
+          <tr key={t.id} onClick={() => onSelect(t)} className="clickable-row">
             <td>{t.title}</td>
             <td>
               <Tag minimal intent={PRIORITY_INTENT[t.priority] ?? 'none'}>
@@ -379,7 +382,7 @@ function RuleFiresTab({ siteId, onChain }: { siteId: string; onChain: (m: Signal
   )
 }
 
-function AssetsTab({ siteId }: { siteId: string }) {
+function AssetsTab({ siteId, onSelect }: { siteId: string; onSelect: (asset: Asset) => void }) {
   const { data, isPending, error } = useAssets({ home_site_id: siteId, per_page: 50 })
 
   if (isPending) return <Spinner size={20} style={{ marginTop: 24 }} />
@@ -403,7 +406,7 @@ function AssetsTab({ siteId }: { siteId: string }) {
   }
 
   return (
-    <HTMLTable className="data-table" striped>
+    <HTMLTable className="data-table" striped interactive>
       <thead>
         <tr>
           <th>Name</th>
@@ -413,7 +416,7 @@ function AssetsTab({ siteId }: { siteId: string }) {
       </thead>
       <tbody>
         {assets.map((a: Asset) => (
-          <tr key={a.id}>
+          <tr key={a.id} onClick={() => onSelect(a)} className="clickable-row">
             <td>{a.name}</td>
             <td className="mono">{a.asset_type}</td>
             <td>
@@ -534,6 +537,7 @@ export default function SiteDetailPage() {
   const [editingGeofence, setEditingGeofence] = useState(false)
   const [geofenceInput, setGeofenceInput]     = useState('')
   const [chainMatch, setChainMatch]           = useState<import('../api/types').SignalRuleMatch | null>(null)
+  const [entityCard, setEntityCard]           = useState<{ type: 'task' | 'asset'; id: string; title: string } | null>(null)
 
   const { isCommander } = useRole()
 
@@ -590,6 +594,19 @@ export default function SiteDetailPage() {
         match={chainMatch}
         onClose={() => setChainMatch(null)}
       />
+      <Drawer
+        isOpen={entityCard !== null}
+        onClose={() => setEntityCard(null)}
+        size={DrawerSize.SMALL}
+        title={entityCard?.title ?? ''}
+        className="bp6-dark"
+      >
+        {entityCard && (
+          <div className="drawer-body">
+            <EntityCard entityType={entityCard.type} entityId={entityCard.id} />
+          </div>
+        )}
+      </Drawer>
 
       {/* ── header ── */}
       <div className="site-detail-header">
@@ -757,10 +774,10 @@ export default function SiteDetailPage() {
               title="New task for this site"
             />
           </span>
-        } panel={<TasksTab siteId={site.id} />} />
+        } panel={<TasksTab siteId={site.id} onSelect={(t) => setEntityCard({ type: 'task', id: t.id, title: t.title })} />} />
         <Tab id="signals" title="Signals" panel={<SignalsTab siteId={site.id} />} />
         <Tab id="rule_fires" title="Rule Fires" panel={<RuleFiresTab siteId={site.id} onChain={setChainMatch} />} />
-        <Tab id="assets" title="Assets" panel={<AssetsTab siteId={site.id} />} />
+        <Tab id="assets" title="Assets" panel={<AssetsTab siteId={site.id} onSelect={(a) => setEntityCard({ type: 'asset', id: a.id, title: a.name })} />} />
         <Tab id="timeline" title={
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <span>Timeline</span>

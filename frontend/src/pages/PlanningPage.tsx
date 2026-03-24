@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import {
   Callout,
+  Drawer,
+  DrawerSize,
   HTMLTable,
   NonIdealState,
   Spinner,
@@ -12,9 +14,11 @@ import { useRole } from '../hooks/useRole'
 import { useNavigate } from 'react-router-dom'
 import { PostureBadge } from '../components/PostureBadge'
 import { AssetPicker } from '../components/AssetPicker'
+import EntityCard from '../components/EntityCard'
 import { humanize } from '../utils/humanize'
 import { computeFlags } from '../utils/planningFlags'
 import type { Posture, TaskPriority } from '../api/types'
+import type { EntityType } from '../components/EntityCard'
 
 const PRIORITY_ORDER: Record<TaskPriority, number> = {
   critical: 0,
@@ -38,6 +42,7 @@ export default function PlanningPage() {
 
   // Per-row pending asset selection — keyed by task id
   const [pendingAssets, setPendingAssets] = useState<Record<string, string | null | undefined>>({})
+  const [entityCard, setEntityCard] = useState<{ type: EntityType; id: string } | null>(null)
 
   // All hooks must come before any conditional returns (Rules of Hooks).
   // Destructure with defaults so hooks receive stable empty arrays when data is not yet loaded.
@@ -210,7 +215,12 @@ export default function PlanningPage() {
                         {conflict && (
                           <Tag minimal intent="danger" style={{ marginRight: 6, fontSize: 10 }}>CONFLICT</Tag>
                         )}
-                        {asset.name}
+                        <span
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => setEntityCard({ type: 'asset', id: asset.id })}
+                        >
+                          {asset.name}
+                        </span>
                       </td>
                       <td className="bp6-text-muted" style={{ fontSize: 12 }}>{humanize(asset.asset_type)}</td>
                       <td>
@@ -284,6 +294,21 @@ export default function PlanningPage() {
         )}
       </section>
 
+      {/* ── Entity card drawer ───────────────────────────────────────────── */}
+      <Drawer
+        isOpen={entityCard !== null}
+        onClose={() => setEntityCard(null)}
+        size={DrawerSize.SMALL}
+        title={entityCard?.type === 'task' ? 'Task Detail' : 'Asset Detail'}
+        hasBackdrop={false}
+      >
+        {entityCard && (
+          <div style={{ padding: 16 }}>
+            <EntityCard entityType={entityCard.type} entityId={entityCard.id} />
+          </div>
+        )}
+      </Drawer>
+
       {/* ── Planning board ────────────────────────────────────────────────── */}
       <section>
         <h3 className="bp6-heading" style={{ fontSize: 14, marginBottom: 10, color: 'var(--bp6-text-muted-color)' }}>
@@ -312,7 +337,7 @@ export default function PlanningPage() {
                     <td>
                       <span
                         style={{ cursor: 'pointer', fontWeight: 500 }}
-                        onClick={() => navigate(`/tasks`)}
+                        onClick={() => setEntityCard({ type: 'task', id: task.id })}
                         title={task.description ?? undefined}
                       >
                         {task.title}
@@ -340,6 +365,7 @@ export default function PlanningPage() {
                         minimal
                         currentAssetId={task.asset_id}
                         assets={assets}
+                        assignedTasks={tasks}
                         pendingAsset={pending}
                         onPendingChange={assetId => handlePendingChange(task.id, assetId)}
                         onConfirm={assetId => handleConfirm(task.id, assetId)}

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Button, Callout, Checkbox, Classes, Icon, Tag, Tooltip } from '@blueprintjs/core'
 import AlertChainDrawer from '../components/AlertChainDrawer'
 import RecommendationCard from '../components/RecommendationCard'
@@ -27,30 +27,31 @@ import type { Recommendation } from '../api/recommendations'
 import type { WorkflowStatus, TaskPriority, SignalRuleMatch, AlertStatus, RiskLevel } from '../api/types'
 import { SIGNAL_ICON_NAME } from '../lib/signalIcons'
 import { humanize } from '../utils/humanize'
+import { COLORS } from '../lib/colors'
 
 const STATUS_ORDER: WorkflowStatus[] = ['new', 'triaged', 'in_progress', 'blocked', 'resolved']
 const PRIORITY_ORDER: TaskPriority[] = ['critical', 'high', 'normal', 'low']
 
 const STATUS_COLOR: Record<WorkflowStatus, string> = {
-  new:         '#8a9ba8',
-  triaged:     '#f0b726',
-  in_progress: '#4580e6',
-  blocked:     '#cd4246',
-  resolved:    '#23a26d',
+  new:         COLORS.muted,
+  triaged:     COLORS.warning,
+  in_progress: COLORS.primary,
+  blocked:     COLORS.danger,
+  resolved:    COLORS.success,
 }
 
 const PRIORITY_COLOR: Record<TaskPriority, string> = {
-  critical: '#cd4246',
-  high:     '#f0b726',
-  normal:   '#4580e6',
-  low:      '#5c7080',
+  critical: COLORS.danger,
+  high:     COLORS.warning,
+  normal:   COLORS.primary,
+  low:      COLORS.subtle,
 }
 
 function scoreIntent(score: number | null) {
-  if (score === null) return '#5c7080'
-  if (score >= 0.75) return '#23a26d'
-  if (score >= 0.5)  return '#f0b726'
-  return '#cd4246'
+  if (score === null) return COLORS.subtle
+  if (score >= 0.75) return COLORS.success
+  if (score >= 0.5)  return COLORS.warning
+  return COLORS.danger
 }
 
 function pct(n: number | null): string {
@@ -59,10 +60,10 @@ function pct(n: number | null): string {
 }
 
 const RISK_COLOR: Record<RiskLevel, string> = {
-  low:      '#23a26d',
-  moderate: '#f0b726',
-  high:     '#e07b26',
-  critical: '#cd4246',
+  low:      COLORS.success,
+  moderate: COLORS.warning,
+  high:     COLORS.orange,
+  critical: COLORS.danger,
 }
 
 const RISK_LABEL: Record<RiskLevel, string> = {
@@ -87,10 +88,10 @@ const ALERT_STATUS_INTENT: Record<AlertStatus, 'danger' | 'warning' | 'primary' 
 }
 
 function confidenceColor(c: number): string {
-  if (c >= 0.85) return '#23a26d'   // green
-  if (c >= 0.65) return '#f0b726'   // yellow
-  if (c >= 0.40) return '#e67e22'   // orange
-  return '#cd4246'                  // red
+  if (c >= 0.85) return COLORS.success
+  if (c >= 0.65) return COLORS.warning
+  if (c >= 0.40) return COLORS.orange
+  return COLORS.danger
 }
 
 function fmtTime(iso: string) {
@@ -177,7 +178,7 @@ function AlertsPanel({ matches }: { matches: SignalRuleMatch[] }) {
         />
         {someSelected ? (
           <>
-            <span style={{ fontSize: 12, color: '#8a9ba8' }}>{selected.size} selected</span>
+            <span style={{ fontSize: 12, color: COLORS.muted }}>{selected.size} selected</span>
             {BULK_ACTIONS.map(action => (
               <Button
                 key={action.to_status}
@@ -195,7 +196,7 @@ function AlertsPanel({ matches }: { matches: SignalRuleMatch[] }) {
             </Button>
           </>
         ) : (
-          <span style={{ fontSize: 12, color: '#5c7080' }}>Select alerts to bulk-triage</span>
+          <span style={{ fontSize: 12, color: COLORS.subtle }}>Select alerts to bulk-triage</span>
         )}
       </div>
 
@@ -320,7 +321,10 @@ export default function DashboardPage() {
   const recentMatches = matchesRes?.data ?? []
 
   const { data: riskData } = useRiskScores()
-  const riskBySite = Object.fromEntries((riskData ?? []).map((r) => [r.site_id, r]))
+  const riskBySite = useMemo(
+    () => Object.fromEntries((riskData ?? []).map((r) => [r.site_id, r])),
+    [riskData]
+  )
 
   const { data: readinessData, isPending: readinessPending, error: readinessError } = useReadiness(
     asOf ? { as_of: asOf } : undefined
@@ -381,7 +385,7 @@ export default function DashboardPage() {
         </div>
         <div className="dashboard-kpi">
           <span className="dashboard-kpi-label bp6-text-muted">Resolved</span>
-          <span className="dashboard-kpi-value" style={{ color: '#23a26d' }}>
+          <span className="dashboard-kpi-value" style={{ color: COLORS.success }}>
             {loading ? <span className={Classes.SKELETON} style={{ width: 56, display: 'inline-block' }}>&nbsp;</span> : (
               <>
                 {resolvedCount}
@@ -394,7 +398,7 @@ export default function DashboardPage() {
         </div>
         <div className="dashboard-kpi">
           <span className="dashboard-kpi-label bp6-text-muted">Blocked</span>
-          <span className="dashboard-kpi-value" style={{ color: blockedCount > 0 ? '#cd4246' : '#23a26d' }}>
+          <span className="dashboard-kpi-value" style={{ color: blockedCount > 0 ? COLORS.danger : COLORS.success }}>
             {loading ? <span className={Classes.SKELETON} style={{ width: 32, display: 'inline-block' }}>&nbsp;</span> : blockedCount}
           </span>
         </div>
@@ -492,10 +496,10 @@ export default function DashboardPage() {
           ) : (
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={statusCounts} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-                <XAxis dataKey="status" tick={{ fill: '#8a9ba8', fontSize: 11 }} />
-                <YAxis tick={{ fill: '#8a9ba8', fontSize: 11 }} allowDecimals={false} />
+                <XAxis dataKey="status" tick={{ fill: COLORS.muted, fontSize: 11 }} />
+                <YAxis tick={{ fill: COLORS.muted, fontSize: 11 }} allowDecimals={false} />
                 <ChartTooltip
-                  contentStyle={{ background: '#252c35', border: '1px solid #383e47', fontSize: 12 }}
+                  contentStyle={{ background: COLORS.chartBg, border: `1px solid ${COLORS.chartBorder}`, fontSize: 12 }}
                   cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                 />
                 <Bar dataKey="count" radius={[3, 3, 0, 0]}>
@@ -516,10 +520,10 @@ export default function DashboardPage() {
           ) : (
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={priorityCounts} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-                <XAxis dataKey="priority" tick={{ fill: '#8a9ba8', fontSize: 11 }} />
-                <YAxis tick={{ fill: '#8a9ba8', fontSize: 11 }} allowDecimals={false} />
+                <XAxis dataKey="priority" tick={{ fill: COLORS.muted, fontSize: 11 }} />
+                <YAxis tick={{ fill: COLORS.muted, fontSize: 11 }} allowDecimals={false} />
                 <ChartTooltip
-                  contentStyle={{ background: '#252c35', border: '1px solid #383e47', fontSize: 12 }}
+                  contentStyle={{ background: COLORS.chartBg, border: `1px solid ${COLORS.chartBorder}`, fontSize: 12 }}
                   cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                 />
                 <Bar dataKey="count" radius={[3, 3, 0, 0]}>
@@ -576,25 +580,25 @@ export default function DashboardPage() {
           ) : (
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={throughput} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#2f363f" />
+                <CartesianGrid strokeDasharray="3 3" stroke={COLORS.chartGrid} />
                 <XAxis
                   dataKey="date"
-                  tick={{ fill: '#8a9ba8', fontSize: 10 }}
+                  tick={{ fill: COLORS.muted, fontSize: 10 }}
                   tickFormatter={(d: string) => d.slice(5)} // MM-DD
                   interval={4}
                 />
-                <YAxis tick={{ fill: '#8a9ba8', fontSize: 11 }} allowDecimals={false} />
+                <YAxis tick={{ fill: COLORS.muted, fontSize: 11 }} allowDecimals={false} />
                 <ChartTooltip
-                  contentStyle={{ background: '#252c35', border: '1px solid #383e47', fontSize: 12 }}
+                  contentStyle={{ background: COLORS.chartBg, border: `1px solid ${COLORS.chartBorder}`, fontSize: 12 }}
                   labelFormatter={(d) => String(d)}
                 />
                 <Line
                   type="monotone"
                   dataKey="resolved"
-                  stroke="#23a26d"
+                  stroke={COLORS.success}
                   strokeWidth={2}
                   dot={false}
-                  activeDot={{ r: 4, fill: '#23a26d' }}
+                  activeDot={{ r: 4, fill: COLORS.success }}
                 />
               </LineChart>
             </ResponsiveContainer>

@@ -55,6 +55,9 @@ module Recommendations
       when "bulk_triage_alerts"
         bulk_triage(payload.fetch(:site_id))
 
+      when "assign_asset"
+        assign_asset(payload.fetch(:task_id), payload.fetch(:asset_id))
+
       else
         ServiceResult.failure(errors: ["Unknown recommendation type: #{@rec.recommendation_type}"])
       end
@@ -150,6 +153,22 @@ module Recommendations
       ServiceResult.success(site: site)
     rescue ActiveRecord::RecordInvalid => e
       ServiceResult.failure(errors: [e.message])
+    end
+
+    # Assigns a specific asset to a task via Tasks::UpdateService, which enforces
+    # posture validation and writes an audit event — same path as manual assignment.
+    def assign_asset(task_id, asset_id)
+      task  = Task.find_by(id: task_id)
+      asset = Asset.find_by(id: asset_id)
+      return ServiceResult.failure(errors: ["Task #{task_id} not found"])  unless task
+      return ServiceResult.failure(errors: ["Asset #{asset_id} not found"]) unless asset
+
+      Tasks::UpdateService.call(
+        task:       task,
+        params:     { "asset_id" => asset_id },
+        actor:      @user,
+        actor_role: @user.role,
+      )
     end
 
     # Bulk-triages unacknowledged alerts at a site by iterating through

@@ -28,11 +28,18 @@ module Api
         end
       end
 
-      # Block here, draining the queue until the client disconnects
+      # Block here, draining the queue until the client disconnects.
+      # Broadcaster#publish pushes { event:, data: }.to_json — parse that back
+      # and re-emit as proper SSE framing so the browser EventSource can match
+      # named-event listeners (e.g. addEventListener('task_created', ...)).
+      # Raw JSON written directly would arrive as a 'message' event and silently
+      # miss every named listener registered in useEventSource.ts.
       loop do
         payload = queue.pop          # blocks until a message arrives
-        response.stream.write(payload)
-        response.stream.write("\n\n")
+        parsed  = JSON.parse(payload)
+        sse_write(response.stream, event: parsed["event"], data: parsed["data"])
+      rescue JSON::ParserError => e
+        Rails.logger.error("[SSE] malformed queue payload — skipping: #{e.message}")
       rescue IOError, ActionController::Live::ClientDisconnected
         break
       end

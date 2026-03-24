@@ -15,6 +15,7 @@ module Recommendations
       "Incident"         => Incident,
       "SignalRuleMatch"  => SignalRuleMatch,
       "Task"             => Task,
+      "Asset"            => Asset,
     }.freeze
 
     # Describes which payload keys are required for each type and which AR
@@ -26,6 +27,8 @@ module Recommendations
       "create_task"        => [{ key: :site_id,     klass: Site            }],
       "flag_site"          => [{ key: :site_id,     klass: Site            }],
       "bulk_triage_alerts" => [{ key: :site_id,     klass: Site            }],
+      "assign_asset"       => [{ key: :task_id,     klass: Task            },
+                                { key: :asset_id,   klass: Asset           }],
     }.freeze
 
     def initialize(recommendations:)
@@ -166,6 +169,11 @@ module Recommendations
            payload_h[:site_id].to_s != entity_id.to_s
           errors << "action_payload site_id does not match affected_entity_id"
         end
+      when "assign_asset"
+        if entity_type == "Task" && payload_h[:task_id].present? &&
+           payload_h[:task_id].to_s != entity_id.to_s
+          errors << "action_payload task_id does not match affected_entity_id"
+        end
       end
 
       errors
@@ -177,6 +185,7 @@ module Recommendations
       "incident" => "Incident",
       "alert"    => "SignalRuleMatch",
       "task"     => "Task",
+      "asset"    => "Asset",
     }.freeze
 
     def evidence_entity_class_name(type_str)

@@ -18,16 +18,18 @@ module Recommendations
 
     def build_context
       {
-        assembled_at:        Time.current.iso8601,
-        stale_alerts:        stale_alerts,
-        high_conf_alerts:    high_conf_unacked_alerts,
-        open_incidents:      open_incidents,
-        overdue_tasks:       overdue_tasks,
-        flaggable_sites:     flaggable_sites,
-        bulk_triage_sites:   bulk_triage_sites,
-        risk_snapshots:      risk_snapshots,
-        posture_by_site_id:  posture_by_site_id,
-        asset_availability:  asset_availability,
+        assembled_at:                  Time.current.iso8601,
+        stale_alerts:                  stale_alerts,
+        high_conf_alerts:              high_conf_unacked_alerts,
+        open_incidents:                open_incidents,
+        overdue_tasks:                 overdue_tasks,
+        flaggable_sites:               flaggable_sites,
+        bulk_triage_sites:             bulk_triage_sites,
+        risk_snapshots:                risk_snapshots,
+        posture_by_site_id:            posture_by_site_id,
+        asset_availability:            asset_availability,
+        available_assets:              available_assets,
+        unassigned_high_priority_tasks: unassigned_high_priority_tasks,
       }
     end
 
@@ -149,6 +151,30 @@ module Recommendations
     rescue => e
       Rails.logger.debug "[ContextAssembler] asset_availability error: #{e.message}"
       { available: 0, assigned: 0, degraded: 0, offline: 0 }
+    end
+
+    # Available assets (status=available), ordered by name — used by assign_asset rule.
+    def available_assets
+      Asset.where(status: "available").order(:name).limit(20).map do |a|
+        { id: a.id, name: a.name, asset_type: a.asset_type }
+      end
+    rescue => e
+      Rails.logger.debug "[ContextAssembler] available_assets error: #{e.message}"
+      []
+    end
+
+    # Active high/critical tasks with no asset assigned — prime candidates for assign_asset.
+    def unassigned_high_priority_tasks
+      Task
+        .where(priority: %w[high critical], asset_id: nil)
+        .where.not(workflow_status: "resolved")
+        .includes(:site)
+        .order(Arel.sql("CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 END"), :created_at)
+        .limit(10)
+        .map { |t| serialize_task(t) }
+    rescue => e
+      Rails.logger.debug "[ContextAssembler] unassigned_high_priority_tasks error: #{e.message}"
+      []
     end
 
     # ── Serializers ─────────────────────────────────────────────────────────────

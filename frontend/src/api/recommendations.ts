@@ -8,6 +8,7 @@ export type RecommendationType =
   | 'create_task'
   | 'flag_site'
   | 'bulk_triage_alerts'
+  | 'assign_asset'
 
 export type RecommendationStatus =
   | 'pending'
@@ -20,7 +21,7 @@ export type RecommendationStatus =
 export type RecommendationTier = 'rule' | 'llm'
 
 export interface EvidenceItem {
-  type:    'site' | 'incident' | 'alert' | 'task'
+  type:    'site' | 'incident' | 'alert' | 'task' | 'asset'
   id:      string
   detail?: string
 }

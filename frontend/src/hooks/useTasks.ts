@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getTasks, createTask, updateTask, transitionTask, getAllowedTransitions } from '../api/tasks'
+import { getTask, getTasks, createTask, updateTask, transitionTask, getAllowedTransitions } from '../api/tasks'
 import type { PaginationParams, AsOfParam, WorkflowStatus, TransitionTaskBody, CreateTaskBody, UpdateTaskBody } from '../api/types'
 
 type Params = PaginationParams &
@@ -8,6 +8,14 @@ type Params = PaginationParams &
     workflow_status?: WorkflowStatus | null
     priority?: string | null
   }
+
+export function useTask(id: string | undefined) {
+  return useQuery({
+    queryKey: ['tasks', id],
+    queryFn: () => getTask(id!),
+    enabled: Boolean(id),
+  })
+}
 
 export function useTasks(params?: Params) {
   // Strip null values before passing to API
@@ -47,6 +55,7 @@ export function useUpdateTask() {
       updateTask(id, body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['readiness'] })
       queryClient.invalidateQueries({ queryKey: ['planning'] })
     },
   })
@@ -60,6 +69,8 @@ export function useTransitionTask() {
       transitionTask(id, body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['readiness'] })
+      queryClient.invalidateQueries({ queryKey: ['planning'] })
     },
   })
 }

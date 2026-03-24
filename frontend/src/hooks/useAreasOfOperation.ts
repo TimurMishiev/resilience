@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
+  getAreaOfOperation,
   getAreasOfOperation,
   createAreaOfOperation,
   updateAreaOfOperation,
@@ -12,6 +13,14 @@ import type {
   UpdateAreaOfOperationBody,
   Posture,
 } from '../api/types'
+
+export function useAreaOfOperation(id: string | undefined) {
+  return useQuery({
+    queryKey: ['areas_of_operation', id],
+    queryFn:  () => getAreaOfOperation(id!),
+    enabled:  Boolean(id),
+  })
+}
 
 export function useAreasOfOperation(params?: AreasOfOperationParams) {
   return useQuery({
