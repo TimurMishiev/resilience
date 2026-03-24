@@ -20,7 +20,7 @@ const COMMANDER_ONLY_TASK_TRANSITIONS: Partial<Record<WorkflowStatus, WorkflowSt
   resolved:    ['triaged'],
 }
 
-export function allowedTaskTransitions(status: WorkflowStatus, role: UserRole): WorkflowStatus[] {
+function allowedTaskTransitions(status: WorkflowStatus, role: UserRole): WorkflowStatus[] {
   const next = ALLOWED_TASK_TRANSITIONS[status] ?? []
   if (role === 'commander') return next
 

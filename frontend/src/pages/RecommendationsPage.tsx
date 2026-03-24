@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   Button, Callout, HTMLSelect, NonIdealState, Spinner,
   Tag, Tabs, Tab,
@@ -32,11 +32,6 @@ export default function RecommendationsPage() {
   const { isReplaying } = useReplay()
   const [statusFilter, setStatusFilter] = useState('')
   const [evidenceRec, setEvidenceRec]   = useState<Recommendation | null>(null)
-
-  useEffect(() => {
-    if (!isReplaying) return
-    setEvidenceRec(null)
-  }, [isReplaying])
 
   const { data, isPending, error } = useRecommendations(
     statusFilter ? { status: statusFilter } : undefined,

@@ -80,31 +80,42 @@ export function useSignalsLive(options?: UseSignalsLiveOptions) {
     [snapshotQueries],
   )
 
-  useEffect(() => {
-    if (!enabled || asOf) {
-      setHasBaselineSync(false)
-    }
-  }, [asOf, enabled])
-
   const allSnapshotsSucceeded = snapshotQueries.length > 0 && snapshotQueries.every(query => query.isSuccess)
 
   useEffect(() => {
-    if (!asOf && allSnapshotsSucceeded) {
-      setHasBaselineSync(true)
+    if (!enabled || asOf) {
+      const resetId = window.setTimeout(() => {
+        setSnapshotCursor(null)
+        setHasBaselineSync(false)
+      }, 0)
+      return () => window.clearTimeout(resetId)
     }
+  }, [asOf, enabled])
+
+  useEffect(() => {
+    if (asOf || !allSnapshotsSucceeded) return
+    const readyId = window.setTimeout(() => {
+      setHasBaselineSync(true)
+    }, 0)
+    return () => window.clearTimeout(readyId)
   }, [allSnapshotsSucceeded, asOf])
 
   useEffect(() => {
+    if (!enabled || asOf) return
     const latestSnapshotCursor = maxSignalIngestedAt(snapshotSignals)
     if (!latestSnapshotCursor) return
 
-    setSnapshotCursor(previous => {
-      if (!previous) return latestSnapshotCursor
-      return Date.parse(latestSnapshotCursor) > Date.parse(previous)
-        ? latestSnapshotCursor
-        : previous
-    })
-  }, [snapshotSignals])
+    const cursorId = window.setTimeout(() => {
+      setSnapshotCursor(previous => {
+        if (!previous) return latestSnapshotCursor
+        return Date.parse(latestSnapshotCursor) > Date.parse(previous)
+          ? latestSnapshotCursor
+          : previous
+      })
+    }, 0)
+
+    return () => window.clearTimeout(cursorId)
+  }, [asOf, enabled, snapshotSignals])
 
   const baselineError = useMemo(() => {
     if (asOf || hasBaselineSync) return null

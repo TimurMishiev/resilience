@@ -484,7 +484,6 @@ export function useGlobeEngine({
       const { lat, lng } = assetDisplayPosition(asset, sites, readings, { lat: 0, lng: 0 }, { allowHistorical: isReplaying })
       setEntityPosition(Cesium, entity, lng, lat)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- asOf and isReplaying force recompute on replay state change
   }, [viewerReady, assets, readings, sites, isReplaying, asOf])
 
   // ---------------------------------------------------------------------------
@@ -687,7 +686,6 @@ export function useGlobeEngine({
     )
 
     return () => handler.destroy()
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- run once after viewer init; all dynamic data accessed via refs
   }, [viewerReady])
 
   // ---------------------------------------------------------------------------

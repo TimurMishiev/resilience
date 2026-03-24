@@ -16,6 +16,7 @@ import {
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useSignalsInfinite, useSignalsLive } from '../hooks/useSignals'
+import { useReferenceTimeMs } from '../hooks/useReferenceTimeMs'
 import { useReplayParams } from '../hooks/useReplayParams'
 import { injectSignal } from '../api/signals'
 import { getAiFilter } from '../api/ai'
@@ -203,7 +204,7 @@ function InjectDialog({ isOpen, onClose }: { isOpen: boolean; onClose: () => voi
 export default function SignalFeedPage() {
   const { isCommander } = useRole()
   const { asOf, isReplaying, signalQueryParams } = useReplayParams()
-  const referenceTimeMs = asOf ? new Date(asOf).getTime() : Date.now()
+  const referenceTimeMs = useReferenceTimeMs(asOf)
 
   const [sourceFilter, setSourceFilter] = useState<SignalSource | ''>('')
   const [typeFilter,   setTypeFilter]   = useState<SignalType   | ''>('')
@@ -218,11 +219,6 @@ export default function SignalFeedPage() {
   const [nlFrom,    setNlFrom]    = useState<string | null>(null)
   const [nlTo,      setNlTo]      = useState<string | null>(null)
   const nlInputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (!isReplaying) return
-    setInjectOpen(false)
-  }, [isReplaying])
 
   function handleNlSearch() {
     const q = nlQuery.trim()

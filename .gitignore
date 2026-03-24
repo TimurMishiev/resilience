@@ -29,6 +29,8 @@ frontend/.env.*
 frontend/dist/
 frontend/build/
 frontend/.vite/
+frontend/test-results/
+frontend/playwright-report/
 
 # Editor
 .vscode/settings.json

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { Button, Callout, Checkbox, Classes, Icon, Tag, Tooltip } from '@blueprintjs/core'
 import AlertChainDrawer from '../components/AlertChainDrawer'
 import RecommendationCard from '../components/RecommendationCard'
@@ -313,11 +313,6 @@ export default function DashboardPage() {
   const navigate  = useNavigate()
   const { isCommander } = useRole()
   const [evidenceRec, setEvidenceRec] = useState<Recommendation | null>(null)
-
-  useEffect(() => {
-    if (!isReplaying) return
-    setEvidenceRec(null)
-  }, [isReplaying])
 
   const { data: recData } = useRecommendations(undefined, { enabled: !isReplaying, refetchInterval: isReplaying ? false : 60_000 })
   const topRecs = (recData?.data ?? []).slice(0, 3)

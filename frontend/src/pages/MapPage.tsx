@@ -229,7 +229,7 @@ export default function MapPage() {
       urlSelectionAppliedRef.current = true
     }
     /* eslint-enable react-hooks/set-state-in-effect */
-  }, [assets, flyTo, location.search, mapLoaded, readings, signals, sites])
+  }, [assets, flyTo, isReplaying, location.search, mapLoaded, readings, signals, sites])
 
   // ---------------------------------------------------------------------------
   // Derived selection

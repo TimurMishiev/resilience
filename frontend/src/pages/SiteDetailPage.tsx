@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Button,
@@ -586,14 +586,10 @@ export default function SiteDetailPage() {
     { enabled: !isReplaying, refetchInterval: isReplaying ? false : 10_000 },
   )
   const activeBreachCount = isReplaying ? 0 : (breachMatchesRes?.meta?.total ?? 0)
-
-  useEffect(() => {
-    if (!isReplaying) return
-    setCreateTaskOpen(false)
-    setEditingGeofence(false)
-    setChainMatch(null)
-    if (tab === 'timeline') setTab('tasks')
-  }, [isReplaying, tab])
+  const visibleCreateTaskOpen = !isReplaying && createTaskOpen
+  const visibleEditingGeofence = !isReplaying && editingGeofence
+  const visibleChainMatch = !isReplaying ? chainMatch : null
+  const selectedTab = isReplaying && tab === 'timeline' ? 'tasks' : tab
 
   if (isPending) {
     return (
@@ -628,13 +624,13 @@ export default function SiteDetailPage() {
       {!isReplaying && (
         <CreateTaskDialog
           siteId={site.id}
-          isOpen={createTaskOpen}
+          isOpen={visibleCreateTaskOpen}
           onClose={() => setCreateTaskOpen(false)}
         />
       )}
       {!isReplaying && (
         <AlertChainDrawer
-          match={chainMatch}
+          match={visibleChainMatch}
           onClose={() => setChainMatch(null)}
         />
       )}
@@ -743,7 +739,7 @@ export default function SiteDetailPage() {
         {/* Geofence radius */}
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 12 }}>
           <Icon icon="locate" size={12} style={{ opacity: 0.6 }} />
-          {isCommander && !isReplaying && editingGeofence ? (
+          {isCommander && visibleEditingGeofence ? (
             <>
               <InputGroup
                 small
@@ -808,7 +804,7 @@ export default function SiteDetailPage() {
       {/* ── tabs ── */}
       <Tabs
         id="site-detail-tabs"
-        selectedTabId={tab}
+        selectedTabId={selectedTab}
         onChange={(t) => setTab(String(t))}
         className="site-detail-tabs"
       >

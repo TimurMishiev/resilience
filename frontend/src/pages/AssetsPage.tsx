@@ -9,6 +9,7 @@ import {
   Tag,
 } from '@blueprintjs/core'
 import { useAssets } from '../hooks/useAssets'
+import { useReferenceTimeMs } from '../hooks/useReferenceTimeMs'
 import { useSites } from '../hooks/useSites'
 import { useReplay } from '../context/ReplayContext'
 import EntityCard from '../components/EntityCard'
@@ -40,7 +41,7 @@ const SKELETON_ROWS = 7
 export default function AssetsPage() {
   const { asOf } = useReplay()
   const params = { per_page: 100, ...(asOf ? { as_of: asOf } : {}) }
-  const referenceTimeMs = asOf ? new Date(asOf).getTime() : Date.now()
+  const referenceTimeMs = useReferenceTimeMs(asOf)
 
   const { data: assetRes, error: assetError, isPending: assetsPending } = useAssets(params)
   const { data: siteRes,  isPending: sitesPending } = useSites(params)
