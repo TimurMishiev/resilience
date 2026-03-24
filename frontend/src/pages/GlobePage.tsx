@@ -14,7 +14,7 @@ import type { Vessel } from '../api/vessels'
 import { useNavigate } from 'react-router-dom'
 import { assetDisplayPosition, getLiveTelemetryReading } from '../lib/assetPresentation'
 import { computeReadiness } from '../lib/formatters'
-import { haversineKm } from '../lib/coverage'
+import { buildCoverageCircles, haversineKm } from '../lib/coverage'
 import { isPerfEnabled } from '../lib/perfInstrumentation'
 import { SIGNAL_COLORS, SIGNAL_LABELS } from '../lib/signalConfig'
 import { GlobeInspectorPanel } from '../components/GlobeInspectorPanel'
@@ -57,6 +57,7 @@ type GlobeBenchmarkState = {
   selectedSignalId: string | null
   isCloseView: boolean
   showSignals: boolean
+  showCoverage: boolean
   benchmarkTarget: GlobeBenchmarkTarget | null
 }
 
@@ -127,6 +128,7 @@ export default function GlobePage() {
   const [selectedAssetId,  setSelectedAssetId]  = useState<string | null>(null)
   const [selectedSignalId, setSelectedSignalId] = useState<string | null>(null)
   const [showSignals,      setShowSignals]      = useState(true)
+  const [showCoverage,     setShowCoverage]     = useState(true)
 
   // ---------------------------------------------------------------------------
   // Data queries
@@ -160,6 +162,14 @@ export default function GlobePage() {
     }
     return map
   }, [tasks])
+
+  const coverageCircles = useMemo(() => buildCoverageCircles({
+    assets,
+    tasks,
+    sites,
+    readings,
+    allowHistoricalTelemetry: isReplaying,
+  }), [assets, isReplaying, readings, sites, tasks])
 
   // ---------------------------------------------------------------------------
   // Reset selection on replay timestamp change
@@ -225,8 +235,10 @@ export default function GlobePage() {
     signals,
     tasksBySite,
     areaOfOperations,
+    coverageCircles,
     readings,
     showSignals,
+    showCoverage,
     asOf: asOf ?? undefined,
     isReplaying,
     signalFocusCenter: selectedCenter,
@@ -253,6 +265,7 @@ export default function GlobePage() {
         selectedSignalId,
         isCloseView,
         showSignals,
+        showCoverage,
         benchmarkTarget,
       }),
       getBenchmarkTarget: () => benchmarkTarget,
@@ -296,6 +309,7 @@ export default function GlobePage() {
     selectedSignalId,
     selectedSiteId,
     showSignals,
+    showCoverage,
     signals.length,
     sites,
   ])
@@ -403,6 +417,13 @@ export default function GlobePage() {
         >
           SIGNALS {showSignals ? 'ON' : 'OFF'}
         </div>
+        <div
+          className={`globe-signal-toggle${showCoverage ? ' globe-signal-toggle--active' : ''}`}
+          onClick={() => setShowCoverage(v => !v)}
+          role="button"
+        >
+          COVERAGE {showCoverage ? 'ON' : 'OFF'}
+        </div>
         <span className="globe-toolbar-hint bp6-text-muted">
           {signalError && !isReplaying
             ? 'Live signal baseline sync is incomplete. Signals may be temporarily missing while the client retries.'
@@ -468,6 +489,20 @@ export default function GlobePage() {
         <div className="globe-legend-item">
           <span className="globe-legend-dot" style={{ background: '#00ffff' }} />Asset (live)
         </div>
+        {showCoverage && (
+          <>
+            <div className="globe-legend-section-title" style={{ marginTop: 10 }}>COVERAGE</div>
+            <div className="globe-legend-item">
+              <span className="globe-legend-dot" style={{ background: '#3ddc84' }} />Available radius
+            </div>
+            <div className="globe-legend-item">
+              <span className="globe-legend-dot" style={{ background: '#5282ff' }} />Assigned radius
+            </div>
+            <div className="globe-legend-item">
+              <span className="globe-legend-dot" style={{ background: '#ffb366' }} />Degraded radius
+            </div>
+          </>
+        )}
         {showSignals && (
           <>
             <div className="globe-legend-section-title" style={{ marginTop: 10 }}>SIGNALS</div>

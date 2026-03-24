@@ -12,6 +12,7 @@ export interface CoverageCircle {
   assetName: string
   assetType: string
   status: AssetStatus
+  anchorKey: string
   anchorLat: number
   anchorLng: number
   anchorSource: 'telemetry' | 'task_site' | 'home_site'
@@ -69,13 +70,14 @@ export function assetCoverageRadiusKm(asset: Pick<Asset, 'asset_type' | 'status'
   return Number((base * STATUS_RADIUS_MULTIPLIER[asset.status]).toFixed(1))
 }
 
-function taskAnchors(tasks: Task[], sitesById: Map<string, Site>): Array<{ lat: number; lng: number; label: string }> {
+function taskAnchors(tasks: Task[], sitesById: Map<string, Site>): Array<{ key: string; lat: number; lng: number; label: string }> {
   const openTasks = tasks.filter(task => task.workflow_status !== 'resolved' && task.site_id)
-  const uniqueBySite = new Map<string, { lat: number; lng: number; label: string }>()
+  const uniqueBySite = new Map<string, { key: string; lat: number; lng: number; label: string }>()
   for (const task of openTasks) {
     const site = sitesById.get(task.site_id)
     if (!site) continue
     uniqueBySite.set(task.site_id, {
+      key: `task-site-${task.site_id}`,
       lat: toNumber(site.latitude),
       lng: toNumber(site.longitude),
       label: task.site_name ?? site.name,
@@ -114,6 +116,7 @@ export function buildCoverageCircles(params: {
         assetName: asset.name,
         assetType: asset.asset_type,
         status: asset.status,
+        anchorKey: 'telemetry',
         anchorLat: freshReading.lat,
         anchorLng: freshReading.lng,
         anchorSource: 'telemetry',
@@ -129,6 +132,7 @@ export function buildCoverageCircles(params: {
         assetName: asset.name,
         assetType: asset.asset_type,
         status: asset.status,
+        anchorKey: anchor.key,
         anchorLat: anchor.lat,
         anchorLng: anchor.lng,
         anchorSource: 'task_site' as const,
@@ -145,6 +149,7 @@ export function buildCoverageCircles(params: {
       assetName: asset.name,
       assetType: asset.asset_type,
       status: asset.status,
+      anchorKey: `home-site-${homeSite.id}`,
       anchorLat: toNumber(homeSite.latitude),
       anchorLng: toNumber(homeSite.longitude),
       anchorSource: 'home_site',

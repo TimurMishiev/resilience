@@ -20,7 +20,7 @@ import { useEffect, useRef, useState, useCallback, useMemo, type RefObject } fro
 import type * as CesiumType from 'cesium'
 import type { Site, Task, Asset, Signal, AreaOfOperation } from '../api/types'
 import { assetDisplayPosition, assetSeedPosition } from '../lib/assetPresentation'
-import { haversineKm } from '../lib/coverage'
+import { haversineKm, type CoverageCircle } from '../lib/coverage'
 import { nowMs, recordPerfEvent } from '../lib/perfInstrumentation'
 import { preloadGlobeRuntime } from '../lib/preloadRoutes'
 import { SIGNAL_COLORS } from '../lib/signalConfig'
@@ -38,6 +38,13 @@ const ionToken = import.meta.env['VITE_CESIUM_ION_TOKEN'] as string | undefined
 // degradation at high entity density.
 const SIGNAL_CLOSE_VIEW_HEIGHT_M = 2_000_000
 const FOCUSED_SIGNAL_RADIUS_KM = 2_000
+
+const COVERAGE_COLOR_BY_STATUS: Record<Asset['status'], string> = {
+  available: '#3ddc84',
+  assigned: '#5282ff',
+  degraded: '#ffb366',
+  offline: '#8f99a8',
+}
 
 // ---------------------------------------------------------------------------
 // Module-scope helpers (no React deps)
@@ -121,6 +128,44 @@ function setPolygonMaterialColor(Cesium: CesiumModule, graphics: CesiumType.Poly
   graphics.material = new Cesium.ColorMaterialProperty(color)
 }
 
+function setEllipseMaterialColor(Cesium: CesiumModule, graphics: CesiumType.EllipseGraphics, color: CesiumType.Color) {
+  if (graphics.material instanceof Cesium.ColorMaterialProperty) {
+    if (graphics.material.color instanceof Cesium.ConstantProperty) {
+      graphics.material.color.setValue(color)
+      return
+    }
+    graphics.material.color = new Cesium.ConstantProperty(color)
+    return
+  }
+  graphics.material = new Cesium.ColorMaterialProperty(color)
+}
+
+function setEllipseColorProperty(
+  Cesium: CesiumModule,
+  property: CesiumType.Property | undefined,
+  value: CesiumType.Color,
+  assign: (next: CesiumType.ConstantProperty) => void,
+) {
+  if (property instanceof Cesium.ConstantProperty) {
+    property.setValue(value)
+    return
+  }
+  assign(new Cesium.ConstantProperty(value))
+}
+
+function setEllipseNumericProperty(
+  Cesium: CesiumModule,
+  property: CesiumType.Property | undefined,
+  value: number,
+  assign: (next: CesiumType.ConstantProperty) => void,
+) {
+  if (property instanceof Cesium.ConstantProperty) {
+    property.setValue(value)
+    return
+  }
+  assign(new Cesium.ConstantProperty(value))
+}
+
 function pruneEntityMap(
   viewer: CesiumType.Viewer,
   entityMap: Map<string, CesiumType.Entity>,
@@ -154,6 +199,21 @@ function prunePrimitiveMap(
   return removed
 }
 
+function pickIdString(picked: unknown): { idString: string; pickedKind: 'primitive' | 'entity' } | null {
+  if (!picked || typeof picked !== 'object' || !('id' in picked)) return null
+  const pickedId = (picked as { id?: unknown }).id
+  if (typeof pickedId === 'string') {
+    return { idString: pickedId, pickedKind: 'primitive' }
+  }
+  if (pickedId && typeof pickedId === 'object' && 'id' in pickedId) {
+    const nestedId = (pickedId as { id?: unknown }).id
+    if (typeof nestedId === 'string') {
+      return { idString: nestedId, pickedKind: 'entity' }
+    }
+  }
+  return null
+}
+
 // ---------------------------------------------------------------------------
 // Hook interface
 // ---------------------------------------------------------------------------
@@ -169,10 +229,12 @@ export interface GlobeEngineInput {
   signals:          Signal[]
   tasksBySite:      Record<string, Task[]>
   areaOfOperations: AreaOfOperation[]
+  coverageCircles:  CoverageCircle[]
   readings:         TelemetryMap
 
   // Feature toggles
-  showSignals: boolean
+  showSignals:  boolean
+  showCoverage: boolean
 
   // Included in position-update dep array so asset positions recompute on
   // replay state changes even when assets/readings identity is unchanged.
@@ -212,8 +274,10 @@ export function useGlobeEngine({
   signals,
   tasksBySite,
   areaOfOperations,
+  coverageCircles,
   readings,
   showSignals,
+  showCoverage,
   asOf,
   isReplaying,
   signalFocusCenter,
@@ -227,6 +291,7 @@ export function useGlobeEngine({
   const siteEntitiesRef  = useRef<Map<string, CesiumType.Entity>>(new Map())
   const assetEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
   const aoEntitiesRef    = useRef<Map<string, CesiumType.Entity>>(new Map())
+  const coverageEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
   
   // High-volume point features use PointPrimitiveCollection to avoid Entity API overhead
   const signalCollectionRef = useRef<CesiumType.PointPrimitiveCollection | null>(null)
@@ -348,6 +413,7 @@ export function useGlobeEngine({
     const siteEntities   = siteEntitiesRef.current
     const assetEntities  = assetEntitiesRef.current
     const aoEntities     = aoEntitiesRef.current
+    const coverageEntities = coverageEntitiesRef.current
     const signalPrimitives = signalPrimitivesRef.current
 
     return () => {
@@ -359,6 +425,7 @@ export function useGlobeEngine({
       siteEntities.clear()
       assetEntities.clear()
       aoEntities.clear()
+      coverageEntities.clear()
       signalPrimitives.clear()
       signalCollectionRef.current = null
     }
@@ -535,6 +602,64 @@ export function useGlobeEngine({
   }, [viewerReady, areaOfOperations])
 
   // ---------------------------------------------------------------------------
+  // Coverage circles — incremental add/update/remove using ellipse entities
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const Cesium = cesiumRef.current
+    const viewer = viewerRef.current
+    if (!viewerReady || !viewer || !Cesium) return
+
+    const keyForCircle = (circle: CoverageCircle) => [
+      'coverage',
+      circle.assetId,
+      circle.anchorKey,
+    ].join('-')
+
+    const currentIds = new Set(coverageCircles.map(keyForCircle))
+    pruneEntityMap(viewer, coverageEntitiesRef.current, currentIds)
+
+    for (const circle of coverageCircles) {
+      const key = keyForCircle(circle)
+      const radiusMeters = circle.radiusKm * 1000
+      const baseColor = Cesium.Color.fromCssColorString(COVERAGE_COLOR_BY_STATUS[circle.status] ?? '#8f99a8')
+      const fillColor = baseColor.withAlpha(circle.status === 'degraded' ? 0.06 : 0.08)
+      const outlineColor = baseColor.withAlpha(circle.status === 'degraded' ? 0.75 : 0.55)
+      const outlineWidth = circle.status === 'degraded' ? 1.25 : 1.5
+      const existing = coverageEntitiesRef.current.get(key)
+
+      if (existing?.ellipse) {
+        existing.show = showCoverage
+        existing.name = `${circle.assetName} coverage`
+        setEntityPosition(Cesium, existing, circle.anchorLng, circle.anchorLat)
+        setEllipseNumericProperty(Cesium, existing.ellipse.semiMajorAxis, radiusMeters, next => { existing.ellipse!.semiMajorAxis = next })
+        setEllipseNumericProperty(Cesium, existing.ellipse.semiMinorAxis, radiusMeters, next => { existing.ellipse!.semiMinorAxis = next })
+        setEllipseNumericProperty(Cesium, existing.ellipse.height, 0, next => { existing.ellipse!.height = next })
+        setEllipseNumericProperty(Cesium, existing.ellipse.outlineWidth, outlineWidth, next => { existing.ellipse!.outlineWidth = next })
+        setEllipseMaterialColor(Cesium, existing.ellipse, fillColor)
+        setEllipseColorProperty(Cesium, existing.ellipse.outlineColor, outlineColor, next => { existing.ellipse!.outlineColor = next })
+        continue
+      }
+
+      const entity = viewer.entities.add({
+        id: key,
+        name: `${circle.assetName} coverage`,
+        show: showCoverage,
+        position: Cesium.Cartesian3.fromDegrees(circle.anchorLng, circle.anchorLat),
+        ellipse: {
+          semiMajorAxis: new Cesium.ConstantProperty(radiusMeters),
+          semiMinorAxis: new Cesium.ConstantProperty(radiusMeters),
+          material: new Cesium.ColorMaterialProperty(fillColor),
+          outline: new Cesium.ConstantProperty(true),
+          outlineColor: new Cesium.ConstantProperty(outlineColor),
+          outlineWidth: new Cesium.ConstantProperty(outlineWidth),
+          height: new Cesium.ConstantProperty(0),
+        },
+      })
+      coverageEntitiesRef.current.set(key, entity)
+    }
+  }, [coverageCircles, showCoverage, viewerReady])
+
+  // ---------------------------------------------------------------------------
   // Signal entities — migrate to PointPrimitiveCollection for mass rendering
   // Reduces heavy churn: toggles visibility instantly on the primitive collection,
   // and natively culls closely-viewed signals using DistanceDisplayCondition
@@ -635,19 +760,33 @@ export function useGlobeEngine({
     handler.setInputAction(
       (event: { position: CesiumType.Cartesian2 }) => {
         const startedAt = nowMs()
-        const picked = viewer.scene.pick(event.position)
-        if (!Cesium.defined(picked) || !picked.id) {
+        const picks = viewer.scene.drillPick(event.position)
+        if (!Cesium.defined(picks) || picks.length === 0) {
           recordPerfEvent('globe.pick', { outcome: 'miss' }, nowMs() - startedAt)
           return
         }
-        
-        // Handles both Entity API (.id is the ID string inside the object) and Primitive API (where picked.id natively is our string)
-        const idString = typeof picked.id === 'string' ? picked.id : picked.id.id
-        const pickedKind = typeof picked.id === 'string' ? 'primitive' : 'entity'
-        if (!idString || typeof idString !== 'string') {
-          recordPerfEvent('globe.pick', { outcome: 'invalid', pickedKind }, nowMs() - startedAt)
+
+        let resolvedPick: { idString: string; pickedKind: 'primitive' | 'entity' } | null = null
+        let sawCoverage = false
+
+        for (const picked of picks) {
+          const candidate = pickIdString(picked)
+          if (!candidate) continue
+          if (candidate.idString.startsWith('coverage-')) {
+            sawCoverage = true
+            continue
+          }
+          resolvedPick = candidate
+          break
+        }
+
+        if (!resolvedPick) {
+          const outcome = sawCoverage ? 'coverage-only' : 'invalid'
+          recordPerfEvent('globe.pick', { outcome }, nowMs() - startedAt)
           return
         }
+
+        const { idString, pickedKind } = resolvedPick
 
         if (idString.startsWith('site-')) {
           const siteId = idString.replace('site-', '')

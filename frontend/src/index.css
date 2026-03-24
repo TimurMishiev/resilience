@@ -2184,9 +2184,12 @@ body {
   left: 50%;
   transform: translateX(-50%);
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
   gap: 8px;
   padding: 6px 14px;
+  max-width: calc(100% - 24px);
   background: rgba(28, 33, 39, 0.85);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 20px;
