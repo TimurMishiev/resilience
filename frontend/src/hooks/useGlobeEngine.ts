@@ -21,6 +21,7 @@ import type * as CesiumType from 'cesium'
 import type { Site, Task, Asset, Signal, AreaOfOperation } from '../api/types'
 import { assetDisplayPosition, assetSeedPosition } from '../lib/assetPresentation'
 import { haversineKm } from '../lib/coverage'
+import { nowMs, recordPerfEvent } from '../lib/perfInstrumentation'
 import { preloadGlobeRuntime } from '../lib/preloadRoutes'
 import { SIGNAL_COLORS } from '../lib/signalConfig'
 import type { TelemetryMap } from '../lib/telemetry'
@@ -142,12 +143,15 @@ function prunePrimitiveMap(
   primitiveMap: Map<string, CesiumType.PointPrimitive>,
   currentIds: Set<string>,
 ) {
+  let removed = 0
   for (const [key, primitive] of primitiveMap) {
     if (!currentIds.has(key)) {
       collection.remove(primitive)
       primitiveMap.delete(key)
+      removed += 1
     }
   }
+  return removed
 }
 
 // ---------------------------------------------------------------------------
@@ -246,6 +250,9 @@ export function useGlobeEngine({
 
   const [viewerReady, setViewerReady] = useState(false)
   const [isCloseView, setIsCloseView] = useState(false)
+  const previousVisibleSignalCountRef = useRef(0)
+  const previousSignalFocusModeRef = useRef<'global' | 'focused'>('global')
+  const previousShowSignalsRef = useRef(showSignals)
 
   const visibleSignals = useMemo(() => {
     if (!signalFocusCenter) return signals
@@ -538,12 +545,31 @@ export function useGlobeEngine({
     const collection = signalCollectionRef.current
     if (!viewerReady || !viewer || !Cesium || !collection) return
 
+    const startedAt = nowMs()
+    const previousShowSignals = previousShowSignalsRef.current
+    const previousVisibleCount = previousVisibleSignalCountRef.current
+    const previousFocusMode = previousSignalFocusModeRef.current
+    const nextFocusMode: 'global' | 'focused' = signalFocusCenter ? 'focused' : 'global'
+
     collection.show = showSignals
 
-    if (!showSignals) return
+    if (!showSignals) {
+      recordPerfEvent('globe.signal_visibility', {
+        action: previousShowSignals ? 'hide' : 'steady-hidden',
+        previousVisibleCount,
+        nextVisibleCount: 0,
+        collectionCount: signalPrimitivesRef.current.size,
+      }, nowMs() - startedAt)
+      previousShowSignalsRef.current = showSignals
+      previousVisibleSignalCountRef.current = 0
+      previousSignalFocusModeRef.current = nextFocusMode
+      return
+    }
 
     const currentIds = new Set(visibleSignals.map(s => `signal-${s.id}`))
-    prunePrimitiveMap(collection, signalPrimitivesRef.current, currentIds)
+    const removedCount = prunePrimitiveMap(collection, signalPrimitivesRef.current, currentIds)
+    let updatedCount = 0
+    let addedCount = 0
 
     const distanceDisplayCondition = new Cesium.DistanceDisplayCondition(SIGNAL_CLOSE_VIEW_HEIGHT_M, Number.MAX_VALUE)
 
@@ -554,6 +580,7 @@ export function useGlobeEngine({
       
       if (existing) {
         existing.position = position
+        updatedCount += 1
         continue
       }
 
@@ -568,8 +595,30 @@ export function useGlobeEngine({
         distanceDisplayCondition,
       })
       signalPrimitivesRef.current.set(key, primitive)
+      addedCount += 1
     }
-  }, [viewerReady, showSignals, visibleSignals])
+
+    const transition =
+      previousFocusMode === nextFocusMode
+        ? (previousShowSignals ? 'steady' : 'show')
+        : `${previousFocusMode}_to_${nextFocusMode}`
+
+    recordPerfEvent('globe.signal_reconcile', {
+      transition,
+      previousVisibleCount,
+      nextVisibleCount: visibleSignals.length,
+      addedCount,
+      updatedCount,
+      removedCount,
+      showSignals,
+      selectedSignalId,
+      focusedSignalCountDelta: visibleSignals.length - previousVisibleCount,
+    }, nowMs() - startedAt)
+
+    previousShowSignalsRef.current = showSignals
+    previousVisibleSignalCountRef.current = visibleSignals.length
+    previousSignalFocusModeRef.current = nextFocusMode
+  }, [viewerReady, selectedSignalId, showSignals, signalFocusCenter, visibleSignals])
 
   // ---------------------------------------------------------------------------
   // ScreenSpaceEventHandler — created once after viewer init
@@ -584,32 +633,55 @@ export function useGlobeEngine({
 
     handler.setInputAction(
       (event: { position: CesiumType.Cartesian2 }) => {
+        const startedAt = nowMs()
         const picked = viewer.scene.pick(event.position)
-        if (!Cesium.defined(picked) || !picked.id) return
+        if (!Cesium.defined(picked) || !picked.id) {
+          recordPerfEvent('globe.pick', { outcome: 'miss' }, nowMs() - startedAt)
+          return
+        }
         
         // Handles both Entity API (.id is the ID string inside the object) and Primitive API (where picked.id natively is our string)
         const idString = typeof picked.id === 'string' ? picked.id : picked.id.id
-        if (!idString || typeof idString !== 'string') return
+        const pickedKind = typeof picked.id === 'string' ? 'primitive' : 'entity'
+        if (!idString || typeof idString !== 'string') {
+          recordPerfEvent('globe.pick', { outcome: 'invalid', pickedKind }, nowMs() - startedAt)
+          return
+        }
 
         if (idString.startsWith('site-')) {
           const siteId = idString.replace('site-', '')
-          if (!sitesRef.current.find(s => s.id === siteId)) return
+          if (!sitesRef.current.find(s => s.id === siteId)) {
+            recordPerfEvent('globe.pick', { outcome: 'stale-site', pickedKind, id: siteId }, nowMs() - startedAt)
+            return
+          }
           onSiteClickRef.current(siteId)
+          recordPerfEvent('globe.pick', { outcome: 'site', pickedKind, id: siteId }, nowMs() - startedAt)
           return
         }
 
         if (idString.startsWith('asset-')) {
           const assetId = idString.replace('asset-', '')
-          if (!assetsRef.current.find(a => a.id === assetId)) return
+          if (!assetsRef.current.find(a => a.id === assetId)) {
+            recordPerfEvent('globe.pick', { outcome: 'stale-asset', pickedKind, id: assetId }, nowMs() - startedAt)
+            return
+          }
           onAssetClickRef.current(assetId)
+          recordPerfEvent('globe.pick', { outcome: 'asset', pickedKind, id: assetId }, nowMs() - startedAt)
           return
         }
 
         if (idString.startsWith('signal-')) {
           const signalId = idString.replace('signal-', '')
-          if (!signalsRef.current.find(s => s.id === signalId)) return
+          if (!signalsRef.current.find(s => s.id === signalId)) {
+            recordPerfEvent('globe.pick', { outcome: 'stale-signal', pickedKind, id: signalId }, nowMs() - startedAt)
+            return
+          }
           onSignalClickRef.current(signalId)
+          recordPerfEvent('globe.pick', { outcome: 'signal', pickedKind, id: signalId }, nowMs() - startedAt)
+          return
         }
+
+        recordPerfEvent('globe.pick', { outcome: 'unknown-id', pickedKind, id: idString }, nowMs() - startedAt)
       },
       Cesium.ScreenSpaceEventType.LEFT_CLICK,
     )

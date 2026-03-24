@@ -2,7 +2,12 @@ import { Icon, Menu, MenuItem } from '@blueprintjs/core'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useRole } from '../../hooks/useRole'
 import type { IconName } from '@blueprintjs/icons'
-import { preloadGlobeExperience, preloadMapExperience } from '../../lib/preloadRoutes'
+import {
+  preloadGlobeExperience,
+  preloadGlobePage,
+  preloadMapExperience,
+  preloadMapPage,
+} from '../../lib/preloadRoutes'
 
 const BOTTOM_NAV_TABS: { icon: IconName; label: string; path: string }[] = [
   { icon: 'dashboard',    label: 'Dashboard', path: '/dashboard' },
@@ -24,8 +29,10 @@ export function AppSidebar() {
   const { pathname } = useLocation()
   const { isCommander } = useRole()
 
-  const preloadMap = () => { void preloadMapExperience().catch(ignorePreloadFailure) }
-  const preloadGlobe = () => { void preloadGlobeExperience().catch(ignorePreloadFailure) }
+  const preloadMapPageOnly = () => { void preloadMapPage().catch(ignorePreloadFailure) }
+  const preloadGlobePageOnly = () => { void preloadGlobePage().catch(ignorePreloadFailure) }
+  const preloadMapRuntime = () => { void preloadMapExperience().catch(ignorePreloadFailure) }
+  const preloadGlobeRuntime = () => { void preloadGlobeExperience().catch(ignorePreloadFailure) }
 
   return (
     <nav className="shell-sidebar">
@@ -42,8 +49,9 @@ export function AppSidebar() {
           text="Map"
           active={pathname.startsWith('/map')}
           onClick={() => navigate('/map')}
-          onMouseEnter={preloadMap}
-          onFocus={preloadMap}
+          onMouseEnter={preloadMapPageOnly}
+          onFocus={preloadMapPageOnly}
+          onPointerDown={preloadMapRuntime}
         />
         <MenuItem icon="graph"              text="Graph"           active={pathname.startsWith('/graph')}           onClick={() => navigate('/graph')} />
         <MenuItem
@@ -51,8 +59,9 @@ export function AppSidebar() {
           text="Globe"
           active={pathname.startsWith('/globe')}
           onClick={() => navigate('/globe')}
-          onMouseEnter={preloadGlobe}
-          onFocus={preloadGlobe}
+          onMouseEnter={preloadGlobePageOnly}
+          onFocus={preloadGlobePageOnly}
+          onPointerDown={preloadGlobeRuntime}
         />
         <MenuItem
           icon="predictive-analysis"
@@ -90,6 +99,14 @@ export function AppBottomNav() {
 
   function handlePreload(path: string) {
     if (path === '/map') {
+      void preloadMapPage().catch(ignorePreloadFailure)
+    } else if (path === '/globe') {
+      void preloadGlobePage().catch(ignorePreloadFailure)
+    }
+  }
+
+  function handleStrongPreload(path: string) {
+    if (path === '/map') {
       void preloadMapExperience().catch(ignorePreloadFailure)
     } else if (path === '/globe') {
       void preloadGlobeExperience().catch(ignorePreloadFailure)
@@ -105,6 +122,7 @@ export function AppBottomNav() {
           onClick={() => navigate(tab.path)}
           onMouseEnter={() => handlePreload(tab.path)}
           onFocus={() => handlePreload(tab.path)}
+          onPointerDown={() => handleStrongPreload(tab.path)}
           aria-label={tab.label}
           aria-current={pathname.startsWith(tab.path) ? 'page' : undefined}
         >
