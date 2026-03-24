@@ -25,7 +25,7 @@ declare global {
   }
 }
 
-function isPerfEnabled(): boolean {
+export function isPerfEnabled(): boolean {
   if (typeof window === 'undefined') return false
   try {
     return window.localStorage.getItem(PERF_STORAGE_KEY) === '1'

@@ -15,6 +15,7 @@ import { useNavigate } from 'react-router-dom'
 import { assetDisplayPosition, getLiveTelemetryReading } from '../lib/assetPresentation'
 import { computeReadiness } from '../lib/formatters'
 import { haversineKm } from '../lib/coverage'
+import { isPerfEnabled } from '../lib/perfInstrumentation'
 import { SIGNAL_COLORS, SIGNAL_LABELS } from '../lib/signalConfig'
 import { GlobeInspectorPanel } from '../components/GlobeInspectorPanel'
 
@@ -38,6 +39,78 @@ function getInspectorTitle(
   if (selectedSignal)
     return SIGNAL_LABELS[selectedSignal.signal_type] ?? selectedSignal.signal_type
   return null
+}
+
+type GlobeBenchmarkTarget = {
+  siteId: string
+  siteName: string
+  focusedSignalCount: number
+  globalSignalCount: number
+}
+
+type GlobeBenchmarkState = {
+  viewerReady: boolean
+  siteCount: number
+  signalCount: number
+  selectedSiteId: string | null
+  selectedAssetId: string | null
+  selectedSignalId: string | null
+  isCloseView: boolean
+  showSignals: boolean
+  benchmarkTarget: GlobeBenchmarkTarget | null
+}
+
+type GlobeBenchmarkApi = {
+  getState: () => GlobeBenchmarkState
+  getBenchmarkTarget: () => GlobeBenchmarkTarget | null
+  focusSite: (siteId: string) => boolean
+  focusBestSite: () => GlobeBenchmarkTarget | null
+  clearSelection: () => void
+  flyHome: () => void
+  clearPerf: () => void
+  getPerfEvents: () => unknown[]
+}
+
+declare global {
+  interface Window {
+    __resilienceGlobeBench?: GlobeBenchmarkApi
+  }
+}
+
+function pickBenchmarkTarget(sites: Site[], signals: Signal[]): GlobeBenchmarkTarget | null {
+  if (sites.length === 0 || signals.length === 0) return null
+
+  let best: GlobeBenchmarkTarget | null = null
+
+  for (const site of sites) {
+    const focusedSignalCount = signals.reduce((count, signal) => {
+      return count + (
+        haversineKm(Number(site.latitude), Number(site.longitude), Number(signal.lat), Number(signal.lng)) <= 2_000
+          ? 1
+          : 0
+      )
+    }, 0)
+
+    if (focusedSignalCount === 0) continue
+
+    if (!best || focusedSignalCount < best.focusedSignalCount) {
+      best = {
+        siteId: site.id,
+        siteName: site.name,
+        focusedSignalCount,
+        globalSignalCount: signals.length,
+      }
+    }
+  }
+
+  if (best) return best
+
+  return {
+    siteId: sites[0].id,
+    siteName: sites[0].name,
+    focusedSignalCount: signals.length,
+    globalSignalCount: signals.length,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -136,10 +209,15 @@ export default function GlobePage() {
     return null
   }, [isReplaying, readings, selectedAsset, selectedSignal, selectedSite, sites])
 
+  const benchmarkTarget = useMemo(
+    () => pickBenchmarkTarget(sites, signals),
+    [signals, sites],
+  )
+
   // ---------------------------------------------------------------------------
   // Engine init — hook owns signal culling using selectedCenter + camera regime
   // ---------------------------------------------------------------------------
-  const { isCloseView, focusPosition, flyToHome } = useGlobeEngine({
+  const { viewerReady, isCloseView, focusPosition, flyToHome } = useGlobeEngine({
     containerRef,
     creditsRef,
     sites,
@@ -157,6 +235,70 @@ export default function GlobePage() {
     onAssetClick:  (assetId)  => { setSelectedSiteId(null);    setSelectedAssetId(assetId); setSelectedSignalId(null) },
     onSignalClick: (signalId) => { setSelectedSiteId(null);    setSelectedAssetId(null);   setSelectedSignalId(signalId) },
   })
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!isPerfEnabled()) {
+      delete window.__resilienceGlobeBench
+      return
+    }
+
+    window.__resilienceGlobeBench = {
+      getState: () => ({
+        viewerReady,
+        siteCount: sites.length,
+        signalCount: signals.length,
+        selectedSiteId,
+        selectedAssetId,
+        selectedSignalId,
+        isCloseView,
+        showSignals,
+        benchmarkTarget,
+      }),
+      getBenchmarkTarget: () => benchmarkTarget,
+      focusSite: (siteId: string) => {
+        if (!sites.some(site => site.id === siteId)) return false
+        setSelectedSiteId(siteId)
+        setSelectedAssetId(null)
+        setSelectedSignalId(null)
+        return true
+      },
+      focusBestSite: () => {
+        if (!benchmarkTarget) return null
+        setSelectedSiteId(benchmarkTarget.siteId)
+        setSelectedAssetId(null)
+        setSelectedSignalId(null)
+        return benchmarkTarget
+      },
+      clearSelection: () => {
+        setSelectedSiteId(null)
+        setSelectedAssetId(null)
+        setSelectedSignalId(null)
+      },
+      flyHome: () => {
+        flyToHome()
+      },
+      clearPerf: () => {
+        window.__resiliencePerf?.clear()
+      },
+      getPerfEvents: () => window.__resiliencePerf?.events ?? [],
+    }
+
+    return () => {
+      delete window.__resilienceGlobeBench
+    }
+  }, [
+    benchmarkTarget,
+    flyToHome,
+    isCloseView,
+    viewerReady,
+    selectedAssetId,
+    selectedSignalId,
+    selectedSiteId,
+    showSignals,
+    signals.length,
+    sites,
+  ])
 
   // ---------------------------------------------------------------------------
   // Focus camera on entity click — called after selection state is set

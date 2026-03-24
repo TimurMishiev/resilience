@@ -9,6 +9,12 @@ export default {
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
-    exclude: ['node_modules', 'dist'],
+    include: [
+      './src/test/**/*.test.ts',
+      './src/test/**/*.test.tsx',
+      './src/test/**/*.spec.ts',
+      './src/test/**/*.spec.tsx',
+    ],
+    exclude: ['node_modules', 'dist', 'e2e', 'playwright-report', 'test-results'],
   },
 }

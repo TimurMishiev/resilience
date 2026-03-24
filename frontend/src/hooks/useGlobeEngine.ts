@@ -190,6 +190,8 @@ export interface GlobeEngineInput {
 }
 
 export interface GlobeEngineReturn {
+  /** True when the Cesium viewer and primitive collections are initialized */
+  viewerReady:   boolean
   /** True when the camera is below SIGNAL_CLOSE_VIEW_HEIGHT_M */
   isCloseView:   boolean
   /** Fly to a lat/lng with a given altitude and optional pitch */
@@ -716,5 +718,5 @@ export function useGlobeEngine({
     })
   }, [])
 
-  return { isCloseView, focusPosition, flyToHome }
+  return { viewerReady, isCloseView, focusPosition, flyToHome }
 }

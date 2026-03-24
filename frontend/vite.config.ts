@@ -9,7 +9,6 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (id.includes('node_modules/maplibre-gl')) return 'maplibre-gl'
-          if (id.includes('node_modules/cesium')) return 'cesium'
         },
       },
     },
