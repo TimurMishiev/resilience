@@ -33,6 +33,10 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff,woff2}'],
         globIgnores: ['**/Cesium.js', '**/cesium/**'],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024, // 6 MB
+        // Promote the new service worker immediately so old chunk manifests are
+        // replaced as soon as a new deploy is fetched.
+        skipWaiting: true,
+        clientsClaim: true,
         // Remove stale precache entries from old deploys so old chunk URLs
         // are never served after a new SW activates.
         cleanupOutdatedCaches: true,
