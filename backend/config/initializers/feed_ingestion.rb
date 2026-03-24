@@ -22,6 +22,11 @@
 # and sleeps for DEAD_SLEEP_SECONDS before trying again (rather than spinning).
 unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAME) == "rake"
   Rails.application.config.after_initialize do
+    unless defined?(Rails::Server) || $PROGRAM_NAME.include?("puma") || $PROGRAM_NAME.include?("server")
+      Rails.logger.info "[FeedIngestion] skipped outside server process"
+      next
+    end
+
     start_managed_thread = lambda do |name, &block|
       Thread.new do
         Rails.application.executor.wrap do
