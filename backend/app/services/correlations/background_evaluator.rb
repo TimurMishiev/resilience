@@ -13,56 +13,60 @@ module Correlations
 
     def self.start
       Thread.new do
-        Thread.current.name  = "correlation-evaluator"
-        consecutive_errors   = 0
-        backoff              = 5
+        Rails.application.executor.wrap do
+          Thread.current.name  = "correlation-evaluator"
+          consecutive_errors   = 0
+          backoff              = 5
 
-        Rails.logger.info "[CorrelationEvaluator] started — polling every #{POLL_INTERVAL}s"
+          Rails.logger.info "[CorrelationEvaluator] started — polling every #{POLL_INTERVAL}s"
 
-        loop do
-          begin
-            ActiveRecord::Base.connection_pool.with_connection do
-              window_start = (POLL_INTERVAL + 2).seconds.ago
-              recent = ExternalSignal.where(ingested_at: window_start..Time.current)
+          loop do
+            begin
+              ActiveRecord::Base.connected_to(role: :writing) do
+                ActiveRecord::Base.connection_pool.with_connection do
+                  window_start = (POLL_INTERVAL + 2).seconds.ago
+                  recent = ExternalSignal.where(ingested_at: window_start..Time.current)
 
-              recent.find_each do |signal|
-                Correlations::EvaluatorService.call(signal: signal)
-                Sites::GeofenceBreachService.call(signal: signal)
+                  recent.find_each do |signal|
+                    Correlations::EvaluatorService.call(signal: signal)
+                    Sites::GeofenceBreachService.call(signal: signal)
+                  end
+                end
               end
-            end
 
-            consecutive_errors = 0
-            backoff            = 5
-            sleep POLL_INTERVAL
-
-          rescue ActiveRecord::StatementInvalid, PG::Error => e
-            consecutive_errors += 1
-            wait = [backoff, 300].min
-            Rails.logger.error "[CorrelationEvaluator] DB error (attempt #{consecutive_errors}): #{e.message} — retrying in #{wait}s"
-            backoff = [backoff * 2, 300].min
-
-            if consecutive_errors >= MAX_CONSECUTIVE_ERRORS
-              Rails.logger.error "[CorrelationEvaluator] CRITICAL: #{MAX_CONSECUTIVE_ERRORS} consecutive DB errors — pausing #{DEAD_SLEEP_SECONDS}s"
-              sleep DEAD_SLEEP_SECONDS
               consecutive_errors = 0
               backoff            = 5
-            else
-              sleep wait
-            end
+              sleep POLL_INTERVAL
 
-          rescue => e
-            consecutive_errors += 1
-            wait = [backoff, 300].min
-            Rails.logger.error "[CorrelationEvaluator] unexpected error (attempt #{consecutive_errors}): #{e.class}: #{e.message} — retrying in #{wait}s"
-            backoff = [backoff * 2, 300].min
+            rescue ActiveRecord::StatementInvalid, PG::Error => e
+              consecutive_errors += 1
+              wait = [backoff, 300].min
+              Rails.logger.error "[CorrelationEvaluator] DB error (attempt #{consecutive_errors}): #{e.message} — retrying in #{wait}s"
+              backoff = [backoff * 2, 300].min
 
-            if consecutive_errors >= MAX_CONSECUTIVE_ERRORS
-              Rails.logger.error "[CorrelationEvaluator] CRITICAL: #{MAX_CONSECUTIVE_ERRORS} consecutive errors — pausing #{DEAD_SLEEP_SECONDS}s"
-              sleep DEAD_SLEEP_SECONDS
-              consecutive_errors = 0
-              backoff            = 5
-            else
-              sleep wait
+              if consecutive_errors >= MAX_CONSECUTIVE_ERRORS
+                Rails.logger.error "[CorrelationEvaluator] CRITICAL: #{MAX_CONSECUTIVE_ERRORS} consecutive DB errors — pausing #{DEAD_SLEEP_SECONDS}s"
+                sleep DEAD_SLEEP_SECONDS
+                consecutive_errors = 0
+                backoff            = 5
+              else
+                sleep wait
+              end
+
+            rescue => e
+              consecutive_errors += 1
+              wait = [backoff, 300].min
+              Rails.logger.error "[CorrelationEvaluator] unexpected error (attempt #{consecutive_errors}): #{e.class}: #{e.message} — retrying in #{wait}s"
+              backoff = [backoff * 2, 300].min
+
+              if consecutive_errors >= MAX_CONSECUTIVE_ERRORS
+                Rails.logger.error "[CorrelationEvaluator] CRITICAL: #{MAX_CONSECUTIVE_ERRORS} consecutive errors — pausing #{DEAD_SLEEP_SECONDS}s"
+                sleep DEAD_SLEEP_SECONDS
+                consecutive_errors = 0
+                backoff            = 5
+              else
+                sleep wait
+              end
             end
           end
         end

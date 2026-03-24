@@ -22,6 +22,14 @@
 # and sleeps for DEAD_SLEEP_SECONDS before trying again (rather than spinning).
 unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAME) == "rake"
   Rails.application.config.after_initialize do
+    start_managed_thread = lambda do |name, &block|
+      Thread.new do
+        Rails.application.executor.wrap do
+          Thread.current.name = name
+          block.call
+        end
+      end
+    end
 
     # ---------------------------------------------------------------------------
     # Shared retry helper — yields to the caller's poll block, handles errors
@@ -44,7 +52,9 @@ unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAM
           # This prevents pool starvation under load and makes connection
           # management explicit for background threads outside Puma's normal
           # request lifecycle.
-          result = ActiveRecord::Base.connection_pool.with_connection { block.call }
+          result = ActiveRecord::Base.connected_to(role: :writing) do
+            ActiveRecord::Base.connection_pool.with_connection { block.call }
+          end
 
           if result.success
             count = result.payload[:ingested]
@@ -107,8 +117,7 @@ unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAM
     end
 
     # ─── OpenSky aircraft positions ──────────────────────────────────────────
-    Thread.new do
-      Thread.current.name = "opensky-feed"
+    start_managed_thread.call("opensky-feed") do
       authenticated = ENV["OPENSKY_USERNAME"].present?
       mode = authenticated ? "authenticated" : "anonymous — 300s startup delay, ~400 req/day"
       Rails.logger.info "[OpenSkyFeed] started (#{mode}) — polling every 900s (4 boxes × 12s apart)"
@@ -119,16 +128,14 @@ unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAM
     end
 
     # ─── USGS seismic events ─────────────────────────────────────────────────
-    Thread.new do
-      Thread.current.name = "usgs-feed"
+    start_managed_thread.call("usgs-feed") do
       Rails.logger.info "[USGSFeed] started — polling every 300s (M2.5+ global)"
 
       feed_loop.call("[USGSFeed]", 300) { Feeds::UsgsSeismicIngestionService.call }
     end
 
     # ─── GPSJam interference ─────────────────────────────────────────────────
-    Thread.new do
-      Thread.current.name = "gpsjam-feed"
+    start_managed_thread.call("gpsjam-feed") do
       Rails.logger.info "[GPSJamFeed] started — polling every 900s"
 
       feed_loop.call("[GPSJamFeed]", 900) { Feeds::GpsjamIngestionService.call }
@@ -136,8 +143,7 @@ unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAM
 
     # ─── AIS vessel positions (requires AISHUB_USERNAME) ─────────────────────
     if ENV["AISHUB_USERNAME"].present?
-      Thread.new do
-        Thread.current.name = "ais-feed"
+      start_managed_thread.call("ais-feed") do
         Rails.logger.info "[AISFeed] started — polling every 30s across 4 theater boxes"
 
         feed_loop.call("[AISFeed]", 30) { Feeds::AisIngestionService.call }
@@ -148,8 +154,7 @@ unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAM
 
     # ─── NASA FIRMS wildfire (requires NASA_FIRMS_MAP_KEY) ───────────────────
     if ENV["NASA_FIRMS_MAP_KEY"].present?
-      Thread.new do
-        Thread.current.name = "firms-feed"
+      start_managed_thread.call("firms-feed") do
         Rails.logger.info "[FIRMSFeed] started — polling every 900s (VIIRS SNPP NRT)"
 
         feed_loop.call("[FIRMSFeed]", 900) { Feeds::FirmsWildfireIngestionService.call }
@@ -159,8 +164,7 @@ unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAM
     end
 
     # ─── GDACS disaster alerts (no key required) ─────────────────────────────
-    Thread.new do
-      Thread.current.name = "gdacs-feed"
+    start_managed_thread.call("gdacs-feed") do
       Rails.logger.info "[GDACSFeed] started — polling every 900s (EQ,TC,FL,VO,DR,TS — global)"
 
       feed_loop.call("[GDACSFeed]", 900) { Feeds::GdacsIngestionService.call }
@@ -168,8 +172,7 @@ unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAM
 
     # ─── ACLED conflict events (requires ACLED_API_KEY + ACLED_EMAIL) ────────
     if ENV["ACLED_API_KEY"].present? && ENV["ACLED_EMAIL"].present?
-      Thread.new do
-        Thread.current.name = "acled-feed"
+      start_managed_thread.call("acled-feed") do
         Rails.logger.info "[ACLEDFeed] started — polling every 3600s (armed conflict events, 3-day lookback)"
 
         feed_loop.call("[ACLEDFeed]", 3600) { Feeds::AcledIngestionService.call }
