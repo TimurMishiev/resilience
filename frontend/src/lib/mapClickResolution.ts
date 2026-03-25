@@ -22,9 +22,25 @@ const MAP_INTERACTIVE_LAYER_KIND_BY_ID: Record<string, MapInteractiveKind> = {
   'selected-signal-symbol': 'signal',
 }
 
+const MAP_INTERACTIVE_KIND_PRIORITY: Record<MapInteractiveKind, number> = {
+  // Tactical map clicks should favor stable operational anchors over transient
+  // overlays when multiple entities stack onto the same screen point.
+  site: 4,
+  asset: 3,
+  signal: 2,
+  cluster: 1,
+}
+
 export const MAP_INTERACTIVE_LAYER_IDS = Object.keys(MAP_INTERACTIVE_LAYER_KIND_BY_ID)
 
 export function resolveMapClickCandidate(features: readonly MapFeatureLike[]) {
+  let bestCandidate: {
+    kind: MapInteractiveKind
+    feature: MapFeatureLike
+    layerId: string
+  } | null = null
+  let bestPriority = -1
+
   for (const feature of features) {
     const layerId = feature.layer?.id
     if (!layerId) continue
@@ -32,12 +48,16 @@ export function resolveMapClickCandidate(features: readonly MapFeatureLike[]) {
     const kind = MAP_INTERACTIVE_LAYER_KIND_BY_ID[layerId]
     if (!kind) continue
 
-    return {
+    const priority = MAP_INTERACTIVE_KIND_PRIORITY[kind]
+    if (priority <= bestPriority) continue
+
+    bestCandidate = {
       kind,
       feature,
       layerId,
     }
+    bestPriority = priority
   }
 
-  return null
+  return bestCandidate
 }

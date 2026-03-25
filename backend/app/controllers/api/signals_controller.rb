@@ -2,6 +2,9 @@ module Api
   class SignalsController < BaseController
     include ActionController::Live
 
+    SIGNAL_STREAM_BASELINE_BATCH_SIZE = 200
+    SIGNAL_STREAM_BASELINE_MAX_AGE = 24.hours
+
     before_action :require_commander!, only: %i[create]
 
     # GET /api/signals
@@ -54,19 +57,14 @@ module Api
 
       broadcaster = Signals::Broadcaster.instance
       queue       = broadcaster.subscribe
-      since       = safe_parse_datetime(params[:since])
+      requested_since = safe_parse_datetime(params[:since])
+      since           = clamped_signal_stream_since(requested_since)
+      baseline_upper_bound = Time.current
 
       sse_write(response.stream, event: "connected", data: { message: "signal stream open" })
 
       if since
-        ExternalSignal
-          .where("ingested_at >= ?", since)
-          .order(:ingested_at, :id)
-          .each do |signal|
-            response.stream.write("event: signal\ndata: #{Signals::PayloadSerializer.call(signal).to_json}\n\n")
-          rescue IOError, ActionController::Live::ClientDisconnected
-            break
-          end
+        stream_signal_baseline(response.stream, since, baseline_upper_bound)
       end
 
       heartbeat = Thread.new do
@@ -80,6 +78,7 @@ module Api
 
       loop do
         payload = queue.pop
+        break if payload.nil?
         response.stream.write("event: signal\ndata: #{payload}\n\n")
       rescue IOError, ActionController::Live::ClientDisconnected
         break
@@ -128,6 +127,46 @@ module Api
       stream.write("event: #{event}\ndata: #{data.to_json}\n\n")
     rescue IOError, ActionController::Live::ClientDisconnected
       # client disconnected — caller loop handles cleanup
+    end
+
+    def clamped_signal_stream_since(since)
+      return nil unless since
+      [since, SIGNAL_STREAM_BASELINE_MAX_AGE.ago].max
+    end
+
+    def stream_signal_baseline(stream, since, upper_bound)
+      cursor_ingested_at = nil
+      cursor_id = nil
+
+      loop do
+        scope = ExternalSignal
+          .where("ingested_at >= ? AND ingested_at <= ?", since, upper_bound)
+
+        if cursor_ingested_at && cursor_id
+          scope = scope.where(
+            "(ingested_at, id) > (?, ?)",
+            cursor_ingested_at,
+            cursor_id,
+          )
+        end
+
+        batch = scope
+          .order(:ingested_at, :id)
+          .limit(SIGNAL_STREAM_BASELINE_BATCH_SIZE)
+          .to_a
+
+        break if batch.empty?
+
+        batch.each do |signal|
+          stream.write("event: signal\ndata: #{Signals::PayloadSerializer.call(signal).to_json}\n\n")
+        rescue IOError, ActionController::Live::ClientDisconnected
+          return
+        end
+
+        last = batch.last
+        cursor_ingested_at = last.ingested_at
+        cursor_id = last.id
+      end
     end
 
     def signal_params

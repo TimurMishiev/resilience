@@ -70,6 +70,21 @@ RSpec.describe "Api::Incidents", type: :request do
       expect(json).to have_key("tasks")
     end
 
+    it "deduplicates shared tasks in the detailed response while preserving match order" do
+      shared_task = create(:task, site: site, title: "Shared task")
+      trailing_task = create(:task, site: site, title: "Trailing task")
+
+      create(:signal_rule_match, :without_task, incident: incident, site: site, task: shared_task)
+      create(:signal_rule_match, :without_task, incident: incident, site: site, task: shared_task)
+      create(:signal_rule_match, :without_task, incident: incident, site: site, task: trailing_task)
+
+      get "/api/incidents/#{incident.id}", headers: auth_headers(operator)
+
+      expect(response).to have_http_status(:ok)
+      tasks = JSON.parse(response.body).fetch("tasks")
+      expect(tasks.map { |task| task.fetch("id") }).to eq([shared_task.id, trailing_task.id])
+    end
+
     it "returns 404 for unknown id" do
       get "/api/incidents/#{SecureRandom.uuid}", headers: auth_headers(operator)
       expect(response).to have_http_status(:not_found)
@@ -175,6 +190,26 @@ RSpec.describe "Api::Incidents", type: :request do
       expect(response).to have_http_status(:ok)
     end
 
+    it "returns 403 when operator tries to take an incident already assigned to another user" do
+      other = create(:user)
+      incident.update!(assigned_to_id: other.id, assigned_at: Time.current)
+
+      expect {
+        patch "/api/incidents/#{incident.id}/assign",
+              params:  { assignee_id: operator.id },
+              headers: auth_headers(operator), as: :json
+      }.to change {
+        AuditEvent.where(event_type: "incident_assignment_forbidden", entity_id: incident.id).count
+      }.by(1)
+
+      expect(response).to have_http_status(:forbidden)
+      event = AuditEvent.order(:occurred_at).last
+      expect(event.metadata).to include(
+        "attempted_assignee_id" => operator.id,
+        "actor_role" => "operator",
+      )
+    end
+
     it "returns 403 when operator tries to assign to a different user" do
       other = create(:user)
       patch "/api/incidents/#{incident.id}/assign",
@@ -199,11 +234,20 @@ RSpec.describe "Api::Incidents", type: :request do
       other = create(:user)
       incident.update!(assigned_to_id: other.id, assigned_at: Time.current)
 
-      patch "/api/incidents/#{incident.id}/assign",
-            params:  {},
-            headers: auth_headers(operator), as: :json
+      expect {
+        patch "/api/incidents/#{incident.id}/assign",
+              params:  {},
+              headers: auth_headers(operator), as: :json
+      }.to change {
+        AuditEvent.where(event_type: "incident_assignment_forbidden", entity_id: incident.id).count
+      }.by(1)
 
       expect(response).to have_http_status(:forbidden)
+      event = AuditEvent.order(:occurred_at).last
+      expect(event.metadata).to include(
+        "attempted_assignee_id" => nil,
+        "actor_role" => "operator",
+      )
     end
 
     it "filters index by assigned_to_id" do

@@ -20,12 +20,31 @@ import type { Task } from '../api/types'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { assetDisplayPosition, getLiveTelemetryReading } from '../lib/assetPresentation'
 import { buildCoverageCircles } from '../lib/coverage'
-import { buildEntitySelectionSearch, parseEntitySelectionRoute } from '../lib/entitySelectionRoute'
+import {
+  buildEntitySelectionSearch,
+  buildEntitySelectionSyncLocationState,
+  consumeEntitySelectionSyncLocationState,
+  parseEntitySelectionRoute,
+  trackEntitySelectionSyncToken,
+} from '../lib/entitySelectionRoute'
 import { computeReadiness } from '../lib/formatters'
 import { SIGNAL_COLORS, SIGNAL_LABELS } from '../lib/signalConfig'
 import { MapSitePanel } from '../components/MapSitePanel'
 import { MapAssetPanel } from '../components/MapAssetPanel'
 import { MapSignalPanel } from '../components/MapSignalPanel'
+
+const E2E_PICK_SEARCH_OFFSETS: Array<{ x: number; y: number }> = (() => {
+  const offsets = [{ x: 0, y: 0 }]
+  for (let radius = 2; radius <= 30; radius += 2) {
+    for (let y = -radius; y <= radius; y += 2) {
+      for (let x = -radius; x <= radius; x += 2) {
+        if (Math.max(Math.abs(x), Math.abs(y)) !== radius) continue
+        offsets.push({ x, y })
+      }
+    }
+  }
+  return offsets
+})()
 
 type MapE2ESelectionTarget = {
   id: string
@@ -43,7 +62,7 @@ type MapE2EApi = {
     selectedSignalId: string | null
   }
   getFirstSiteTarget: () => MapE2ESelectionTarget | null
-  getSiteCanvasTarget: (siteId: string) => { x: number; y: number } | null
+  getPickableSiteCanvasTarget: (siteId: string) => { x: number; y: number } | null
 }
 
 declare global {
@@ -62,7 +81,8 @@ export default function MapPage() {
   const mapContainerRef        = useRef<HTMLDivElement>(null)
   const urlSelectionAppliedRef = useRef(false)
   const replayResetReadyRef    = useRef(false)
-  const pendingRouteWriteRef   = useRef<string | null>(null)
+  const nextRouteWriteTokenRef = useRef(0)
+  const pendingRouteWriteTokensRef = useRef<Set<number>>(new Set())
 
   // ---------------------------------------------------------------------------
   // Selection state — owned here, driven by engine callbacks
@@ -155,15 +175,23 @@ export default function MapPage() {
     const nextSearch = buildEntitySelectionSearch(location.search, selection)
     if (nextSearch === location.search) return
 
-    pendingRouteWriteRef.current = nextSearch
+    const token = nextRouteWriteTokenRef.current + 1
+    nextRouteWriteTokenRef.current = token
+    trackEntitySelectionSyncToken(pendingRouteWriteTokensRef.current, token)
     navigate(
       {
         pathname: location.pathname,
         search: nextSearch,
       },
-      { replace: true },
+      {
+        replace: true,
+        state: buildEntitySelectionSyncLocationState(location.state, {
+          source: 'map',
+          token,
+        }),
+      },
     )
-  }, [location.pathname, location.search, navigate])
+  }, [location.pathname, location.search, location.state, navigate])
 
   const updateSelectionRouteRef = useRef(updateSelectionRoute)
   useEffect(() => {
@@ -200,7 +228,7 @@ export default function MapPage() {
   // ---------------------------------------------------------------------------
   // MapLibre engine
   // ---------------------------------------------------------------------------
-  const { mapLoaded, flyTo, getZoom, projectPosition } = useMapLibreEngine({
+  const { mapLoaded, flyTo, getZoom, projectPosition, inspectCanvasPosition } = useMapLibreEngine({
     containerRef: mapContainerRef,
     sites,
     assets,
@@ -249,8 +277,7 @@ export default function MapPage() {
   useEffect(() => {
     if (!mapLoaded || urlSelectionAppliedRef.current) return
 
-    if (pendingRouteWriteRef.current === location.search) {
-      pendingRouteWriteRef.current = null
+    if (consumeEntitySelectionSyncLocationState(location.state, 'map', pendingRouteWriteTokensRef.current)) {
       urlSelectionAppliedRef.current = true
       return
     }
@@ -298,7 +325,7 @@ export default function MapPage() {
       urlSelectionAppliedRef.current = true
     }
     /* eslint-enable react-hooks/set-state-in-effect */
-  }, [assets, flyTo, isReplaying, location.search, mapLoaded, readings, signals, sites])
+  }, [assets, flyTo, isReplaying, location.search, location.state, mapLoaded, readings, signals, sites])
 
   // ---------------------------------------------------------------------------
   // Derived selection
@@ -336,17 +363,30 @@ export default function MapPage() {
         const site = sites[0]
         return site ? { id: site.id, name: site.name } : null
       },
-      getSiteCanvasTarget: (siteId: string) => {
+      getPickableSiteCanvasTarget: (siteId: string) => {
         const site = sites.find(candidate => candidate.id === siteId)
         if (!site) return null
-        return projectPosition(Number(site.longitude), Number(site.latitude))
+
+        const basePoint = projectPosition(Number(site.longitude), Number(site.latitude))
+        if (!basePoint) return null
+
+        for (const offset of E2E_PICK_SEARCH_OFFSETS) {
+          const x = basePoint.x + offset.x
+          const y = basePoint.y + offset.y
+          const inspection = inspectCanvasPosition(x, y)
+          if (inspection?.kind === 'site' && inspection.id === siteId) {
+            return { x, y }
+          }
+        }
+
+        return null
       },
     }
 
     return () => {
       delete window.__resilienceMapE2E
     }
-  }, [getZoom, mapLoaded, projectPosition, selectedAssetId, selectedSignalId, selectedSiteId, signalsConnected, sites, telemetryConnected])
+  }, [getZoom, inspectCanvasPosition, mapLoaded, projectPosition, selectedAssetId, selectedSignalId, selectedSiteId, signalsConnected, sites, telemetryConnected])
 
   // ---------------------------------------------------------------------------
   // Render

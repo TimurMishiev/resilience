@@ -124,6 +124,7 @@ vi.mock('../hooks/useMapLibreEngine', () => ({
       flyTo: engineState.flyTo,
       getZoom: vi.fn(() => 1.5),
       projectPosition: vi.fn(),
+      inspectCanvasPosition: vi.fn(() => null),
     }
   },
 }))

@@ -4,7 +4,21 @@ export interface EntitySelectionRouteState {
   signalId: string | null
 }
 
+export type EntitySelectionSyncSource = 'map' | 'globe'
+
+export interface EntitySelectionSyncMetadata {
+  source: EntitySelectionSyncSource
+  token: number
+}
+
 const ENTITY_SELECTION_PARAM_KEYS = ['site_id', 'asset_id', 'signal_id'] as const
+const ENTITY_SELECTION_SYNC_STATE_KEY = '__resilienceEntitySelectionSync'
+const MAX_PENDING_ENTITY_SELECTION_SYNC_TOKENS = 20
+
+function asObjectRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return value as Record<string, unknown>
+}
 
 function normalizeEntitySelectionRoute(selection: EntitySelectionRouteState): EntitySelectionRouteState {
   if (selection.siteId) {
@@ -74,4 +88,52 @@ export function clearEntitySelectionRoute(search: string): string {
     assetId: null,
     signalId: null,
   })
+}
+
+export function buildEntitySelectionSyncLocationState(
+  locationState: unknown,
+  metadata: EntitySelectionSyncMetadata,
+): Record<string, unknown> {
+  return {
+    ...asObjectRecord(locationState),
+    [ENTITY_SELECTION_SYNC_STATE_KEY]: metadata,
+  }
+}
+
+export function readEntitySelectionSyncLocationState(locationState: unknown): EntitySelectionSyncMetadata | null {
+  const raw = asObjectRecord(locationState)[ENTITY_SELECTION_SYNC_STATE_KEY]
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+
+  const metadata = raw as Record<string, unknown>
+  const source = metadata.source
+  const token = metadata.token
+
+  if ((source === 'map' || source === 'globe') && Number.isInteger(token) && Number(token) > 0) {
+    return { source, token: Number(token) }
+  }
+
+  return null
+}
+
+export function consumeEntitySelectionSyncLocationState(
+  locationState: unknown,
+  source: EntitySelectionSyncSource,
+  pendingTokens: Set<number>,
+): boolean {
+  const metadata = readEntitySelectionSyncLocationState(locationState)
+  if (!metadata || metadata.source !== source) return false
+  return pendingTokens.delete(metadata.token)
+}
+
+export function trackEntitySelectionSyncToken(
+  pendingTokens: Set<number>,
+  token: number,
+): void {
+  pendingTokens.add(token)
+
+  while (pendingTokens.size > MAX_PENDING_ENTITY_SELECTION_SYNC_TOKENS) {
+    const oldestToken = pendingTokens.values().next().value
+    if (oldestToken === undefined) return
+    pendingTokens.delete(oldestToken)
+  }
 }

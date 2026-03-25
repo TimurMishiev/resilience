@@ -130,27 +130,24 @@ test('map site selection persists after a real canvas click', async ({ page }) =
 
   await page.waitForFunction((siteId: string) =>
     Boolean((window as Window & {
-      __resilienceMapE2E?: { getSiteCanvasTarget: (id: string) => CanvasPoint | null }
-    }).__resilienceMapE2E?.getSiteCanvasTarget(siteId)),
+      __resilienceMapE2E?: { getPickableSiteCanvasTarget: (id: string) => CanvasPoint | null }
+    }).__resilienceMapE2E?.getPickableSiteCanvasTarget(siteId)),
     siteTarget.id,
   )
 
   const point = await page.evaluate((siteId: string) => {
     const bridge = (window as Window & {
-      __resilienceMapE2E?: { getSiteCanvasTarget: (id: string) => CanvasPoint | null }
+      __resilienceMapE2E?: { getPickableSiteCanvasTarget: (id: string) => CanvasPoint | null }
     }).__resilienceMapE2E
-    return bridge?.getSiteCanvasTarget(siteId) ?? null
+    return bridge?.getPickableSiteCanvasTarget(siteId) ?? null
   }, siteTarget.id)
 
   expect(point).not.toBeNull()
   const canvasPoint = point as CanvasPoint
 
-  const mapBox = await page.locator('.maplibregl-canvas').boundingBox()
-  expect(mapBox).not.toBeNull()
-  await page.mouse.click(
-    mapBox!.x + canvasPoint.x,
-    mapBox!.y + canvasPoint.y,
-  )
+  await page.locator('.maplibregl-canvas').click({
+    position: { x: canvasPoint.x, y: canvasPoint.y },
+  })
 
   await expect(page.locator('.map-panel-title')).toContainText(siteTarget.name)
   await expect(page).toHaveURL(new RegExp(`/map\\?site_id=${siteTarget.id}$`))

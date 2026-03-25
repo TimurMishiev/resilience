@@ -850,6 +850,13 @@ CREATE INDEX index_correlation_rules_on_is_active ON public.correlation_rules US
 
 
 --
+-- Name: index_external_signals_on_ingested_at_and_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_external_signals_on_ingested_at_and_id ON public.external_signals USING btree (ingested_at, id);
+
+
+--
 -- Name: index_external_signals_on_lat_and_lng; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1586,6 +1593,7 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260325010000'),
 ('20260324010000'),
 ('20260324000100'),
 ('20260323200001'),

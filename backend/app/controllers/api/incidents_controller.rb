@@ -21,7 +21,8 @@ module Api
     def show
       incident = Incident
         .includes(:site, :area_of_operation, :assigned_to,
-                  signal_rule_matches: [:signal, :correlation_rule, :task])
+                  :tasks,
+                  signal_rule_matches: [:signal, :correlation_rule])
         .find(params[:id])
       render json: serialize_incident(incident, detailed: true)
     end
@@ -83,9 +84,11 @@ module Api
 
       unless current_user.commander?
         target_id    = assignee&.id
-        self_assign  = target_id == current_user.id
+        assignment_available = incident.assigned_to_id.nil? || incident.assigned_to_id == current_user.id
+        self_assign  = target_id == current_user.id && assignment_available
         own_unassign = target_id.nil? && incident.assigned_to_id == current_user.id
         unless self_assign || own_unassign
+          audit_forbidden_assignment_attempt(incident, assignee)
           return render json: { errors: ["Operators may only self-assign or release their own assignment"] },
                         status: :forbidden
         end
@@ -249,6 +252,35 @@ module Api
       params.require(:incident).permit(:title, :description, :severity)
     end
 
+    def audit_forbidden_assignment_attempt(incident, assignee)
+      snapshot = {
+        assigned_to_id: incident.assigned_to_id,
+        assigned_at: incident.assigned_at,
+      }
+
+      ActiveRecord::Base.transaction do
+        Audit::EventWriter.write(
+          actor: current_user.email,
+          entity_type: "Incident",
+          entity_id: incident.id,
+          event_type: "incident_assignment_forbidden",
+          action: "assign_forbidden",
+          before_snapshot: snapshot,
+          after_snapshot: snapshot,
+          metadata: {
+            attempted_assignee_id: assignee&.id,
+            actor_role: current_user.commander? ? "commander" : "operator",
+          },
+          correlation_id: SecureRandom.uuid,
+        )
+      end
+    rescue StandardError => e
+      Rails.logger.error(
+        "[Api::IncidentsController] failed to audit forbidden assignment " \
+        "incident=#{incident.id} error=#{e.class}: #{e.message}"
+      )
+    end
+
     def serialize_incident(incident, detailed: false)
       base = {
         id:               incident.id,
@@ -283,8 +315,17 @@ module Api
 
       base.merge(
         alerts: incident.signal_rule_matches.map { |m| serialize_alert(m) },
-        tasks:  incident.signal_rule_matches.filter_map(&:task).uniq.map { |t| serialize_task(t) }
+        tasks:  serialize_incident_tasks(incident)
       )
+    end
+
+    def serialize_incident_tasks(incident)
+      tasks_by_id = incident.tasks.index_by(&:id)
+      ordered_task_ids = incident.signal_rule_matches.filter_map(&:task_id).uniq
+
+      ordered_task_ids
+        .filter_map { |task_id| tasks_by_id[task_id] }
+        .map { |task| serialize_task(task) }
     end
 
     def serialize_alert(m)

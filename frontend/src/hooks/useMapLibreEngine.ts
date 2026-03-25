@@ -28,7 +28,11 @@ import type { CoverageCircle } from '../lib/coverage'
 import { circlePolygon } from '../lib/coverage'
 import { assetDisplayPosition } from '../lib/assetPresentation'
 import { buildClusteredSignalSourceDefinition, expandMapSignalCluster } from '../lib/mapSignalClustering'
-import { MAP_INTERACTIVE_LAYER_IDS, resolveMapClickCandidate } from '../lib/mapClickResolution'
+import {
+  MAP_INTERACTIVE_LAYER_IDS,
+  resolveMapClickCandidate,
+  type MapInteractiveKind,
+} from '../lib/mapClickResolution'
 import { buildMapSignalRenderCollections } from '../lib/mapSignalRendering'
 import { preloadMapRuntime } from '../lib/preloadRoutes'
 import { SIGNAL_ICON_CHAR } from '../lib/signalIcons'
@@ -324,6 +328,8 @@ export interface MapEngineReturn {
   getZoom: () => number | null
   /** Projects a lng/lat into current canvas coordinates. */
   projectPosition: (lng: number, lat: number) => { x: number; y: number } | null
+  /** Inspects the current rendered interactive target at a canvas point. */
+  inspectCanvasPosition: (x: number, y: number) => { kind: MapInteractiveKind; id: string | null; layerId: string } | null
 }
 
 // ---------------------------------------------------------------------------
@@ -1146,10 +1152,32 @@ export function useMapLibreEngine({
     return { x: point.x, y: point.y }
   }, [])
 
+  const inspectCanvasPosition = useCallback((x: number, y: number) => {
+    const map = mapRef.current
+    if (!map) return null
+
+    const interactiveLayers = MAP_INTERACTIVE_LAYER_IDS.filter(layerId => map.getLayer(layerId))
+    const features = map.queryRenderedFeatures([x, y], { layers: interactiveLayers })
+    const resolved = resolveMapClickCandidate(features)
+    if (!resolved) return null
+
+    const rawId =
+      resolved.kind === 'cluster'
+        ? resolved.feature.properties?.cluster_id
+        : resolved.feature.properties?.id
+
+    return {
+      kind: resolved.kind,
+      id: rawId == null ? null : String(rawId),
+      layerId: resolved.layerId,
+    }
+  }, [])
+
   return {
     mapLoaded,
     flyTo,
     getZoom,
     projectPosition,
+    inspectCanvasPosition,
   }
 }

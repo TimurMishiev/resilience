@@ -19,10 +19,24 @@ describe('mapClickResolution', () => {
     ])
   })
 
-  it('chooses the first interactive feature from rendered feature order', () => {
+  it('prioritizes site selection over overlaid asset and signal features', () => {
     const resolved = resolveMapClickCandidate([
+      { layer: { id: 'signal-symbols' }, properties: { id: 'signal-1' } },
       { layer: { id: 'asset-symbols' }, properties: { id: 'asset-1' } },
       { layer: { id: 'site-circles' }, properties: { id: 'site-1' } },
+    ])
+
+    expect(resolved).toMatchObject({
+      kind: 'site',
+      layerId: 'site-circles',
+      feature: { properties: { id: 'site-1' } },
+    })
+  })
+
+  it('preserves rendered feature order within the same semantic priority', () => {
+    const resolved = resolveMapClickCandidate([
+      { layer: { id: 'asset-symbols' }, properties: { id: 'asset-1' } },
+      { layer: { id: 'asset-circles' }, properties: { id: 'asset-2' } },
     ])
 
     expect(resolved).toMatchObject({
@@ -32,11 +46,10 @@ describe('mapClickResolution', () => {
     })
   })
 
-  it('ignores non-interactive layers and finds the first valid candidate', () => {
+  it('ignores non-interactive layers and still resolves clusters when no higher-priority target is present', () => {
     const resolved = resolveMapClickCandidate([
       { layer: { id: 'sensor-coverage-fill' }, properties: { asset_id: 'asset-1' } },
       { layer: { id: 'signal-clusters' }, properties: { cluster_id: 42 } },
-      { layer: { id: 'site-circles' }, properties: { id: 'site-1' } },
     ])
 
     expect(resolved).toMatchObject({

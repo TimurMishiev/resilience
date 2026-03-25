@@ -48,6 +48,7 @@ module Api
       # Main loop — pop telemetry payloads and forward to the client
       loop do
         payload = queue.pop
+        break if payload.nil?
         response.stream.write("event: telemetry\ndata: #{payload}\n\n")
       rescue IOError, ActionController::Live::ClientDisconnected
         break

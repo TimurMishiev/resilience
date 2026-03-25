@@ -1,6 +1,8 @@
 require "rails_helper"
 
 RSpec.describe "Api::Signals", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
   let(:user) { create(:user) }
 
   let!(:seismic1) do
@@ -143,6 +145,67 @@ RSpec.describe "Api::Signals", type: :request do
     it "returns 404 for unknown UUID" do
       get "/api/signals/#{SecureRandom.uuid}", headers: auth_headers(user)
       expect(response).to have_http_status(:not_found)
+    end
+  end
+
+  describe "GET /api/signals/stream" do
+    let(:sse_token) { JwtAuthenticatable.encode_sse(user.id) }
+    let(:queue) { Queue.new.tap { |q| q << nil } }
+    let(:broadcaster) { instance_double(Signals::Broadcaster, subscribe: queue, unsubscribe: nil) }
+
+    around do |example|
+      travel_to(Time.zone.parse("2026-03-25 16:00:00 UTC")) { example.run }
+    end
+
+    before do
+      allow(Signals::Broadcaster).to receive(:instance).and_return(broadcaster)
+    end
+
+    it "streams a capped, batched signal baseline in ingested_at/id order" do
+      create(:external_signal).tap do |signal|
+        signal.update_columns(
+          occurred_at: 30.hours.ago,
+          ingested_at: 30.hours.ago,
+        )
+      end
+
+      create(:external_signal).tap do |signal|
+        signal.update_columns(
+          occurred_at: 1.minute.from_now,
+          ingested_at: 1.minute.from_now,
+        )
+      end
+
+      baseline_signals = Array.new(205) do |index|
+        create(:external_signal, external_id: "baseline-#{index}").tap do |signal|
+          ingested_at = 23.hours.ago + index.minutes
+          signal.update_columns(
+            occurred_at: ingested_at,
+            ingested_at: ingested_at,
+          )
+        end
+      end
+
+      get "/api/signals/stream",
+          params: { token: sse_token, since: 7.days.ago.iso8601 }
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include('event: connected')
+
+      streamed_payloads = response.body
+        .scan(/^event: signal\ndata: (.+)$/)
+        .flatten
+        .map { |payload| JSON.parse(payload) }
+
+      expected_ids = baseline_signals
+        .sort_by { |signal| [signal.ingested_at, signal.id] }
+        .map(&:id)
+
+      expect(streamed_payloads.map { |payload| payload.fetch("id") }).to eq(expected_ids)
+      expect(streamed_payloads).to all(satisfy { |payload|
+        Time.zone.parse(payload.fetch("ingested_at")) >= 24.hours.ago &&
+          Time.zone.parse(payload.fetch("ingested_at")) <= Time.current
+      })
     end
   end
 end

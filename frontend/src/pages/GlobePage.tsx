@@ -16,7 +16,14 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { assetDisplayPosition, getLiveTelemetryReading } from '../lib/assetPresentation'
 import { computeReadiness } from '../lib/formatters'
 import { buildCoverageCircles, haversineKm } from '../lib/coverage'
-import { buildEntitySelectionPath, buildEntitySelectionSearch, parseEntitySelectionRoute } from '../lib/entitySelectionRoute'
+import {
+  buildEntitySelectionPath,
+  buildEntitySelectionSearch,
+  buildEntitySelectionSyncLocationState,
+  consumeEntitySelectionSyncLocationState,
+  parseEntitySelectionRoute,
+  trackEntitySelectionSyncToken,
+} from '../lib/entitySelectionRoute'
 import { isPerfEnabled } from '../lib/perfInstrumentation'
 import { SIGNAL_COLORS, SIGNAL_LABELS } from '../lib/signalConfig'
 import { GlobeInspectorPanel } from '../components/GlobeInspectorPanel'
@@ -160,7 +167,8 @@ export default function GlobePage() {
   const { asOf, isReplaying, asOfParam, signalQueryParams } = useReplayParams()
   const urlSelectionAppliedRef = useRef(false)
   const replayResetReadyRef = useRef(false)
-  const pendingRouteWriteRef = useRef<string | null>(null)
+  const nextRouteWriteTokenRef = useRef(0)
+  const pendingRouteWriteTokensRef = useRef<Set<number>>(new Set())
 
   // ---------------------------------------------------------------------------
   // Selection state — owned here, driven by engine callbacks
@@ -228,15 +236,23 @@ export default function GlobePage() {
     const nextSearch = buildEntitySelectionSearch(location.search, selection)
     if (nextSearch === location.search) return
 
-    pendingRouteWriteRef.current = nextSearch
+    const token = nextRouteWriteTokenRef.current + 1
+    nextRouteWriteTokenRef.current = token
+    trackEntitySelectionSyncToken(pendingRouteWriteTokensRef.current, token)
     navigate(
       {
         pathname: location.pathname,
         search: nextSearch,
       },
-      { replace: true },
+      {
+        replace: true,
+        state: buildEntitySelectionSyncLocationState(location.state, {
+          source: 'globe',
+          token,
+        }),
+      },
     )
-  }, [location.pathname, location.search, navigate])
+  }, [location.pathname, location.search, location.state, navigate])
 
   const updateSelectionRouteRef = useRef(updateSelectionRoute)
   useEffect(() => {
@@ -357,8 +373,7 @@ export default function GlobePage() {
   useEffect(() => {
     if (!viewerReady || urlSelectionAppliedRef.current) return
 
-    if (pendingRouteWriteRef.current === location.search) {
-      pendingRouteWriteRef.current = null
+    if (consumeEntitySelectionSyncLocationState(location.state, 'globe', pendingRouteWriteTokensRef.current)) {
       urlSelectionAppliedRef.current = true
       return
     }
@@ -401,7 +416,7 @@ export default function GlobePage() {
       setSelectedSignalId(signal.id)
       urlSelectionAppliedRef.current = true
     }
-  }, [assets, location.search, signals, sites, viewerReady])
+  }, [assets, location.search, location.state, signals, sites, viewerReady])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
