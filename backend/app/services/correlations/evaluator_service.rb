@@ -24,6 +24,7 @@ module Correlations
   # reuse it without an extra dependency.
   class EvaluatorService < ApplicationService
     EARTH_RADIUS_KM = 6371.0
+    SIGNAL_CANDIDATE_BATCH_SIZE = 200
 
     def self.haversine_km(lat1, lng1, lat2, lng2)
       dlat = (lat2 - lat1) * Math::PI / 180.0
@@ -95,22 +96,14 @@ module Correlations
       proximity_km = cond["proximity_km"].to_f
       threshold    = [ cond["count_threshold"].to_i, 1 ].max
 
-      candidates = ExternalSignal.where(
+      candidates = recent_signal_candidates(
         signal_type: cond["signal_type"],
-        occurred_at: window_min.minutes.ago..Time.current
+        window_minutes: window_min,
+        site: site,
+        proximity_km: proximity_km,
       )
 
-      if proximity_km > 0
-        nearby = candidates.select do |s|
-          self.class.haversine_km(
-            site.latitude.to_f, site.longitude.to_f,
-            s.lat.to_f,         s.lng.to_f
-          ) <= proximity_km
-        end
-        nearby.size >= threshold
-      else
-        candidates.count >= threshold
-      end
+      threshold_met?(candidates, site, proximity_km, threshold)
     end
 
     # ── Shared helpers (direct path) ───────────────────────────────────────────
@@ -140,19 +133,14 @@ module Correlations
       window_min   = 60 if window_min.zero?
       proximity_km = cond["proximity_km"].to_f
 
-      recent_signals = ExternalSignal.where(
+      recent_signals = recent_signal_candidates(
         signal_type: @signal.signal_type,
-        occurred_at: window_min.minutes.ago..Time.current
+        window_minutes: window_min,
+        site: site,
+        proximity_km: proximity_km,
       )
 
-      nearby_count = recent_signals.count do |s|
-        self.class.haversine_km(
-          site.latitude.to_f, site.longitude.to_f,
-          s.lat.to_f,         s.lng.to_f
-        ) <= proximity_km
-      end
-
-      nearby_count >= threshold
+      threshold_met?(recent_signals, site, proximity_km, threshold)
     end
 
     # ── Site targeting ─────────────────────────────────────────────────────────
@@ -167,6 +155,38 @@ module Correlations
       base = Site.active
       base = base.where(area_of_operation_id: rule.area_of_operation_id) if rule.area_of_operation_id.present?
       base
+    end
+
+    def recent_signal_candidates(signal_type:, window_minutes:, site:, proximity_km:)
+      scope = ExternalSignal.where(
+        signal_type: signal_type,
+        occurred_at: window_minutes.minutes.ago..Time.current
+      )
+
+      return scope unless proximity_km.positive?
+      scope.near_point(site.latitude, site.longitude, proximity_km)
+    end
+
+    def threshold_met?(scope, site, proximity_km, threshold)
+      return scope.limit(threshold).pluck(:id).size >= threshold unless proximity_km.positive?
+
+      matching_count = 0
+
+      scope
+        .select(:id, :lat, :lng)
+        .find_in_batches(batch_size: SIGNAL_CANDIDATE_BATCH_SIZE) do |batch|
+          batch.each do |signal|
+            next unless self.class.haversine_km(
+              site.latitude.to_f, site.longitude.to_f,
+              signal.lat.to_f,    signal.lng.to_f
+            ) <= proximity_km
+
+            matching_count += 1
+            return true if matching_count >= threshold
+          end
+        end
+
+      false
     end
   end
 end

@@ -191,6 +191,28 @@ RSpec.describe Correlations::EvaluatorService do
       end
     end
 
+    context "when count_threshold is met without a proximity constraint" do
+      let!(:rule) do
+        create(:correlation_rule,
+               conditions: { "signal_type"          => "seismic_event",
+                             "proximity_km"         => 0,
+                             "count_threshold"      => 2,
+                             "time_window_minutes"  => 60 })
+      end
+
+      before do
+        create(:external_signal,
+               lat: 10.0, lng: 10.0,
+               signal_type: "seismic_event",
+               occurred_at: 30.minutes.ago)
+      end
+
+      it "fires using the full time window instead of exact site overlap" do
+        result = described_class.call(signal: signal)
+        expect(result.payload[:fired_count]).to eq(1)
+      end
+    end
+
     context "when the rule is scoped to a specific area_of_operation" do
       let(:other_ao)  { create(:area_of_operation) }
       let(:target_ao) { create(:area_of_operation) }
@@ -267,6 +289,33 @@ RSpec.describe Correlations::EvaluatorService do
         end
       end
 
+      context "when the corroborating condition has no proximity constraint" do
+        let!(:compound_and_rule) do
+          create(:correlation_rule,
+                 conditions: {
+                   "operator"   => "AND",
+                   "conditions" => [
+                     { "signal_type" => "ais_gap",     "proximity_km" => 50 },
+                     { "signal_type" => "gps_jamming", "proximity_km" => 0 }
+                   ]
+                 })
+        end
+
+        before do
+          create(:external_signal,
+                 signal_type: "gps_jamming",
+                 source:      "gpsjam",
+                 lat:         10.0,
+                 lng:         10.0,
+                 occurred_at: 30.minutes.ago)
+        end
+
+        it "fires when a corroborating signal exists anywhere in the time window" do
+          result = described_class.call(signal: ais_gap_signal)
+          expect(result.payload[:fired_count]).to eq(1)
+        end
+      end
+
       context "when the corroborating gps_jamming signal is outside the proximity radius" do
         before do
           # GPS jamming signal far from the site — beyond 50 km
@@ -328,6 +377,77 @@ RSpec.describe Correlations::EvaluatorService do
         result = described_class.call(signal: seismic_signal)
         expect(result.payload[:fired_count]).to eq(0)
       end
+    end
+  end
+
+  describe "candidate query shaping" do
+    let!(:site) { create(:site, latitude: 51.5, longitude: 0.0) }
+    let(:signal) { create(:external_signal, lat: 51.5, lng: 0.1, signal_type: "seismic_event") }
+    let(:service) { described_class.new(signal: signal) }
+
+    it "applies the bounding-box prefilter when proximity is positive" do
+      base_scope = double("base_scope")
+      narrowed_scope = double("narrowed_scope")
+
+      expect(ExternalSignal).to receive(:where).with(
+        signal_type: "gps_jamming",
+        occurred_at: kind_of(Range),
+      ).and_return(base_scope)
+      expect(base_scope).to receive(:near_point).with(site.latitude, site.longitude, 50.0).and_return(narrowed_scope)
+
+      result = service.send(
+        :recent_signal_candidates,
+        signal_type: "gps_jamming",
+        window_minutes: 60,
+        site: site,
+        proximity_km: 50.0,
+      )
+
+      expect(result).to eq(narrowed_scope)
+    end
+
+    it "skips the bounding-box prefilter when proximity is zero" do
+      base_scope = double("base_scope")
+
+      expect(ExternalSignal).to receive(:where).with(
+        signal_type: "gps_jamming",
+        occurred_at: kind_of(Range),
+      ).and_return(base_scope)
+      expect(base_scope).not_to receive(:near_point)
+
+      result = service.send(
+        :recent_signal_candidates,
+        signal_type: "gps_jamming",
+        window_minutes: 60,
+        site: site,
+        proximity_km: 0,
+      )
+
+      expect(result).to eq(base_scope)
+    end
+
+    it "caps zero-proximity threshold checks to the requested number of ids" do
+      scope = double("scope")
+      limited_scope = double("limited_scope")
+
+      expect(scope).to receive(:limit).with(3).and_return(limited_scope)
+      expect(limited_scope).to receive(:pluck).with(:id).and_return(%w[a b c])
+
+      expect(service.send(:threshold_met?, scope, site, 0, 3)).to be(true)
+    end
+
+    it "counts proximity-constrained matches in batches and exits once the threshold is met" do
+      scope = double("scope")
+      selected_scope = double("selected_scope")
+      matching_signal = build(:external_signal, lat: 51.5, lng: 0.01)
+      far_signal = build(:external_signal, lat: 53.0, lng: 0.0)
+
+      expect(scope).to receive(:select).with(:id, :lat, :lng).and_return(selected_scope)
+      expect(selected_scope).to receive(:find_in_batches)
+        .with(batch_size: described_class::SIGNAL_CANDIDATE_BATCH_SIZE)
+        .and_yield([matching_signal, far_signal])
+
+      expect(service.send(:threshold_met?, scope, site, 5.0, 1)).to be(true)
     end
   end
 end
