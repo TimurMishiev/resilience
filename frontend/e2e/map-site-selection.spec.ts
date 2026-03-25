@@ -42,6 +42,12 @@ const EMPTY_SSE_RESPONSE = {
   body: '',
 }
 
+const CONNECTED_SSE_RESPONSE = {
+  status: 200,
+  headers: { 'content-type': 'text/event-stream' },
+  body: 'event: connected\ndata: {}\n\n',
+}
+
 async function stubMapPageRoutes(
   page: Page,
   {
@@ -111,7 +117,7 @@ async function stubMapPageRoutes(
     await route.fulfill(EMPTY_SSE_RESPONSE)
   })
   await page.route('**/api/signals/stream**', async route => {
-    await route.fulfill(EMPTY_SSE_RESPONSE)
+    await route.fulfill(CONNECTED_SSE_RESPONSE)
   })
 }
 
@@ -234,17 +240,19 @@ test('overlapping site and signal clicks still select the site', async ({ page }
   await enableE2EBridge(page)
   await waitForMapBridge(page)
 
-  await page.waitForFunction((target: { lng: number; lat: number }) => {
+  await page.waitForFunction((target: { lng: number; lat: number; siteId: string }) => {
     const bridge = (window as Window & {
       __resilienceMapE2E?: {
+        getState: () => { signalCount: number }
         projectPosition: (lng: number, lat: number) => CanvasPoint | null
       }
     }).__resilienceMapE2E
 
-    return bridge?.projectPosition(target.lng, target.lat) ?? false
+    return Boolean(
+      bridge?.getState().signalCount === 1 &&
+      bridge.projectPosition(target.lng, target.lat),
+    )
   }, { lng: site.longitude, lat: site.latitude })
-
-  await page.waitForTimeout(1000)
 
   const point = await page.evaluate(({ lng, lat }) => {
     const bridge = (window as Window & {

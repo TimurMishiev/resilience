@@ -62,6 +62,7 @@ type MapE2EApi = {
     zoom: number | null
     telemetryConnected: boolean
     signalsConnected: boolean
+    signalCount: number
     selectedSiteId: string | null
     selectedAssetId: string | null
     selectedSignalId: string | null
@@ -361,6 +362,7 @@ export default function MapPage() {
         zoom: getZoom(),
         telemetryConnected,
         signalsConnected,
+        signalCount: signals.length,
         selectedSiteId,
         selectedAssetId,
         selectedSignalId,
@@ -393,7 +395,7 @@ export default function MapPage() {
     return () => {
       delete window.__resilienceMapE2E
     }
-  }, [getZoom, inspectCanvasPosition, mapLoaded, projectPosition, selectedAssetId, selectedSignalId, selectedSiteId, signalsConnected, sites, telemetryConnected])
+  }, [getZoom, inspectCanvasPosition, mapLoaded, projectPosition, selectedAssetId, selectedSignalId, selectedSiteId, signals.length, signalsConnected, sites, telemetryConnected])
 
   // ---------------------------------------------------------------------------
   // Render
