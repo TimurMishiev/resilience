@@ -294,6 +294,9 @@ export default function SignalFeedPage() {
   )
 
   const total = useStreamFeed ? allSignals.length : (data?.pages[0]?.meta.total ?? 0)
+  const activeSignalsPending = useStreamFeed ? defaultSignals.isPending : isPending
+  const showSkeletonTable = activeSignalsPending && allSignals.length === 0
+  const showEmptyState = !defaultSignals.error && !activeSignalsPending && allSignals.length === 0
 
   // ── Virtualizer setup ────────────────────────────────────────────────────
   // The scroll container is a fixed-height div wrapping the table body.
@@ -420,7 +423,7 @@ export default function SignalFeedPage() {
       )}
 
       {/* Empty state */}
-      {!defaultSignals.error && !defaultSignals.isPending && !isPending && allSignals.length === 0 && (
+      {showEmptyState && (
         <NonIdealState
           icon="feed"
           title="No signals yet"
@@ -433,7 +436,7 @@ export default function SignalFeedPage() {
       )}
 
       {/* Virtual table */}
-      {(isPending || (useStreamFeed && defaultSignals.isPending) || allSignals.length > 0) && (
+      {(showSkeletonTable || allSignals.length > 0) && (
         <div className="signal-feed-table-wrap">
           {/* Sticky header — sits above the scroll container */}
           <table className="data-table signal-feed-table" style={{ tableLayout: 'fixed', width: '100%' }}>
@@ -467,7 +470,7 @@ export default function SignalFeedPage() {
             className="signal-feed-scroll"
             style={{ height: 560, overflow: 'auto' }}
           >
-            {isPending || (useStreamFeed && defaultSignals.isPending) ? (
+            {showSkeletonTable ? (
               <table className="data-table signal-feed-table" style={{ tableLayout: 'fixed', width: '100%' }}>
                 <colgroup>
                   <col style={{ width: 110 }} />

@@ -60,3 +60,11 @@ export async function enableE2EBridge(page: Page) {
     window.localStorage.setItem('resilience.e2e', '1')
   })
 }
+
+export function capturePageErrors(page: Page) {
+  const errors: string[] = []
+  page.on('pageerror', error => {
+    errors.push(error.message)
+  })
+  return errors
+}

@@ -1,0 +1,34 @@
+import { test, expect } from '@playwright/test'
+import { capturePageErrors, primeAuthenticatedSession } from './helpers'
+
+test('signals page smoke: route loads without runtime errors', async ({ page }) => {
+  const pageErrors = capturePageErrors(page)
+  const signalResponseStatuses: number[] = []
+  page.on('response', response => {
+    if (response.url().includes('/api/signals')) {
+      signalResponseStatuses.push(response.status())
+    }
+  })
+
+  await primeAuthenticatedSession(page)
+  await page.goto('/signals')
+
+  await expect(page.locator('.signal-feed-page')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Signal Feed' })).toBeVisible()
+
+  await page.waitForFunction(() => {
+    const hasLoadedSignalRow = Array.from(document.querySelectorAll('.signal-feed-table tbody tr')).some(row => {
+      const hasSignalTags = row.querySelectorAll('.bp6-tag').length >= 2
+      const hasMonoText = Array.from(row.querySelectorAll('td.mono')).some(cell => (cell.textContent ?? '').trim().length > 0)
+      return hasSignalTags && hasMonoText
+    })
+    const emptyState = document.querySelector('.bp6-non-ideal-state')
+    const errorCallout = document.body.innerText.includes('Failed to load signals')
+    return Boolean(hasLoadedSignalRow || emptyState || errorCallout)
+  })
+
+  await expect(page.locator('.shell-sidebar')).toBeVisible()
+  expect(signalResponseStatuses.some(status => status === 200)).toBe(true)
+  await expect(page.getByText('Failed to load signals')).toHaveCount(0)
+  expect(pageErrors).toEqual([])
+})

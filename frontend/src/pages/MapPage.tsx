@@ -208,6 +208,7 @@ export default function MapPage() {
     isReplaying,
     selectedSiteId,
     selectedAssetId,
+    selectedSignalId,
     onSiteClick,
     onAssetClick,
     onSignalClick,

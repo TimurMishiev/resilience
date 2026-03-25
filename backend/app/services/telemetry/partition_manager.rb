@@ -95,10 +95,18 @@ module Telemetry
       end
 
       def with_advisory_lock(lock_key)
-        connection.execute("SELECT pg_advisory_lock(#{ADVISORY_LOCK_NAMESPACE}, #{lock_key})")
+        connection.select_value(sanitize_sql_array([
+          "SELECT pg_advisory_lock(?, ?)",
+          ADVISORY_LOCK_NAMESPACE,
+          Integer(lock_key)
+        ]))
         yield
       ensure
-        connection.execute("SELECT pg_advisory_unlock(#{ADVISORY_LOCK_NAMESPACE}, #{lock_key})")
+        connection.select_value(sanitize_sql_array([
+          "SELECT pg_advisory_unlock(?, ?)",
+          ADVISORY_LOCK_NAMESPACE,
+          Integer(lock_key)
+        ]))
       end
 
       def cached_partitions
@@ -115,6 +123,10 @@ module Telemetry
 
       def connection
         ActiveRecord::Base.connection
+      end
+
+      def sanitize_sql_array(values)
+        ApplicationRecord.send(:sanitize_sql_array, values)
       end
     end
   end

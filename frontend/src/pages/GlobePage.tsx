@@ -97,7 +97,7 @@ type GlobeE2EApi = {
 
 const E2E_PICK_SEARCH_OFFSETS: Array<{ x: number; y: number }> = (() => {
   const offsets = [{ x: 0, y: 0 }]
-  for (let radius = 2; radius <= 12; radius += 2) {
+  for (let radius = 2; radius <= 30; radius += 2) {
     for (let y = -radius; y <= radius; y += 2) {
       for (let x = -radius; x <= radius; x += 2) {
         if (Math.max(Math.abs(x), Math.abs(y)) !== radius) continue

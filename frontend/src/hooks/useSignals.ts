@@ -151,6 +151,15 @@ export function useSignalsLive(options?: UseSignalsLiveOptions) {
     return sortSignalsNewestFirst(Array.from(merged.values()))
   }, [asOf, limits, live.signals, liveBaselineReady, snapshotSignals])
 
+  if (!enabled) {
+    return {
+      signals: [],
+      connected: false,
+      isPending: false,
+      error: null,
+    }
+  }
+
   if (asOf) {
     return {
       signals,
@@ -178,16 +187,28 @@ export function useSignalsInfinite(
   params?: Omit<SignalsParams, 'page' | 'per_page'>,
   options?: UseSignalsInfiniteOptions,
 ) {
-  return useInfiniteQuery({
+  const enabled = options?.enabled ?? true
+  const query = useInfiniteQuery({
     queryKey: ['signals', 'infinite', params],
     queryFn: ({ pageParam }) =>
       getSignals({ ...params, page: pageParam as number, per_page: INFINITE_PER_PAGE }),
     initialPageParam: 1,
-    enabled: options?.enabled ?? true,
+    enabled,
     getNextPageParam: (lastPage) => {
       const { page, total_pages } = lastPage.meta
       return page < total_pages ? page + 1 : undefined
     },
     refetchInterval: options?.refetchInterval ?? 30_000, // slower refetch for infinite — avoids layout thrash
   })
+
+  if (!enabled) {
+    return {
+      ...query,
+      isPending: false,
+      isFetchingNextPage: false,
+      hasNextPage: false,
+    }
+  }
+
+  return query
 }

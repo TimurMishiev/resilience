@@ -13,8 +13,9 @@
  *    without needing to be re-registered.
  */
 
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import type {
+  ExpressionSpecification,
   GeoJSONSource,
   Map as MapLibreMap,
   MapGeoJSONFeature,
@@ -26,6 +27,8 @@ import type { VesselTrack } from '../api/vessels'
 import type { CoverageCircle } from '../lib/coverage'
 import { circlePolygon } from '../lib/coverage'
 import { assetDisplayPosition } from '../lib/assetPresentation'
+import { buildClusteredSignalSourceDefinition, expandMapSignalCluster } from '../lib/mapSignalClustering'
+import { buildMapSignalRenderCollections } from '../lib/mapSignalRendering'
 import { preloadMapRuntime } from '../lib/preloadRoutes'
 import { SIGNAL_ICON_CHAR } from '../lib/signalIcons'
 import { SOURCE_LABELS, SIGNAL_COLORS, SIGNAL_LABELS } from '../lib/signalConfig'
@@ -176,35 +179,44 @@ function buildSignalPopupContent(props: Record<string, string>) {
   return root
 }
 
-function buildSignalFeatureCollection(signals: Signal[]): GeoJSON.FeatureCollection {
-  return {
-    type: 'FeatureCollection',
-    features: signals.map(s => ({
-      type:       'Feature' as const,
-      properties: {
-        id:          s.id,
-        signal_type: s.signal_type,
-        source:      s.source,
-        magnitude:   s.magnitude,
-        altitude:    s.altitude,
-        speed:       s.speed,
-        heading:     s.heading,
-        occurred_at: s.occurred_at,
-        p_country:         (s.raw_payload.country         as string | undefined) ?? null,
-        p_actor1:          (s.raw_payload.actor1          as string | undefined) ?? null,
-        p_fatalities:      (s.raw_payload.fatalities      as number | undefined) ?? null,
-        p_event_type:      (s.raw_payload.event_type      as string | undefined) ?? null,
-        p_event_type_name: (s.raw_payload.event_type_name as string | undefined) ?? null,
-        p_alert_level:     (s.raw_payload.alert_level     as string | undefined) ?? null,
-        p_severity_text:   (s.raw_payload.severity_text   as string | undefined) ?? null,
-        p_name:            (s.raw_payload.name            as string | undefined) ?? null,
-      },
-      geometry: {
-        type:        'Point' as const,
-        coordinates: [Number(s.lng), Number(s.lat)],
-      },
-    })),
-  }
+function signalColorExpression(): ExpressionSpecification {
+  return [
+    'match', ['get', 'signal_type'],
+    'aircraft_position', SIGNAL_COLORS.aircraft_position,
+    'vessel_position',   SIGNAL_COLORS.vessel_position,
+    'seismic_event',     SIGNAL_COLORS.seismic_event,
+    'gps_jamming',       SIGNAL_COLORS.gps_jamming,
+    'wildfire',          SIGNAL_COLORS.wildfire,
+    'ais_gap',           SIGNAL_COLORS.ais_gap,
+    'conflict_event',    SIGNAL_COLORS.conflict_event,
+    'disaster_alert',    SIGNAL_COLORS.disaster_alert,
+    SIGNAL_COLORS.manual,
+  ]
+}
+
+function signalGlowRadiusExpression(): ExpressionSpecification {
+  return ['match', ['get', 'signal_type'], 'seismic_event', 18, 'wildfire', 16, 12]
+}
+
+function signalCircleRadiusExpression(): ExpressionSpecification {
+  return ['match', ['get', 'signal_type'], 'seismic_event', 8, 'wildfire', 7, 5]
+}
+
+function selectedSignalRingRadiusExpression(): ExpressionSpecification {
+  return ['match', ['get', 'signal_type'], 'seismic_event', 14, 'wildfire', 13, 11]
+}
+
+function signalSymbolExpression(): ExpressionSpecification {
+  return ['match', ['get', 'signal_type'],
+    'aircraft_position', '✈',
+    'vessel_position', '⚓',
+    'seismic_event', '≈',
+    'gps_jamming', '⊗',
+    'wildfire', '△',
+    'ais_gap', '⊙',
+    'manual', '+',
+    '●',
+  ]
 }
 
 function buildSiteFeatureCollection(
@@ -289,8 +301,9 @@ export interface MapEngineInput {
   showCoverage: boolean
   mapStyle:     MapStyleKey
   isReplaying:  boolean
-  selectedSiteId:  string | null
-  selectedAssetId: string | null
+  selectedSiteId:   string | null
+  selectedAssetId:  string | null
+  selectedSignalId: string | null
 
   // Selection callbacks — hook fires, page owns state
   onSiteClick:   (siteId: string | null) => void
@@ -327,6 +340,7 @@ export function useMapLibreEngine({
   isReplaying,
   selectedSiteId,
   selectedAssetId,
+  selectedSignalId,
   onSiteClick,
   onAssetClick,
   onSignalClick,
@@ -335,6 +349,7 @@ export function useMapLibreEngine({
   const maplibreRef      = useRef<MapLibreModule | null>(null)
   // Kept in a ref so signal click handler never goes stale without re-registering
   const signalsRef       = useRef<Signal[]>([])
+  const selectedSignalIdRef = useRef<string | null>(selectedSignalId)
   const breachPulseRef   = useRef<ReturnType<typeof setInterval> | null>(null)
   const mapStyleRef      = useRef<MapStyleKey>(mapStyle)
   const appliedStyleRef  = useRef<MapStyleKey | null>(null)
@@ -348,6 +363,7 @@ export function useMapLibreEngine({
   useEffect(() => { onSiteClickRef.current   = onSiteClick   }, [onSiteClick])
   useEffect(() => { onAssetClickRef.current  = onAssetClick  }, [onAssetClick])
   useEffect(() => { onSignalClickRef.current = onSignalClick }, [onSignalClick])
+  useEffect(() => { selectedSignalIdRef.current = selectedSignalId }, [selectedSignalId])
   useEffect(() => { mapStyleRef.current = mapStyle }, [mapStyle])
 
   // ---------------------------------------------------------------------------
@@ -779,10 +795,12 @@ export function useMapLibreEngine({
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapLoaded) return
-    const geojson  = buildSignalFeatureCollection(signals)
-    const existing = map.getSource('signal-points') as GeoJSONSource | undefined
-    if (existing) existing.setData(geojson)
-  }, [mapLoaded, signals])
+    const { clusterable, selected } = buildMapSignalRenderCollections(signals, selectedSignalId)
+    const clusterSource = map.getSource('signal-points') as GeoJSONSource | undefined
+    const selectedSource = map.getSource('selected-signal-point') as GeoJSONSource | undefined
+    if (clusterSource) clusterSource.setData(clusterable)
+    if (selectedSource) selectedSource.setData(selected)
+  }, [mapLoaded, selectedSignalId, signals])
 
   // ---------------------------------------------------------------------------
   // Signal GeoJSON layers + interactions — set up once per style load
@@ -790,28 +808,62 @@ export function useMapLibreEngine({
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapLoaded) return
+    const signalCollections = buildMapSignalRenderCollections(signalsRef.current, selectedSignalIdRef.current)
 
     if (!map.getSource('signal-points')) {
-      map.addSource('signal-points', { type: 'geojson', data: buildSignalFeatureCollection(signalsRef.current) })
+      map.addSource('signal-points', buildClusteredSignalSourceDefinition(signalCollections.clusterable))
+    }
+
+    if (!map.getSource('selected-signal-point')) {
+      map.addSource('selected-signal-point', {
+        type: 'geojson',
+        data: signalCollections.selected,
+      })
+    }
+
+    if (!map.getLayer('signal-clusters')) {
+      map.addLayer({
+        id: 'signal-clusters',
+        type: 'circle',
+        source: 'signal-points',
+        filter: ['has', 'point_count'],
+        paint: {
+          'circle-radius': ['step', ['get', 'point_count'], 17, 10, 21, 25, 26],
+          'circle-color': ['step', ['get', 'point_count'], '#143649', 10, '#1d4f68', 25, '#285f7a'],
+          'circle-opacity': 0.94,
+          'circle-stroke-width': 1.5,
+          'circle-stroke-color': '#c6e6f5',
+          'circle-stroke-opacity': 0.9,
+        },
+      })
+    }
+
+    if (!map.getLayer('signal-cluster-count')) {
+      map.addLayer({
+        id: 'signal-cluster-count',
+        type: 'symbol',
+        source: 'signal-points',
+        filter: ['has', 'point_count'],
+        layout: {
+          'text-field': ['get', 'point_count_abbreviated'],
+          'text-size': 11,
+          'text-allow-overlap': true,
+        },
+        paint: {
+          'text-color': '#f5fbff',
+          'text-halo-color': 'rgba(0,0,0,0.35)',
+          'text-halo-width': 1,
+        },
+      })
     }
 
     if (!map.getLayer('signal-glow')) {
       map.addLayer({
         id: 'signal-glow', type: 'circle', source: 'signal-points',
+        filter: ['!', ['has', 'point_count']],
         paint: {
-          'circle-radius': ['match', ['get', 'signal_type'], 'seismic_event', 18, 'wildfire', 16, 12],
-          'circle-color':  [
-            'match', ['get', 'signal_type'],
-            'aircraft_position', SIGNAL_COLORS.aircraft_position,
-            'vessel_position',   SIGNAL_COLORS.vessel_position,
-            'seismic_event',     SIGNAL_COLORS.seismic_event,
-            'gps_jamming',       SIGNAL_COLORS.gps_jamming,
-            'wildfire',          SIGNAL_COLORS.wildfire,
-            'ais_gap',           SIGNAL_COLORS.ais_gap,
-            'conflict_event',    SIGNAL_COLORS.conflict_event,
-            'disaster_alert',    SIGNAL_COLORS.disaster_alert,
-            SIGNAL_COLORS.manual,
-          ],
+          'circle-radius': signalGlowRadiusExpression(),
+          'circle-color': signalColorExpression(),
           'circle-opacity': 0.15,
           'circle-blur':    1.2,
         },
@@ -821,20 +873,10 @@ export function useMapLibreEngine({
     if (!map.getLayer('signal-circles')) {
       map.addLayer({
         id: 'signal-circles', type: 'circle', source: 'signal-points',
+        filter: ['!', ['has', 'point_count']],
         paint: {
-          'circle-radius': ['match', ['get', 'signal_type'], 'seismic_event', 8, 'wildfire', 7, 5],
-          'circle-color':  [
-            'match', ['get', 'signal_type'],
-            'aircraft_position', SIGNAL_COLORS.aircraft_position,
-            'vessel_position',   SIGNAL_COLORS.vessel_position,
-            'seismic_event',     SIGNAL_COLORS.seismic_event,
-            'gps_jamming',       SIGNAL_COLORS.gps_jamming,
-            'wildfire',          SIGNAL_COLORS.wildfire,
-            'ais_gap',           SIGNAL_COLORS.ais_gap,
-            'conflict_event',    SIGNAL_COLORS.conflict_event,
-            'disaster_alert',    SIGNAL_COLORS.disaster_alert,
-            SIGNAL_COLORS.manual,
-          ],
+          'circle-radius': signalCircleRadiusExpression(),
+          'circle-color': signalColorExpression(),
           'circle-opacity':      0.85,
           'circle-stroke-width': 1,
           'circle-stroke-color': 'rgba(255,255,255,0.25)',
@@ -845,12 +887,9 @@ export function useMapLibreEngine({
     if (!map.getLayer('signal-symbols')) {
       map.addLayer({
         id: 'signal-symbols', type: 'symbol', source: 'signal-points',
+        filter: ['!', ['has', 'point_count']],
         layout: {
-          'text-field': ['match', ['get', 'signal_type'],
-            'aircraft_position', '✈', 'vessel_position', '⚓',
-            'seismic_event', '≈', 'gps_jamming', '⊗', 'wildfire', '△',
-            'ais_gap', '⊙', 'manual', '+', '●',
-          ],
+          'text-field': signalSymbolExpression(),
           'text-size':             11,
           'text-anchor':           'center',
           'text-allow-overlap':    true,
@@ -858,6 +897,71 @@ export function useMapLibreEngine({
         },
         paint: {
           'text-color':      '#ffffff',
+          'text-halo-color': 'rgba(0,0,0,0.45)',
+          'text-halo-width': 1,
+        },
+      })
+    }
+
+    if (!map.getLayer('selected-signal-ring')) {
+      map.addLayer({
+        id: 'selected-signal-ring',
+        type: 'circle',
+        source: 'selected-signal-point',
+        paint: {
+          'circle-radius': selectedSignalRingRadiusExpression(),
+          'circle-color': 'rgba(0,0,0,0)',
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-opacity': 0.95,
+          'circle-blur': 0.2,
+        },
+      })
+    }
+
+    if (!map.getLayer('selected-signal-glow')) {
+      map.addLayer({
+        id: 'selected-signal-glow',
+        type: 'circle',
+        source: 'selected-signal-point',
+        paint: {
+          'circle-radius': signalGlowRadiusExpression(),
+          'circle-color': signalColorExpression(),
+          'circle-opacity': 0.26,
+          'circle-blur': 1.35,
+        },
+      })
+    }
+
+    if (!map.getLayer('selected-signal-circle')) {
+      map.addLayer({
+        id: 'selected-signal-circle',
+        type: 'circle',
+        source: 'selected-signal-point',
+        paint: {
+          'circle-radius': signalCircleRadiusExpression(),
+          'circle-color': signalColorExpression(),
+          'circle-opacity': 0.96,
+          'circle-stroke-width': 1.5,
+          'circle-stroke-color': '#ffffff',
+        },
+      })
+    }
+
+    if (!map.getLayer('selected-signal-symbol')) {
+      map.addLayer({
+        id: 'selected-signal-symbol',
+        type: 'symbol',
+        source: 'selected-signal-point',
+        layout: {
+          'text-field': signalSymbolExpression(),
+          'text-size': 11,
+          'text-anchor': 'center',
+          'text-allow-overlap': true,
+          'text-ignore-placement': true,
+        },
+        paint: {
+          'text-color': '#ffffff',
           'text-halo-color': 'rgba(0,0,0,0.45)',
           'text-halo-width': 1,
         },
@@ -875,8 +979,23 @@ export function useMapLibreEngine({
       onSignalClickRef.current(sig.id)
     }
 
+    const handleClusterClick = (e: MapMouseEvent & { features?: MapGeoJSONFeature[] }) => {
+      if (!e.features?.length) return
+      const source = map.getSource('signal-points') as GeoJSONSource | undefined
+      if (!source) return
+      void expandMapSignalCluster(map, source, e.features[0])
+    }
+
+    const handleClusterMouseEnter = () => { map.getCanvas().style.cursor = 'pointer' }
+    const handleClusterMouseLeave = () => { map.getCanvas().style.cursor = '' }
+
+    map.on('click', 'signal-clusters', handleClusterClick)
+    map.on('mouseenter', 'signal-clusters', handleClusterMouseEnter)
+    map.on('mouseleave', 'signal-clusters', handleClusterMouseLeave)
     map.on('click', 'signal-circles', handleSignalClick)
     map.on('click', 'signal-symbols', handleSignalClick)
+    map.on('click', 'selected-signal-circle', handleSignalClick)
+    map.on('click', 'selected-signal-symbol', handleSignalClick)
 
     const PopupCtor = maplibreRef.current?.Popup
     if (!PopupCtor) return
@@ -899,17 +1018,30 @@ export function useMapLibreEngine({
 
     map.on('mouseenter', 'signal-circles', handleMouseEnter)
     map.on('mouseenter', 'signal-symbols', handleMouseEnter)
+    map.on('mouseenter', 'selected-signal-circle', handleMouseEnter)
+    map.on('mouseenter', 'selected-signal-symbol', handleMouseEnter)
     map.on('mouseleave', 'signal-circles', handleMouseLeave)
     map.on('mouseleave', 'signal-symbols', handleMouseLeave)
+    map.on('mouseleave', 'selected-signal-circle', handleMouseLeave)
+    map.on('mouseleave', 'selected-signal-symbol', handleMouseLeave)
 
     return () => {
       popup.remove()
+      map.off('click', 'signal-clusters', handleClusterClick)
       map.off('click',      'signal-circles', handleSignalClick)
       map.off('click',      'signal-symbols', handleSignalClick)
+      map.off('click',      'selected-signal-circle', handleSignalClick)
+      map.off('click',      'selected-signal-symbol', handleSignalClick)
+      map.off('mouseenter', 'signal-clusters', handleClusterMouseEnter)
+      map.off('mouseleave', 'signal-clusters', handleClusterMouseLeave)
       map.off('mouseenter', 'signal-circles', handleMouseEnter)
       map.off('mouseenter', 'signal-symbols', handleMouseEnter)
+      map.off('mouseenter', 'selected-signal-circle', handleMouseEnter)
+      map.off('mouseenter', 'selected-signal-symbol', handleMouseEnter)
       map.off('mouseleave', 'signal-circles', handleMouseLeave)
       map.off('mouseleave', 'signal-symbols', handleMouseLeave)
+      map.off('mouseleave', 'selected-signal-circle', handleMouseLeave)
+      map.off('mouseleave', 'selected-signal-symbol', handleMouseLeave)
     }
   }, [mapLoaded])
 
@@ -948,11 +1080,24 @@ export function useMapLibreEngine({
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !mapLoaded || !map.getLayer('signal-circles')) return
+    if (!map || !mapLoaded) return
     const vis = showSignals ? 'visible' : 'none'
-    map.setLayoutProperty('signal-circles', 'visibility', vis)
-    if (map.getLayer('signal-glow'))    map.setLayoutProperty('signal-glow',    'visibility', vis)
-    if (map.getLayer('signal-symbols')) map.setLayoutProperty('signal-symbols', 'visibility', vis)
+    const signalLayerIds = [
+      'signal-clusters',
+      'signal-cluster-count',
+      'signal-glow',
+      'signal-circles',
+      'signal-symbols',
+      'selected-signal-ring',
+      'selected-signal-glow',
+      'selected-signal-circle',
+      'selected-signal-symbol',
+    ]
+
+    for (const layerId of signalLayerIds) {
+      if (map.getLayer(layerId)) map.setLayoutProperty(layerId, 'visibility', vis)
+    }
+
     // Synchronously clear selection when signals are hidden
     if (!showSignals) onSignalClickRef.current(null)
   }, [showSignals, mapLoaded])
@@ -973,9 +1118,12 @@ export function useMapLibreEngine({
   // ---------------------------------------------------------------------------
   // flyTo helper
   // ---------------------------------------------------------------------------
-  const flyTo = (center: [number, number], zoom: number) => {
+  const flyTo = useCallback((center: [number, number], zoom: number) => {
     mapRef.current?.flyTo({ center, zoom })
-  }
+  }, [])
 
-  return { mapLoaded, flyTo }
+  return {
+    mapLoaded,
+    flyTo,
+  }
 }
