@@ -35,11 +35,26 @@ type MapE2ESelectionTarget = {
 type MapE2EApi = {
   getState: () => {
     mapLoaded: boolean
+    telemetryConnected: boolean
+    signalsConnected: boolean
     selectedSiteId: string | null
     selectedAssetId: string | null
     selectedSignalId: string | null
   }
   getFirstSiteTarget: () => MapE2ESelectionTarget | null
+  getSiteCanvasTarget: (siteId: string) => { x: number; y: number } | null
+  inspectSiteCanvasTarget: (siteId: string) => {
+    resolvedKind: string | null
+    layerIds: string[]
+    featureIds: string[]
+  } | null
+  getSelectionDebugLog: () => Array<{
+    source: string
+    siteId: string | null
+    assetId: string | null
+    signalId: string | null
+    search: string
+  }>
 }
 
 declare global {
@@ -59,6 +74,13 @@ export default function MapPage() {
   const urlSelectionAppliedRef = useRef(false)
   const replayResetReadyRef    = useRef(false)
   const pendingRouteWriteRef   = useRef<string | null>(null)
+  const selectionDebugLogRef   = useRef<Array<{
+    source: string
+    siteId: string | null
+    assetId: string | null
+    signalId: string | null
+    search: string
+  }>>([])
 
   // ---------------------------------------------------------------------------
   // Selection state — owned here, driven by engine callbacks
@@ -92,7 +114,7 @@ export default function MapPage() {
     [areasRes?.data, isReplaying],
   )
 
-  const { signals, error: signalError } = useSignalsLive({
+  const { signals, connected: signalsConnected, error: signalError } = useSignalsLive({
     enabled: true,
     asOf,
     replayParams: signalQueryParams,
@@ -148,6 +170,13 @@ export default function MapPage() {
     assetId: string | null
     signalId: string | null
   }) => {
+    selectionDebugLogRef.current.push({
+      source: 'updateSelectionRoute',
+      siteId: selection.siteId,
+      assetId: selection.assetId,
+      signalId: selection.signalId,
+      search: location.search,
+    })
     const nextSearch = buildEntitySelectionSearch(location.search, selection)
     if (nextSearch === location.search) return
 
@@ -161,37 +190,63 @@ export default function MapPage() {
     )
   }, [location.pathname, location.search, navigate])
 
+  const updateSelectionRouteRef = useRef(updateSelectionRoute)
+  useEffect(() => {
+    updateSelectionRouteRef.current = updateSelectionRoute
+  }, [updateSelectionRoute])
+
   // ---------------------------------------------------------------------------
   // Selection callbacks — engine fires these, page owns state
   // ---------------------------------------------------------------------------
   const onSiteClick = useCallback((siteId: string | null) => {
-    const nextSiteId = siteId === null ? null : (selectedSiteId === siteId ? null : siteId)
+    selectionDebugLogRef.current.push({
+      source: 'onSiteClick',
+      siteId,
+      assetId: null,
+      signalId: null,
+      search: location.search,
+    })
+    const nextSiteId = siteId
     setSelectedAssetId(null)
     setSelectedSignalId(null)
     setSelectedSiteId(nextSiteId)
     updateSelectionRoute({ siteId: nextSiteId, assetId: null, signalId: null })
-  }, [selectedSiteId, updateSelectionRoute])
+  }, [location.search, updateSelectionRoute])
 
   const onAssetClick = useCallback((assetId: string | null) => {
-    const nextAssetId = assetId === null ? null : (selectedAssetId === assetId ? null : assetId)
+    selectionDebugLogRef.current.push({
+      source: 'onAssetClick',
+      siteId: null,
+      assetId,
+      signalId: null,
+      search: location.search,
+    })
+    const nextAssetId = assetId
     setSelectedSiteId(null)
     setSelectedSignalId(null)
     setSelectedAssetId(nextAssetId)
     updateSelectionRoute({ siteId: null, assetId: nextAssetId, signalId: null })
-  }, [selectedAssetId, updateSelectionRoute])
+  }, [location.search, updateSelectionRoute])
 
   const onSignalClick = useCallback((signalId: string | null) => {
-    const nextSignalId = signalId === null ? null : (selectedSignalId === signalId ? null : signalId)
+    selectionDebugLogRef.current.push({
+      source: 'onSignalClick',
+      siteId: null,
+      assetId: null,
+      signalId,
+      search: location.search,
+    })
+    const nextSignalId = signalId
     setSelectedSiteId(null)
     setSelectedAssetId(null)
     setSelectedSignalId(nextSignalId)
     updateSelectionRoute({ siteId: null, assetId: null, signalId: nextSignalId })
-  }, [selectedSignalId, updateSelectionRoute])
+  }, [location.search, updateSelectionRoute])
 
   // ---------------------------------------------------------------------------
   // MapLibre engine
   // ---------------------------------------------------------------------------
-  const { mapLoaded, flyTo } = useMapLibreEngine({
+  const { mapLoaded, flyTo, projectPosition, inspectCanvasPosition } = useMapLibreEngine({
     containerRef: mapContainerRef,
     sites,
     assets,
@@ -222,13 +277,13 @@ export default function MapPage() {
       replayResetReadyRef.current = true
       return
     }
-    /* eslint-disable react-hooks/set-state-in-effect -- Reset selection state on replay timestamp change; no callback path exists for this synchronous reset */
+    /* eslint-disable react-hooks/set-state-in-effect -- Replay timestamp changes must synchronously clear selection before route propagation to keep UI and URL in lockstep */
     setSelectedSiteId(null)
     setSelectedAssetId(null)
     setSelectedSignalId(null)
     /* eslint-enable react-hooks/set-state-in-effect */
-    updateSelectionRoute({ siteId: null, assetId: null, signalId: null })
-  }, [asOf, updateSelectionRoute])
+    updateSelectionRouteRef.current({ siteId: null, assetId: null, signalId: null })
+  }, [asOf])
 
   useEffect(() => {
     urlSelectionAppliedRef.current = false
@@ -248,8 +303,15 @@ export default function MapPage() {
 
     const { siteId, assetId, signalId } = parseEntitySelectionRoute(location.search)
 
-    /* eslint-disable react-hooks/set-state-in-effect -- URL handoff must synchronously hydrate or clear map selection state before the first focused flyTo */
+    /* eslint-disable react-hooks/set-state-in-effect -- URL selection hydration must synchronously reconcile panel state before the first focused flyTo */
     if (!siteId && !assetId && !signalId) {
+      selectionDebugLogRef.current.push({
+        source: 'urlHydrationClear',
+        siteId: null,
+        assetId: null,
+        signalId: null,
+        search: location.search,
+      })
       setSelectedSiteId(null)
       setSelectedAssetId(null)
       setSelectedSignalId(null)
@@ -316,6 +378,8 @@ export default function MapPage() {
     window.__resilienceMapE2E = {
       getState: () => ({
         mapLoaded,
+        telemetryConnected,
+        signalsConnected,
         selectedSiteId,
         selectedAssetId,
         selectedSignalId,
@@ -324,12 +388,27 @@ export default function MapPage() {
         const site = sites[0]
         return site ? { id: site.id, name: site.name } : null
       },
+      getSiteCanvasTarget: (siteId: string) => {
+        const site = sites.find(candidate => candidate.id === siteId)
+        if (!site) return null
+        return projectPosition(Number(site.longitude), Number(site.latitude))
+      },
+      inspectSiteCanvasTarget: (siteId: string) => {
+        const site = sites.find(candidate => candidate.id === siteId)
+        if (!site) return null
+
+        const point = projectPosition(Number(site.longitude), Number(site.latitude))
+        if (!point) return null
+
+        return inspectCanvasPosition(point.x, point.y)
+      },
+      getSelectionDebugLog: () => selectionDebugLogRef.current,
     }
 
     return () => {
       delete window.__resilienceMapE2E
     }
-  }, [mapLoaded, selectedAssetId, selectedSignalId, selectedSiteId, sites])
+  }, [inspectCanvasPosition, mapLoaded, projectPosition, selectedAssetId, selectedSignalId, selectedSiteId, signalsConnected, sites, telemetryConnected])
 
   // ---------------------------------------------------------------------------
   // Render
