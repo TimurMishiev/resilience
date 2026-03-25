@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-
+import { primeAuthenticatedSession } from './helpers'
 type PerfEvent = {
   name: string
   durationMs?: number
@@ -25,21 +25,13 @@ function percentile(values: number[], percentileRank: number): number {
   return sorted[index]
 }
 
-async function login(page: Parameters<typeof test>[0]['page']) {
-  await page.goto('/login')
-  await page.locator('#email').fill('commander@resilience.mil')
-  await page.locator('#password').fill('password123')
-  await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page).toHaveURL(/\/sites$/)
-}
-
 test('benchmark focused-to-global globe signal reconcile', async ({ page }, testInfo) => {
+  await primeAuthenticatedSession(page)
   await page.addInitScript(() => {
     window.localStorage.setItem('resilience.perf', '1')
     window.localStorage.removeItem('resilience.perf.debug')
   })
 
-  await login(page)
   await page.goto('/globe')
 
   await page.waitForFunction(() => Boolean((window as Window & { __resilienceGlobeBench?: unknown }).__resilienceGlobeBench))

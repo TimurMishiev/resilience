@@ -16,7 +16,7 @@ import { useActiveBreachSiteIds } from '../hooks/useSignalRuleMatches'
 import { useRole } from '../hooks/useRole'
 import { useReplayParams } from '../hooks/useReplayParams'
 import { useMapLibreEngine, MAP_STYLE_CONFIGS, type MapStyleKey } from '../hooks/useMapLibreEngine'
-import type { Task, Signal } from '../api/types'
+import type { Task } from '../api/types'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { assetDisplayPosition, getLiveTelemetryReading } from '../lib/assetPresentation'
 import { buildCoverageCircles } from '../lib/coverage'
@@ -26,6 +26,27 @@ import { SIGNAL_COLORS, SIGNAL_LABELS } from '../lib/signalConfig'
 import { MapSitePanel } from '../components/MapSitePanel'
 import { MapAssetPanel } from '../components/MapAssetPanel'
 import { MapSignalPanel } from '../components/MapSignalPanel'
+
+type MapE2ESelectionTarget = {
+  id: string
+  name: string
+}
+
+type MapE2EApi = {
+  getState: () => {
+    mapLoaded: boolean
+    selectedSiteId: string | null
+    selectedAssetId: string | null
+    selectedSignalId: string | null
+  }
+  getFirstSiteTarget: () => MapE2ESelectionTarget | null
+}
+
+declare global {
+  interface Window {
+    __resilienceMapE2E?: MapE2EApi
+  }
+}
 
 export default function MapPage() {
   const location    = useLocation()
@@ -42,10 +63,9 @@ export default function MapPage() {
   // ---------------------------------------------------------------------------
   // Selection state — owned here, driven by engine callbacks
   // ---------------------------------------------------------------------------
-  const [selectedSiteId,     setSelectedSiteId]     = useState<string | null>(null)
-  const [selectedAssetId,    setSelectedAssetId]    = useState<string | null>(null)
-  const [selectedSignal,     setSelectedSignal]     = useState<Signal | null>(null)
-  const [selectedVesselMmsi, setSelectedVesselMmsi] = useState<string | null>(null)
+  const [selectedSiteId,   setSelectedSiteId]   = useState<string | null>(null)
+  const [selectedAssetId,  setSelectedAssetId]  = useState<string | null>(null)
+  const [selectedSignalId, setSelectedSignalId] = useState<string | null>(null)
 
   // ---------------------------------------------------------------------------
   // Map UI state — passed to engine
@@ -77,6 +97,9 @@ export default function MapPage() {
     asOf,
     replayParams: signalQueryParams,
   })
+
+  const selectedSignal = selectedSignalId ? (signals.find(signal => signal.id === selectedSignalId) ?? null) : null
+  const selectedVesselMmsi = selectedSignal?.signal_type === 'vessel_position' ? selectedSignal.external_id : null
 
   // Vessel lookup — only when a vessel_position signal is selected
   const { data: vesselLookup } = useVessels(
@@ -144,8 +167,7 @@ export default function MapPage() {
   const onSiteClick = useCallback((siteId: string | null) => {
     const nextSiteId = siteId === null ? null : (selectedSiteId === siteId ? null : siteId)
     setSelectedAssetId(null)
-    setSelectedSignal(null)
-    setSelectedVesselMmsi(null)
+    setSelectedSignalId(null)
     setSelectedSiteId(nextSiteId)
     updateSelectionRoute({ siteId: nextSiteId, assetId: null, signalId: null })
   }, [selectedSiteId, updateSelectionRoute])
@@ -153,21 +175,18 @@ export default function MapPage() {
   const onAssetClick = useCallback((assetId: string | null) => {
     const nextAssetId = assetId === null ? null : (selectedAssetId === assetId ? null : assetId)
     setSelectedSiteId(null)
-    setSelectedSignal(null)
-    setSelectedVesselMmsi(null)
+    setSelectedSignalId(null)
     setSelectedAssetId(nextAssetId)
     updateSelectionRoute({ siteId: null, assetId: nextAssetId, signalId: null })
   }, [selectedAssetId, updateSelectionRoute])
 
-  const onSignalClick = useCallback((signal: Signal | null, vesselMmsi: string | null) => {
-    const nextSignal = signal === null ? null : (selectedSignal?.id === signal.id ? null : signal)
-    const nextVesselMmsi = vesselMmsi === null ? null : (selectedVesselMmsi === vesselMmsi ? null : vesselMmsi)
+  const onSignalClick = useCallback((signalId: string | null) => {
+    const nextSignalId = signalId === null ? null : (selectedSignalId === signalId ? null : signalId)
     setSelectedSiteId(null)
     setSelectedAssetId(null)
-    setSelectedSignal(nextSignal)
-    setSelectedVesselMmsi(nextVesselMmsi)
-    updateSelectionRoute({ siteId: null, assetId: null, signalId: nextSignal?.id ?? null })
-  }, [selectedSignal, selectedVesselMmsi, updateSelectionRoute])
+    setSelectedSignalId(nextSignalId)
+    updateSelectionRoute({ siteId: null, assetId: null, signalId: nextSignalId })
+  }, [selectedSignalId, updateSelectionRoute])
 
   // ---------------------------------------------------------------------------
   // MapLibre engine
@@ -205,8 +224,7 @@ export default function MapPage() {
     /* eslint-disable react-hooks/set-state-in-effect -- Reset selection state on replay timestamp change; no callback path exists for this synchronous reset */
     setSelectedSiteId(null)
     setSelectedAssetId(null)
-    setSelectedSignal(null)
-    setSelectedVesselMmsi(null)
+    setSelectedSignalId(null)
     /* eslint-enable react-hooks/set-state-in-effect */
     updateSelectionRoute({ siteId: null, assetId: null, signalId: null })
   }, [asOf, updateSelectionRoute])
@@ -233,8 +251,7 @@ export default function MapPage() {
     if (!siteId && !assetId && !signalId) {
       setSelectedSiteId(null)
       setSelectedAssetId(null)
-      setSelectedSignal(null)
-      setSelectedVesselMmsi(null)
+      setSelectedSignalId(null)
       urlSelectionAppliedRef.current = true
       return
     }
@@ -243,8 +260,7 @@ export default function MapPage() {
       if (!site) return
       setSelectedSiteId(site.id)
       setSelectedAssetId(null)
-      setSelectedSignal(null)
-      setSelectedVesselMmsi(null)
+      setSelectedSignalId(null)
       flyTo([Number(site.longitude), Number(site.latitude)], 6)
       urlSelectionAppliedRef.current = true
       return
@@ -256,8 +272,7 @@ export default function MapPage() {
       const { lat, lng } = assetDisplayPosition(asset, sites, readings, { lat: 37.7749, lng: -122.4194 }, { allowHistorical: isReplaying })
       setSelectedSiteId(null)
       setSelectedAssetId(asset.id)
-      setSelectedSignal(null)
-      setSelectedVesselMmsi(null)
+      setSelectedSignalId(null)
       flyTo([lng, lat], 7)
       urlSelectionAppliedRef.current = true
       return
@@ -268,8 +283,7 @@ export default function MapPage() {
       if (!signal) return
       setSelectedSiteId(null)
       setSelectedAssetId(null)
-      setSelectedSignal(signal)
-      setSelectedVesselMmsi(signal.signal_type === 'vessel_position' ? signal.external_id : null)
+      setSelectedSignalId(signal.id)
       flyTo([Number(signal.lng), Number(signal.lat)], 7)
       urlSelectionAppliedRef.current = true
     }
@@ -289,6 +303,32 @@ export default function MapPage() {
     queryClient.invalidateQueries({ queryKey: ['tasks'] })
     queryClient.invalidateQueries({ queryKey: ['readiness'] })
   }, [queryClient])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    if (window.localStorage.getItem('resilience.e2e') !== '1') {
+      delete window.__resilienceMapE2E
+      return
+    }
+
+    window.__resilienceMapE2E = {
+      getState: () => ({
+        mapLoaded,
+        selectedSiteId,
+        selectedAssetId,
+        selectedSignalId,
+      }),
+      getFirstSiteTarget: () => {
+        const site = sites[0]
+        return site ? { id: site.id, name: site.name } : null
+      },
+    }
+
+    return () => {
+      delete window.__resilienceMapE2E
+    }
+  }, [mapLoaded, selectedAssetId, selectedSignalId, selectedSiteId, sites])
 
   // ---------------------------------------------------------------------------
   // Render
@@ -429,8 +469,7 @@ export default function MapPage() {
           vesselTracks={vesselTracks}
           isReplaying={isReplaying}
           onClose={() => {
-            setSelectedSignal(null)
-            setSelectedVesselMmsi(null)
+            setSelectedSignalId(null)
             updateSelectionRoute({ siteId: null, assetId: null, signalId: null })
           }}
         />

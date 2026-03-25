@@ -253,6 +253,77 @@ function pickIdString(picked: unknown): { idString: string; pickedKind: 'primiti
   return null
 }
 
+type PickInspectionResult = {
+  outcome:
+    | 'miss'
+    | 'invalid'
+    | 'coverage-only'
+    | 'site'
+    | 'stale-site'
+    | 'asset'
+    | 'stale-asset'
+    | 'signal'
+    | 'stale-signal'
+    | 'unknown-id'
+  idString?: string
+  pickedKind?: 'primitive' | 'entity'
+}
+
+function resolvePickCandidates(
+  candidates: Array<{ idString: string; pickedKind: 'primitive' | 'entity' }>,
+  sites: Site[],
+  assets: Asset[],
+  signals: Signal[],
+): PickInspectionResult {
+  if (candidates.length === 0) return { outcome: 'miss' }
+
+  let sawOverlay = false
+
+  for (const candidate of candidates) {
+    if (candidate.idString.startsWith('coverage-')) {
+      sawOverlay = true
+      continue
+    }
+    if (candidate.idString.startsWith('geofence-')) {
+      sawOverlay = true
+      continue
+    }
+    if (candidate.idString === 'vessel-track') {
+      continue
+    }
+
+    const { idString, pickedKind } = candidate
+
+    if (idString.startsWith('site-')) {
+      const siteId = idString.replace('site-', '')
+      if (!sites.find(site => site.id === siteId)) {
+        return { outcome: 'stale-site', pickedKind, idString }
+      }
+      return { outcome: 'site', pickedKind, idString }
+    }
+
+    if (idString.startsWith('asset-')) {
+      const assetId = idString.replace('asset-', '')
+      if (!assets.find(asset => asset.id === assetId)) {
+        return { outcome: 'stale-asset', pickedKind, idString }
+      }
+      return { outcome: 'asset', pickedKind, idString }
+    }
+
+    if (idString.startsWith('signal-')) {
+      const signalId = idString.replace('signal-', '')
+      if (!signals.find(signal => signal.id === signalId)) {
+        return { outcome: 'stale-signal', pickedKind, idString }
+      }
+      return { outcome: 'signal', pickedKind, idString }
+    }
+
+    return { outcome: 'unknown-id', pickedKind, idString }
+  }
+
+  return { outcome: sawOverlay ? 'coverage-only' : 'invalid' }
+}
+
 // ---------------------------------------------------------------------------
 // Hook interface
 // ---------------------------------------------------------------------------
@@ -301,6 +372,16 @@ export interface GlobeEngineReturn {
   focusPosition: (lng: number, lat: number, height: number, pitch?: number) => void
   /** Fly back to the full-earth home view */
   flyToHome:     () => void
+  /** Project a world position into canvas coordinates for test instrumentation */
+  projectPosition: (lng: number, lat: number) => { x: number; y: number } | null
+  /** Project an existing rendered entity or primitive into canvas coordinates */
+  projectRenderedPosition: (idString: string) => { x: number; y: number } | null
+  /** Inspect the Cesium pick result at a given canvas position without mutating selection state */
+  inspectCanvasPosition: (x: number, y: number) => PickInspectionResult
+  /** Exercise the same overlay passthrough resolver with a synthetic pick stack */
+  dispatchSyntheticPick: (idStrings: string[]) => boolean
+  /** Resolve the same Cesium drill-pick path used by real left-click handling */
+  pickCanvasPosition: (x: number, y: number) => boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -998,6 +1079,64 @@ export function useGlobeEngine({
   // ScreenSpaceEventHandler — created once after viewer init
   // Reads all entity data via refs so the registration never goes stale.
   // ---------------------------------------------------------------------------
+  const inspectCanvasPosition = useCallback((x: number, y: number) => {
+    const Cesium = cesiumRef.current
+    const viewer = viewerRef.current
+    if (!viewerReady || !viewer || !Cesium) return { outcome: 'invalid' as const }
+
+    const picks = viewer.scene.drillPick(new Cesium.Cartesian2(x, y))
+    const candidates = Cesium.defined(picks)
+      ? picks
+          .map(pickIdString)
+          .filter((candidate): candidate is { idString: string; pickedKind: 'primitive' | 'entity' } => candidate !== null)
+      : []
+
+    return resolvePickCandidates(candidates, sitesRef.current, assetsRef.current, signalsRef.current)
+  }, [viewerReady])
+
+  const dispatchPickResult = useCallback((result: PickInspectionResult, durationMs?: number) => {
+    if (result.outcome === 'site' && result.idString) {
+      const siteId = result.idString.replace('site-', '')
+      onSiteClickRef.current(siteId)
+      if (durationMs != null) recordPerfEvent('globe.pick', { outcome: result.outcome, pickedKind: result.pickedKind, id: siteId }, durationMs)
+      return true
+    }
+
+    if (result.outcome === 'asset' && result.idString) {
+      const assetId = result.idString.replace('asset-', '')
+      onAssetClickRef.current(assetId)
+      if (durationMs != null) recordPerfEvent('globe.pick', { outcome: result.outcome, pickedKind: result.pickedKind, id: assetId }, durationMs)
+      return true
+    }
+
+    if (result.outcome === 'signal' && result.idString) {
+      const signalId = result.idString.replace('signal-', '')
+      onSignalClickRef.current(signalId)
+      if (durationMs != null) recordPerfEvent('globe.pick', { outcome: result.outcome, pickedKind: result.pickedKind, id: signalId }, durationMs)
+      return true
+    }
+
+    if (durationMs != null && result.idString) {
+      recordPerfEvent('globe.pick', { outcome: result.outcome, pickedKind: result.pickedKind, id: result.idString }, durationMs)
+      return false
+    }
+
+    if (durationMs != null) recordPerfEvent('globe.pick', { outcome: result.outcome }, durationMs)
+    return false
+  }, [])
+
+  const dispatchSyntheticPick = useCallback((idStrings: string[]) => {
+    const candidates = idStrings.map(idString => ({ idString, pickedKind: 'entity' as const }))
+    const result = resolvePickCandidates(candidates, sitesRef.current, assetsRef.current, signalsRef.current)
+    return dispatchPickResult(result)
+  }, [dispatchPickResult])
+
+  const pickCanvasPosition = useCallback((x: number, y: number) => {
+    const startedAt = nowMs()
+    const result = inspectCanvasPosition(x, y)
+    return dispatchPickResult(result, nowMs() - startedAt)
+  }, [dispatchPickResult, inspectCanvasPosition])
+
   useEffect(() => {
     const Cesium = cesiumRef.current
     const viewer = viewerRef.current
@@ -1007,82 +1146,13 @@ export function useGlobeEngine({
 
     handler.setInputAction(
       (event: { position: CesiumType.Cartesian2 }) => {
-        const startedAt = nowMs()
-        const picks = viewer.scene.drillPick(event.position)
-        if (!Cesium.defined(picks) || picks.length === 0) {
-          recordPerfEvent('globe.pick', { outcome: 'miss' }, nowMs() - startedAt)
-          return
-        }
-
-        let resolvedPick: { idString: string; pickedKind: 'primitive' | 'entity' } | null = null
-        let sawCoverage = false
-
-        for (const picked of picks) {
-          const candidate = pickIdString(picked)
-          if (!candidate) continue
-          if (candidate.idString.startsWith('coverage-')) {
-            sawCoverage = true
-            continue
-          }
-          if (candidate.idString.startsWith('geofence-')) {
-            sawCoverage = true
-            continue
-          }
-          if (candidate.idString === 'vessel-track') {
-            continue
-          }
-          resolvedPick = candidate
-          break
-        }
-
-        if (!resolvedPick) {
-          const outcome = sawCoverage ? 'coverage-only' : 'invalid'
-          recordPerfEvent('globe.pick', { outcome }, nowMs() - startedAt)
-          return
-        }
-
-        const { idString, pickedKind } = resolvedPick
-
-        if (idString.startsWith('site-')) {
-          const siteId = idString.replace('site-', '')
-          if (!sitesRef.current.find(s => s.id === siteId)) {
-            recordPerfEvent('globe.pick', { outcome: 'stale-site', pickedKind, id: siteId }, nowMs() - startedAt)
-            return
-          }
-          onSiteClickRef.current(siteId)
-          recordPerfEvent('globe.pick', { outcome: 'site', pickedKind, id: siteId }, nowMs() - startedAt)
-          return
-        }
-
-        if (idString.startsWith('asset-')) {
-          const assetId = idString.replace('asset-', '')
-          if (!assetsRef.current.find(a => a.id === assetId)) {
-            recordPerfEvent('globe.pick', { outcome: 'stale-asset', pickedKind, id: assetId }, nowMs() - startedAt)
-            return
-          }
-          onAssetClickRef.current(assetId)
-          recordPerfEvent('globe.pick', { outcome: 'asset', pickedKind, id: assetId }, nowMs() - startedAt)
-          return
-        }
-
-        if (idString.startsWith('signal-')) {
-          const signalId = idString.replace('signal-', '')
-          if (!signalsRef.current.find(s => s.id === signalId)) {
-            recordPerfEvent('globe.pick', { outcome: 'stale-signal', pickedKind, id: signalId }, nowMs() - startedAt)
-            return
-          }
-          onSignalClickRef.current(signalId)
-          recordPerfEvent('globe.pick', { outcome: 'signal', pickedKind, id: signalId }, nowMs() - startedAt)
-          return
-        }
-
-        recordPerfEvent('globe.pick', { outcome: 'unknown-id', pickedKind, id: idString }, nowMs() - startedAt)
+        pickCanvasPosition(event.position.x, event.position.y)
       },
       Cesium.ScreenSpaceEventType.LEFT_CLICK,
     )
 
     return () => handler.destroy()
-  }, [viewerReady])
+  }, [pickCanvasPosition, viewerReady])
 
   // ---------------------------------------------------------------------------
   // Clear signal selection when signals are hidden
@@ -1112,5 +1182,66 @@ export function useGlobeEngine({
     })
   }, [])
 
-  return { viewerReady, isCloseView, focusPosition, flyToHome }
+  const projectPosition = useCallback((lng: number, lat: number) => {
+    const Cesium = cesiumRef.current
+    const viewer = viewerRef.current
+    if (!Cesium || !viewer) return null
+
+    const cartesian = Cesium.Cartesian3.fromDegrees(lng, lat)
+    const coordinates = viewer.scene.cartesianToCanvasCoordinates(cartesian)
+    if (!coordinates) return null
+
+    return {
+      x: coordinates.x,
+      y: coordinates.y,
+    }
+  }, [])
+
+  const projectRenderedPosition = useCallback((idString: string) => {
+    const Cesium = cesiumRef.current
+    const viewer = viewerRef.current
+    if (!Cesium || !viewer) return null
+
+    let cartesian: CesiumType.Cartesian3 | undefined
+
+    if (idString.startsWith('signal-')) {
+      const primitive = signalPrimitivesRef.current.get(idString)
+      cartesian = primitive?.position
+    } else {
+      const entity =
+        siteEntitiesRef.current.get(idString) ??
+        assetEntitiesRef.current.get(idString) ??
+        aoEntitiesRef.current.get(idString) ??
+        geofenceEntitiesRef.current.get(idString) ??
+        breachEntitiesRef.current.get(idString) ??
+        coverageEntitiesRef.current.get(idString) ??
+        (idString === 'vessel-track' ? vesselTrackEntityRef.current : null)
+
+      if (entity?.position) {
+        cartesian = entity.position.getValue(viewer.clock.currentTime)
+      }
+    }
+
+    if (!cartesian) return null
+
+    const coordinates = viewer.scene.cartesianToCanvasCoordinates(cartesian)
+    if (!coordinates) return null
+
+    return {
+      x: coordinates.x,
+      y: coordinates.y,
+    }
+  }, [])
+
+  return {
+    viewerReady,
+    isCloseView,
+    focusPosition,
+    flyToHome,
+    projectPosition,
+    projectRenderedPosition,
+    inspectCanvasPosition,
+    dispatchSyntheticPick,
+    pickCanvasPosition,
+  }
 }

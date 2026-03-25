@@ -295,7 +295,7 @@ export interface MapEngineInput {
   // Selection callbacks — hook fires, page owns state
   onSiteClick:   (siteId: string | null) => void
   onAssetClick:  (assetId: string | null) => void
-  onSignalClick: (signal: Signal | null, vesselMmsi: string | null) => void
+  onSignalClick: (signalId: string | null) => void
 
 }
 
@@ -445,7 +445,7 @@ export function useMapLibreEngine({
       const siteId = e.features?.[0]?.properties?.id
       if (typeof siteId !== 'string') return
       onAssetClickRef.current(null)
-      onSignalClickRef.current(null, null)
+      onSignalClickRef.current(null)
       onSiteClickRef.current(siteId)
     }
 
@@ -559,7 +559,7 @@ export function useMapLibreEngine({
       const assetId = e.features?.[0]?.properties?.id
       if (typeof assetId !== 'string') return
       onSiteClickRef.current(null)
-      onSignalClickRef.current(null, null)
+      onSignalClickRef.current(null)
       onAssetClickRef.current(assetId)
     }
 
@@ -872,8 +872,7 @@ export function useMapLibreEngine({
       if (!sig) return
       onSiteClickRef.current(null)
       onAssetClickRef.current(null)
-      const mmsi = sig.signal_type === 'vessel_position' ? sig.external_id : null
-      onSignalClickRef.current(sig, mmsi)
+      onSignalClickRef.current(sig.id)
     }
 
     map.on('click', 'signal-circles', handleSignalClick)
@@ -955,7 +954,7 @@ export function useMapLibreEngine({
     if (map.getLayer('signal-glow'))    map.setLayoutProperty('signal-glow',    'visibility', vis)
     if (map.getLayer('signal-symbols')) map.setLayoutProperty('signal-symbols', 'visibility', vis)
     // Synchronously clear selection when signals are hidden
-    if (!showSignals) onSignalClickRef.current(null, null)
+    if (!showSignals) onSignalClickRef.current(null)
   }, [showSignals, mapLoaded])
 
   // ---------------------------------------------------------------------------

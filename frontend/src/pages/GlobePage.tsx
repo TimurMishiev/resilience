@@ -74,9 +74,44 @@ type GlobeBenchmarkApi = {
   getPerfEvents: () => unknown[]
 }
 
+type GlobeE2ETarget = {
+  id: string
+  name: string
+}
+
+type GlobeE2EApi = {
+  getState: () => {
+    viewerReady: boolean
+    selectedSiteId: string | null
+    selectedAssetId: string | null
+    selectedSignalId: string | null
+  }
+  getFirstGeofenceTarget: () => GlobeE2ETarget | null
+  getFirstCoverageTarget: () => GlobeE2ETarget | null
+  flyToSite: (siteId: string) => boolean
+  flyToAsset: (assetId: string) => boolean
+  pickSiteThroughGeofenceOverlay: (siteId: string) => boolean
+  pickSite: (siteId: string) => boolean
+  pickAsset: (assetId: string) => boolean
+}
+
+const E2E_PICK_SEARCH_OFFSETS: Array<{ x: number; y: number }> = (() => {
+  const offsets = [{ x: 0, y: 0 }]
+  for (let radius = 2; radius <= 12; radius += 2) {
+    for (let y = -radius; y <= radius; y += 2) {
+      for (let x = -radius; x <= radius; x += 2) {
+        if (Math.max(Math.abs(x), Math.abs(y)) !== radius) continue
+        offsets.push({ x, y })
+      }
+    }
+  }
+  return offsets
+})()
+
 declare global {
   interface Window {
     __resilienceGlobeBench?: GlobeBenchmarkApi
+    __resilienceGlobeE2E?: GlobeE2EApi
   }
 }
 
@@ -273,7 +308,7 @@ export default function GlobePage() {
   // ---------------------------------------------------------------------------
   // Engine init — hook owns signal culling using selectedCenter + camera regime
   // ---------------------------------------------------------------------------
-  const { viewerReady, isCloseView, focusPosition, flyToHome } = useGlobeEngine({
+  const { viewerReady, isCloseView, focusPosition, flyToHome, projectRenderedPosition, inspectCanvasPosition, dispatchSyntheticPick, pickCanvasPosition } = useGlobeEngine({
     containerRef,
     creditsRef,
     sites,
@@ -430,6 +465,90 @@ export default function GlobePage() {
     showCoverage,
     signals.length,
     sites,
+  ])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    if (window.localStorage.getItem('resilience.e2e') !== '1') {
+      delete window.__resilienceGlobeE2E
+      return
+    }
+
+    const geofenceSite = sites.find(site => site.geofence_radius_km > 0) ?? null
+    const coverageAssetId = coverageCircles[0]?.assetId ?? null
+    const coverageAsset = coverageAssetId ? (assets.find(asset => asset.id === coverageAssetId) ?? null) : null
+    const pickRenderedEntity = (expectedIdString: string) => {
+      const point = projectRenderedPosition(expectedIdString)
+      if (!point) return false
+
+      for (const offset of E2E_PICK_SEARCH_OFFSETS) {
+        const x = point.x + offset.x
+        const y = point.y + offset.y
+        const result = inspectCanvasPosition(x, y)
+        if (result.idString !== expectedIdString) continue
+        return pickCanvasPosition(x, y)
+      }
+
+      return false
+    }
+    window.__resilienceGlobeE2E = {
+      getState: () => ({
+        viewerReady,
+        selectedSiteId,
+        selectedAssetId,
+        selectedSignalId,
+      }),
+      getFirstGeofenceTarget: () => geofenceSite ? { id: geofenceSite.id, name: geofenceSite.name } : null,
+      getFirstCoverageTarget: () => coverageAsset ? { id: coverageAsset.id, name: coverageAsset.name } : null,
+      flyToSite: (siteId: string) => {
+        const site = sites.find(entry => entry.id === siteId)
+        if (!site) return false
+        focusPosition(Number(site.longitude), Number(site.latitude), 1_200_000, -70)
+        return true
+      },
+      flyToAsset: (assetId: string) => {
+        const asset = assets.find(entry => entry.id === assetId)
+        if (!asset) return false
+        const coords = assetDisplayPosition(asset, sites, readings, { lat: 0, lng: 0 }, { allowHistorical: isReplaying })
+        focusPosition(coords.lng, coords.lat, 850_000)
+        return true
+      },
+      pickSiteThroughGeofenceOverlay: (siteId: string) => {
+        const site = sites.find(entry => entry.id === siteId)
+        if (!site || site.geofence_radius_km <= 0) return false
+        return dispatchSyntheticPick([`geofence-${site.id}`, `site-${site.id}`])
+      },
+      pickSite: (siteId: string) => {
+        const site = sites.find(entry => entry.id === siteId)
+        if (!site) return false
+        return pickRenderedEntity(`site-${site.id}`)
+      },
+      pickAsset: (assetId: string) => {
+        const asset = assets.find(entry => entry.id === assetId)
+        if (!asset) return false
+        return pickRenderedEntity(`asset-${asset.id}`)
+      },
+    }
+
+    return () => {
+      delete window.__resilienceGlobeE2E
+    }
+  }, [
+    assets,
+    coverageCircles,
+    focusPosition,
+    dispatchSyntheticPick,
+    inspectCanvasPosition,
+    isReplaying,
+    pickCanvasPosition,
+    projectRenderedPosition,
+    readings,
+    selectedAssetId,
+    selectedSignalId,
+    selectedSiteId,
+    sites,
+    viewerReady,
   ])
 
   // ---------------------------------------------------------------------------
