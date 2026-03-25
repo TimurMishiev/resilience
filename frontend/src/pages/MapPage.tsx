@@ -51,6 +51,11 @@ type MapE2ESelectionTarget = {
   name: string
 }
 
+type MapE2ECanvasPoint = {
+  x: number
+  y: number
+}
+
 type MapE2EApi = {
   getState: () => {
     mapLoaded: boolean
@@ -62,7 +67,8 @@ type MapE2EApi = {
     selectedSignalId: string | null
   }
   getFirstSiteTarget: () => MapE2ESelectionTarget | null
-  getPickableSiteCanvasTarget: (siteId: string) => { x: number; y: number } | null
+  projectPosition: (lng: number, lat: number) => MapE2ECanvasPoint | null
+  getPickableSiteCanvasTarget: (siteId: string) => MapE2ECanvasPoint | null
 }
 
 declare global {
@@ -363,6 +369,7 @@ export default function MapPage() {
         const site = sites[0]
         return site ? { id: site.id, name: site.name } : null
       },
+      projectPosition: (lng: number, lat: number) => projectPosition(lng, lat),
       getPickableSiteCanvasTarget: (siteId: string) => {
         const site = sites.find(candidate => candidate.id === siteId)
         if (!site) return null
