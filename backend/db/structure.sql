@@ -871,6 +871,13 @@ CREATE INDEX index_external_signals_on_occurred_at ON public.external_signals US
 
 
 --
+-- Name: index_external_signals_on_signal_type_and_occurred_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_external_signals_on_signal_type_and_occurred_at ON public.external_signals USING btree (signal_type, occurred_at);
+
+
+--
 -- Name: index_external_signals_on_source; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1593,6 +1600,7 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260325020000'),
 ('20260325010000'),
 ('20260324010000'),
 ('20260324000100'),
