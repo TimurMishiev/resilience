@@ -16,7 +16,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { assetDisplayPosition, getLiveTelemetryReading } from '../lib/assetPresentation'
 import { computeReadiness } from '../lib/formatters'
 import { buildCoverageCircles, haversineKm } from '../lib/coverage'
-import { buildEntitySelectionSearch, parseEntitySelectionRoute } from '../lib/entitySelectionRoute'
+import { buildEntitySelectionPath, buildEntitySelectionSearch, parseEntitySelectionRoute } from '../lib/entitySelectionRoute'
 import { isPerfEnabled } from '../lib/perfInstrumentation'
 import { SIGNAL_COLORS, SIGNAL_LABELS } from '../lib/signalConfig'
 import { GlobeInspectorPanel } from '../components/GlobeInspectorPanel'
@@ -238,6 +238,11 @@ export default function GlobePage() {
     )
   }, [location.pathname, location.search, navigate])
 
+  const updateSelectionRouteRef = useRef(updateSelectionRoute)
+  useEffect(() => {
+    updateSelectionRouteRef.current = updateSelectionRoute
+  }, [updateSelectionRoute])
+
   // ---------------------------------------------------------------------------
   // Reset selection on replay timestamp change
   // ---------------------------------------------------------------------------
@@ -249,8 +254,8 @@ export default function GlobePage() {
     setSelectedSiteId(null)
     setSelectedAssetId(null)
     setSelectedSignalId(null)
-    updateSelectionRoute({ siteId: null, assetId: null, signalId: null })
-  }, [asOf, updateSelectionRoute])
+    updateSelectionRouteRef.current({ siteId: null, assetId: null, signalId: null })
+  }, [asOf])
 
   useEffect(() => {
     urlSelectionAppliedRef.current = false
@@ -327,25 +332,22 @@ export default function GlobePage() {
     signalFocusCenter: selectedCenter,
     selectedSignalId,
     onSiteClick:   (siteId)   => {
-      const nextSiteId = selectedSiteId === siteId ? null : siteId
-      setSelectedSiteId(nextSiteId)
+      setSelectedSiteId(siteId)
       setSelectedAssetId(null)
       setSelectedSignalId(null)
-      updateSelectionRoute({ siteId: nextSiteId, assetId: null, signalId: null })
+      updateSelectionRoute({ siteId, assetId: null, signalId: null })
     },
     onAssetClick:  (assetId)  => {
-      const nextAssetId = selectedAssetId === assetId ? null : assetId
       setSelectedSiteId(null)
-      setSelectedAssetId(nextAssetId)
+      setSelectedAssetId(assetId)
       setSelectedSignalId(null)
-      updateSelectionRoute({ siteId: null, assetId: nextAssetId, signalId: null })
+      updateSelectionRoute({ siteId: null, assetId, signalId: null })
     },
     onSignalClick: (signalId) => {
-      const nextSignalId = selectedSignalId === signalId ? null : signalId
       setSelectedSiteId(null)
       setSelectedAssetId(null)
-      setSelectedSignalId(nextSignalId)
-      updateSelectionRoute({ siteId: null, assetId: null, signalId: nextSignalId })
+      setSelectedSignalId(signalId)
+      updateSelectionRoute({ siteId: null, assetId: null, signalId })
     },
   })
 
@@ -613,13 +615,11 @@ export default function GlobePage() {
       .slice(0, 4)
   }, [assets, isReplaying, readings, selectedSite, sites])
 
-  const tacticalMapHref = selectedSite
-    ? `/map?site_id=${selectedSite.id}`
-    : selectedAsset
-      ? `/map?asset_id=${selectedAsset.id}`
-      : selectedSignal
-        ? `/map?signal_id=${selectedSignal.id}`
-        : '/map'
+  const tacticalMapHref = buildEntitySelectionPath('/map', location.search, {
+    siteId: selectedSite?.id ?? null,
+    assetId: selectedAsset?.id ?? null,
+    signalId: selectedSignal?.id ?? null,
+  })
   const inspectorTitle = getInspectorTitle(selectedSite, selectedAsset, selectedSignal, selectedVessel)
 
   // ---------------------------------------------------------------------------
@@ -703,6 +703,7 @@ export default function GlobePage() {
           readiness={readiness}
           isReplaying={isReplaying}
           telemetryConnected={telemetryConnected}
+          tacticalMapHref={tacticalMapHref}
           onClose={() => {
             setSelectedSiteId(null)
             setSelectedAssetId(null)

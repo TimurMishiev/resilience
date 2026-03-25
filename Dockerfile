@@ -44,7 +44,9 @@ ENV RAILS_ENV="production" \
     BUNDLE_DEPLOYMENT="1" \
     BUNDLE_PATH="/usr/local/bundle" \
     BUNDLE_WITHOUT="development test" \
-    LD_PRELOAD="/usr/local/lib/libjemalloc.so"
+    LD_PRELOAD="/usr/local/lib/libjemalloc.so" \
+    THRUSTER_HTTP_IDLE_TIMEOUT="3600" \
+    THRUSTER_HTTP_WRITE_TIMEOUT="3600"
 
 # ──── Stage 3: Install gems ───────────────────────────────────────────────────
 FROM base AS build

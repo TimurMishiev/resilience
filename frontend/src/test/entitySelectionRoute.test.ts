@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildEntitySelectionPath,
   buildEntitySelectionSearch,
   buildMapGlobeSelectionPath,
   clearEntitySelectionRoute,
@@ -24,6 +25,14 @@ describe('entitySelectionRoute', () => {
   it('builds a map or globe path that preserves only entity selection params', () => {
     expect(buildMapGlobeSelectionPath('/globe', '?signal_id=signal-3&foo=bar')).toBe('/globe?signal_id=signal-3')
     expect(buildMapGlobeSelectionPath('/map', '')).toBe('/map')
+  })
+
+  it('builds a route path with normalized selection while preserving unrelated params when requested', () => {
+    expect(buildEntitySelectionPath('/map', '?foo=bar', {
+      siteId: null,
+      assetId: 'asset-2',
+      signalId: 'signal-3',
+    })).toBe('/map?foo=bar&asset_id=asset-2')
   })
 
   it('writes a normalized entity selection back into search while preserving unrelated params', () => {

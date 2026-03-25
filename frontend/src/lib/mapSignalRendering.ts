@@ -28,13 +28,6 @@ function buildMapSignalFeature(signal: Signal): GeoJSON.Feature {
   }
 }
 
-export function buildMapSignalFeatureCollection(signals: Signal[]): GeoJSON.FeatureCollection {
-  return {
-    type: 'FeatureCollection',
-    features: signals.map(buildMapSignalFeature),
-  }
-}
-
 export function buildMapSignalRenderCollections(
   signals: Signal[],
   selectedSignalId: string | null,

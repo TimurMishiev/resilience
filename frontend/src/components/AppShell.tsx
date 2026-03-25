@@ -7,7 +7,6 @@ import { useRole } from '../hooks/useRole'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { useAreasOfOperation } from '../hooks/useAreasOfOperation'
 import { useSseEvents } from '../hooks/useSseEvents'
-import { preloadGlobePage, preloadMapPage } from '../lib/preloadRoutes'
 import { AppNavbar } from './shell/AppNavbar'
 import { AppSidebar, AppBottomNav } from './shell/AppSidebar'
 import { AppBanners } from './shell/AppBanners'
@@ -15,8 +14,6 @@ import GlobalSearch from './GlobalSearch'
 import type { Posture } from '../api/types'
 
 const POSTURE_RANK: Record<Posture, number> = { observe: 0, defensive: 1, weapons_free: 2 }
-const ignorePreloadFailure = () => {}
-
 export default function AppShell() {
   const navigate = useNavigate()
   const { isReplaying, asOf } = useReplay()
@@ -49,28 +46,6 @@ export default function AppShell() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [])
-
-  // Warm just the route bundles on idle. The full map/globe engines are still
-  // warmed on stronger intent (hover/focus) so every session does not
-  // automatically download the heaviest runtime chunks.
-  useEffect(() => {
-    const preload = () => {
-      void preloadMapPage().catch(ignorePreloadFailure)
-      void preloadGlobePage().catch(ignorePreloadFailure)
-    }
-    const idleWindow = window as Window & typeof globalThis & {
-      requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number
-      cancelIdleCallback?: (handle: number) => void
-    }
-
-    if (idleWindow.requestIdleCallback && idleWindow.cancelIdleCallback) {
-      const idleId = idleWindow.requestIdleCallback(preload, { timeout: 2_000 })
-      return () => idleWindow.cancelIdleCallback?.(idleId)
-    }
-
-    const timeoutId = setTimeout(preload, 1_500)
-    return () => clearTimeout(timeoutId)
   }, [])
 
   function handleLogout() {

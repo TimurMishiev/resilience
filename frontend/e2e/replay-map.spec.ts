@@ -1,8 +1,12 @@
 import { test, expect } from '@playwright/test'
-import { capturePageErrors, formatDateTimeLocal, primeAuthenticatedSession } from './helpers'
+import { captureFailedRequests, capturePageErrors, formatDateTimeLocal, primeAuthenticatedSession } from './helpers'
 
 test('map replay smoke: login, enter replay, and show replay-safe map warnings', async ({ page }) => {
   const pageErrors = capturePageErrors(page)
+  const failedGlyphRequests = captureFailedRequests(
+    page,
+    url => /tiles\.basemaps\.cartocdn\.com\/fonts\//.test(url),
+  )
 
   await primeAuthenticatedSession(page)
   await page.goto('/map')
@@ -22,5 +26,6 @@ test('map replay smoke: login, enter replay, and show replay-safe map warnings',
   await expect(page.getByText('Replay limitations')).toBeVisible()
   await expect(page.getByText('AO overlays, geofence breach rings, and vessel enrichment are hidden during replay because those layers are only available as live state.')).toBeVisible()
   await expect(page.getByText(/TELEMETRY (LIVE|OFFLINE)/)).toHaveCount(0)
+  expect(failedGlyphRequests).toEqual([])
   expect(pageErrors).toEqual([])
 })

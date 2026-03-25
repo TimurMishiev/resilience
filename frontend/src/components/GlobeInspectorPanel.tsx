@@ -36,6 +36,7 @@ export interface GlobeInspectorPanelProps {
   readiness: number | null
   isReplaying: boolean
   telemetryConnected: boolean
+  tacticalMapHref: string
   onClose: () => void
   navigate: (path: string) => void
 }
@@ -55,6 +56,7 @@ export function GlobeInspectorPanel({
   readiness,
   isReplaying,
   telemetryConnected,
+  tacticalMapHref,
   onClose,
   navigate,
 }: GlobeInspectorPanelProps) {
@@ -196,7 +198,7 @@ export function GlobeInspectorPanel({
 
           <Divider />
           <div className="globe-panel-actions">
-            <Button small icon="map" onClick={() => navigate(`/map?site_id=${selectedSite.id}`)}>
+            <Button small icon="map" onClick={() => navigate(tacticalMapHref)}>
               Open Tactical Map
             </Button>
           </div>
@@ -269,7 +271,7 @@ export function GlobeInspectorPanel({
 
           <Divider />
           <div className="globe-panel-actions">
-            <Button small icon="map" onClick={() => navigate(`/map?asset_id=${selectedAsset.id}`)}>
+            <Button small icon="map" onClick={() => navigate(tacticalMapHref)}>
               Open Tactical Map
             </Button>
           </div>
@@ -390,7 +392,7 @@ export function GlobeInspectorPanel({
 
           <Divider />
           <div className="globe-panel-actions">
-            <Button small icon="map" onClick={() => navigate(`/map?signal_id=${selectedSignal.id}`)}>
+            <Button small icon="map" onClick={() => navigate(tacticalMapHref)}>
               Open Tactical Map
             </Button>
           </div>

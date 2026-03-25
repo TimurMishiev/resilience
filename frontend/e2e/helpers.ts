@@ -68,3 +68,25 @@ export function capturePageErrors(page: Page) {
   })
   return errors
 }
+
+type FailedRequest = {
+  url: string
+  errorText: string
+}
+
+export function captureFailedRequests(
+  page: Page,
+  predicate: (url: string) => boolean = () => true,
+) {
+  const failures: FailedRequest[] = []
+  page.on('requestfailed', request => {
+    const url = request.url()
+    if (!predicate(url)) return
+
+    failures.push({
+      url,
+      errorText: request.failure()?.errorText ?? 'unknown',
+    })
+  })
+  return failures
+}

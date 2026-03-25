@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockState = vi.hoisted(() => ({
@@ -16,6 +16,15 @@ const mockState = vi.hoisted(() => ({
       raw_payload: { version: 'v1', name: 'Initial alert' },
     },
   ],
+}))
+
+const engineState = vi.hoisted(() => ({
+  flyTo: vi.fn(),
+  latestInput: null as null | {
+    onSiteClick: (siteId: string | null) => void
+    onAssetClick: (assetId: string | null) => void
+    onSignalClick: (signalId: string | null) => void
+  },
 }))
 
 vi.mock('../hooks/useSites', () => ({
@@ -104,16 +113,25 @@ vi.mock('../hooks/useMapLibreEngine', () => ({
     satellite: { label: 'Satellite', style: {} },
     street: { label: 'Street', style: {} },
   },
-  useMapLibreEngine: () => {
+  useMapLibreEngine: (input: {
+    onSiteClick: (siteId: string | null) => void
+    onAssetClick: (assetId: string | null) => void
+    onSignalClick: (signalId: string | null) => void
+  }) => {
+    engineState.latestInput = input
     return {
       mapLoaded: true,
-      flyTo: vi.fn(),
+      flyTo: engineState.flyTo,
+      getZoom: vi.fn(() => 1.5),
+      projectPosition: vi.fn(),
     }
   },
 }))
 
 vi.mock('../components/MapSitePanel', () => ({
-  MapSitePanel: () => null,
+  MapSitePanel: ({ site }: { site: { name: string } }) => (
+    <div data-testid="map-site-panel">{site.name}</div>
+  ),
 }))
 
 vi.mock('../components/MapAssetPanel', () => ({
@@ -130,6 +148,11 @@ vi.mock('../components/MapSignalPanel', () => ({
 
 import MapPage from '../pages/MapPage'
 
+function LocationProbe() {
+  const location = useLocation()
+  return <div data-testid="location-search">{location.search}</div>
+}
+
 function renderMapPage(initialEntry = '/map') {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -140,6 +163,7 @@ function renderMapPage(initialEntry = '/map') {
   const renderTree = () => (
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initialEntry]}>
+        <LocationProbe />
         <MapPage />
       </MemoryRouter>
     </QueryClientProvider>
@@ -152,8 +176,10 @@ function renderMapPage(initialEntry = '/map') {
   }
 }
 
-describe('MapPage signal selection', () => {
+describe('MapPage selection routing', () => {
   beforeEach(() => {
+    engineState.flyTo.mockReset()
+    engineState.latestInput = null
     mockState.signals = [
       {
         id: 'sig-1',
@@ -167,6 +193,32 @@ describe('MapPage signal selection', () => {
       },
     ]
     window.localStorage.clear()
+  })
+
+  it('hydrates the selected site panel from the route', async () => {
+    renderMapPage('/map?site_id=site-1')
+    expect(await screen.findByTestId('map-site-panel')).toHaveTextContent('Site One')
+    expect(engineState.flyTo).toHaveBeenCalledWith([2, 1], 6)
+  })
+
+  it('keeps the selected site panel open after route sync writes selection into the URL without self-focusing the map', async () => {
+    renderMapPage('/map')
+
+    expect(engineState.latestInput).not.toBeNull()
+
+    await act(async () => {
+      engineState.latestInput?.onSiteClick('site-1')
+    })
+
+    expect(await screen.findByTestId('location-search')).toHaveTextContent('?site_id=site-1')
+    expect(await screen.findByTestId('map-site-panel')).toHaveTextContent('Site One')
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(screen.getByTestId('map-site-panel')).toHaveTextContent('Site One')
+    expect(engineState.flyTo).not.toHaveBeenCalled()
   })
 
   it('re-derives the selected signal from the live collection on refresh', async () => {

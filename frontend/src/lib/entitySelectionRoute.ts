@@ -57,7 +57,15 @@ export function buildMapGlobeSelectionPath(
   pathname: '/map' | '/globe',
   search: string,
 ): string {
-  return `${pathname}${buildEntitySelectionSearch('', parseEntitySelectionRoute(search))}`
+  return buildEntitySelectionPath(pathname, '', parseEntitySelectionRoute(search))
+}
+
+export function buildEntitySelectionPath(
+  pathname: string,
+  search: string,
+  selection: EntitySelectionRouteState,
+): string {
+  return `${pathname}${buildEntitySelectionSearch(search, selection)}`
 }
 
 export function clearEntitySelectionRoute(search: string): string {

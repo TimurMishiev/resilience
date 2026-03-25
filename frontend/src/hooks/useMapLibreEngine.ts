@@ -28,6 +28,7 @@ import type { CoverageCircle } from '../lib/coverage'
 import { circlePolygon } from '../lib/coverage'
 import { assetDisplayPosition } from '../lib/assetPresentation'
 import { buildClusteredSignalSourceDefinition, expandMapSignalCluster } from '../lib/mapSignalClustering'
+import { MAP_INTERACTIVE_LAYER_IDS, resolveMapClickCandidate } from '../lib/mapClickResolution'
 import { buildMapSignalRenderCollections } from '../lib/mapSignalRendering'
 import { preloadMapRuntime } from '../lib/preloadRoutes'
 import { SIGNAL_ICON_CHAR } from '../lib/signalIcons'
@@ -100,10 +101,12 @@ function siteHealthColor(health: string): string {
 
 function assetTypeIcon(type: Asset['asset_type']): string {
   switch (type) {
-    case 'vehicle':   return '🚗'
-    case 'equipment': return '📡'
-    case 'personnel': return '🪖'
-    default:          return '●'
+    // Keep map labels in the ASCII range so third-party glyph CDNs are never
+    // asked for emoji/astral-plane font blocks that can fail CORS in dev.
+    case 'vehicle':   return 'V'
+    case 'equipment': return 'E'
+    case 'personnel': return 'P'
+    default:          return '?'
   }
 }
 
@@ -317,6 +320,10 @@ export interface MapEngineReturn {
   mapLoaded: boolean
   /** Imperatively fly the camera. Safe to call regardless of mapLoaded. */
   flyTo: (center: [number, number], zoom: number) => void
+  /** Current map zoom, used only for diagnostics/E2E assertions. */
+  getZoom: () => number | null
+  /** Projects a lng/lat into current canvas coordinates. */
+  projectPosition: (lng: number, lat: number) => { x: number; y: number } | null
 }
 
 // ---------------------------------------------------------------------------
@@ -457,23 +464,13 @@ export function useMapLibreEngine({
       })
     }
 
-    const handleSiteClick = (e: MapMouseEvent & { features?: MapGeoJSONFeature[] }) => {
-      const siteId = e.features?.[0]?.properties?.id
-      if (typeof siteId !== 'string') return
-      onAssetClickRef.current(null)
-      onSignalClickRef.current(null)
-      onSiteClickRef.current(siteId)
-    }
-
     const handleMouseEnter = () => { map.getCanvas().style.cursor = 'pointer' }
     const handleMouseLeave = () => { map.getCanvas().style.cursor = '' }
 
-    map.on('click', 'site-circles', handleSiteClick)
     map.on('mouseenter', 'site-circles', handleMouseEnter)
     map.on('mouseleave', 'site-circles', handleMouseLeave)
 
     return () => {
-      map.off('click', 'site-circles', handleSiteClick)
       map.off('mouseenter', 'site-circles', handleMouseEnter)
       map.off('mouseleave', 'site-circles', handleMouseLeave)
     }
@@ -571,27 +568,15 @@ export function useMapLibreEngine({
       })
     }
 
-    const handleAssetClick = (e: MapMouseEvent & { features?: MapGeoJSONFeature[] }) => {
-      const assetId = e.features?.[0]?.properties?.id
-      if (typeof assetId !== 'string') return
-      onSiteClickRef.current(null)
-      onSignalClickRef.current(null)
-      onAssetClickRef.current(assetId)
-    }
-
     const handleMouseEnter = () => { map.getCanvas().style.cursor = 'pointer' }
     const handleMouseLeave = () => { map.getCanvas().style.cursor = '' }
 
-    map.on('click', 'asset-circles', handleAssetClick)
-    map.on('click', 'asset-symbols', handleAssetClick)
     map.on('mouseenter', 'asset-circles', handleMouseEnter)
     map.on('mouseenter', 'asset-symbols', handleMouseEnter)
     map.on('mouseleave', 'asset-circles', handleMouseLeave)
     map.on('mouseleave', 'asset-symbols', handleMouseLeave)
 
     return () => {
-      map.off('click', 'asset-circles', handleAssetClick)
-      map.off('click', 'asset-symbols', handleAssetClick)
       map.off('mouseenter', 'asset-circles', handleMouseEnter)
       map.off('mouseenter', 'asset-symbols', handleMouseEnter)
       map.off('mouseleave', 'asset-circles', handleMouseLeave)
@@ -968,34 +953,11 @@ export function useMapLibreEngine({
       })
     }
 
-    // Signal click — reads signalsRef so it never goes stale
-    const handleSignalClick = (e: MapMouseEvent & { features?: MapGeoJSONFeature[] }) => {
-      if (!e.features?.length) return
-      const props = e.features[0].properties
-      const sig   = signalsRef.current.find(s => s.id === props.id)
-      if (!sig) return
-      onSiteClickRef.current(null)
-      onAssetClickRef.current(null)
-      onSignalClickRef.current(sig.id)
-    }
-
-    const handleClusterClick = (e: MapMouseEvent & { features?: MapGeoJSONFeature[] }) => {
-      if (!e.features?.length) return
-      const source = map.getSource('signal-points') as GeoJSONSource | undefined
-      if (!source) return
-      void expandMapSignalCluster(map, source, e.features[0])
-    }
-
     const handleClusterMouseEnter = () => { map.getCanvas().style.cursor = 'pointer' }
     const handleClusterMouseLeave = () => { map.getCanvas().style.cursor = '' }
 
-    map.on('click', 'signal-clusters', handleClusterClick)
     map.on('mouseenter', 'signal-clusters', handleClusterMouseEnter)
     map.on('mouseleave', 'signal-clusters', handleClusterMouseLeave)
-    map.on('click', 'signal-circles', handleSignalClick)
-    map.on('click', 'signal-symbols', handleSignalClick)
-    map.on('click', 'selected-signal-circle', handleSignalClick)
-    map.on('click', 'selected-signal-symbol', handleSignalClick)
 
     const PopupCtor = maplibreRef.current?.Popup
     if (!PopupCtor) return
@@ -1010,9 +972,14 @@ export function useMapLibreEngine({
     const handleMouseEnter = (e: MapMouseEvent & { features?: MapGeoJSONFeature[] }) => {
       map.getCanvas().style.cursor = 'pointer'
       if (!e.features?.length) return
-      const props  = e.features[0].properties as Record<string, string>
-      const coords = (e.features[0].geometry as unknown as { coordinates: [number, number] }).coordinates
-      popup.setLngLat(coords).setDOMContent(buildSignalPopupContent(props)).addTo(map)
+      const feature = e.features[0]
+      if (!feature.geometry || feature.geometry.type !== 'Point') return
+
+      const [lng, lat] = feature.geometry.coordinates
+      if (!Number.isFinite(lng) || !Number.isFinite(lat)) return
+
+      const props = (feature.properties ?? {}) as Record<string, string>
+      popup.setLngLat([lng, lat]).setDOMContent(buildSignalPopupContent(props)).addTo(map)
     }
     const handleMouseLeave = () => { map.getCanvas().style.cursor = ''; popup.remove() }
 
@@ -1027,11 +994,6 @@ export function useMapLibreEngine({
 
     return () => {
       popup.remove()
-      map.off('click', 'signal-clusters', handleClusterClick)
-      map.off('click',      'signal-circles', handleSignalClick)
-      map.off('click',      'signal-symbols', handleSignalClick)
-      map.off('click',      'selected-signal-circle', handleSignalClick)
-      map.off('click',      'selected-signal-symbol', handleSignalClick)
       map.off('mouseenter', 'signal-clusters', handleClusterMouseEnter)
       map.off('mouseleave', 'signal-clusters', handleClusterMouseLeave)
       map.off('mouseenter', 'signal-circles', handleMouseEnter)
@@ -1042,6 +1004,55 @@ export function useMapLibreEngine({
       map.off('mouseleave', 'signal-symbols', handleMouseLeave)
       map.off('mouseleave', 'selected-signal-circle', handleMouseLeave)
       map.off('mouseleave', 'selected-signal-symbol', handleMouseLeave)
+    }
+  }, [mapLoaded])
+
+  // ---------------------------------------------------------------------------
+  // Unified click handling — resolve exactly one interactive target per click
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapLoaded) return
+
+    const handleMapClick = (event: MapMouseEvent) => {
+      const interactiveLayers = MAP_INTERACTIVE_LAYER_IDS.filter(layerId => map.getLayer(layerId))
+      const features = map.queryRenderedFeatures(event.point, { layers: interactiveLayers })
+      const resolved = resolveMapClickCandidate(features)
+      if (!resolved) return
+
+      if (resolved.kind === 'site') {
+        const siteId = resolved.feature.properties?.id
+        if (typeof siteId === 'string') {
+          onSiteClickRef.current(siteId)
+        }
+        return
+      }
+
+      if (resolved.kind === 'asset') {
+        const assetId = resolved.feature.properties?.id
+        if (typeof assetId === 'string') {
+          onAssetClickRef.current(assetId)
+        }
+        return
+      }
+
+      if (resolved.kind === 'signal') {
+        const signalId = resolved.feature.properties?.id
+        if (typeof signalId === 'string') {
+          onSignalClickRef.current(signalId)
+        }
+        return
+      }
+
+      const source = map.getSource('signal-points') as GeoJSONSource | undefined
+      if (!source) return
+      void expandMapSignalCluster(map, source, resolved.feature as MapGeoJSONFeature)
+    }
+
+    map.on('click', handleMapClick)
+
+    return () => {
+      map.off('click', handleMapClick)
     }
   }, [mapLoaded])
 
@@ -1122,8 +1133,23 @@ export function useMapLibreEngine({
     mapRef.current?.flyTo({ center, zoom })
   }, [])
 
+  const getZoom = useCallback(() => {
+    const map = mapRef.current
+    return map ? map.getZoom() : null
+  }, [])
+
+  const projectPosition = useCallback((lng: number, lat: number) => {
+    const map = mapRef.current
+    if (!map) return null
+
+    const point = map.project([lng, lat])
+    return { x: point.x, y: point.y }
+  }, [])
+
   return {
     mapLoaded,
     flyTo,
+    getZoom,
+    projectPosition,
   }
 }
