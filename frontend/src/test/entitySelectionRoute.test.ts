@@ -236,4 +236,52 @@ describe('entitySelectionRoute', () => {
       true,
     )).toBe(true)
   })
+
+  it('does not clear an asset selection before assetsLoaded settles', () => {
+    // assetsLoaded=false means the dataset is still loading — isEntitySelectionMissingAfterLoad
+    // returns false for both route and state, so shouldClear must be false regardless of whether
+    // the asset is currently in the list.
+    expect(shouldClearEntitySelectionAfterLoad(
+      { siteId: null, assetId: 'asset-1', signalId: null },
+      { siteId: null, assetId: 'asset-1', signalId: null },
+      {
+        sitesLoaded: true,
+        assetsLoaded: false,
+        signalsLoaded: true,
+        siteIds: [],
+        assetIds: [],
+        signalIds: [],
+      },
+    )).toBe(false)
+  })
+
+  it('clears a stale asset route and selection once assetsLoaded is true and the asset is absent', () => {
+    // Once assetsLoaded=true the dataset is authoritative — an asset absent from assetIds is stale.
+    // Both route and state carry the same stale asset-1; state triggers the clear independently of
+    // routeAuthoritative, so both true and false must result in a clear here.
+    const availability = {
+      sitesLoaded: true,
+      assetsLoaded: true,
+      signalsLoaded: true,
+      siteIds: [],
+      assetIds: ['asset-2'],
+      signalIds: [],
+    }
+
+    // routeAuthoritative=true: route missing + state missing → clear
+    expect(shouldClearEntitySelectionAfterLoad(
+      { siteId: null, assetId: 'asset-1', signalId: null },
+      { siteId: null, assetId: 'asset-1', signalId: null },
+      availability,
+      true,
+    )).toBe(true)
+
+    // routeAuthoritative=false: route not checked, but state is still missing → clear
+    expect(shouldClearEntitySelectionAfterLoad(
+      { siteId: null, assetId: 'asset-1', signalId: null },
+      { siteId: null, assetId: 'asset-1', signalId: null },
+      availability,
+      false,
+    )).toBe(true)
+  })
 })
