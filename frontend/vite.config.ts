@@ -3,6 +3,15 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import cesium from 'vite-plugin-cesium'
 
+const ON_DEMAND_EXPERIENCE_ASSET_GLOBS = [
+  '**/assets/MapPage-*.js',
+  '**/assets/GlobePage-*.js',
+  '**/assets/maplibre-gl-*.js',
+  '**/assets/maplibre-gl-*.css',
+]
+
+const ON_DEMAND_EXPERIENCE_ASSET_REGEX = /\/assets\/(?:MapPage|GlobePage|maplibre-gl)-.*\.(?:js|css)$/i
+
 export default defineConfig({
   plugins: [
     react(),
@@ -29,9 +38,10 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // Precache all static build assets; exclude large Cesium bundle
+        // Precache the common application shell; keep map/globe route assets
+        // on-demand so non-map sessions do not pay their install-time cost.
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff,woff2}'],
-        globIgnores: ['**/Cesium.js', '**/cesium/**'],
+        globIgnores: ['**/Cesium.js', '**/cesium/**', ...ON_DEMAND_EXPERIENCE_ASSET_GLOBS],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024, // 6 MB
         // Promote the new service worker immediately so old chunk manifests are
         // replaced as soon as a new deploy is fetched.
@@ -54,6 +64,20 @@ export default defineConfig({
               },
               cacheableResponse: {
                 statuses: [0, 200],
+              },
+            },
+          },
+          {
+            urlPattern: ON_DEMAND_EXPERIENCE_ASSET_REGEX,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'experience-asset-cache',
+              expiration: {
+                maxEntries: 16,
+                maxAgeSeconds: 60 * 60 * 24 * 7, // 7 days
+              },
+              cacheableResponse: {
+                statuses: [200],
               },
             },
           },
