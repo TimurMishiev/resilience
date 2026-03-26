@@ -87,6 +87,63 @@ function setEntityPointColor(Cesium: CesiumModule, entity: CesiumType.Entity, co
   entity.point.color = new Cesium.ConstantProperty(color)
 }
 
+function setConstantPropertyValue<T>(
+  Cesium: CesiumModule,
+  property: CesiumType.Property | undefined,
+  value: T,
+  assign: (next: CesiumType.ConstantProperty) => void,
+) {
+  if (property instanceof Cesium.ConstantProperty) {
+    property.setValue(value)
+    return
+  }
+  assign(new Cesium.ConstantProperty(value))
+}
+
+function setEntityPointHeightReference(
+  Cesium: CesiumModule,
+  entity: CesiumType.Entity,
+  heightReference: CesiumType.HeightReference,
+) {
+  if (!entity.point) return
+  setConstantPropertyValue(Cesium, entity.point.heightReference, heightReference, next => {
+    entity.point!.heightReference = next
+  })
+}
+
+function setEntityPointDisableDepthTestDistance(
+  Cesium: CesiumModule,
+  entity: CesiumType.Entity,
+  distance: number,
+) {
+  if (!entity.point) return
+  setConstantPropertyValue(Cesium, entity.point.disableDepthTestDistance, distance, next => {
+    entity.point!.disableDepthTestDistance = next
+  })
+}
+
+function setEntityLabelHeightReference(
+  Cesium: CesiumModule,
+  entity: CesiumType.Entity,
+  heightReference: CesiumType.HeightReference,
+) {
+  if (!entity.label) return
+  setConstantPropertyValue(Cesium, entity.label.heightReference, heightReference, next => {
+    entity.label!.heightReference = next
+  })
+}
+
+function setEntityLabelDisableDepthTestDistance(
+  Cesium: CesiumModule,
+  entity: CesiumType.Entity,
+  distance: number,
+) {
+  if (!entity.label) return
+  setConstantPropertyValue(Cesium, entity.label.disableDepthTestDistance, distance, next => {
+    entity.label!.disableDepthTestDistance = next
+  })
+}
+
 function setPolygonHierarchy(Cesium: CesiumModule, graphics: CesiumType.PolygonGraphics, positions: CesiumType.Cartesian3[]) {
   const hierarchy = new Cesium.PolygonHierarchy(positions)
   if (graphics.hierarchy instanceof Cesium.ConstantProperty) {
@@ -596,7 +653,11 @@ export function useGlobeEngine({
         existing.name = site.name
         setEntityPosition(Cesium, existing, Number(site.longitude), Number(site.latitude))
         setEntityPointColor(Cesium, existing, color)
+        setEntityPointHeightReference(Cesium, existing, Cesium.HeightReference.CLAMP_TO_GROUND)
+        setEntityPointDisableDepthTestDistance(Cesium, existing, 0)
         setEntityLabelText(Cesium, existing, site.name)
+        setEntityLabelHeightReference(Cesium, existing, Cesium.HeightReference.CLAMP_TO_GROUND)
+        setEntityLabelDisableDepthTestDistance(Cesium, existing, 0)
         continue
       }
 
@@ -609,7 +670,8 @@ export function useGlobeEngine({
           color,
           outlineColor:            Cesium.Color.WHITE.withAlpha(0.8),
           outlineWidth:            2,
-          disableDepthTestDistance: 1e7,
+          disableDepthTestDistance: 0,
+          heightReference:         Cesium.HeightReference.CLAMP_TO_GROUND,
           scaleByDistance:         new Cesium.NearFarScalar(1e5, 1.5, 8e6, 0.8),
         },
         label: {
@@ -620,7 +682,8 @@ export function useGlobeEngine({
           outlineWidth:            2,
           style:                   Cesium.LabelStyle.FILL_AND_OUTLINE,
           pixelOffset:             new Cesium.Cartesian2(0, -22),
-          disableDepthTestDistance: 1e7,
+          disableDepthTestDistance: 0,
+          heightReference:         Cesium.HeightReference.CLAMP_TO_GROUND,
           translucencyByDistance:  new Cesium.NearFarScalar(1e6, 1.0, 8e6, 0.0),
         },
       })
@@ -647,6 +710,10 @@ export function useGlobeEngine({
       if (existing) {
         existing.name = asset.name
         setEntityLabelText(Cesium, existing, asset.name)
+        setEntityPointHeightReference(Cesium, existing, Cesium.HeightReference.CLAMP_TO_GROUND)
+        setEntityPointDisableDepthTestDistance(Cesium, existing, 0)
+        setEntityLabelHeightReference(Cesium, existing, Cesium.HeightReference.CLAMP_TO_GROUND)
+        setEntityLabelDisableDepthTestDistance(Cesium, existing, 0)
         continue
       }
 
@@ -662,7 +729,8 @@ export function useGlobeEngine({
           color:                   Cesium.Color.CYAN.withAlpha(0.95),
           outlineColor:            Cesium.Color.WHITE.withAlpha(0.7),
           outlineWidth:            2,
-          disableDepthTestDistance: 1e7,
+          disableDepthTestDistance: 0,
+          heightReference:         Cesium.HeightReference.CLAMP_TO_GROUND,
         },
         label: {
           text:                    asset.name,
@@ -672,7 +740,8 @@ export function useGlobeEngine({
           outlineWidth:            2,
           style:                   Cesium.LabelStyle.FILL_AND_OUTLINE,
           pixelOffset:             new Cesium.Cartesian2(0, -16),
-          disableDepthTestDistance: 1e7,
+          disableDepthTestDistance: 0,
+          heightReference:         Cesium.HeightReference.CLAMP_TO_GROUND,
           translucencyByDistance:  new Cesium.NearFarScalar(5e5, 1.0, 3e6, 0.0),
         },
       })
@@ -1035,6 +1104,8 @@ export function useGlobeEngine({
       
       if (existing) {
         existing.position = position
+        existing.disableDepthTestDistance = 0
+        existing.distanceDisplayCondition = distanceDisplayCondition
         updatedCount += 1
         continue
       }
@@ -1047,6 +1118,7 @@ export function useGlobeEngine({
         color:         color.withAlpha(0.95),
         outlineColor:  color.withAlpha(0.35),
         outlineWidth:  3,
+        disableDepthTestDistance: 0,
         distanceDisplayCondition,
       })
       signalPrimitivesRef.current.set(key, primitive)

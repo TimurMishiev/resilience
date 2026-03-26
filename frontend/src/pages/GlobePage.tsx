@@ -84,6 +84,13 @@ type GlobeBenchmarkApi = {
 type GlobeE2ETarget = {
   id: string
   name: string
+  latitude: number
+  longitude: number
+}
+
+type GlobeE2ECanvasPoint = {
+  x: number
+  y: number
 }
 
 type GlobeE2EApi = {
@@ -93,10 +100,15 @@ type GlobeE2EApi = {
     selectedAssetId: string | null
     selectedSignalId: string | null
   }
+  getFirstSiteTarget: () => GlobeE2ETarget | null
+  getFirstSignalTarget: () => GlobeE2ETarget | null
   getFirstGeofenceTarget: () => GlobeE2ETarget | null
   getFirstCoverageTarget: () => GlobeE2ETarget | null
+  projectPosition: (lng: number, lat: number) => GlobeE2ECanvasPoint | null
+  projectRenderedPosition: (idString: string) => GlobeE2ECanvasPoint | null
   flyToSite: (siteId: string) => boolean
   flyToAsset: (assetId: string) => boolean
+  flyToSignal: (signalId: string) => boolean
   pickSiteThroughGeofenceOverlay: (siteId: string) => boolean
   pickSite: (siteId: string) => boolean
   pickAsset: (assetId: string) => boolean
@@ -114,6 +126,8 @@ const E2E_PICK_SEARCH_OFFSETS: Array<{ x: number; y: number }> = (() => {
   }
   return offsets
 })()
+
+const E2E_SIGNAL_FOCUS_HEIGHT_M = 2_500_000
 
 declare global {
   interface Window {
@@ -329,7 +343,7 @@ export default function GlobePage() {
   // ---------------------------------------------------------------------------
   // Engine init — hook owns signal culling using selectedCenter + camera regime
   // ---------------------------------------------------------------------------
-  const { viewerReady, isCloseView, focusPosition, flyToHome, projectRenderedPosition, inspectCanvasPosition, dispatchSyntheticPick, pickCanvasPosition } = useGlobeEngine({
+  const { viewerReady, isCloseView, focusPosition, flyToHome, projectPosition, projectRenderedPosition, inspectCanvasPosition, dispatchSyntheticPick, pickCanvasPosition } = useGlobeEngine({
     containerRef,
     creditsRef,
     sites,
@@ -516,8 +530,32 @@ export default function GlobePage() {
         selectedAssetId,
         selectedSignalId,
       }),
+      getFirstSiteTarget: () => {
+        const site = sites[0]
+        return site
+          ? {
+              id: site.id,
+              name: site.name,
+              latitude: Number(site.latitude),
+              longitude: Number(site.longitude),
+            }
+          : null
+      },
+      getFirstSignalTarget: () => {
+        const signal = signals[0]
+        return signal
+          ? {
+              id: signal.id,
+              name: SIGNAL_LABELS[signal.signal_type] ?? signal.signal_type,
+              latitude: Number(signal.lat),
+              longitude: Number(signal.lng),
+            }
+          : null
+      },
       getFirstGeofenceTarget: () => geofenceSite ? { id: geofenceSite.id, name: geofenceSite.name } : null,
       getFirstCoverageTarget: () => coverageAsset ? { id: coverageAsset.id, name: coverageAsset.name } : null,
+      projectPosition: (lng: number, lat: number) => projectPosition(lng, lat),
+      projectRenderedPosition: (idString: string) => projectRenderedPosition(idString),
       flyToSite: (siteId: string) => {
         const site = sites.find(entry => entry.id === siteId)
         if (!site) return false
@@ -529,6 +567,12 @@ export default function GlobePage() {
         if (!asset) return false
         const coords = assetDisplayPosition(asset, sites, readings, { lat: 0, lng: 0 }, { allowHistorical: isReplaying })
         focusPosition(coords.lng, coords.lat, 850_000)
+        return true
+      },
+      flyToSignal: (signalId: string) => {
+        const signal = signals.find(entry => entry.id === signalId)
+        if (!signal) return false
+        focusPosition(Number(signal.lng), Number(signal.lat), E2E_SIGNAL_FOCUS_HEIGHT_M, -68)
         return true
       },
       pickSiteThroughGeofenceOverlay: (siteId: string) => {
@@ -559,11 +603,13 @@ export default function GlobePage() {
     inspectCanvasPosition,
     isReplaying,
     pickCanvasPosition,
+    projectPosition,
     projectRenderedPosition,
     readings,
     selectedAssetId,
     selectedSignalId,
     selectedSiteId,
+    signals,
     sites,
     viewerReady,
   ])
