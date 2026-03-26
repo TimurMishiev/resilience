@@ -72,6 +72,41 @@ RSpec.describe Correlations::RuleFiringJob do
     expect(rule.reload.last_fired_at).to be_nil
   end
 
+  it "skips malformed persisted rules with unsupported nested conditions" do
+    malformed_rule = build(:correlation_rule,
+      conditions: {
+        "operator" => "AND",
+        "conditions" => [
+          { "signal_type" => "seismic_event", "proximity_km" => 100 },
+          { "operator" => "OR", "conditions" => [] }
+        ]
+      },
+      actions: { "create_task" => { "title" => "Alert near {{site_name}}", "priority" => "high" } })
+    malformed_rule.save!(validate: false)
+
+    expect {
+      described_class.perform_now(malformed_rule.id, signal.id, site.id)
+    }.not_to change(Task, :count)
+
+    expect(SignalRuleMatch.count).to eq(0)
+    expect(malformed_rule.reload.last_fired_at).to be_nil
+    expect(logger).to have_received(:warn)
+      .with(include(
+        "[EvaluatorService]",
+        "outcome=unsupported_condition_shape",
+        "rule=#{malformed_rule.id}",
+        "signal=#{signal.id}",
+      ))
+    expect(logger).to have_received(:info)
+      .with(include(
+        "[RuleFiringJob]",
+        "outcome=revalidation_skipped",
+        "rule=#{malformed_rule.id}",
+        "signal=#{signal.id}",
+        "site=#{site.id}",
+      ))
+  end
+
   it "logs a structured missing-record outcome" do
     described_class.perform_now(rule.id, SecureRandom.uuid, site.id)
 

@@ -135,5 +135,18 @@ RSpec.describe CorrelationRule, type: :model do
       expect(rule).not_to be_valid
       expect(rule.errors[:conditions].first).to include("conditions[1].proximity_km")
     end
+
+    it "rejects nested compound conditions, including empty inner groups" do
+      rule = build(:correlation_rule, conditions: {
+        "operator" => "AND",
+        "conditions" => [
+          { "signal_type" => "ais_gap", "proximity_km" => 100 },
+          { "operator" => "OR", "conditions" => [] }
+        ]
+      })
+
+      expect(rule).not_to be_valid
+      expect(rule.errors[:conditions].first).to include("conditions[1].nested compound conditions are not supported")
+    end
   end
 end

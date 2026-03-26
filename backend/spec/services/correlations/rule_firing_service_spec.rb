@@ -339,6 +339,24 @@ RSpec.describe Correlations::RuleFiringService do
       expect(r.payload[:match].confidence).to eq(1.0)
     end
 
+    it "returns 0.0 confidence instead of crashing for a malformed persisted nested compound" do
+      malformed_rule = build(:correlation_rule,
+        conditions: {
+          "operator" => "OR",
+          "conditions" => [
+            { "operator" => "AND", "conditions" => [] },
+            { "signal_type" => "seismic_event", "proximity_km" => 100 }
+          ]
+        },
+        actions: { "create_task" => { "priority" => "normal" } })
+      malformed_rule.save!(validate: false)
+
+      r = described_class.call(rule: malformed_rule, signal: signal, site: site)
+
+      expect(r.success).to be(true)
+      expect(r.payload[:match].confidence).to eq(0.0)
+    end
+
     it "includes confidence in the SSE broadcast payload" do
       result
       expect(Sse::Broadcaster.instance).to have_received(:publish).with(

@@ -3,9 +3,12 @@ require "rails_helper"
 RSpec.describe Correlations::EvaluatorService do
   include ActiveJob::TestHelper
 
+  let(:logger) { instance_double(ActiveSupport::Logger, info: nil, warn: nil, error: nil) }
+
   # Stub SSE broadcasts so tests don't require live streams
   before do
     allow(Sse::Broadcaster.instance).to receive(:publish)
+    allow(Rails).to receive(:logger).and_return(logger)
   end
 
   # ---------------------------------------------------------------------------
@@ -89,6 +92,38 @@ RSpec.describe Correlations::EvaluatorService do
       it "does not fire" do
         result = described_class.call(signal: signal)
         expect(result.payload[:fired_count]).to eq(0)
+      end
+    end
+
+    context "when a persisted rule has unsupported nested conditions" do
+      let!(:malformed_rule) do
+        rule = build(:correlation_rule,
+                     conditions: {
+                       "operator" => "AND",
+                       "conditions" => [
+                         { "signal_type" => "seismic_event", "proximity_km" => 50 },
+                         { "operator" => "OR", "conditions" => [] }
+                       ]
+                     })
+        rule.save!(validate: false)
+        rule
+      end
+
+      it "skips the rule, enqueues nothing, and logs a structured warning" do
+        clear_enqueued_jobs
+
+        result = nil
+        expect {
+          result = described_class.call(signal: signal)
+        }.not_to have_enqueued_job(Correlations::RuleFiringJob)
+
+        expect(result.payload[:fired_count]).to eq(0)
+        expect(logger).to have_received(:warn).with(include(
+          "[EvaluatorService]",
+          "outcome=unsupported_condition_shape",
+          "rule=#{malformed_rule.id}",
+          "signal=#{signal.id}",
+        ))
       end
     end
 

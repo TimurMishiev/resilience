@@ -237,13 +237,19 @@ module Correlations
     #   No nearby signals found → 0.0
     #
     def compute_confidence
+      return 0.0 unless @rule.supported_condition_shape?
+
       norm     = @rule.normalized_conditions
       operator = norm["operator"]
       conds    = norm["conditions"]
+      return 0.0 unless conds.is_a?(Array) && conds.any?
 
       scores = conds.map { |cond| condition_confidence(cond) }
+      return 0.0 if scores.empty?
 
       raw = operator == "OR" ? scores.max : scores.sum / scores.size.to_f
+      return 0.0 unless raw.is_a?(Numeric) && raw.finite?
+
       raw.clamp(0.0, 1.0).round(2)
     end
 

@@ -113,6 +113,25 @@ RSpec.describe "Api::CorrelationRules", type: :request do
       expect(JSON.parse(response.body)["errors"]).not_to be_empty
     end
 
+    it "returns 422 when a nested compound condition is submitted" do
+      post "/api/correlation_rules",
+           params: {
+             correlation_rule: valid_params[:correlation_rule].merge(
+               conditions: {
+                 operator: "AND",
+                 conditions: [
+                   { signal_type: "seismic_event", proximity_km: 50 },
+                   { operator: "OR", conditions: [] }
+                 ]
+               }
+             )
+           },
+           headers: auth_headers(commander), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(JSON.parse(response.body)["errors"].join(" ")).to include("nested compound conditions are not supported")
+    end
+
     it "accepts and persists area_of_operation_id" do
       ao = create(:area_of_operation)
       post "/api/correlation_rules",

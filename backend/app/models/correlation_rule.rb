@@ -50,6 +50,10 @@ class CorrelationRule < ApplicationRecord
     conditions.is_a?(Hash) && conditions["operator"].present?
   end
 
+  def supported_condition_shape?
+    normalized_conditions_supported?(normalized_conditions)
+  end
+
   private
 
   # ── Validation ───────────────────────────────────────────────────────────────
@@ -89,6 +93,11 @@ class CorrelationRule < ApplicationRecord
   # Validates a single flat condition hash.
   # prefix is used in error messages to indicate path in compound rules.
   def validate_single_condition(cond, prefix)
+    if nested_compound_condition?(cond)
+      errors.add(:conditions, "#{prefix}nested compound conditions are not supported")
+      return
+    end
+
     if (st = cond["signal_type"]).present?
       unless VALID_SIGNAL_TYPES.include?(st)
         errors.add(:conditions, "#{prefix}signal_type '#{st}' is not recognised (#{VALID_SIGNAL_TYPES.join(', ')})")
@@ -118,6 +127,22 @@ class CorrelationRule < ApplicationRecord
         errors.add(:conditions, "#{prefix}magnitude_min must be a non-negative number")
       end
     end
+  end
+
+  def nested_compound_condition?(cond)
+    cond.is_a?(Hash) && (cond["operator"].present? || cond.key?("conditions"))
+  end
+
+  def normalized_conditions_supported?(group)
+    return false unless group.is_a?(Hash)
+
+    operator = group["operator"]
+    conds = group["conditions"]
+
+    return false unless VALID_OPERATORS.include?(operator)
+    return false unless conds.is_a?(Array) && conds.any?
+
+    conds.all? { |cond| cond.is_a?(Hash) && !nested_compound_condition?(cond) }
   end
 
   def actions_schema

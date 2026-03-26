@@ -39,6 +39,7 @@ module Correlations
     def initialize(signal:, reference_time: nil)
       @signal = signal
       @reference_time = (reference_time || signal.occurred_at || Time.current)
+      @logged_unsupported_rule_ids = {}
     end
 
     def self.rule_matches_signal_at_site?(rule:, signal:, site:, reference_time: nil)
@@ -85,6 +86,10 @@ module Correlations
     def matches_rule_at_site?(rule, site)
       return false unless rule.is_active?
       return false unless self.class.rule_targets_site?(rule: rule, site: site)
+      unless rule.supported_condition_shape?
+        log_unsupported_rule(rule)
+        return false
+      end
 
       norm     = rule.normalized_conditions
       operator = norm["operator"]
@@ -179,6 +184,20 @@ module Correlations
     # area_of_operation_id (a model attribute) or default to all active sites.
     def target_sites(rule)
       self.class.target_sites_scope(rule)
+    end
+
+    def log_unsupported_rule(rule)
+      return if @logged_unsupported_rule_ids[rule.id]
+
+      @logged_unsupported_rule_ids[rule.id] = true
+      Rails.logger.warn(
+        [
+          "[EvaluatorService]",
+          "outcome=unsupported_condition_shape",
+          "rule=#{rule.id}",
+          "signal=#{@signal.id}",
+        ].join(" ")
+      )
     end
 
     def recent_signal_candidates(signal_type:, window_minutes:, site:, proximity_km:)
