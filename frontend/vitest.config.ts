@@ -16,5 +16,11 @@ export default {
       './src/test/**/*.spec.tsx',
     ],
     exclude: ['node_modules', 'dist', 'e2e', 'playwright-report', 'test-results'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json-summary', 'html'],
+      reportsDirectory: './coverage',
+      exclude: ['e2e/**', 'dist/**', 'playwright-report/**', 'test-results/**'],
+    },
   },
 }

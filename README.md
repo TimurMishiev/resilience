@@ -192,7 +192,7 @@ If you want to run the app locally for development:
 
 **Requirements**
 - Ruby 3.4.7 (use [rbenv](https://github.com/rbenv/rbenv) or [asdf](https://asdf-vm.com/))
-- Node.js 22+ and Yarn
+- Node.js 22.13+ and Yarn 1.22+ (`nvm use` from the repo root reads `.nvmrc`)
 - PostgreSQL 16
 
 ```bash
