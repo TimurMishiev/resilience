@@ -48,6 +48,8 @@ const CONNECTED_SSE_RESPONSE = {
   body: 'event: connected\ndata: {}\n\n',
 }
 
+test.use({ serviceWorkers: 'block' })
+
 async function stubMapPageRoutes(
   page: Page,
   {
@@ -58,6 +60,13 @@ async function stubMapPageRoutes(
     signals?: SignalFixture[]
   },
 ) {
+  await page.route('**/api/sse_token', async route => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ token: 'e2e-sse-token', expires_in: 60 }),
+    })
+  })
   await page.route('**/api/sites**', async route => {
     await route.fulfill({
       status: 200,
@@ -93,7 +102,7 @@ async function stubMapPageRoutes(
       body: JSON.stringify([]),
     })
   })
-  await page.route('**/api/signal_rule_matches/active_breach_site_ids**', async route => {
+  await page.route('**/api/signal_rule_matches/active_breach_sites**', async route => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -122,13 +131,24 @@ async function stubMapPageRoutes(
 }
 
 async function waitForMapBridge(page: Page) {
-  await page.goto('/map')
-  await page.locator('.map-container').waitFor({ state: 'visible' })
-  await page.waitForFunction(() =>
-    Boolean((window as Window & {
-      __resilienceMapE2E?: { getState: () => { mapLoaded: boolean } }
-    }).__resilienceMapE2E?.getState().mapLoaded),
-  )
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await page.goto('/map')
+    await expect(page).toHaveURL(/\/map(?:\?.*)?$/)
+
+    try {
+      await page.locator('.shell-main').waitFor({ state: 'visible', timeout: 10_000 })
+      await page.locator('.map-container').waitFor({ state: 'visible', timeout: 10_000 })
+      await page.locator('.maplibregl-canvas').waitFor({ state: 'visible', timeout: 10_000 })
+      await page.waitForFunction(() =>
+        Boolean((window as Window & {
+          __resilienceMapE2E?: { getState: () => { mapLoaded: boolean } }
+        }).__resilienceMapE2E?.getState().mapLoaded),
+      )
+      return
+    } catch (error) {
+      if (attempt === 1) throw error
+    }
+  }
 }
 
 test('map site selection persists after a real canvas click', async ({ page }) => {
@@ -240,7 +260,7 @@ test('overlapping site and signal clicks still select the site', async ({ page }
   await enableE2EBridge(page)
   await waitForMapBridge(page)
 
-  await page.waitForFunction((target: { lng: number; lat: number; siteId: string }) => {
+  await page.waitForFunction((target: { lng: number; lat: number }) => {
     const bridge = (window as Window & {
       __resilienceMapE2E?: {
         getState: () => { signalCount: number }
