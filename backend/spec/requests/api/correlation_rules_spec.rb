@@ -1,6 +1,8 @@
 require "rails_helper"
 
 RSpec.describe "Api::CorrelationRules", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
   let(:commander) { create(:user, role: "commander") }
   let(:operator)  { create(:user, role: "operator") }
 
@@ -223,6 +225,213 @@ RSpec.describe "Api::CorrelationRules", type: :request do
     it "returns 401 for unauthenticated requests" do
       get "/api/correlation_rules/effectiveness"
       expect(response).to have_http_status(:unauthorized)
+    end
+  end
+
+  describe "POST /api/correlation_rules/:id/dry_run" do
+    it "preserves legacy site-specific targeting for an inactive site" do
+      site = create(:site, name: "Dormant Site", latitude: 51.5, longitude: 0.0, status: "inactive")
+      signal = create(:external_signal,
+                      signal_type: "seismic_event",
+                      lat: 51.5,
+                      lng: 0.0,
+                      occurred_at: 5.minutes.ago)
+      rule = create(:correlation_rule,
+                    created_by: commander,
+                    conditions: {
+                      "site_id" => site.id,
+                      "signal_type" => "seismic_event",
+                      "proximity_km" => 0,
+                    })
+
+      post "/api/correlation_rules/#{rule.id}/dry_run",
+           params: { hours: 1 },
+           headers: auth_headers(commander), as: :json
+
+      expect(response).to have_http_status(:ok)
+      body = JSON.parse(response.body)
+      expect(body["total_matches"]).to eq(1)
+      expect(body["matches"]).to include(
+        a_hash_including(
+          "signal_id" => signal.id,
+          "site_id" => site.id,
+          "site_name" => site.name,
+        ),
+      )
+    end
+
+    it "mirrors evaluator corroboration for compound rules using the candidate signal time window" do
+      travel_to(Time.zone.parse("2026-03-26 12:00:00 UTC")) do
+        site = create(:site, name: "Fusion Site", latitude: 51.5, longitude: 0.0, status: "active")
+        corroborating_signal = create(:external_signal,
+                                      signal_type: "gps_jamming",
+                                      source: "gpsjam",
+                                      lat: 51.5,
+                                      lng: 0.05,
+                                      occurred_at: 150.minutes.ago)
+        triggering_signal = create(:external_signal,
+                                   signal_type: "ais_gap",
+                                   source: "derived",
+                                   lat: 51.5,
+                                   lng: 0.1,
+                                   occurred_at: 2.hours.ago)
+        rule = create(:correlation_rule,
+                      created_by: commander,
+                      conditions: {
+                        "operator" => "AND",
+                        "conditions" => [
+                          { "signal_type" => "ais_gap", "proximity_km" => 50, "time_window_minutes" => 60 },
+                          { "signal_type" => "gps_jamming", "proximity_km" => 50, "time_window_minutes" => 60 },
+                        ],
+                      })
+
+        post "/api/correlation_rules/#{rule.id}/dry_run",
+             params: { hours: 4 },
+             headers: auth_headers(commander), as: :json
+
+        expect(response).to have_http_status(:ok)
+        body = JSON.parse(response.body)
+        expect(body["total_matches"]).to eq(1)
+        expect(body["matches"]).to contain_exactly(
+          a_hash_including(
+            "signal_id" => triggering_signal.id,
+            "signal_type" => triggering_signal.signal_type,
+            "site_id" => site.id,
+            "site_name" => site.name,
+          ),
+        )
+        expect(body["matches"].first["signal_id"]).not_to eq(corroborating_signal.id)
+      end
+    end
+
+    it "requires enough corroborating signals when a compound condition has count_threshold greater than one" do
+      travel_to(Time.zone.parse("2026-03-26 12:00:00 UTC")) do
+        site = create(:site, name: "Fusion Site", latitude: 51.5, longitude: 0.0, status: "active")
+        create(:external_signal,
+               signal_type: "gps_jamming",
+               source: "gpsjam",
+               lat: 51.5,
+               lng: 0.02,
+               occurred_at: 150.minutes.ago)
+        create(:external_signal,
+               signal_type: "gps_jamming",
+               source: "gpsjam",
+               lat: 51.5,
+               lng: 0.04,
+               occurred_at: 130.minutes.ago)
+        create(:external_signal,
+               signal_type: "gps_jamming",
+               source: "gpsjam",
+               lat: 51.5,
+               lng: 0.03,
+               occurred_at: 190.minutes.ago)
+        triggering_signal = create(:external_signal,
+                                   signal_type: "ais_gap",
+                                   source: "derived",
+                                   lat: 51.5,
+                                   lng: 0.1,
+                                   occurred_at: 2.hours.ago)
+        rule = create(:correlation_rule,
+                      created_by: commander,
+                      conditions: {
+                        "operator" => "AND",
+                        "conditions" => [
+                          { "signal_type" => "ais_gap", "proximity_km" => 50, "time_window_minutes" => 60 },
+                          {
+                            "signal_type" => "gps_jamming",
+                            "proximity_km" => 50,
+                            "time_window_minutes" => 60,
+                            "count_threshold" => 2,
+                          },
+                        ],
+                      })
+
+        post "/api/correlation_rules/#{rule.id}/dry_run",
+             params: { hours: 4 },
+             headers: auth_headers(commander), as: :json
+
+        expect(response).to have_http_status(:ok)
+        body = JSON.parse(response.body)
+        expect(body["total_matches"]).to eq(1)
+        expect(body["matches"]).to contain_exactly(
+          a_hash_including(
+            "signal_id" => triggering_signal.id,
+            "signal_type" => triggering_signal.signal_type,
+            "site_id" => site.id,
+            "site_name" => site.name,
+          ),
+        )
+      end
+    end
+
+    it "does not report a compound dry-run hit when corroborating signals are absent" do
+      site = create(:site, name: "Fusion Site", latitude: 51.5, longitude: 0.0, status: "active")
+      create(:external_signal,
+             signal_type: "ais_gap",
+             source: "derived",
+             lat: 51.5,
+             lng: 0.1,
+             occurred_at: 10.minutes.ago)
+      rule = create(:correlation_rule,
+                    created_by: commander,
+                    conditions: {
+                      "operator" => "AND",
+                      "conditions" => [
+                        { "signal_type" => "ais_gap", "proximity_km" => 50 },
+                        { "signal_type" => "gps_jamming", "proximity_km" => 50 },
+                      ],
+                    })
+
+      post "/api/correlation_rules/#{rule.id}/dry_run",
+           params: { hours: 1 },
+           headers: auth_headers(commander), as: :json
+
+      expect(response).to have_http_status(:ok)
+      body = JSON.parse(response.body)
+      expect(body["total_matches"]).to eq(0)
+      expect(body["matches"]).to eq([])
+    end
+
+    it "counts same-type history for untyped threshold rules" do
+      travel_to(Time.zone.parse("2026-03-26 12:00:00 UTC")) do
+        site = create(:site, name: "Threshold Site", latitude: 51.5, longitude: 0.0, status: "active")
+        earlier_signal = create(:external_signal,
+                                signal_type: "seismic_event",
+                                source: "usgs_seismic",
+                                lat: 51.5,
+                                lng: 0.02,
+                                occurred_at: 30.minutes.ago)
+        later_signal = create(:external_signal,
+                              signal_type: "seismic_event",
+                              source: "usgs_seismic",
+                              lat: 51.5,
+                              lng: 0.03,
+                              occurred_at: 10.minutes.ago)
+        rule = create(:correlation_rule,
+                      created_by: commander,
+                      conditions: {
+                        "proximity_km" => 50,
+                        "count_threshold" => 2,
+                        "time_window_minutes" => 60,
+                      })
+
+        post "/api/correlation_rules/#{rule.id}/dry_run",
+             params: { hours: 1 },
+             headers: auth_headers(commander), as: :json
+
+        expect(response).to have_http_status(:ok)
+        body = JSON.parse(response.body)
+        expect(body["total_matches"]).to eq(1)
+        expect(body["matches"]).to contain_exactly(
+          a_hash_including(
+            "signal_id" => later_signal.id,
+            "signal_type" => later_signal.signal_type,
+            "site_id" => site.id,
+            "site_name" => site.name,
+          ),
+        )
+        expect(body["matches"].first["signal_id"]).not_to eq(earlier_signal.id)
+      end
     end
   end
 end

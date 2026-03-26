@@ -26,6 +26,16 @@ module Correlations
         return
       end
 
+      unless Correlations::EvaluatorService.rule_matches_signal_at_site?(
+        rule: rule,
+        signal: signal,
+        site: site,
+        reference_time: signal.occurred_at,
+      )
+        Rails.logger.info "[RuleFiringJob] skipped — rule no longer matches current state rule=#{rule_id} signal=#{signal_id} site=#{site_id}"
+        return
+      end
+
       result = Correlations::RuleFiringService.call(rule: rule, signal: signal, site: site)
 
       unless result.success

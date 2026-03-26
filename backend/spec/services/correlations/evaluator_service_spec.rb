@@ -450,4 +450,19 @@ RSpec.describe Correlations::EvaluatorService do
       expect(service.send(:threshold_met?, scope, site, 5.0, 1)).to be(true)
     end
   end
+
+  describe ".rule_matches_signal_at_site?" do
+    it "preserves legacy site-specific targeting for inactive sites" do
+      site = create(:site, latitude: 51.5, longitude: 0.0, status: "inactive")
+      signal = create(:external_signal, lat: 51.5, lng: 0.0, signal_type: "seismic_event")
+      rule = create(:correlation_rule,
+                    conditions: {
+                      "site_id" => site.id,
+                      "signal_type" => "seismic_event",
+                      "proximity_km" => 0,
+                    })
+
+      expect(described_class.rule_matches_signal_at_site?(rule: rule, signal: signal, site: site)).to be(true)
+    end
+  end
 end

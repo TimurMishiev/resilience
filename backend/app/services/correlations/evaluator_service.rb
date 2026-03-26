@@ -36,8 +36,32 @@ module Correlations
       2.0 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(a))
     end
 
-    def initialize(signal:)
+    def initialize(signal:, reference_time: nil)
       @signal = signal
+      @reference_time = (reference_time || signal.occurred_at || Time.current)
+    end
+
+    def self.rule_matches_signal_at_site?(rule:, signal:, site:, reference_time: nil)
+      new(signal: signal, reference_time: reference_time).matches_rule_at_site?(rule, site)
+    end
+
+    def self.target_sites_scope(rule)
+      site_id = rule.conditions["site_id"]
+      return Site.where(id: site_id) if site_id.present?
+
+      base = Site.active
+      base = base.where(area_of_operation_id: rule.area_of_operation_id) if rule.area_of_operation_id.present?
+      base
+    end
+
+    def self.rule_targets_site?(rule:, site:)
+      site_id = rule.conditions.is_a?(Hash) ? rule.conditions["site_id"] : nil
+      return site.id.to_s == site_id.to_s if site_id.present?
+
+      return false unless site.status == "active"
+      return false if rule.area_of_operation_id.present? && site.area_of_operation_id != rule.area_of_operation_id
+
+      true
     end
 
     def call
@@ -47,15 +71,8 @@ module Correlations
       rules.each do |rule|
         next if rule.on_cooldown?
 
-        norm     = rule.normalized_conditions
-        operator = norm["operator"]   # "AND" or "OR"
-        conds    = norm["conditions"]
-
         target_sites(rule).each do |site|
-          results = conds.map { |cond| evaluate_single_condition(cond, site) }
-          match   = operator == "OR" ? results.any? : results.all?
-
-          next unless match
+          next unless matches_rule_at_site?(rule, site)
 
           Correlations::RuleFiringJob.perform_later(rule.id, @signal.id, site.id)
           fired << { rule_id: rule.id, site_id: site.id }
@@ -63,6 +80,18 @@ module Correlations
       end
 
       ServiceResult.success(fired_count: fired.size, matches: fired)
+    end
+
+    def matches_rule_at_site?(rule, site)
+      return false unless rule.is_active?
+      return false unless self.class.rule_targets_site?(rule: rule, site: site)
+
+      norm     = rule.normalized_conditions
+      operator = norm["operator"]
+      conds    = norm["conditions"]
+      results  = conds.map { |cond| evaluate_single_condition(cond, site) }
+
+      operator == "OR" ? results.any? : results.all?
     end
 
     private
@@ -149,18 +178,15 @@ module Correlations
     # Legacy flat rules can carry a site_id filter; compound rules scope via
     # area_of_operation_id (a model attribute) or default to all active sites.
     def target_sites(rule)
-      site_id = rule.conditions["site_id"]
-      return Site.where(id: site_id) if site_id.present?
-
-      base = Site.active
-      base = base.where(area_of_operation_id: rule.area_of_operation_id) if rule.area_of_operation_id.present?
-      base
+      self.class.target_sites_scope(rule)
     end
 
     def recent_signal_candidates(signal_type:, window_minutes:, site:, proximity_km:)
+      window_end = @reference_time
+      window_start = window_minutes.minutes.ago(window_end)
       scope = ExternalSignal.where(
         signal_type: signal_type,
-        occurred_at: window_minutes.minutes.ago..Time.current
+        occurred_at: window_start..window_end
       )
 
       return scope unless proximity_km.positive?

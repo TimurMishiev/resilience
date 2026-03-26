@@ -75,15 +75,15 @@ module Api
       # Hoist the site query outside the per-signal loop — it never changes.
       sites = dry_run_target_sites(rule)
 
-      # Preload count-threshold signal windows once per signal_type so
-      # dry_run_count_threshold? never issues a DB query inside the loop.
-      threshold_pool = build_threshold_pool(norm_conds["conditions"], since_time)
+      # Preload historical signal windows once per signal_type so dry-run can
+      # mirror evaluator corroboration/count checks without per-signal queries.
+      signal_pool = build_signal_pool(norm_conds["conditions"], since_time, signals)
 
       hits = []
 
       signals.find_each do |signal|
         sites.each do |site|
-          results = norm_conds["conditions"].map { |cond| dry_run_condition?(signal, site, cond, threshold_pool) }
+          results = norm_conds["conditions"].map { |cond| dry_run_condition?(signal, site, cond, signal_pool) }
           match   = norm_conds["operator"] == "OR" ? results.any? : results.all?
           next unless match
 
@@ -120,39 +120,64 @@ module Api
     private
 
     # Builds a hash of signal_type → array of lightweight signal structs for all
-    # conditions that use count_threshold > 1. Called once per dry_run request so
-    # dry_run_count_threshold? never hits the DB inside the signal loop.
-    def build_threshold_pool(conditions, since_time)
-      threshold_conds = conditions.select { |c| c["count_threshold"].to_i > 1 && c["signal_type"].present? }
-      threshold_conds.group_by { |c| c["signal_type"] }.transform_values do |conds|
-        max_window_min = conds.map { |c| c["time_window_minutes"].to_i.then { |m| m.zero? ? 60 : m } }.max
-        ExternalSignal
-          .where(signal_type: conds.first["signal_type"], occurred_at: max_window_min.minutes.ago..Time.current)
+    # typed conditions. Called once per dry_run request so corroboration/count
+    # checks never hit the DB inside the nested signal/site loop.
+    def build_signal_pool(conditions, since_time, candidate_signals)
+      max_window_by_type = {}
+
+      conditions.each do |cond|
+        next unless cond["signal_type"].present?
+
+        max_window_by_type[cond["signal_type"]] = [
+          max_window_by_type[cond["signal_type"]] || 0,
+          normalized_time_window_minutes(cond),
+        ].max
+      end
+
+      untyped_threshold_window = conditions
+        .select { |cond| cond["signal_type"].blank? && cond["count_threshold"].to_i > 1 }
+        .map { |cond| normalized_time_window_minutes(cond) }
+        .max
+
+      if untyped_threshold_window.present?
+        candidate_signals.reorder(nil).distinct.pluck(:signal_type).compact.each do |signal_type|
+          max_window_by_type[signal_type] = [
+            max_window_by_type[signal_type] || 0,
+            untyped_threshold_window,
+          ].max
+        end
+      end
+
+      max_window_by_type.each_with_object({}) do |(signal_type, max_window_min), pool|
+        pool_start = max_window_min.minutes.ago(since_time)
+        pool[signal_type] = ExternalSignal
+          .where(signal_type: signal_type, occurred_at: pool_start..Time.current)
           .pluck(:signal_type, :occurred_at, :lat, :lng)
           .map { |st, oa, lt, lg| { signal_type: st, occurred_at: oa, lat: lt.to_f, lng: lg.to_f } }
       end
     end
 
     def dry_run_target_sites(rule)
-      site_id = rule.conditions["site_id"]
-      return Site.where(id: site_id) if site_id.present?
-
-      base = Site.active
-      base = base.where(area_of_operation_id: rule.area_of_operation_id) if rule.area_of_operation_id.present?
-      base
+      Correlations::EvaluatorService.target_sites_scope(rule)
     end
 
     # Evaluates a single normalized condition against a signal + site pair.
     # Mirrors EvaluatorService logic but operates on historical signals without side effects.
-    def dry_run_condition?(signal, site, cond, threshold_pool = {})
+    def dry_run_condition?(signal, site, cond, signal_pool = {})
       signal_type = cond["signal_type"]
 
-      # Type filter — skip if this condition targets a different signal type
-      return false if signal_type.present? && signal_type != signal.signal_type
+      if signal_type.present? && signal_type != signal.signal_type
+        return dry_run_corroboration?(signal, site, cond, signal_pool)
+      end
 
       dry_run_proximity?(signal, site, cond) &&
         dry_run_magnitude?(signal, cond)     &&
-        dry_run_count_threshold?(signal, site, cond, threshold_pool)
+        dry_run_count_threshold?(signal, site, cond, signal_pool)
+    end
+
+    def dry_run_corroboration?(signal, site, cond, signal_pool = {})
+      threshold = [ cond["count_threshold"].to_i, 1 ].max
+      dry_run_matching_signal_count(signal, site, cond, signal_pool[cond["signal_type"]] || []) >= threshold
     end
 
     def dry_run_proximity?(signal, site, cond)
@@ -165,17 +190,17 @@ module Api
       ) <= km
     end
 
-    def dry_run_count_threshold?(signal, site, cond, threshold_pool = {})
+    def dry_run_count_threshold?(signal, site, cond, signal_pool = {})
       threshold = cond["count_threshold"].to_i
       return true if threshold <= 1
 
-      window_min   = cond["time_window_minutes"].to_i
-      window_min   = 60 if window_min.zero?
+      dry_run_matching_signal_count(signal, site, cond, signal_pool[signal.signal_type] || []) >= threshold
+    end
+
+    def dry_run_matching_signal_count(signal, site, cond, pool)
+      window_min   = normalized_time_window_minutes(cond)
       proximity_km = cond["proximity_km"].to_f
       window_start = window_min.minutes.ago(signal.occurred_at)
-
-      # Use preloaded pool — no DB query inside the loop.
-      pool = threshold_pool[signal.signal_type] || []
 
       count = pool.count do |s|
         s[:occurred_at] >= window_start &&
@@ -186,7 +211,12 @@ module Api
           ) <= proximity_km)
       end
 
-      count >= threshold
+      count
+    end
+
+    def normalized_time_window_minutes(cond)
+      window_min = cond["time_window_minutes"].to_i
+      window_min.zero? ? 60 : window_min
     end
 
     def dry_run_magnitude?(signal, cond)
