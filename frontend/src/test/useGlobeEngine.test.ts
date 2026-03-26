@@ -427,6 +427,8 @@ function defaultInput(
     asOf:             undefined,
     isReplaying:      false,
     signalFocusCenter: null,
+    selectedSiteId:    null,
+    selectedAssetId:   null,
     selectedSignalId:  null,
     onSiteClick:   vi.fn(),
     onAssetClick:  vi.fn(),
@@ -917,6 +919,76 @@ describe('useGlobeEngine adapter', () => {
 
       expect(hook.result.current.dispatchSyntheticPick(['signal-sig-1'])).toBe(true)
       expect(onSignalClick).toHaveBeenCalledWith('sig-1')
+    })
+
+    it('toggles a selected site off when the same site is picked again', async () => {
+      const refs = makeContainerRef()
+      const onSiteClick = vi.fn()
+      const hook = await bootGlobe(cesium, refs, defaultInput(refs, {
+        sites: [makeSite()],
+        selectedSiteId: 'site-1',
+        onSiteClick,
+      }))
+
+      expect(hook.result.current.dispatchSyntheticPick(['site-site-1'])).toBe(true)
+      expect(onSiteClick).toHaveBeenCalledWith(null)
+    })
+
+    it('toggles a selected asset off when the same asset is picked again', async () => {
+      const refs = makeContainerRef()
+      const onAssetClick = vi.fn()
+      const hook = await bootGlobe(cesium, refs, defaultInput(refs, {
+        assets: [makeAsset()],
+        selectedAssetId: 'asset-1',
+        onAssetClick,
+      }))
+
+      expect(hook.result.current.dispatchSyntheticPick(['asset-asset-1'])).toBe(true)
+      expect(onAssetClick).toHaveBeenCalledWith(null)
+    })
+
+    it('toggles a selected signal off when the same signal is picked again', async () => {
+      const refs = makeContainerRef()
+      const onSignalClick = vi.fn()
+      const hook = await bootGlobe(cesium, refs, defaultInput(refs, {
+        signals: [makeSignal('sig-1', '10', '20')],
+        selectedSignalId: 'sig-1',
+        onSignalClick,
+      }))
+
+      expect(hook.result.current.dispatchSyntheticPick(['signal-sig-1'])).toBe(true)
+      expect(onSignalClick).toHaveBeenCalledWith(null)
+    })
+
+    it('does not clear the active selection when a real click misses every entity', async () => {
+      const refs = makeContainerRef()
+      const onAssetClick = vi.fn()
+      await bootGlobe(cesium, refs, defaultInput(refs, {
+        assets: [makeAsset()],
+        selectedAssetId: 'asset-1',
+        onAssetClick,
+      }))
+
+      cesium.setDrillPickResults([])
+      await act(async () => {
+        cesium.fireLeftClick(4, 8)
+      })
+
+      expect(onAssetClick).not.toHaveBeenCalled()
+    })
+
+    it('does not clear the active selection when only coverage overlays are picked', async () => {
+      const refs = makeContainerRef()
+      const onAssetClick = vi.fn()
+      const hook = await bootGlobe(cesium, refs, defaultInput(refs, {
+        assets: [makeAsset()],
+        coverageCircles: [makeCoverageCircle()],
+        selectedAssetId: 'asset-1',
+        onAssetClick,
+      }))
+
+      expect(hook.result.current.dispatchSyntheticPick(['coverage-asset-1-base'])).toBe(false)
+      expect(onAssetClick).not.toHaveBeenCalled()
     })
 
     it('routes real drill-pick clicks and projects rendered positions', async () => {

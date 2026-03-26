@@ -229,6 +229,73 @@ describe('GlobePage selection routing', () => {
     expect(await screen.findByTestId('globe-inspector-panel')).toHaveTextContent('Site One')
   })
 
+  it('clears the selected site route and inspector when the engine emits a deselect click', async () => {
+    renderGlobePage('/globe')
+
+    await act(async () => {
+      globeEngineState.onSiteClick?.('site-1')
+    })
+
+    expect(await screen.findByTestId('location-search')).toHaveTextContent('?site_id=site-1')
+    expect(await screen.findByTestId('globe-inspector-panel')).toHaveTextContent('Site One')
+
+    await act(async () => {
+      globeEngineState.onSiteClick?.(null)
+    })
+
+    expect(await screen.findByTestId('location-search')).toBeEmptyDOMElement()
+    expect(screen.queryByTestId('globe-inspector-panel')).not.toBeInTheDocument()
+  })
+
+  it('clears the selected asset route and inspector when the engine emits a deselect click', async () => {
+    renderGlobePage('/globe')
+
+    await act(async () => {
+      globeEngineState.onAssetClick?.('asset-1')
+    })
+
+    expect(await screen.findByTestId('location-search')).toHaveTextContent('?asset_id=asset-1')
+    expect(await screen.findByTestId('globe-inspector-panel')).toHaveTextContent('Asset One')
+
+    await act(async () => {
+      globeEngineState.onAssetClick?.(null)
+    })
+
+    expect(await screen.findByTestId('location-search')).toBeEmptyDOMElement()
+    expect(screen.queryByTestId('globe-inspector-panel')).not.toBeInTheDocument()
+  })
+
+  it('clears the selected signal route and inspector when the engine emits a deselect click', async () => {
+    mockState.signals = [
+      {
+        id: 'sig-1',
+        signal_type: 'disaster_alert',
+        source: 'gdacs',
+        lat: 10,
+        lng: 20,
+        occurred_at: '2026-03-24T00:00:00Z',
+        external_id: null,
+        raw_payload: { name: 'Storm Warning' },
+      },
+    ]
+
+    renderGlobePage('/globe')
+
+    await act(async () => {
+      globeEngineState.onSignalClick?.('sig-1')
+    })
+
+    expect(await screen.findByTestId('location-search')).toHaveTextContent('?signal_id=sig-1')
+    expect(await screen.findByTestId('globe-inspector-panel')).toHaveTextContent('Storm Warning')
+
+    await act(async () => {
+      globeEngineState.onSignalClick?.(null)
+    })
+
+    expect(await screen.findByTestId('location-search')).toBeEmptyDOMElement()
+    expect(screen.queryByTestId('globe-inspector-panel')).not.toBeInTheDocument()
+  })
+
   it('clears a stale site selection and route when the backing site disappears after load', async () => {
     const view = renderGlobePage('/globe?site_id=site-1')
 

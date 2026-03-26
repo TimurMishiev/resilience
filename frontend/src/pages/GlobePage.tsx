@@ -415,6 +415,27 @@ export default function GlobePage() {
     return null
   }, [isReplaying, readings, selectedAsset, selectedSignal, selectedSite, sites])
 
+  const onSiteClick = useCallback((siteId: string | null) => {
+    setSelectedSiteId(siteId)
+    setSelectedAssetId(null)
+    setSelectedSignalId(null)
+    updateSelectionRoute({ siteId, assetId: null, signalId: null })
+  }, [updateSelectionRoute])
+
+  const onAssetClick = useCallback((assetId: string | null) => {
+    setSelectedSiteId(null)
+    setSelectedAssetId(assetId)
+    setSelectedSignalId(null)
+    updateSelectionRoute({ siteId: null, assetId, signalId: null })
+  }, [updateSelectionRoute])
+
+  const onSignalClick = useCallback((signalId: string | null) => {
+    setSelectedSiteId(null)
+    setSelectedAssetId(null)
+    setSelectedSignalId(signalId)
+    updateSelectionRoute({ siteId: null, assetId: null, signalId })
+  }, [updateSelectionRoute])
+
   const benchmarkTarget = useMemo(
     () => pickBenchmarkTarget(sites, signals),
     [signals, sites],
@@ -440,25 +461,12 @@ export default function GlobePage() {
     asOf: asOf ?? undefined,
     isReplaying,
     signalFocusCenter: selectedCenter,
+    selectedSiteId,
+    selectedAssetId,
     selectedSignalId,
-    onSiteClick:   (siteId)   => {
-      setSelectedSiteId(siteId)
-      setSelectedAssetId(null)
-      setSelectedSignalId(null)
-      updateSelectionRoute({ siteId, assetId: null, signalId: null })
-    },
-    onAssetClick:  (assetId)  => {
-      setSelectedSiteId(null)
-      setSelectedAssetId(assetId)
-      setSelectedSignalId(null)
-      updateSelectionRoute({ siteId: null, assetId, signalId: null })
-    },
-    onSignalClick: (signalId) => {
-      setSelectedSiteId(null)
-      setSelectedAssetId(null)
-      setSelectedSignalId(signalId)
-      updateSelectionRoute({ siteId: null, assetId: null, signalId })
-    },
+    onSiteClick,
+    onAssetClick,
+    onSignalClick,
   })
 
   const globeE2EBridgeStateRef = useRef<GlobeE2EBridgeState | null>(null)

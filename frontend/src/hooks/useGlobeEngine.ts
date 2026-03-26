@@ -412,12 +412,14 @@ export interface GlobeEngineInput {
 
   /** Optional center point for focused signal decluttering around the current selection. */
   signalFocusCenter: { lat: number; lng: number } | null
+  selectedSiteId:    string | null
+  selectedAssetId:   string | null
   selectedSignalId:  string | null
 
   // Selection callbacks — hook fires, page owns state
-  onSiteClick:   (siteId: string)   => void
-  onAssetClick:  (assetId: string)  => void
-  onSignalClick: (signalId: string) => void
+  onSiteClick:   (siteId: string | null)   => void
+  onAssetClick:  (assetId: string | null)  => void
+  onSignalClick: (signalId: string | null) => void
 }
 
 export interface GlobeEngineReturn {
@@ -462,6 +464,8 @@ export function useGlobeEngine({
   asOf,
   isReplaying,
   signalFocusCenter,
+  selectedSiteId,
+  selectedAssetId,
   selectedSignalId,
   onSiteClick,
   onAssetClick,
@@ -491,6 +495,13 @@ export function useGlobeEngine({
   useEffect(() => { sitesRef.current   = sites         }, [sites])
   useEffect(() => { assetsRef.current  = assets        }, [assets])
   useEffect(() => { readingsRef.current = readings     }, [readings])
+
+  const selectedSiteIdRef = useRef<string | null>(selectedSiteId)
+  const selectedAssetIdRef = useRef<string | null>(selectedAssetId)
+  const selectedSignalIdRef = useRef<string | null>(selectedSignalId)
+  useEffect(() => { selectedSiteIdRef.current = selectedSiteId }, [selectedSiteId])
+  useEffect(() => { selectedAssetIdRef.current = selectedAssetId }, [selectedAssetId])
+  useEffect(() => { selectedSignalIdRef.current = selectedSignalId }, [selectedSignalId])
 
   // Callback refs — prevent stale closures in the one-time handler registration
   const onSiteClickRef   = useRef(onSiteClick)
@@ -1169,21 +1180,21 @@ export function useGlobeEngine({
   const dispatchPickResult = useCallback((result: PickInspectionResult, durationMs?: number) => {
     if (result.outcome === 'site' && result.idString) {
       const siteId = result.idString.replace('site-', '')
-      onSiteClickRef.current(siteId)
+      onSiteClickRef.current(selectedSiteIdRef.current === siteId ? null : siteId)
       if (durationMs != null) recordPerfEvent('globe.pick', { outcome: result.outcome, pickedKind: result.pickedKind, id: siteId }, durationMs)
       return true
     }
 
     if (result.outcome === 'asset' && result.idString) {
       const assetId = result.idString.replace('asset-', '')
-      onAssetClickRef.current(assetId)
+      onAssetClickRef.current(selectedAssetIdRef.current === assetId ? null : assetId)
       if (durationMs != null) recordPerfEvent('globe.pick', { outcome: result.outcome, pickedKind: result.pickedKind, id: assetId }, durationMs)
       return true
     }
 
     if (result.outcome === 'signal' && result.idString) {
       const signalId = result.idString.replace('signal-', '')
-      onSignalClickRef.current(signalId)
+      onSignalClickRef.current(selectedSignalIdRef.current === signalId ? null : signalId)
       if (durationMs != null) recordPerfEvent('globe.pick', { outcome: result.outcome, pickedKind: result.pickedKind, id: signalId }, durationMs)
       return true
     }
