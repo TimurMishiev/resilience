@@ -468,6 +468,50 @@ export default function GlobePage() {
     onAssetClick,
     onSignalClick,
   })
+  const perfEnabled = isPerfEnabled()
+  const perfBenchStateRef = useRef<GlobeBenchmarkState>({
+    viewerReady: false,
+    siteCount: 0,
+    signalCount: 0,
+    selectedSiteId: null,
+    selectedAssetId: null,
+    selectedSignalId: null,
+    isCloseView: false,
+    showSignals: true,
+    showCoverage: true,
+    benchmarkTarget: null,
+  })
+  const perfSitesRef = useRef(sites)
+  const flyToHomeRef = useRef(flyToHome)
+
+  useEffect(() => {
+    perfBenchStateRef.current = {
+      viewerReady,
+      siteCount: sites.length,
+      signalCount: signals.length,
+      selectedSiteId,
+      selectedAssetId,
+      selectedSignalId,
+      isCloseView,
+      showSignals,
+      showCoverage,
+      benchmarkTarget,
+    }
+    perfSitesRef.current = sites
+    flyToHomeRef.current = flyToHome
+  }, [
+    benchmarkTarget,
+    flyToHome,
+    isCloseView,
+    selectedAssetId,
+    selectedSignalId,
+    selectedSiteId,
+    showCoverage,
+    showSignals,
+    signals.length,
+    sites,
+    viewerReady,
+  ])
 
   const globeE2EBridgeStateRef = useRef<GlobeE2EBridgeState | null>(null)
   globeE2EBridgeStateRef.current = {
@@ -595,38 +639,30 @@ export default function GlobePage() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    if (!isPerfEnabled()) {
+    if (!perfEnabled) {
       delete window.__resilienceGlobeBench
       return
     }
 
-    window.__resilienceGlobeBench = {
+    const benchApi: GlobeBenchmarkApi = {
       getState: () => ({
-        viewerReady,
-        siteCount: sites.length,
-        signalCount: signals.length,
-        selectedSiteId,
-        selectedAssetId,
-        selectedSignalId,
-        isCloseView,
-        showSignals,
-        showCoverage,
-        benchmarkTarget,
+        ...perfBenchStateRef.current,
       }),
-      getBenchmarkTarget: () => benchmarkTarget,
+      getBenchmarkTarget: () => perfBenchStateRef.current.benchmarkTarget,
       focusSite: (siteId: string) => {
-        if (!sites.some(site => site.id === siteId)) return false
+        if (!perfSitesRef.current.some(site => site.id === siteId)) return false
         setSelectedSiteId(siteId)
         setSelectedAssetId(null)
         setSelectedSignalId(null)
         return true
       },
       focusBestSite: () => {
-        if (!benchmarkTarget) return null
-        setSelectedSiteId(benchmarkTarget.siteId)
+        const currentTarget = perfBenchStateRef.current.benchmarkTarget
+        if (!currentTarget) return null
+        setSelectedSiteId(currentTarget.siteId)
         setSelectedAssetId(null)
         setSelectedSignalId(null)
-        return benchmarkTarget
+        return currentTarget
       },
       clearSelection: () => {
         setSelectedSiteId(null)
@@ -634,30 +670,21 @@ export default function GlobePage() {
         setSelectedSignalId(null)
       },
       flyHome: () => {
-        flyToHome()
+        flyToHomeRef.current()
       },
       clearPerf: () => {
         window.__resiliencePerf?.clear()
       },
       getPerfEvents: () => window.__resiliencePerf?.events ?? [],
     }
+    window.__resilienceGlobeBench = benchApi
 
     return () => {
-      delete window.__resilienceGlobeBench
+      if (window.__resilienceGlobeBench === benchApi) {
+        delete window.__resilienceGlobeBench
+      }
     }
-  }, [
-    benchmarkTarget,
-    flyToHome,
-    isCloseView,
-    viewerReady,
-    selectedAssetId,
-    selectedSignalId,
-    selectedSiteId,
-    showSignals,
-    showCoverage,
-    signals,
-    sites,
-  ])
+  }, [perfEnabled])
 
   useEffect(() => {
     if (typeof window === 'undefined') return

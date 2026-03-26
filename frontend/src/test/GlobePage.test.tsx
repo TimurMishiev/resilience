@@ -104,6 +104,10 @@ vi.mock('../hooks/useReplayParams', () => ({
   }),
 }))
 
+vi.mock('../lib/perfInstrumentation', () => ({
+  isPerfEnabled: () => window.localStorage.getItem('resilience.perf') === '1',
+}))
+
 const globeEngineState = vi.hoisted(() => ({
   onSiteClick: null as ((siteId: string | null) => void) | null,
   onAssetClick: null as ((assetId: string | null) => void) | null,
@@ -408,5 +412,50 @@ describe('GlobePage selection routing', () => {
     })
 
     expect(screen.getByTestId('location-search')).toHaveTextContent('?signal_id=sig-a')
+  })
+
+  it('keeps a stable globe benchmark bridge across live array replacement while exposing updated state', async () => {
+    window.localStorage.setItem('resilience.perf', '1')
+
+    const view = renderGlobePage('/globe')
+    const bench = window.__resilienceGlobeBench
+
+    expect(bench).toBeDefined()
+    expect(bench?.getState().signalCount).toBe(0)
+    expect(bench?.getBenchmarkTarget()).toBeNull()
+
+    mockState.signals = [
+      {
+        id: 'sig-bench',
+        signal_type: 'disaster_alert',
+        source: 'gdacs',
+        lat: 10,
+        lng: 20,
+        occurred_at: '2026-03-24T00:00:00Z',
+        external_id: null,
+        raw_payload: { name: 'Bench Signal' },
+      },
+    ]
+    await act(async () => {
+      view.rerender(view.renderTree())
+    })
+
+    expect(window.__resilienceGlobeBench).toBe(bench)
+    expect(bench?.getState().signalCount).toBe(1)
+    expect(bench?.getBenchmarkTarget()).not.toBeNull()
+  })
+
+  it('removes the benchmark bridge when perf mode is disabled after mount', async () => {
+    window.localStorage.setItem('resilience.perf', '1')
+
+    const view = renderGlobePage('/globe')
+    expect(window.__resilienceGlobeBench).toBeDefined()
+
+    window.localStorage.removeItem('resilience.perf')
+    await act(async () => {
+      view.rerender(view.renderTree())
+    })
+
+    expect(window.__resilienceGlobeBench).toBeUndefined()
   })
 })

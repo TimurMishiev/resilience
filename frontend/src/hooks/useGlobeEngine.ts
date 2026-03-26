@@ -198,6 +198,18 @@ function setEllipseMaterialColor(Cesium: CesiumModule, graphics: CesiumType.Elli
   graphics.material = new Cesium.ColorMaterialProperty(color)
 }
 
+function setEllipseMaterialProperty(
+  Cesium: CesiumModule,
+  graphics: CesiumType.EllipseGraphics,
+  property: CesiumType.Property,
+) {
+  if (graphics.material instanceof Cesium.ColorMaterialProperty) {
+    graphics.material.color = property
+    return
+  }
+  graphics.material = new Cesium.ColorMaterialProperty(property)
+}
+
 function setEllipseColorProperty(
   Cesium: CesiumModule,
   property: CesiumType.Property | undefined,
@@ -234,6 +246,22 @@ function setPolylinePositions(
     return
   }
   graphics.positions = new Cesium.ConstantProperty(positions)
+}
+
+function breachPulseColorProperty(
+  Cesium: CesiumModule,
+  kind: 'fill' | 'outline',
+) {
+  return new Cesium.CallbackProperty((time?: unknown) => {
+    const timeMs = time != null && 'JulianDate' in Cesium && Cesium.JulianDate != null && typeof Cesium.JulianDate.toDate === 'function'
+      ? Cesium.JulianDate.toDate(time as CesiumType.JulianDate).getTime()
+      : Date.now()
+    const opacity = 0.5 + 0.35 * Math.sin((timeMs / 630) * Math.PI)
+    const alpha = kind === 'fill'
+      ? 0.04 + opacity * 0.04
+      : 0.45 + opacity * 0.45
+    return Cesium.Color.fromCssColorString('#fa5252').withAlpha(alpha)
+  }, false)
 }
 
 function setPolylineNumericProperty(
@@ -480,7 +508,6 @@ export function useGlobeEngine({
   const breachEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
   const coverageEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
   const vesselTrackEntityRef = useRef<CesiumType.Entity | null>(null)
-  const breachPulseRef = useRef<ReturnType<typeof setInterval> | null>(null)
   
   // High-volume point features use PointPrimitiveCollection to avoid Entity API overhead
   const signalCollectionRef = useRef<CesiumType.PointPrimitiveCollection | null>(null)
@@ -618,10 +645,6 @@ export function useGlobeEngine({
     return () => {
       cancelled = true
       setViewerReady(false)
-      if (breachPulseRef.current !== null) {
-        clearInterval(breachPulseRef.current)
-        breachPulseRef.current = null
-      }
       if (vesselTrackEntity) {
         viewerRef.current?.entities.remove(vesselTrackEntity)
       }
@@ -882,12 +905,12 @@ export function useGlobeEngine({
     const breachedSites = sites.filter(site => site.geofence_radius_km > 0 && breachedSiteIds.has(site.id))
     const currentIds = new Set(breachedSites.map(site => `geofence-breach-${site.id}`))
     pruneEntityMap(viewer, breachEntitiesRef.current, currentIds)
+    const pulsingFillColor = breachPulseColorProperty(Cesium, 'fill')
+    const pulsingOutlineColor = breachPulseColorProperty(Cesium, 'outline')
 
     for (const site of breachedSites) {
       const key = `geofence-breach-${site.id}`
       const radiusMeters = site.geofence_radius_km * 1000
-      const fillColor = Cesium.Color.fromCssColorString('#fa5252').withAlpha(0.06)
-      const outlineColor = Cesium.Color.fromCssColorString('#fa5252').withAlpha(0.7)
       const existing = breachEntitiesRef.current.get(key)
 
       if (existing?.ellipse) {
@@ -897,8 +920,8 @@ export function useGlobeEngine({
         setEllipseNumericProperty(Cesium, existing.ellipse.semiMinorAxis, radiusMeters, next => { existing.ellipse!.semiMinorAxis = next })
         setEllipseNumericProperty(Cesium, existing.ellipse.height, 0, next => { existing.ellipse!.height = next })
         setEllipseNumericProperty(Cesium, existing.ellipse.outlineWidth, 2, next => { existing.ellipse!.outlineWidth = next })
-        setEllipseMaterialColor(Cesium, existing.ellipse, fillColor)
-        setEllipseColorProperty(Cesium, existing.ellipse.outlineColor, outlineColor, next => { existing.ellipse!.outlineColor = next })
+        setEllipseMaterialProperty(Cesium, existing.ellipse, pulsingFillColor)
+        existing.ellipse.outlineColor = pulsingOutlineColor
         continue
       }
 
@@ -909,9 +932,9 @@ export function useGlobeEngine({
         ellipse: {
           semiMajorAxis: new Cesium.ConstantProperty(radiusMeters),
           semiMinorAxis: new Cesium.ConstantProperty(radiusMeters),
-          material: new Cesium.ColorMaterialProperty(fillColor),
+          material: new Cesium.ColorMaterialProperty(pulsingFillColor),
           outline: new Cesium.ConstantProperty(true),
-          outlineColor: new Cesium.ConstantProperty(outlineColor),
+          outlineColor: pulsingOutlineColor,
           outlineWidth: new Cesium.ConstantProperty(2),
           height: new Cesium.ConstantProperty(0),
         },
@@ -919,51 +942,6 @@ export function useGlobeEngine({
       breachEntitiesRef.current.set(key, entity)
     }
   }, [breachedSiteIds, sites, viewerReady])
-
-  // ---------------------------------------------------------------------------
-  // Breach pulse — animate active breach rings only
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    const Cesium = cesiumRef.current
-    if (!viewerReady || !Cesium) return
-
-    const applyPulse = (opacity: number) => {
-      const fillAlpha = 0.04 + opacity * 0.04
-      const outlineAlpha = 0.45 + opacity * 0.45
-      const fillColor = Cesium.Color.fromCssColorString('#fa5252').withAlpha(fillAlpha)
-      const outlineColor = Cesium.Color.fromCssColorString('#fa5252').withAlpha(outlineAlpha)
-      for (const entity of breachEntitiesRef.current.values()) {
-        if (!entity.ellipse) continue
-        setEllipseMaterialColor(Cesium, entity.ellipse, fillColor)
-        setEllipseColorProperty(Cesium, entity.ellipse.outlineColor, outlineColor, next => { entity.ellipse!.outlineColor = next })
-      }
-    }
-
-    if (breachedSiteIds.size === 0) {
-      if (breachPulseRef.current !== null) {
-        clearInterval(breachPulseRef.current)
-        breachPulseRef.current = null
-      }
-      applyPulse(0.55)
-      return
-    }
-
-    if (breachPulseRef.current !== null) {
-      clearInterval(breachPulseRef.current)
-    }
-
-    breachPulseRef.current = setInterval(() => {
-      const opacity = 0.5 + 0.35 * Math.sin((Date.now() / 630) * Math.PI)
-      applyPulse(opacity)
-    }, 50)
-
-    return () => {
-      if (breachPulseRef.current !== null) {
-        clearInterval(breachPulseRef.current)
-        breachPulseRef.current = null
-      }
-    }
-  }, [breachedSiteIds, viewerReady])
 
   // ---------------------------------------------------------------------------
   // Coverage circles — incremental add/update/remove using ellipse entities

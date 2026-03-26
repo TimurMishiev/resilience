@@ -109,8 +109,20 @@ function buildCesiumFacade() {
   }
 
   class ColorMaterialProperty {
-    color: ConstantProperty
-    constructor(c: unknown) { this.color = new ConstantProperty(c) }
+    color: unknown
+    constructor(c: unknown) { this.color = c }
+  }
+
+  class CallbackProperty {
+    callback: (time?: unknown, result?: unknown) => unknown
+    isConstant: boolean
+    constructor(callback: (time?: unknown, result?: unknown) => unknown, isConstant: boolean) {
+      this.callback = callback
+      this.isConstant = isConstant
+    }
+    getValue(time?: unknown, result?: unknown) {
+      return this.callback(time, result)
+    }
   }
 
   class PolygonHierarchy {
@@ -318,19 +330,23 @@ function buildCesiumFacade() {
     entities,
     scene,
     camera,
-    clock: { currentTime: {} },
+    clock: { currentTime: new Date('2026-03-26T00:00:00Z') },
     destroy: vi.fn(),
   }
 
   const CesiumModule = {
     ConstantProperty,
     ConstantPositionProperty,
+    CallbackProperty,
     ColorMaterialProperty,
     PolygonHierarchy,
     PolylineDashMaterialProperty,
     DistanceDisplayCondition,
     PointPrimitiveCollection,
     Cartographic,
+    JulianDate: {
+      toDate: (time: unknown) => time instanceof Date ? time : new Date('2026-03-26T00:00:00Z'),
+    },
     Color,
     HeightReference: { CLAMP_TO_GROUND: 0 as unknown },
     Math: { toRadians: (deg: number) => (deg * Math.PI) / 180 },
@@ -747,6 +763,21 @@ describe('useGlobeEngine adapter', () => {
       expect(cesium.entityRegistry.has('ao-ao-1')).toBe(false)
       expect(cesium.entityRegistry.has('geofence-site-1')).toBe(false)
       expect(cesium.entityRegistry.has('geofence-breach-site-1')).toBe(false)
+    })
+
+    it('uses Cesium callback properties for active breach pulse colors instead of a JS timer', async () => {
+      const refs = makeContainerRef()
+      const site = makeSite({ geofence_radius_km: 12 })
+      await bootGlobe(cesium, refs, defaultInput(refs, {
+        sites: [site],
+        breachedSiteIds: new Set(['site-1']),
+      }))
+
+      const breach = cesium.entityRegistry.get('geofence-breach-site-1')
+      expect(breach?.ellipse?.material).toBeInstanceOf(cesium.CesiumModule.ColorMaterialProperty)
+      expect((breach?.ellipse?.material as { color: unknown }).color).toBeInstanceOf(cesium.CesiumModule.CallbackProperty)
+      expect(breach?.ellipse?.outlineColor).toBeInstanceOf(cesium.CesiumModule.CallbackProperty)
+      expect(typeof ((breach?.ellipse?.outlineColor as { getValue: (time?: unknown) => unknown }).getValue(cesium.viewer.clock.currentTime))).toBe('object')
     })
   })
 
