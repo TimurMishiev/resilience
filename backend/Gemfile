@@ -58,6 +58,7 @@ group :development, :test do
   gem "faker"
   gem "shoulda-matchers", "~> 6.0"
   gem "database_cleaner-active_record"
+  gem "simplecov", require: false
 
 
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem

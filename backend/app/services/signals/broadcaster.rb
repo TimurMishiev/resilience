@@ -13,13 +13,25 @@ module Signals
 
     def subscribe
       queue = SizedQueue.new(MAX_QUEUE_SIZE)
-      @mutex.synchronize { @clients << queue }
+      subscriber_count = @mutex.synchronize do
+        @clients << queue
+        @clients.size
+      end
+      Rails.logger.info(
+        "[Signals] subscribe client=#{queue.object_id} subscribers=#{subscriber_count} queue_capacity=#{MAX_QUEUE_SIZE}"
+      )
       queue
     end
 
     def unsubscribe(queue)
-      @mutex.synchronize { @clients.delete(queue) }
+      subscriber_count = @mutex.synchronize do
+        @clients.delete(queue)
+        @clients.size
+      end
       queue.close unless queue.closed?
+      Rails.logger.info(
+        "[Signals] unsubscribe client=#{queue.object_id} subscribers=#{subscriber_count} queue_closed=#{queue.closed?}"
+      )
     end
 
     def publish(signal_payload)
@@ -31,13 +43,19 @@ module Signals
           begin
             queue.push(payload, true)
           rescue ThreadError
-            Rails.logger.warn("[Signals] evicting slow client — queue at capacity #{MAX_QUEUE_SIZE}")
+            Rails.logger.warn(
+              "[Signals] evict_slow_client client=#{queue.object_id} queue_size=#{queue.size} " \
+              "queue_capacity=#{MAX_QUEUE_SIZE} subscribers=#{@clients.size}"
+            )
             queue.close unless queue.closed?
             dropped << queue
           rescue ClosedQueueError
             dropped << queue
           rescue StandardError => e
-            Rails.logger.error("[Signals] publish error: #{e.message}")
+            Rails.logger.error(
+              "[Signals] publish_error client=#{queue.object_id} error=#{e.class} " \
+              "message=#{e.message} subscribers=#{@clients.size}"
+            )
             queue.close unless queue.closed?
             dropped << queue
           end

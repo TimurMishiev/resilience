@@ -16,16 +16,11 @@ module Api
       queue       = broadcaster.subscribe
 
       # Send an initial connection confirmation event
-      sse_write(response.stream, event: "connected", data: { message: "stream open" })
+      return unless sse_write(response.stream, event: "connected", data: { message: "stream open" })
 
       # Heartbeat thread — keeps the TCP connection alive
-      heartbeat = Thread.new do
-        loop do
-          sleep 25
-          sse_write(response.stream, event: "heartbeat", data: { ts: Time.current.to_i })
-        rescue IOError, ActionController::Live::ClientDisconnected
-          break
-        end
+      heartbeat = start_sse_heartbeat(stream_name: "events") do
+        sse_write(response.stream, event: "heartbeat", data: { ts: Time.current.to_i })
       end
 
       # Block here, draining the queue until the client disconnects.
@@ -36,8 +31,9 @@ module Api
       # miss every named listener registered in useEventSource.ts.
       loop do
         payload = queue.pop          # blocks until a message arrives
+        break if payload.nil?
         parsed  = JSON.parse(payload)
-        sse_write(response.stream, event: parsed["event"], data: parsed["data"])
+        break unless sse_write(response.stream, event: parsed["event"], data: parsed["data"])
       rescue JSON::ParserError => e
         Rails.logger.error("[SSE] malformed queue payload — skipping: #{e.message}")
       rescue IOError, ActionController::Live::ClientDisconnected
@@ -62,6 +58,9 @@ module Api
     def sse_write(stream, event:, data:)
       stream.write("event: #{event}\n")
       stream.write("data: #{data.to_json}\n\n")
+      true
+    rescue IOError, ActionController::Live::ClientDisconnected
+      false
     end
   end
 end

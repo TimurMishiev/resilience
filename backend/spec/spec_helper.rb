@@ -13,6 +13,15 @@
 # it.
 #
 # See https://rubydoc.info/gems/rspec-core/RSpec/Core/Configuration
+if ENV["COVERAGE"] == "1"
+  require "simplecov"
+
+  SimpleCov.start "rails" do
+    enable_coverage :branch
+    add_filter "/spec/"
+  end
+end
+
 RSpec.configure do |config|
   # rspec-expectations config goes here. You can use an alternate
   # assertion/expectation library such as wrong or the stdlib/minitest

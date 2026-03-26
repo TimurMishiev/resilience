@@ -56,29 +56,43 @@ module Api
       response.headers["X-Accel-Buffering"] = "no"
 
       broadcaster = Signals::Broadcaster.instance
-      queue       = broadcaster.subscribe
       requested_since = safe_parse_datetime(params[:since])
       since           = clamped_signal_stream_since(requested_since)
-      baseline_upper_bound = Time.current
+      last_streamed_cursor = nil
 
-      sse_write(response.stream, event: "connected", data: { message: "signal stream open" })
+      queue = broadcaster.subscribe unless since
+
+      return unless sse_write(response.stream, event: "connected", data: { message: "signal stream open" })
 
       if since
-        stream_signal_baseline(response.stream, since, baseline_upper_bound)
+        baseline_upper_bound = Time.current
+        baseline_result = stream_signal_baseline(response.stream, since, baseline_upper_bound)
+        return if baseline_result.fetch(:disconnected)
+
+        last_streamed_cursor = baseline_result.fetch(:cursor)
+
+        queue = broadcaster.subscribe
+        catchup_upper_bound = Time.current
+        catchup_since = last_streamed_cursor ? [since, last_streamed_cursor.fetch(:ingested_at)].max : since
+        catchup_result = stream_signal_baseline(
+          response.stream,
+          catchup_since,
+          catchup_upper_bound,
+          after_cursor: last_streamed_cursor,
+        )
+        return if catchup_result.fetch(:disconnected)
+
+        last_streamed_cursor = catchup_result.fetch(:cursor)
       end
 
-      heartbeat = Thread.new do
-        loop do
-          sleep 25
-          sse_write(response.stream, event: "heartbeat", data: { ts: Time.current.to_i })
-        rescue IOError, ActionController::Live::ClientDisconnected
-          break
-        end
+      heartbeat = start_sse_heartbeat(stream_name: "signals") do
+        sse_write(response.stream, event: "heartbeat", data: { ts: Time.current.to_i })
       end
 
       loop do
         payload = queue.pop
         break if payload.nil?
+        next unless signal_payload_after_cursor?(payload, last_streamed_cursor)
         response.stream.write("event: signal\ndata: #{payload}\n\n")
       rescue IOError, ActionController::Live::ClientDisconnected
         break
@@ -125,8 +139,9 @@ module Api
 
     def sse_write(stream, event:, data:)
       stream.write("event: #{event}\ndata: #{data.to_json}\n\n")
+      true
     rescue IOError, ActionController::Live::ClientDisconnected
-      # client disconnected — caller loop handles cleanup
+      false
     end
 
     def clamped_signal_stream_since(since)
@@ -134,9 +149,14 @@ module Api
       [since, SIGNAL_STREAM_BASELINE_MAX_AGE.ago].max
     end
 
-    def stream_signal_baseline(stream, since, upper_bound)
+    def stream_signal_baseline(stream, since, upper_bound, after_cursor: nil)
       cursor_ingested_at = nil
       cursor_id = nil
+
+      if after_cursor
+        cursor_ingested_at = after_cursor.fetch(:ingested_at)
+        cursor_id = after_cursor.fetch(:id)
+      end
 
       loop do
         scope = ExternalSignal
@@ -158,15 +178,39 @@ module Api
         break if batch.empty?
 
         batch.each do |signal|
-          stream.write("event: signal\ndata: #{Signals::PayloadSerializer.call(signal).to_json}\n\n")
-        rescue IOError, ActionController::Live::ClientDisconnected
-          return
-        end
+          return {
+            cursor: signal_stream_cursor(cursor_ingested_at, cursor_id),
+            disconnected: true,
+          } unless sse_write(stream, event: "signal", data: Signals::PayloadSerializer.call(signal))
 
-        last = batch.last
-        cursor_ingested_at = last.ingested_at
-        cursor_id = last.id
+          cursor_ingested_at = signal.ingested_at
+          cursor_id = signal.id
+        end
       end
+
+      {
+        cursor: signal_stream_cursor(cursor_ingested_at, cursor_id),
+        disconnected: false,
+      }
+    end
+
+    def signal_payload_after_cursor?(payload, cursor)
+      return true unless cursor
+
+      body = JSON.parse(payload)
+      ingested_at = Time.iso8601(body.fetch("ingested_at"))
+      id = body.fetch("id")
+
+      ingested_at > cursor.fetch(:ingested_at) ||
+        (ingested_at == cursor.fetch(:ingested_at) && id > cursor.fetch(:id))
+    rescue JSON::ParserError, KeyError, ArgumentError, TypeError
+      true
+    end
+
+    def signal_stream_cursor(ingested_at, id)
+      return nil unless ingested_at && id
+
+      { ingested_at: ingested_at, id: id }
     end
 
     def signal_params

@@ -3,6 +3,8 @@ require "rails_helper"
 RSpec.describe Correlations::RuleFiringJob do
   include ActiveSupport::Testing::TimeHelpers
 
+  let(:logger) { instance_double(ActiveSupport::Logger, info: nil, warn: nil, error: nil) }
+
   let(:site) do
     create(:site, name: "Site Alpha", latitude: 51.5, longitude: 0.0, status: "active")
   end
@@ -19,6 +21,7 @@ RSpec.describe Correlations::RuleFiringJob do
   before do
     allow(Sse::Broadcaster.instance).to receive(:publish)
     allow(Incidents::FusionService).to receive(:call)
+    allow(Rails).to receive(:logger).and_return(logger)
   end
 
   it "fires when the rule still matches at execution time" do
@@ -26,6 +29,17 @@ RSpec.describe Correlations::RuleFiringJob do
       described_class.perform_now(rule.id, signal.id, site.id)
     }.to change(Task, :count).by(1)
       .and change(SignalRuleMatch, :count).by(1)
+
+    expect(logger).to have_received(:info)
+      .with(include(
+        "[RuleFiringJob]",
+        "outcome=fired",
+        "rule=#{rule.id}",
+        "signal=#{signal.id}",
+        "site=#{site.id}",
+        "actions=create_task",
+        "attempt=",
+      ))
   end
 
   it "skips when the rule was deactivated after enqueue" do
@@ -37,6 +51,14 @@ RSpec.describe Correlations::RuleFiringJob do
 
     expect(SignalRuleMatch.count).to eq(0)
     expect(rule.reload.last_fired_at).to be_nil
+    expect(logger).to have_received(:info)
+      .with(include(
+        "[RuleFiringJob]",
+        "outcome=revalidation_skipped",
+        "rule=#{rule.id}",
+        "signal=#{signal.id}",
+        "site=#{site.id}",
+      ))
   end
 
   it "skips when the rule conditions changed and the signal no longer matches" do
@@ -48,6 +70,55 @@ RSpec.describe Correlations::RuleFiringJob do
 
     expect(SignalRuleMatch.count).to eq(0)
     expect(rule.reload.last_fired_at).to be_nil
+  end
+
+  it "logs a structured missing-record outcome" do
+    described_class.perform_now(rule.id, SecureRandom.uuid, site.id)
+
+    expect(logger).to have_received(:warn)
+      .with(include(
+        "[RuleFiringJob]",
+        "outcome=missing_records",
+        "rule=#{rule.id}",
+        "site=#{site.id}",
+      ))
+  end
+
+  it "logs a structured failed outcome when firing fails unexpectedly" do
+    allow(Correlations::RuleFiringService).to receive(:call)
+      .and_return(ServiceResult.failure(errors: ["boom"]))
+
+    expect {
+      described_class.perform_now(rule.id, signal.id, site.id)
+    }.to raise_error(RuntimeError, /\[RuleFiringJob\] Rule firing failed: boom/)
+
+    expect(logger).to have_received(:error)
+      .with(include(
+        "[RuleFiringJob]",
+        "outcome=failed",
+        "rule=#{rule.id}",
+        "signal=#{signal.id}",
+        "site=#{site.id}",
+        "error_message=\"boom\"",
+      ))
+  end
+
+  it "logs a structured cooldown outcome when another worker already claimed the slot" do
+    allow(Correlations::RuleFiringService).to receive(:call)
+      .and_return(ServiceResult.failure(errors: ["cooldown"]))
+
+    expect {
+      described_class.perform_now(rule.id, signal.id, site.id)
+    }.not_to change(Task, :count)
+
+    expect(logger).to have_received(:info)
+      .with(include(
+        "[RuleFiringJob]",
+        "outcome=cooldown_skipped",
+        "rule=#{rule.id}",
+        "signal=#{signal.id}",
+        "site=#{site.id}",
+      ))
   end
 
   it "fires when execution is delayed but the original signal-time window still matched" do

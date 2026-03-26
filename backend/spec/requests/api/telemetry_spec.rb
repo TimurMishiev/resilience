@@ -5,6 +5,7 @@ RSpec.describe "Api::Telemetry", type: :request do
   let!(:site) { create(:site) }
   let!(:asset_a) { create(:asset, name: "Asset Alpha", home_site: site) }
   let!(:asset_b) { create(:asset, name: "Asset Bravo", home_site: site) }
+  let(:sse_token) { JwtAuthenticatable.encode_sse(current_user.id) }
 
   describe "GET /api/telemetry" do
     it "returns the latest telemetry reading per asset" do
@@ -49,6 +50,26 @@ RSpec.describe "Api::Telemetry", type: :request do
     it "requires authentication" do
       get "/api/telemetry"
       expect(response).to have_http_status(:unauthorized)
+    end
+  end
+
+  describe "GET /api/telemetry/stream" do
+    let(:queue) { Queue.new }
+    let(:broadcaster) { instance_double(Telemetry::Broadcaster, subscribe: queue, unsubscribe: nil) }
+
+    before do
+      allow(Telemetry::Broadcaster).to receive(:instance).and_return(broadcaster)
+    end
+
+    it "treats a closed queue as terminal without emitting empty telemetry frames" do
+      queue.close
+
+      get "/api/telemetry/stream", params: { token: sse_token }
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include("event: connected")
+      expect(response.body).not_to include("event: telemetry")
+      expect(broadcaster).to have_received(:unsubscribe).with(queue)
     end
   end
 end

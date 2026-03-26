@@ -252,5 +252,151 @@ RSpec.describe "Api::Signals", type: :request do
       expect(streamed_payloads.last.fetch("signal_type")).to eq("gps_jamming")
       expect(Time.zone.parse(streamed_payloads.last.fetch("ingested_at"))).to be > Time.current
     end
+
+    it "replays signals created during a large baseline before switching to the live queue" do
+      queue << nil
+
+      baseline_signals = Array.new(205) do |index|
+        create(:external_signal, external_id: "baseline-burst-#{index}").tap do |signal|
+          ingested_at = 23.hours.ago + index.minutes
+          signal.update_columns(
+            occurred_at: ingested_at,
+            ingested_at: ingested_at,
+          )
+        end
+      end
+
+      catchup_signals = []
+      baseline_calls = 0
+
+      allow_any_instance_of(Api::SignalsController)
+        .to receive(:stream_signal_baseline)
+        .and_wrap_original do |original, *args, **kwargs|
+          baseline_calls += 1
+          result = original.call(*args, **kwargs)
+
+          next result unless baseline_calls == 1
+
+          catchup_signals = Array.new(Signals::Broadcaster::MAX_QUEUE_SIZE + 25) do |index|
+            create(:external_signal, external_id: "catchup-burst-#{index}").tap do |signal|
+              signal.update_columns(
+                occurred_at: Time.current,
+                ingested_at: Time.current,
+              )
+            end
+          end
+
+          result
+        end
+
+      get "/api/signals/stream",
+          params: { token: sse_token, since: 7.days.ago.iso8601 }
+
+      expect(response).to have_http_status(:ok)
+
+      streamed_payloads = response.body
+        .scan(/^event: signal\ndata: (.+)$/)
+        .flatten
+        .map { |payload| JSON.parse(payload) }
+
+      baseline_ids = baseline_signals
+        .sort_by { |signal| [signal.ingested_at, signal.id] }
+        .map(&:id)
+
+      catchup_ids = catchup_signals
+        .sort_by { |signal| [signal.ingested_at, signal.id] }
+        .map(&:id)
+
+      expect(streamed_payloads.map { |payload| payload.fetch("id") }).to eq([
+        *baseline_ids,
+        *catchup_ids,
+      ])
+    end
+
+    it "does not subscribe to the live queue after a disconnect during baseline replay" do
+      create(:external_signal, external_id: "disconnect-baseline").tap do |signal|
+        ingested_at = 5.minutes.ago
+        signal.update_columns(
+          occurred_at: ingested_at,
+          ingested_at: ingested_at,
+        )
+      end
+
+      expect(broadcaster).not_to receive(:subscribe)
+
+      signal_write_count = 0
+
+      allow_any_instance_of(Api::SignalsController)
+        .to receive(:sse_write)
+        .and_wrap_original do |original, stream, event:, data:|
+          if event == "signal"
+            signal_write_count += 1
+            next false if signal_write_count == 1
+          end
+
+          original.call(stream, event: event, data: data)
+        end
+
+      get "/api/signals/stream",
+          params: { token: sse_token, since: 1.hour.ago.iso8601 }
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include("event: connected")
+      expect(response.body).not_to include("event: signal")
+    end
+
+    it "deduplicates queue-published signals that overlap with the catchup replay window" do
+      baseline_signals = Array.new(3) do |index|
+        create(:external_signal, external_id: "baseline-overlap-#{index}").tap do |signal|
+          ingested_at = 10.minutes.ago + index.minutes
+          signal.update_columns(
+            occurred_at: ingested_at,
+            ingested_at: ingested_at,
+          )
+        end
+      end
+
+      overlap_signal = nil
+      baseline_calls = 0
+
+      allow_any_instance_of(Api::SignalsController)
+        .to receive(:stream_signal_baseline)
+        .and_wrap_original do |original, *args, **kwargs|
+          baseline_calls += 1
+
+          if baseline_calls == 2
+            overlap_signal = create(:external_signal, external_id: "overlap-live").tap do |signal|
+              signal.update_columns(
+                occurred_at: Time.current,
+                ingested_at: Time.current,
+              )
+            end
+
+            queue << Signals::PayloadSerializer.call(overlap_signal).to_json
+            queue << nil
+          end
+
+          original.call(*args, **kwargs)
+        end
+
+      get "/api/signals/stream",
+          params: { token: sse_token, since: 6.hours.ago.iso8601 }
+
+      expect(response).to have_http_status(:ok)
+
+      streamed_payloads = response.body
+        .scan(/^event: signal\ndata: (.+)$/)
+        .flatten
+        .map { |payload| JSON.parse(payload) }
+
+      baseline_ids = baseline_signals
+        .sort_by { |signal| [signal.ingested_at, signal.id] }
+        .map(&:id)
+
+      expect(streamed_payloads.map { |payload| payload.fetch("id") }).to eq([
+        *baseline_ids,
+        overlap_signal.id,
+      ])
+    end
   end
 end

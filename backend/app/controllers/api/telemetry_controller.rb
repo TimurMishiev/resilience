@@ -33,16 +33,11 @@ module Api
       queue       = broadcaster.subscribe
 
       # Send an initial connected event so the client knows the stream is live
-      sse_write(response.stream, event: "connected", data: { message: "telemetry stream open" })
+      return unless sse_write(response.stream, event: "connected", data: { message: "telemetry stream open" })
 
       # Heartbeat thread — keeps the connection alive through proxies / load balancers
-      heartbeat = Thread.new do
-        loop do
-          sleep 25
-          sse_write(response.stream, event: "heartbeat", data: { ts: Time.current.to_i })
-        rescue IOError, ActionController::Live::ClientDisconnected
-          break
-        end
+      heartbeat = start_sse_heartbeat(stream_name: "telemetry") do
+        sse_write(response.stream, event: "heartbeat", data: { ts: Time.current.to_i })
       end
 
       # Main loop — pop telemetry payloads and forward to the client
@@ -69,8 +64,9 @@ module Api
 
     def sse_write(stream, event:, data:)
       stream.write("event: #{event}\ndata: #{data.to_json}\n\n")
+      true
     rescue IOError, ActionController::Live::ClientDisconnected
-      # client gone — let the main loop handle cleanup
+      false
     end
 
     def serialize_reading(reading)

@@ -1,8 +1,11 @@
 require "rails_helper"
 
 RSpec.describe Correlations::RuleFiringService do
+  let(:logger) { instance_double(ActiveSupport::Logger, info: nil, error: nil) }
+
   before do
     allow(Sse::Broadcaster.instance).to receive(:publish)
+    allow(Rails).to receive(:logger).and_return(logger)
   end
 
   let(:site)   { create(:site, name: "Site Alpha", latitude: 51.5, longitude: 0.0) }
@@ -63,6 +66,20 @@ RSpec.describe Correlations::RuleFiringService do
         hash_including(event: "rule_fired", data: hash_including(rule_name: "Seismic Alert"))
       )
     end
+
+    it "logs a structured fired outcome" do
+      result
+
+      expect(logger).to have_received(:info)
+        .with(include(
+          "[RuleFiringService]",
+          "outcome=fired",
+          "rule=#{rule.id}",
+          "signal=#{signal.id}",
+          "site=#{site.id}",
+          "actions=create_task",
+        ))
+    end
   end
 
   describe "title interpolation" do
@@ -117,6 +134,42 @@ RSpec.describe Correlations::RuleFiringService do
 
     it "does not update last_fired_at" do
       expect { result }.not_to change { rule.reload.last_fired_at }
+    end
+
+    it "logs a structured failed outcome" do
+      result
+
+      expect(logger).to have_received(:error)
+        .with(include(
+          "[RuleFiringService]",
+          "outcome=failed",
+          "rule=#{rule.id}",
+          "signal=#{signal.id}",
+          "site=#{site.id}",
+          "error_message=\"title is blank\"",
+        ))
+    end
+  end
+
+  describe "when cooldown is already claimed" do
+    before do
+      described_class.call(rule: rule, signal: signal, site: site)
+      logger.reset if logger.respond_to?(:reset)
+    end
+
+    it "returns cooldown failure and logs a structured cooldown outcome" do
+      cooldown_result = described_class.call(rule: rule, signal: signal, site: site)
+
+      expect(cooldown_result.success).to be(false)
+      expect(cooldown_result.errors).to eq(["cooldown"])
+      expect(logger).to have_received(:info)
+        .with(include(
+          "[RuleFiringService]",
+          "outcome=cooldown_skipped",
+          "rule=#{rule.id}",
+          "signal=#{signal.id}",
+          "site=#{site.id}",
+        ))
     end
   end
 

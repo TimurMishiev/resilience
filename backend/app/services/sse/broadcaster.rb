@@ -1,3 +1,5 @@
+require "singleton"
+
 module Sse
   # Thread-safe pub/sub broadcaster for SSE connections.
   # Each connected client registers a Queue. On publish, every
@@ -14,13 +16,26 @@ module Sse
     # Register a new client queue. Returns the queue.
     def subscribe
       queue = Queue.new
-      @mutex.synchronize { @clients << queue }
+      subscriber_count = @mutex.synchronize do
+        @clients << queue
+        @clients.size
+      end
+      Rails.logger.info(
+        "[SSE] subscribe client=#{queue.object_id} subscribers=#{subscriber_count} queue_capacity=#{MAX_QUEUE_SIZE}"
+      )
       queue
     end
 
     # Remove a client queue (called on disconnect).
     def unsubscribe(queue)
-      @mutex.synchronize { @clients.delete(queue) }
+      subscriber_count = @mutex.synchronize do
+        @clients.delete(queue)
+        @clients.size
+      end
+      queue.close unless queue.closed?
+      Rails.logger.info(
+        "[SSE] unsubscribe client=#{queue.object_id} subscribers=#{subscriber_count} queue_closed=#{queue.closed?}"
+      )
     end
 
     # Maximum number of unread messages allowed in a single client's queue.
@@ -39,8 +54,10 @@ module Sse
         @clients.each do |q|
           if q.size >= MAX_QUEUE_SIZE
             Rails.logger.warn(
-              "[SSE] evicting slow client — queue at #{q.size} (event=#{event})"
+              "[SSE] evict_slow_client client=#{q.object_id} event=#{event} queue_size=#{q.size} " \
+              "queue_capacity=#{MAX_QUEUE_SIZE} subscribers=#{@clients.size}"
             )
+            q.close unless q.closed?
             dropped << q
           else
             begin
@@ -48,7 +65,11 @@ module Sse
             rescue ClosedQueueError
               dropped << q
             rescue => e
-              Rails.logger.error("[SSE] publish error (event=#{event}): #{e.message}")
+              Rails.logger.error(
+                "[SSE] publish_error client=#{q.object_id} event=#{event} error=#{e.class} " \
+                "message=#{e.message} subscribers=#{@clients.size}"
+              )
+              q.close unless q.closed?
               dropped << q
             end
           end

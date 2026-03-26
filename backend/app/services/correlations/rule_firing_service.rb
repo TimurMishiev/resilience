@@ -100,12 +100,27 @@ module Correlations
       # Incident fusion — runs after commit, non-transactional.
       Incidents::FusionService.call(match: match) if match
 
+      log_outcome(
+        :info,
+        outcome: "fired",
+        task: task,
+        match: match,
+        actions_taken: actions_taken,
+      )
+
       ServiceResult.success(match: match, task: task, actions_taken: actions_taken)
     rescue CooldownActive
-      Rails.logger.info "[RuleFiringService] cooldown active (concurrent claim) rule=#{@rule.id} site=#{@site.id}"
+      log_outcome(:info, outcome: "cooldown_skipped")
       ServiceResult.failure(errors: ["cooldown"])
     rescue StandardError => e
-      Rails.logger.error "[RuleFiringService] rule=#{@rule.id} signal=#{@signal.id} site=#{@site.id} error=#{e.class}: #{e.message}"
+      log_outcome(
+        :error,
+        outcome: "failed",
+        task: task,
+        match: match,
+        actions_taken: actions_taken,
+        error: e,
+      )
       ServiceResult.failure(errors: [e.message])
     end
 
@@ -285,6 +300,26 @@ module Correlations
       freshness   = (1.0 - age_seconds / window_seconds).clamp(0.0, 1.0)
 
       (prox_score + freshness) / 2.0
+    end
+
+    def log_outcome(level, outcome:, task: nil, match: nil, actions_taken: nil, error: nil)
+      parts = [
+        "[RuleFiringService]",
+        "outcome=#{outcome}",
+        "rule=#{@rule.id}",
+        "signal=#{@signal.id}",
+        "site=#{@site.id}",
+      ]
+
+      parts << "match=#{match.id}" if match&.id
+      parts << "task=#{task.id}" if task&.id
+      parts << "confidence=#{match.confidence}" if match&.confidence
+      parts << "workflow_status=#{match.workflow_status}" if match&.workflow_status.present?
+      parts << "actions=#{actions_taken.join(',')}" if actions_taken.present?
+      parts << "error_class=#{error.class}" if error
+      parts << "error_message=#{error.message.inspect}" if error
+
+      Rails.logger.public_send(level, parts.join(" "))
     end
   end
 end
