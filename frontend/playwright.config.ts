@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
+const DEFAULT_E2E_BASE_URL = 'http://127.0.0.1:4178'
+
 export default defineConfig({
   testDir: './e2e',
   globalSetup: './e2e/global.setup.ts',
@@ -12,7 +14,9 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: 'list',
   use: {
-    baseURL: process.env.E2E_BASE_URL ?? 'http://127.0.0.1:3000',
+    // Local E2E is validated against the current Vite preview app so the
+    // browser hits the same build artifact the targeted Playwright runs use.
+    baseURL: process.env.E2E_BASE_URL ?? DEFAULT_E2E_BASE_URL,
     storageState: './e2e/.auth/commander.json',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',

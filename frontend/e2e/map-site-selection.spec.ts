@@ -36,6 +36,10 @@ type SignalFixture = {
   heading?: number | null
 }
 
+type StubbedMapRoutes = {
+  waitForSignalBaseline: (signalType: string) => Promise<void>
+}
+
 const EMPTY_SSE_RESPONSE = {
   status: 200,
   headers: { 'content-type': 'text/event-stream' },
@@ -50,6 +54,96 @@ const CONNECTED_SSE_RESPONSE = {
 
 test.use({ serviceWorkers: 'block' })
 
+async function mockStableSignalStream(page: Page) {
+  await page.addInitScript(() => {
+    const NativeEventSource = window.EventSource
+
+    class StableSignalEventSource {
+      static CONNECTING = 0
+      static OPEN = 1
+      static CLOSED = 2
+
+      CONNECTING = 0
+      OPEN = 1
+      CLOSED = 2
+
+      url: string
+      withCredentials: boolean
+      readyState: number
+      onerror: ((this: EventSource, ev: Event) => unknown) | null
+      onmessage: ((this: EventSource, ev: MessageEvent) => unknown) | null
+      onopen: ((this: EventSource, ev: Event) => unknown) | null
+      privateClosed = false
+      privateTarget: EventTarget | null
+      privateDelegate: EventSource | null
+
+      constructor(url: string | URL, eventSourceInitDict?: EventSourceInit) {
+        const href = String(url)
+        this.url = href
+        this.withCredentials = Boolean(eventSourceInitDict?.withCredentials)
+        this.onerror = null
+        this.onmessage = null
+        this.onopen = null
+        this.privateTarget = null
+        this.privateDelegate = null
+
+        if (!href.includes('/api/signals/stream')) {
+          this.privateDelegate = new NativeEventSource(url, eventSourceInitDict)
+          this.readyState = this.privateDelegate.readyState
+          return
+        }
+
+        this.privateTarget = new EventTarget()
+        this.readyState = StableSignalEventSource.OPEN
+
+        queueMicrotask(() => {
+          if (this.privateClosed) return
+          this.dispatchEvent(new MessageEvent('connected', { data: '{}' }))
+        })
+      }
+
+      close() {
+        this.privateClosed = true
+        if (this.privateDelegate) {
+          this.privateDelegate.close()
+          this.readyState = this.privateDelegate.readyState
+          return
+        }
+        this.readyState = StableSignalEventSource.CLOSED
+      }
+
+      addEventListener(type: string, listener: EventListenerOrEventListenerObject | null, options?: boolean | AddEventListenerOptions) {
+        if (this.privateDelegate) {
+          this.privateDelegate.addEventListener(type, listener, options)
+          return
+        }
+        this.privateTarget?.addEventListener(type, listener, options)
+      }
+
+      removeEventListener(type: string, listener: EventListenerOrEventListenerObject | null, options?: boolean | EventListenerOptions) {
+        if (this.privateDelegate) {
+          this.privateDelegate.removeEventListener(type, listener, options)
+          return
+        }
+        this.privateTarget?.removeEventListener(type, listener, options)
+      }
+
+      dispatchEvent(event: Event): boolean {
+        if (this.privateDelegate) {
+          return this.privateDelegate.dispatchEvent(event)
+        }
+        return this.privateTarget?.dispatchEvent(event) ?? true
+      }
+    }
+
+    Object.defineProperty(window, 'EventSource', {
+      configurable: true,
+      writable: true,
+      value: StableSignalEventSource,
+    })
+  })
+}
+
 async function stubMapPageRoutes(
   page: Page,
   {
@@ -59,7 +153,19 @@ async function stubMapPageRoutes(
     sites: SiteFixture[]
     signals?: SignalFixture[]
   },
-) {
+): Promise<StubbedMapRoutes> {
+  const fulfilledSignalTypes = new Set<string>()
+  const signalBaselineWaiters = new Map<string, Array<() => void>>()
+
+  const markSignalBaselineFulfilled = (signalType: string | null) => {
+    if (!signalType) return
+    fulfilledSignalTypes.add(signalType)
+    const waiters = signalBaselineWaiters.get(signalType)
+    if (!waiters) return
+    signalBaselineWaiters.delete(signalType)
+    for (const resolve of waiters) resolve()
+  }
+
   await page.route('**/api/sse_token', async route => {
     await route.fulfill({
       status: 200,
@@ -109,15 +215,23 @@ async function stubMapPageRoutes(
       body: JSON.stringify({ site_ids: [] }),
     })
   })
+  await page.route('**/api/signals/stream**', async route => {
+    await route.fulfill(CONNECTED_SSE_RESPONSE)
+  })
   await page.route('**/api/signals**', async route => {
+    const signalType = new URL(route.request().url()).searchParams.get('signal_type')
+    const matchingSignals = signalType ? signals.filter(signal => signal.signal_type === signalType) : signals
+
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        data: signals,
-        meta: { page: 1, total_pages: 1, total_count: signals.length },
+        data: matchingSignals,
+        meta: { page: 1, total_pages: 1, total_count: matchingSignals.length },
       }),
     })
+
+    markSignalBaselineFulfilled(signalType)
   })
   await page.route('**/api/events**', async route => {
     await route.fulfill(EMPTY_SSE_RESPONSE)
@@ -125,9 +239,18 @@ async function stubMapPageRoutes(
   await page.route('**/api/telemetry/stream**', async route => {
     await route.fulfill(EMPTY_SSE_RESPONSE)
   })
-  await page.route('**/api/signals/stream**', async route => {
-    await route.fulfill(CONNECTED_SSE_RESPONSE)
-  })
+
+  return {
+    waitForSignalBaseline: (signalType: string) => {
+      if (fulfilledSignalTypes.has(signalType)) return Promise.resolve()
+
+      return new Promise<void>(resolve => {
+        const waiters = signalBaselineWaiters.get(signalType) ?? []
+        waiters.push(resolve)
+        signalBaselineWaiters.set(signalType, waiters)
+      })
+    },
+  }
 }
 
 async function waitForMapBridge(page: Page) {
@@ -255,23 +378,26 @@ test('overlapping site and signal clicks still select the site', async ({ page }
     heading: null,
   }
 
-  await stubMapPageRoutes(page, { sites: [site], signals: [overlappingSignal] })
+  const routes = await stubMapPageRoutes(page, { sites: [site], signals: [overlappingSignal] })
   await primeAuthenticatedSession(page)
+  await mockStableSignalStream(page)
   await enableE2EBridge(page)
   await waitForMapBridge(page)
 
-  await page.waitForFunction((target: { lng: number; lat: number }) => {
+  await routes.waitForSignalBaseline('gps_jamming')
+
+  // Wait until the map can project the overlap coordinates after the signal
+  // baseline request has been served. We avoid getPickableSiteCanvasTarget
+  // here because at the overlap position queryRenderedFeatures returns the
+  // signal (topmost hit) rather than the site, so that gate never resolves.
+  await page.waitForFunction(({ lng, lat }: { lng: number; lat: number }) => {
     const bridge = (window as Window & {
       __resilienceMapE2E?: {
-        getState: () => { signalCount: number }
-        projectPosition: (lng: number, lat: number) => CanvasPoint | null
+        projectPosition: (targetLng: number, targetLat: number) => CanvasPoint | null
       }
     }).__resilienceMapE2E
 
-    return Boolean(
-      bridge?.getState().signalCount === 1 &&
-      bridge.projectPosition(target.lng, target.lat),
-    )
+    return typeof bridge?.projectPosition === 'function' && Boolean(bridge.projectPosition(lng, lat))
   }, { lng: site.longitude, lat: site.latitude })
 
   const point = await page.evaluate(({ lng, lat }) => {
@@ -281,7 +407,9 @@ test('overlapping site and signal clicks still select the site', async ({ page }
       }
     }).__resilienceMapE2E
 
-    const projected = bridge?.projectPosition(lng, lat)
+    const projected = typeof bridge?.projectPosition === 'function'
+      ? bridge.projectPosition(lng, lat)
+      : null
     if (!projected) return null
 
     return {

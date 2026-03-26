@@ -4,6 +4,8 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { login } from './helpers'
 
+const DEFAULT_E2E_BASE_URL = 'http://127.0.0.1:4178'
+
 const E2E_DIR = dirname(fileURLToPath(import.meta.url))
 const AUTH_STATE_PATH = resolve(E2E_DIR, '.auth/commander.json')
 const AUTH_USER_PATH = resolve(E2E_DIR, '.auth/commander-user.json')
@@ -28,7 +30,7 @@ export default async function globalSetup(config: FullConfig) {
 
   const baseURL = config.projects[0]?.use?.baseURL
   const page = await browser.newPage({
-    baseURL: typeof baseURL === 'string' ? baseURL : 'http://127.0.0.1:3000',
+    baseURL: typeof baseURL === 'string' ? baseURL : DEFAULT_E2E_BASE_URL,
   })
 
   await login(page)
