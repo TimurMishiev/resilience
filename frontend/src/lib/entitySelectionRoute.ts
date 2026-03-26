@@ -11,6 +11,15 @@ export interface EntitySelectionSyncMetadata {
   token: number
 }
 
+export interface EntitySelectionAvailability {
+  sitesLoaded: boolean
+  assetsLoaded: boolean
+  signalsLoaded: boolean
+  siteIds: Iterable<string>
+  assetIds: Iterable<string>
+  signalIds: Iterable<string>
+}
+
 const ENTITY_SELECTION_PARAM_KEYS = ['site_id', 'asset_id', 'signal_id'] as const
 const ENTITY_SELECTION_SYNC_STATE_KEY = '__resilienceEntitySelectionSync'
 const MAX_PENDING_ENTITY_SELECTION_SYNC_TOKENS = 20
@@ -88,6 +97,53 @@ export function clearEntitySelectionRoute(search: string): string {
     assetId: null,
     signalId: null,
   })
+}
+
+function iterableContains(values: Iterable<string>, target: string): boolean {
+  for (const value of values) {
+    if (value === target) return true
+  }
+  return false
+}
+
+export function isEntitySelectionMissingAfterLoad(
+  selection: EntitySelectionRouteState,
+  availability: EntitySelectionAvailability,
+): boolean {
+  const normalized = normalizeEntitySelectionRoute(selection)
+
+  if (normalized.siteId) {
+    return availability.sitesLoaded && !iterableContains(availability.siteIds, normalized.siteId)
+  }
+
+  if (normalized.assetId) {
+    return availability.assetsLoaded && !iterableContains(availability.assetIds, normalized.assetId)
+  }
+
+  if (normalized.signalId) {
+    return availability.signalsLoaded && !iterableContains(availability.signalIds, normalized.signalId)
+  }
+
+  return false
+}
+
+export function isEntitySelectionRouteAuthoritative(
+  locationState: unknown,
+  source: EntitySelectionSyncSource,
+): boolean {
+  const metadata = readEntitySelectionSyncLocationState(locationState)
+  return metadata?.source !== source
+}
+
+export function shouldClearEntitySelectionAfterLoad(
+  routeSelection: EntitySelectionRouteState,
+  stateSelection: EntitySelectionRouteState,
+  availability: EntitySelectionAvailability,
+  routeAuthoritative = true,
+): boolean {
+  const routeMissing = routeAuthoritative && isEntitySelectionMissingAfterLoad(routeSelection, availability)
+  const stateMissing = isEntitySelectionMissingAfterLoad(stateSelection, availability)
+  return routeMissing || stateMissing
 }
 
 export function buildEntitySelectionSyncLocationState(

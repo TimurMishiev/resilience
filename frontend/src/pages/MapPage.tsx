@@ -24,7 +24,9 @@ import {
   buildEntitySelectionSearch,
   buildEntitySelectionSyncLocationState,
   consumeEntitySelectionSyncLocationState,
+  isEntitySelectionRouteAuthoritative,
   parseEntitySelectionRoute,
+  shouldClearEntitySelectionAfterLoad,
   trackEntitySelectionSyncToken,
 } from '../lib/entitySelectionRoute'
 import { computeReadiness } from '../lib/formatters'
@@ -128,6 +130,62 @@ export default function MapPage() {
     asOf,
     replayParams: signalQueryParams,
   })
+
+  // ---------------------------------------------------------------------------
+  // SSE grace period — prevents the stale-selection clear from firing before
+  // the stream has had a chance to deliver post-baseline signals for a
+  // deep-linked signal URL.  Scoped to the React Router location.key so that
+  // every distinct navigation attempt — including same-signal retries in a
+  // long-lived session — gets a fresh 1500 ms window.  signalsSettledKey
+  // holds the location.key whose window has elapsed; null means no attempt
+  // has settled yet (or the stream disconnected).
+  // ---------------------------------------------------------------------------
+  const [signalsSettledKey, setSignalsSettledKey] = useState<string | null>(null)
+  const signalsSettledTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const signalsSettledTimerForRef  = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!signalsConnected || signalError != null) {
+      /* eslint-disable react-hooks/set-state-in-effect -- Resets internal grace-window state on disconnect or error; no selection state is mutated and no URL write occurs */
+      setSignalsSettledKey(null)
+      /* eslint-enable react-hooks/set-state-in-effect */
+      signalsSettledTimerForRef.current = null
+      if (signalsSettledTimerRef.current != null) {
+        clearTimeout(signalsSettledTimerRef.current)
+        signalsSettledTimerRef.current = null
+      }
+      return
+    }
+
+    const routeSignalId = parseEntitySelectionRoute(location.search).signalId
+    if (routeSignalId == null) return  // no signal deep-linked; nothing to wait for
+
+    // Cancel the running timer when the navigation key changes (new route attempt).
+    if (
+      signalsSettledTimerRef.current != null &&
+      signalsSettledTimerForRef.current !== location.key
+    ) {
+      clearTimeout(signalsSettledTimerRef.current)
+      signalsSettledTimerRef.current = null
+      signalsSettledTimerForRef.current = null
+    }
+
+    if (signalsSettledTimerRef.current != null) return  // timer already running for this attempt
+
+    const thisKey = location.key
+    signalsSettledTimerForRef.current = thisKey
+    signalsSettledTimerRef.current = setTimeout(() => {
+      setSignalsSettledKey(thisKey)
+      signalsSettledTimerRef.current = null
+    }, 1500)
+
+    return () => {
+      if (signalsSettledTimerRef.current != null) {
+        clearTimeout(signalsSettledTimerRef.current)
+        signalsSettledTimerRef.current = null
+      }
+    }
+  }, [signalsConnected, signalError, location.search, location.key])
 
   const selectedSignal = selectedSignalId ? (signals.find(signal => signal.id === selectedSignalId) ?? null) : null
   const selectedVesselMmsi = selectedSignal?.signal_type === 'vessel_position' ? selectedSignal.external_id : null
@@ -333,6 +391,69 @@ export default function MapPage() {
     }
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [assets, flyTo, isReplaying, location.search, location.state, mapLoaded, readings, signals, sites])
+
+  useEffect(() => {
+    const routeSelection = parseEntitySelectionRoute(location.search)
+
+    const availability = {
+      sitesLoaded: sitesQuery.isSuccess,
+      assetsLoaded: assetsQuery.isSuccess,
+      // signalsLoaded must not become true prematurely when a signal is
+      // deep-linked but has not yet arrived via SSE.  The SSE stream seeds
+      // from the snapshot cursor, so a brand-new signal may be delivered
+      // 100–500 ms after the baseline completes.  We defer the "loaded"
+      // declaration until one of the following is true:
+      //   • replay mode: snapshots are the complete truth, no SSE lag
+      //   • the URL selection was already applied (signal found and set)
+      //   • no signal is deep-linked (nothing to wait for)
+      //   • the signal is already in the current dataset (baseline had it)
+      //   • 1500 ms grace period expired (bounded fallback for non-existent signals)
+      signalsLoaded: signalsConnected && signalError == null && (
+        isReplaying ||
+        urlSelectionAppliedRef.current ||
+        routeSelection.signalId == null ||
+        signals.some(s => s.id === routeSelection.signalId) ||
+        signalsSettledKey === location.key
+      ),
+      siteIds: sites.map(site => site.id),
+      assetIds: assets.map(asset => asset.id),
+      signalIds: signals.map(signal => signal.id),
+    }
+
+    const stateSelection = {
+      siteId: selectedSiteId,
+      assetId: selectedAssetId,
+      signalId: selectedSignalId,
+    }
+    const routeAuthoritative = isEntitySelectionRouteAuthoritative(location.state, 'map')
+
+    if (!shouldClearEntitySelectionAfterLoad(routeSelection, stateSelection, availability, routeAuthoritative)) {
+      return
+    }
+
+    /* eslint-disable react-hooks/set-state-in-effect -- When a previously selected entity disappears after its dataset settles, state and URL must be synchronously cleared together to avoid stale selection truth */
+    setSelectedSiteId(null)
+    setSelectedAssetId(null)
+    setSelectedSignalId(null)
+    /* eslint-enable react-hooks/set-state-in-effect */
+    updateSelectionRouteRef.current({ siteId: null, assetId: null, signalId: null })
+  }, [
+    assets,
+    assetsQuery.isSuccess,
+    isReplaying,
+    location.key,
+    location.search,
+    location.state,
+    selectedAssetId,
+    selectedSignalId,
+    selectedSiteId,
+    signalError,
+    signals,
+    signalsConnected,
+    signalsSettledKey,
+    sites,
+    sitesQuery.isSuccess,
+  ])
 
   // ---------------------------------------------------------------------------
   // Derived selection

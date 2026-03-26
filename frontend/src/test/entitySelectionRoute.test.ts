@@ -7,8 +7,11 @@ import {
   clearEntitySelectionRoute,
   consumeEntitySelectionSyncLocationState,
   hasEntitySelectionRoute,
+  isEntitySelectionRouteAuthoritative,
+  isEntitySelectionMissingAfterLoad,
   parseEntitySelectionRoute,
   readEntitySelectionSyncLocationState,
+  shouldClearEntitySelectionAfterLoad,
   trackEntitySelectionSyncToken,
 } from '../lib/entitySelectionRoute'
 
@@ -119,5 +122,118 @@ describe('entitySelectionRoute', () => {
       16, 17, 18, 19, 20,
       21, 22, 23, 24, 25,
     ])
+  })
+
+  it('treats selected entities as stale only after the relevant dataset has settled without them', () => {
+    expect(isEntitySelectionMissingAfterLoad(
+      { siteId: 'site-1', assetId: null, signalId: null },
+      {
+        sitesLoaded: false,
+        assetsLoaded: true,
+        signalsLoaded: true,
+        siteIds: [],
+        assetIds: [],
+        signalIds: [],
+      },
+    )).toBe(false)
+
+    expect(isEntitySelectionMissingAfterLoad(
+      { siteId: 'site-1', assetId: null, signalId: null },
+      {
+        sitesLoaded: true,
+        assetsLoaded: true,
+        signalsLoaded: true,
+        siteIds: ['site-2'],
+        assetIds: [],
+        signalIds: [],
+      },
+    )).toBe(true)
+
+    expect(isEntitySelectionMissingAfterLoad(
+      { siteId: null, assetId: 'asset-1', signalId: null },
+      {
+        sitesLoaded: true,
+        assetsLoaded: false,
+        signalsLoaded: true,
+        siteIds: [],
+        assetIds: [],
+        signalIds: [],
+      },
+    )).toBe(false)
+
+    expect(isEntitySelectionMissingAfterLoad(
+      { siteId: null, assetId: 'asset-1', signalId: null },
+      {
+        sitesLoaded: true,
+        assetsLoaded: true,
+        signalsLoaded: true,
+        siteIds: [],
+        assetIds: ['asset-2'],
+        signalIds: [],
+      },
+    )).toBe(true)
+
+    expect(isEntitySelectionMissingAfterLoad(
+      { siteId: null, assetId: 'asset-1', signalId: null },
+      {
+        sitesLoaded: true,
+        assetsLoaded: true,
+        signalsLoaded: true,
+        siteIds: [],
+        assetIds: ['asset-1'],
+        signalIds: [],
+      },
+    )).toBe(false)
+
+    expect(isEntitySelectionMissingAfterLoad(
+      { siteId: null, assetId: null, signalId: 'signal-1' },
+      {
+        sitesLoaded: true,
+        assetsLoaded: true,
+        signalsLoaded: true,
+        siteIds: [],
+        assetIds: [],
+        signalIds: ['signal-1'],
+      },
+    )).toBe(false)
+  })
+
+  it('treats same-surface sync metadata as non-authoritative for stale route cleanup', () => {
+    expect(isEntitySelectionRouteAuthoritative(
+      buildEntitySelectionSyncLocationState(null, { source: 'map', token: 3 }),
+      'map',
+    )).toBe(false)
+
+    expect(isEntitySelectionRouteAuthoritative(
+      buildEntitySelectionSyncLocationState(null, { source: 'globe', token: 3 }),
+      'map',
+    )).toBe(true)
+
+    expect(isEntitySelectionRouteAuthoritative(null, 'map')).toBe(true)
+  })
+
+  it('keeps a newer local selection when a stale same-surface route write lands out of order', () => {
+    const availability = {
+      sitesLoaded: true,
+      assetsLoaded: true,
+      signalsLoaded: true,
+      siteIds: ['site-2'],
+      assetIds: [],
+      signalIds: [],
+    }
+
+    expect(shouldClearEntitySelectionAfterLoad(
+      { siteId: 'site-1', assetId: null, signalId: null },
+      { siteId: 'site-2', assetId: null, signalId: null },
+      availability,
+      false,
+    )).toBe(false)
+
+    expect(shouldClearEntitySelectionAfterLoad(
+      { siteId: 'site-1', assetId: null, signalId: null },
+      { siteId: 'site-2', assetId: null, signalId: null },
+      availability,
+      true,
+    )).toBe(true)
   })
 })

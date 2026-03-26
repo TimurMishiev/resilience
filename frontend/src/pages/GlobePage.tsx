@@ -9,23 +9,26 @@ import { useSignalsLive } from '../hooks/useSignals'
 import { useVessels, useVesselTracks } from '../hooks/useVessels'
 import { useActiveBreachSiteIds } from '../hooks/useSignalRuleMatches'
 import { useReplayParams } from '../hooks/useReplayParams'
-import { useGlobeEngine } from '../hooks/useGlobeEngine'
+import { useGlobeEngine, type GlobeEngineReturn } from '../hooks/useGlobeEngine'
 import type { Asset, Site, Task, Signal } from '../api/types'
 import type { Vessel } from '../api/vessels'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { assetDisplayPosition, getLiveTelemetryReading } from '../lib/assetPresentation'
 import { computeReadiness } from '../lib/formatters'
-import { buildCoverageCircles, haversineKm } from '../lib/coverage'
+import { buildCoverageCircles, haversineKm, type CoverageCircle } from '../lib/coverage'
 import {
   buildEntitySelectionPath,
   buildEntitySelectionSearch,
   buildEntitySelectionSyncLocationState,
   consumeEntitySelectionSyncLocationState,
+  isEntitySelectionRouteAuthoritative,
   parseEntitySelectionRoute,
+  shouldClearEntitySelectionAfterLoad,
   trackEntitySelectionSyncToken,
 } from '../lib/entitySelectionRoute'
 import { isPerfEnabled } from '../lib/perfInstrumentation'
 import { SIGNAL_COLORS, SIGNAL_LABELS } from '../lib/signalConfig'
+import type { TelemetryMap } from '../lib/telemetry'
 import { GlobeInspectorPanel } from '../components/GlobeInspectorPanel'
 
 // ---------------------------------------------------------------------------
@@ -93,12 +96,18 @@ type GlobeE2ECanvasPoint = {
   y: number
 }
 
+type GlobeE2EPickResult = {
+  outcome: string
+  idString?: string
+}
+
 type GlobeE2EApi = {
   getState: () => {
     viewerReady: boolean
     selectedSiteId: string | null
     selectedAssetId: string | null
     selectedSignalId: string | null
+    signalCount: number
   }
   getFirstSiteTarget: () => GlobeE2ETarget | null
   getFirstSignalTarget: () => GlobeE2ETarget | null
@@ -109,9 +118,30 @@ type GlobeE2EApi = {
   flyToSite: (siteId: string) => boolean
   flyToAsset: (assetId: string) => boolean
   flyToSignal: (signalId: string) => boolean
+  inspectProjectedPosition: (lng: number, lat: number) => GlobeE2EPickResult | null
+  pickProjectedPosition: (lng: number, lat: number) => boolean
   pickSiteThroughGeofenceOverlay: (siteId: string) => boolean
   pickSite: (siteId: string) => boolean
   pickAsset: (assetId: string) => boolean
+}
+
+type GlobeE2EBridgeState = {
+  viewerReady: boolean
+  selectedSiteId: string | null
+  selectedAssetId: string | null
+  selectedSignalId: string | null
+  sites: Site[]
+  assets: Asset[]
+  signals: Signal[]
+  coverageCircles: CoverageCircle[]
+  readings: TelemetryMap
+  isReplaying: boolean
+  focusPosition: GlobeEngineReturn['focusPosition']
+  projectPosition: GlobeEngineReturn['projectPosition']
+  projectRenderedPosition: GlobeEngineReturn['projectRenderedPosition']
+  inspectCanvasPosition: GlobeEngineReturn['inspectCanvasPosition']
+  dispatchSyntheticPick: GlobeEngineReturn['dispatchSyntheticPick']
+  pickCanvasPosition: GlobeEngineReturn['pickCanvasPosition']
 }
 
 const E2E_PICK_SEARCH_OFFSETS: Array<{ x: number; y: number }> = (() => {
@@ -216,11 +246,61 @@ export default function GlobePage() {
     () => new Set<string>(isReplaying ? [] : (activeBreachRes?.site_ids ?? [])),
     [activeBreachRes?.site_ids, isReplaying],
   )
-  const { signals, error: signalError } = useSignalsLive({
+  const { signals, connected: signalsConnected, error: signalError } = useSignalsLive({
     enabled: true,
     asOf,
     replayParams: signalQueryParams,
   })
+
+  // ---------------------------------------------------------------------------
+  // SSE grace period — mirrors MapPage exactly.  Scoped to the React Router
+  // location.key so every distinct navigation attempt (including same-signal
+  // retries in a long-lived session) gets a fresh 1500 ms window.
+  // ---------------------------------------------------------------------------
+  const [signalsSettledKey, setSignalsSettledKey] = useState<string | null>(null)
+  const signalsSettledTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const signalsSettledTimerForRef  = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!signalsConnected || signalError != null) {
+      setSignalsSettledKey(null)
+      signalsSettledTimerForRef.current = null
+      if (signalsSettledTimerRef.current != null) {
+        clearTimeout(signalsSettledTimerRef.current)
+        signalsSettledTimerRef.current = null
+      }
+      return
+    }
+
+    const routeSignalId = parseEntitySelectionRoute(location.search).signalId
+    if (routeSignalId == null) return
+
+    // Cancel the running timer when the navigation key changes (new route attempt).
+    if (
+      signalsSettledTimerRef.current != null &&
+      signalsSettledTimerForRef.current !== location.key
+    ) {
+      clearTimeout(signalsSettledTimerRef.current)
+      signalsSettledTimerRef.current = null
+      signalsSettledTimerForRef.current = null
+    }
+
+    if (signalsSettledTimerRef.current != null) return
+
+    const thisKey = location.key
+    signalsSettledTimerForRef.current = thisKey
+    signalsSettledTimerRef.current = setTimeout(() => {
+      setSignalsSettledKey(thisKey)
+      signalsSettledTimerRef.current = null
+    }, 1500)
+
+    return () => {
+      if (signalsSettledTimerRef.current != null) {
+        clearTimeout(signalsSettledTimerRef.current)
+        signalsSettledTimerRef.current = null
+      }
+    }
+  }, [signalsConnected, signalError, location.search, location.key])
 
   const loading = sitesQuery.isLoading || tasksQuery.isLoading
   const { readings, connected: telemetryConnected } = useTelemetry(true, isReplaying ? asOf : null)
@@ -381,6 +461,26 @@ export default function GlobePage() {
     },
   })
 
+  const globeE2EBridgeStateRef = useRef<GlobeE2EBridgeState | null>(null)
+  globeE2EBridgeStateRef.current = {
+    viewerReady,
+    selectedSiteId,
+    selectedAssetId,
+    selectedSignalId,
+    sites,
+    assets,
+    signals,
+    coverageCircles,
+    readings,
+    isReplaying,
+    focusPosition,
+    projectPosition,
+    projectRenderedPosition,
+    inspectCanvasPosition,
+    dispatchSyntheticPick,
+    pickCanvasPosition,
+  }
+
   // ---------------------------------------------------------------------------
   // URL deep-link selection — fires once per navigation after globe is ready
   // ---------------------------------------------------------------------------
@@ -431,6 +531,59 @@ export default function GlobePage() {
       urlSelectionAppliedRef.current = true
     }
   }, [assets, location.search, location.state, signals, sites, viewerReady])
+
+  useEffect(() => {
+    const routeSelection = parseEntitySelectionRoute(location.search)
+
+    const availability = {
+      sitesLoaded: sitesQuery.isSuccess,
+      assetsLoaded: assetsQuery.isSuccess,
+      // Same guard as MapPage — defer "loaded" until SSE has had a chance to
+      // deliver post-baseline signals for deep-linked signal routes.
+      signalsLoaded: signalsConnected && signalError == null && (
+        isReplaying ||
+        urlSelectionAppliedRef.current ||
+        routeSelection.signalId == null ||
+        signals.some(s => s.id === routeSelection.signalId) ||
+        signalsSettledKey === location.key
+      ),
+      siteIds: sites.map(site => site.id),
+      assetIds: assets.map(asset => asset.id),
+      signalIds: signals.map(signal => signal.id),
+    }
+
+    const stateSelection = {
+      siteId: selectedSiteId,
+      assetId: selectedAssetId,
+      signalId: selectedSignalId,
+    }
+    const routeAuthoritative = isEntitySelectionRouteAuthoritative(location.state, 'globe')
+
+    if (!shouldClearEntitySelectionAfterLoad(routeSelection, stateSelection, availability, routeAuthoritative)) {
+      return
+    }
+
+    setSelectedSiteId(null)
+    setSelectedAssetId(null)
+    setSelectedSignalId(null)
+    updateSelectionRouteRef.current({ siteId: null, assetId: null, signalId: null })
+  }, [
+    assets,
+    assetsQuery.isSuccess,
+    isReplaying,
+    location.key,
+    location.search,
+    location.state,
+    selectedAssetId,
+    selectedSignalId,
+    selectedSiteId,
+    signalError,
+    signals,
+    signalsConnected,
+    signalsSettledKey,
+    sites,
+    sitesQuery.isSuccess,
+  ])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -494,7 +647,7 @@ export default function GlobePage() {
     selectedSiteId,
     showSignals,
     showCoverage,
-    signals.length,
+    signals,
     sites,
   ])
 
@@ -506,32 +659,36 @@ export default function GlobePage() {
       return
     }
 
-    const geofenceSite = sites.find(site => site.geofence_radius_km > 0) ?? null
-    const coverageAssetId = coverageCircles[0]?.assetId ?? null
-    const coverageAsset = coverageAssetId ? (assets.find(asset => asset.id === coverageAssetId) ?? null) : null
+    const getBridgeState = () => globeE2EBridgeStateRef.current
+
     const pickRenderedEntity = (expectedIdString: string) => {
-      const point = projectRenderedPosition(expectedIdString)
+      const state = getBridgeState()
+      if (!state) return false
+
+      const point = state.projectRenderedPosition(expectedIdString)
       if (!point) return false
 
       for (const offset of E2E_PICK_SEARCH_OFFSETS) {
         const x = point.x + offset.x
         const y = point.y + offset.y
-        const result = inspectCanvasPosition(x, y)
+        const result = state.inspectCanvasPosition(x, y)
         if (result.idString !== expectedIdString) continue
-        return pickCanvasPosition(x, y)
+        return state.pickCanvasPosition(x, y)
       }
 
       return false
     }
+
     window.__resilienceGlobeE2E = {
       getState: () => ({
-        viewerReady,
-        selectedSiteId,
-        selectedAssetId,
-        selectedSignalId,
+        viewerReady: getBridgeState()?.viewerReady ?? false,
+        selectedSiteId: getBridgeState()?.selectedSiteId ?? null,
+        selectedAssetId: getBridgeState()?.selectedAssetId ?? null,
+        selectedSignalId: getBridgeState()?.selectedSignalId ?? null,
+        signalCount: getBridgeState()?.signals.length ?? 0,
       }),
       getFirstSiteTarget: () => {
-        const site = sites[0]
+        const site = getBridgeState()?.sites[0]
         return site
           ? {
               id: site.id,
@@ -542,7 +699,7 @@ export default function GlobePage() {
           : null
       },
       getFirstSignalTarget: () => {
-        const signal = signals[0]
+        const signal = getBridgeState()?.signals[0]
         return signal
           ? {
               id: signal.id,
@@ -552,41 +709,97 @@ export default function GlobePage() {
             }
           : null
       },
-      getFirstGeofenceTarget: () => geofenceSite ? { id: geofenceSite.id, name: geofenceSite.name } : null,
-      getFirstCoverageTarget: () => coverageAsset ? { id: coverageAsset.id, name: coverageAsset.name } : null,
-      projectPosition: (lng: number, lat: number) => projectPosition(lng, lat),
-      projectRenderedPosition: (idString: string) => projectRenderedPosition(idString),
+      getFirstGeofenceTarget: () => {
+        const geofenceSite = getBridgeState()?.sites.find(site => site.geofence_radius_km > 0) ?? null
+        return geofenceSite
+        ? {
+            id: geofenceSite.id,
+            name: geofenceSite.name,
+            latitude: Number(geofenceSite.latitude),
+            longitude: Number(geofenceSite.longitude),
+          }
+        : null
+      },
+      getFirstCoverageTarget: () => {
+        const state = getBridgeState()
+        if (!state) return null
+
+        const coverageAssetId = state.coverageCircles[0]?.assetId ?? null
+        const coverageAsset = coverageAssetId ? (state.assets.find(asset => asset.id === coverageAssetId) ?? null) : null
+        const coverageAssetCoords = coverageAsset
+          ? assetDisplayPosition(coverageAsset, state.sites, state.readings, { lat: 0, lng: 0 }, { allowHistorical: state.isReplaying })
+          : null
+
+        return coverageAsset
+        ? {
+            id: coverageAsset.id,
+            name: coverageAsset.name,
+            latitude: coverageAssetCoords?.lat ?? 0,
+            longitude: coverageAssetCoords?.lng ?? 0,
+          }
+        : null
+      },
+      projectPosition: (lng: number, lat: number) => getBridgeState()?.projectPosition(lng, lat) ?? null,
+      projectRenderedPosition: (idString: string) => getBridgeState()?.projectRenderedPosition(idString) ?? null,
       flyToSite: (siteId: string) => {
-        const site = sites.find(entry => entry.id === siteId)
+        const state = getBridgeState()
+        if (!state) return false
+
+        const site = state.sites.find(entry => entry.id === siteId)
         if (!site) return false
-        focusPosition(Number(site.longitude), Number(site.latitude), 1_200_000, -70)
+        state.focusPosition(Number(site.longitude), Number(site.latitude), 1_200_000, -70)
         return true
       },
       flyToAsset: (assetId: string) => {
-        const asset = assets.find(entry => entry.id === assetId)
+        const state = getBridgeState()
+        if (!state) return false
+
+        const asset = state.assets.find(entry => entry.id === assetId)
         if (!asset) return false
-        const coords = assetDisplayPosition(asset, sites, readings, { lat: 0, lng: 0 }, { allowHistorical: isReplaying })
-        focusPosition(coords.lng, coords.lat, 850_000)
+        const coords = assetDisplayPosition(asset, state.sites, state.readings, { lat: 0, lng: 0 }, { allowHistorical: state.isReplaying })
+        state.focusPosition(coords.lng, coords.lat, 850_000)
         return true
       },
       flyToSignal: (signalId: string) => {
-        const signal = signals.find(entry => entry.id === signalId)
+        const state = getBridgeState()
+        if (!state) return false
+
+        const signal = state.signals.find(entry => entry.id === signalId)
         if (!signal) return false
-        focusPosition(Number(signal.lng), Number(signal.lat), E2E_SIGNAL_FOCUS_HEIGHT_M, -68)
+        state.focusPosition(Number(signal.lng), Number(signal.lat), E2E_SIGNAL_FOCUS_HEIGHT_M, -68)
         return true
       },
+      inspectProjectedPosition: (lng: number, lat: number) => {
+        const state = getBridgeState()
+        if (!state) return null
+
+        const point = state.projectPosition(lng, lat)
+        if (!point) return null
+        return state.inspectCanvasPosition(point.x, point.y)
+      },
+      pickProjectedPosition: (lng: number, lat: number) => {
+        const state = getBridgeState()
+        if (!state) return false
+
+        const point = state.projectPosition(lng, lat)
+        if (!point) return false
+        return state.pickCanvasPosition(point.x, point.y)
+      },
       pickSiteThroughGeofenceOverlay: (siteId: string) => {
-        const site = sites.find(entry => entry.id === siteId)
+        const state = getBridgeState()
+        if (!state) return false
+
+        const site = state.sites.find(entry => entry.id === siteId)
         if (!site || site.geofence_radius_km <= 0) return false
-        return dispatchSyntheticPick([`geofence-${site.id}`, `site-${site.id}`])
+        return state.dispatchSyntheticPick([`geofence-${site.id}`, `site-${site.id}`])
       },
       pickSite: (siteId: string) => {
-        const site = sites.find(entry => entry.id === siteId)
+        const site = getBridgeState()?.sites.find(entry => entry.id === siteId)
         if (!site) return false
         return pickRenderedEntity(`site-${site.id}`)
       },
       pickAsset: (assetId: string) => {
-        const asset = assets.find(entry => entry.id === assetId)
+        const asset = getBridgeState()?.assets.find(entry => entry.id === assetId)
         if (!asset) return false
         return pickRenderedEntity(`asset-${asset.id}`)
       },
@@ -595,24 +808,7 @@ export default function GlobePage() {
     return () => {
       delete window.__resilienceGlobeE2E
     }
-  }, [
-    assets,
-    coverageCircles,
-    focusPosition,
-    dispatchSyntheticPick,
-    inspectCanvasPosition,
-    isReplaying,
-    pickCanvasPosition,
-    projectPosition,
-    projectRenderedPosition,
-    readings,
-    selectedAssetId,
-    selectedSignalId,
-    selectedSiteId,
-    signals,
-    sites,
-    viewerReady,
-  ])
+  }, [])
 
   // ---------------------------------------------------------------------------
   // Focus camera on entity click — called after selection state is set

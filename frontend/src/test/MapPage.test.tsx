@@ -1,9 +1,25 @@
+import { useEffect } from 'react'
 import { act, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter, useLocation } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockState = vi.hoisted(() => ({
+  sites: [
+    { id: 'site-1', name: 'Site One', latitude: 1, longitude: 2, status: 'active', geofence_radius_km: 0 },
+  ],
+  assets: [
+    {
+      id: 'asset-1',
+      name: 'Asset One',
+      asset_type: 'vehicle',
+      status: 'available',
+      home_site_id: 'site-1',
+      last_reported_at: null,
+      created_at: '2026-03-24T00:00:00Z',
+      updated_at: '2026-03-24T00:00:00Z',
+    },
+  ],
   signals: [
     {
       id: 'sig-1',
@@ -27,10 +43,15 @@ const engineState = vi.hoisted(() => ({
   },
 }))
 
+const routerState = vi.hoisted(() => ({
+  navigate: null as null | ((to: string) => void),
+}))
+
 vi.mock('../hooks/useSites', () => ({
   useSites: () => ({
-    data: { data: [{ id: 'site-1', name: 'Site One', latitude: 1, longitude: 2, status: 'active', geofence_radius_km: 0 }] },
+    data: { data: mockState.sites },
     isLoading: false,
+    isSuccess: true,
     error: null,
   }),
 }))
@@ -45,8 +66,9 @@ vi.mock('../hooks/useTasks', () => ({
 
 vi.mock('../hooks/useAssets', () => ({
   useAssets: () => ({
-    data: { data: [] },
+    data: { data: mockState.assets },
     isLoading: false,
+    isSuccess: true,
     error: null,
   }),
 }))
@@ -67,6 +89,8 @@ vi.mock('../hooks/useAreasOfOperation', () => ({
 vi.mock('../hooks/useSignals', () => ({
   useSignalsLive: () => ({
     signals: mockState.signals,
+    isPending: false,
+    connected: true,
     error: null,
   }),
 }))
@@ -136,7 +160,9 @@ vi.mock('../components/MapSitePanel', () => ({
 }))
 
 vi.mock('../components/MapAssetPanel', () => ({
-  MapAssetPanel: () => null,
+  MapAssetPanel: ({ asset }: { asset: { name: string } }) => (
+    <div data-testid="map-asset-panel">{asset.name}</div>
+  ),
 }))
 
 vi.mock('../components/MapSignalPanel', () => ({
@@ -154,19 +180,34 @@ function LocationProbe() {
   return <div data-testid="location-search">{location.search}</div>
 }
 
+function ExternalNavigatorProbe() {
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    routerState.navigate = navigate
+    return () => {
+      routerState.navigate = null
+    }
+  }, [navigate])
+
+  return null
+}
+
 function renderMapPage(initialEntry = '/map') {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
     },
   })
+  window.history.replaceState(null, '', initialEntry)
 
   const renderTree = () => (
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[initialEntry]}>
+      <BrowserRouter>
+        <ExternalNavigatorProbe />
         <LocationProbe />
         <MapPage />
-      </MemoryRouter>
+      </BrowserRouter>
     </QueryClientProvider>
   )
 
@@ -181,6 +222,22 @@ describe('MapPage selection routing', () => {
   beforeEach(() => {
     engineState.flyTo.mockReset()
     engineState.latestInput = null
+    routerState.navigate = null
+    mockState.sites = [
+      { id: 'site-1', name: 'Site One', latitude: 1, longitude: 2, status: 'active', geofence_radius_km: 0 },
+    ]
+    mockState.assets = [
+      {
+        id: 'asset-1',
+        name: 'Asset One',
+        asset_type: 'vehicle',
+        status: 'available',
+        home_site_id: 'site-1',
+        last_reported_at: null,
+        created_at: '2026-03-24T00:00:00Z',
+        updated_at: '2026-03-24T00:00:00Z',
+      },
+    ]
     mockState.signals = [
       {
         id: 'sig-1',
@@ -194,6 +251,10 @@ describe('MapPage selection routing', () => {
       },
     ]
     window.localStorage.clear()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('hydrates the selected site panel from the route', async () => {
@@ -243,5 +304,117 @@ describe('MapPage selection routing', () => {
     view.rerender(view.renderTree())
 
     expect(await screen.findByTestId('signal-version')).toHaveTextContent('v2')
+  })
+
+  it('clears a stale site selection and route when the backing site disappears after load', async () => {
+    const view = renderMapPage('/map?site_id=site-1')
+
+    expect(await screen.findByTestId('map-site-panel')).toHaveTextContent('Site One')
+    expect(screen.getByTestId('location-search')).toHaveTextContent('?site_id=site-1')
+
+    mockState.sites = []
+    view.rerender(view.renderTree())
+
+    expect(await screen.findByTestId('location-search')).toBeEmptyDOMElement()
+    expect(screen.queryByTestId('map-site-panel')).not.toBeInTheDocument()
+  })
+
+  it('clears a stale asset selection and route when the backing asset disappears after load', async () => {
+    const view = renderMapPage('/map?asset_id=asset-1')
+
+    expect(await screen.findByTestId('map-asset-panel')).toHaveTextContent('Asset One')
+    expect(screen.getByTestId('location-search')).toHaveTextContent('?asset_id=asset-1')
+
+    mockState.assets = []
+    view.rerender(view.renderTree())
+
+    expect(await screen.findByTestId('location-search')).toBeEmptyDOMElement()
+    expect(screen.queryByTestId('map-asset-panel')).not.toBeInTheDocument()
+  })
+
+  it('preserves a deep-linked signal route while SSE has not yet delivered the signal', async () => {
+    // Simulate the race: baseline completes (connected=true) but the deep-linked
+    // signal has not yet arrived via SSE.  The clear effect must not destroy the
+    // URL before the signal has had a fair chance to arrive.
+    vi.useFakeTimers()
+    mockState.signals = []
+
+    const view = renderMapPage('/map?signal_id=sig-1')
+
+    // Immediately after load the URL must still carry the signal deep-link.
+    expect(screen.getByTestId('location-search')).toHaveTextContent('?signal_id=sig-1')
+
+    // SSE delivers the signal — simulate by adding it to the mock and re-rendering.
+    mockState.signals = [
+      {
+        id: 'sig-1',
+        signal_type: 'disaster_alert',
+        source: 'gdacs',
+        lat: 10,
+        lng: 20,
+        occurred_at: '2026-03-24T00:00:00Z',
+        external_id: null,
+        raw_payload: { version: 'v1', name: 'SSE delivered' },
+      },
+    ]
+    await act(async () => {
+      view.rerender(view.renderTree())
+    })
+
+    expect(screen.getByTestId('map-signal-panel')).toBeInTheDocument()
+    expect(screen.getByTestId('location-search')).toHaveTextContent('?signal_id=sig-1')
+  })
+
+  it('clears a deep-linked signal route after the SSE grace period expires with no delivery', async () => {
+    // Signal is deep-linked but never arrives.  After 1500 ms the system must
+    // treat the signal as genuinely missing and clean up the stale URL.
+    vi.useFakeTimers()
+    mockState.signals = []
+
+    renderMapPage('/map?signal_id=sig-never')
+
+    expect(screen.getByTestId('location-search')).toHaveTextContent('?signal_id=sig-never')
+
+    await act(async () => {
+      vi.advanceTimersByTime(1500)
+    })
+
+    expect(screen.getByTestId('location-search')).toBeEmptyDOMElement()
+  })
+
+  it('clears a selected signal and route when the backing signal disappears after load', async () => {
+    const view = renderMapPage('/map?signal_id=sig-1')
+
+    expect(await screen.findByTestId('map-signal-panel')).toBeInTheDocument()
+    expect(screen.getByTestId('location-search')).toHaveTextContent('?signal_id=sig-1')
+
+    mockState.signals = []
+    view.rerender(view.renderTree())
+
+    expect(await screen.findByTestId('location-search')).toBeEmptyDOMElement()
+    expect(screen.queryByTestId('map-signal-panel')).not.toBeInTheDocument()
+  })
+
+  it('gives an external same-signal retry a fresh SSE grace window in a long-lived session', async () => {
+    // Regression guard: after one signal deep-link times out, an external
+    // navigation back to the SAME signal must get a fresh route attempt and
+    // must not be cleared immediately in the same connected session.
+    vi.useFakeTimers()
+    mockState.signals = []
+
+    // Phase 1 — advance the grace window past sig-a so signalsSettledKey = key-for-sig-a.
+    renderMapPage('/map?signal_id=sig-a')
+    await act(async () => { vi.advanceTimersByTime(1500) })
+    expect(screen.getByTestId('location-search')).toBeEmptyDOMElement()
+
+    // Phase 2 — external same-signal retry via router.navigate, not an engine
+    // callback. This keeps routeAuthoritative=true and proves the location.key
+    // grace rather than the self-authored route-sync path.
+    expect(routerState.navigate).not.toBeNull()
+    await act(async () => {
+      routerState.navigate?.('/map?signal_id=sig-a')
+    })
+
+    expect(screen.getByTestId('location-search')).toHaveTextContent('?signal_id=sig-a')
   })
 })
