@@ -34,6 +34,7 @@ module Api
       assets = Asset.order(:name).to_a
 
       areas = AreaOfOperation.order(:name).to_a
+      chokepoints = Chokepoint.includes(:area_of_operation).order(:name).to_a
       commander_intents = CommanderIntent.order(updated_at: :desc).to_a
       pace_plans = PacePlan.order(updated_at: :desc).to_a
 
@@ -72,6 +73,7 @@ module Api
         tasks:               task_records.map { |t| serialize_planning_task(t) },
         assets:              assets.map { |a| serialize_planning_asset(a) },
         areas_of_operation:  areas.map  { |ao| serialize_planning_ao(ao) },
+        chokepoints:         chokepoints.map { |point| serialize_chokepoint(point) },
         commander_intents:   commander_intents.map { |intent| serialize_commander_intent(intent) },
         pace_plans:          pace_plans.map { |plan| serialize_pace_plan(plan) },
         salute_reports:      salute_reports.map { |report| serialize_salute_report(report) },
@@ -154,6 +156,25 @@ module Api
         updated_by_id: intent.updated_by_id,
         created_at: intent.created_at,
         updated_at: intent.updated_at,
+      }
+    end
+
+    def serialize_chokepoint(chokepoint)
+      {
+        id: chokepoint.id,
+        area_of_operation_id: chokepoint.area_of_operation_id,
+        area_of_operation_name: chokepoint.area_of_operation.name,
+        name: chokepoint.name,
+        category: chokepoint.category,
+        status: chokepoint.status,
+        latitude: chokepoint.latitude.to_f,
+        longitude: chokepoint.longitude.to_f,
+        watch_radius_km: chokepoint.watch_radius_km.to_f,
+        notes: chokepoint.notes,
+        created_by_id: chokepoint.created_by_id,
+        updated_by_id: chokepoint.updated_by_id,
+        created_at: chokepoint.created_at,
+        updated_at: chokepoint.updated_at,
       }
     end
 

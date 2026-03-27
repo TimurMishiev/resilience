@@ -24,6 +24,11 @@ import {
   useUpdateCommanderIntent,
   useUpdatePacePlan,
 } from '../hooks/usePlanningDoctrine'
+import {
+  useCreateChokepoint,
+  useDeleteChokepoint,
+  useUpdateChokepoint,
+} from '../hooks/useChokepoints'
 import { useRole } from '../hooks/useRole'
 import { useNavigate } from 'react-router-dom'
 import { PostureBadge } from '../components/PostureBadge'
@@ -35,7 +40,7 @@ import { computeFlags } from '../utils/planningFlags'
 import { buildCoverageCircles, coverageBySite } from '../lib/coverage'
 import { useTelemetry } from '../hooks/useTelemetry'
 import { getApiErrorMessage } from '../api/client'
-import type { Posture, TaskPriority } from '../api/types'
+import type { Chokepoint, ChokepointCategory, ChokepointStatus, Posture, TaskPriority } from '../api/types'
 import type { EntityType } from '../components/EntityCard'
 
 const PRIORITY_ORDER: Record<TaskPriority, number> = {
@@ -51,6 +56,21 @@ const PRIORITY_INTENT: Record<TaskPriority, 'danger' | 'warning' | 'primary' | '
   normal:   'primary',
   low:      'none',
 }
+
+const CHOKEPOINT_CATEGORY_OPTIONS: Array<{ value: ChokepointCategory; label: string }> = [
+  { value: 'strait', label: 'Strait' },
+  { value: 'canal', label: 'Canal' },
+  { value: 'harbor_approach', label: 'Harbor approach' },
+  { value: 'lane_constriction', label: 'Lane constriction' },
+  { value: 'anchorage', label: 'Anchorage' },
+]
+
+const CHOKEPOINT_STATUS_OPTIONS: Array<{ value: ChokepointStatus; label: string }> = [
+  { value: 'monitor', label: 'Monitor' },
+  { value: 'constrained', label: 'Constrained' },
+  { value: 'contested', label: 'Contested' },
+  { value: 'closed', label: 'Closed' },
+]
 
 function makeDefaultObservedAt() {
   return new Date(Date.now() - new Date().getTimezoneOffset() * 60_000)
@@ -123,6 +143,35 @@ function sameSaluteDraft(
     left.remarks === right.remarks
 }
 
+function sameChokepointDraft(
+  left: {
+    name: string
+    category: ChokepointCategory
+    status: ChokepointStatus
+    latitude: string
+    longitude: string
+    watch_radius_km: string
+    notes: string
+  },
+  right: {
+    name: string
+    category: ChokepointCategory
+    status: ChokepointStatus
+    latitude: string
+    longitude: string
+    watch_radius_km: string
+    notes: string
+  },
+) {
+  return left.name === right.name &&
+    left.category === right.category &&
+    left.status === right.status &&
+    left.latitude === right.latitude &&
+    left.longitude === right.longitude &&
+    left.watch_radius_km === right.watch_radius_km &&
+    left.notes === right.notes
+}
+
 export default function PlanningPage() {
   const { isCommander } = useRole()
   const { isReplaying } = useReplay()
@@ -135,6 +184,9 @@ export default function PlanningPage() {
   const createPacePlan = useCreatePacePlan()
   const updatePacePlan = useUpdatePacePlan()
   const createSaluteReport = useCreateSaluteReport()
+  const createChokepoint = useCreateChokepoint()
+  const updateChokepoint = useUpdateChokepoint()
+  const deleteChokepoint = useDeleteChokepoint()
   const { readings } = useTelemetry(isCommander && !isReplaying)
 
   // Per-row pending asset selection — keyed by task id
@@ -164,12 +216,25 @@ export default function PlanningPage() {
     equipment: '',
     remarks: '',
   })
+  const [selectedChokepointId, setSelectedChokepointId] = useState<string>('')
+  const [pendingSelectedChokepoint, setPendingSelectedChokepoint] = useState<Chokepoint | null>(null)
+  const [chokepointDraft, setChokepointDraft] = useState({
+    name: '',
+    category: 'strait' as ChokepointCategory,
+    status: 'monitor' as ChokepointStatus,
+    latitude: '',
+    longitude: '',
+    watch_radius_km: '25',
+    notes: '',
+  })
   const [intentError, setIntentError] = useState<string | null>(null)
   const [paceError, setPaceError] = useState<string | null>(null)
   const [saluteError, setSaluteError] = useState<string | null>(null)
+  const [chokepointError, setChokepointError] = useState<string | null>(null)
   const [intentNotice, setIntentNotice] = useState<string | null>(null)
   const [paceNotice, setPaceNotice] = useState<string | null>(null)
   const [saluteNotice, setSaluteNotice] = useState<string | null>(null)
+  const [chokepointNotice, setChokepointNotice] = useState<string | null>(null)
 
   // All hooks must come before any conditional returns (Rules of Hooks).
   // Destructure with defaults so hooks receive stable empty arrays when data is not yet loaded.
@@ -177,6 +242,7 @@ export default function PlanningPage() {
     tasks          = [],
     assets         = [],
     areas_of_operation = [],
+    chokepoints = [],
     commander_intents = [],
     pace_plans = [],
     salute_reports = [],
@@ -231,6 +297,10 @@ export default function PlanningPage() {
     () => sites.filter(site => site.area_of_operation_id === selectedDoctrineAoId),
     [sites, selectedDoctrineAoId],
   )
+  const doctrineChokepoints = useMemo(
+    () => chokepoints.filter(point => point.area_of_operation_id === selectedDoctrineAoId),
+    [chokepoints, selectedDoctrineAoId],
+  )
   const doctrineSaluteReports = useMemo(
     () => salute_reports.filter(report => report.area_of_operation_id === selectedDoctrineAoId),
     [salute_reports, selectedDoctrineAoId],
@@ -243,6 +313,20 @@ export default function PlanningPage() {
     : { truncated: false, count: 0 }
   const doctrineSiteIdsKey = doctrineSites.map(site => site.id).join('|')
   const firstDoctrineSiteId = doctrineSites[0]?.id ?? ''
+  const firstDoctrineSite = doctrineSites[0] ?? null
+  const doctrineChokepointIdsKey = doctrineChokepoints.map(point => point.id).join('|')
+  const selectedChokepoint = useMemo(() => {
+    const persisted = doctrineChokepoints.find(point => point.id === selectedChokepointId)
+    if (persisted) return persisted
+    if (
+      pendingSelectedChokepoint &&
+      pendingSelectedChokepoint.id === selectedChokepointId &&
+      pendingSelectedChokepoint.area_of_operation_id === selectedDoctrineAoId
+    ) {
+      return pendingSelectedChokepoint
+    }
+    return null
+  }, [doctrineChokepoints, pendingSelectedChokepoint, selectedChokepointId, selectedDoctrineAoId])
   const nextIntentDraft = useMemo(() => ({
     title: selectedCommanderIntent?.title ?? '',
     objective: selectedCommanderIntent?.objective ?? '',
@@ -283,6 +367,29 @@ export default function PlanningPage() {
     equipment: '',
     remarks: '',
   }), [selectedDoctrineAoId, doctrineSiteIdsKey, firstDoctrineSiteId])
+  const nextChokepointDraft = useMemo(() => ({
+    name: selectedChokepoint?.name ?? '',
+    category: selectedChokepoint?.category ?? 'strait',
+    status: selectedChokepoint?.status ?? 'monitor',
+    latitude: selectedChokepoint ? String(selectedChokepoint.latitude) : (firstDoctrineSite ? String(Number(firstDoctrineSite.latitude)) : ''),
+    longitude: selectedChokepoint ? String(selectedChokepoint.longitude) : (firstDoctrineSite ? String(Number(firstDoctrineSite.longitude)) : ''),
+    watch_radius_km: selectedChokepoint ? String(selectedChokepoint.watch_radius_km) : '25',
+    notes: selectedChokepoint?.notes ?? '',
+  }), [
+    selectedDoctrineAoId,
+    selectedChokepoint?.id,
+    selectedChokepoint?.updated_at,
+    selectedChokepoint?.name,
+    selectedChokepoint?.category,
+    selectedChokepoint?.status,
+    selectedChokepoint?.latitude,
+    selectedChokepoint?.longitude,
+    selectedChokepoint?.watch_radius_km,
+    selectedChokepoint?.notes,
+    firstDoctrineSite?.id,
+    firstDoctrineSite?.latitude,
+    firstDoctrineSite?.longitude,
+  ])
 
   useEffect(() => {
     setIntentDraft(current => (sameIntentDraft(current, nextIntentDraft) ? current : nextIntentDraft))
@@ -298,6 +405,35 @@ export default function PlanningPage() {
     setSaluteDraft(current => (sameSaluteDraft(current, nextSaluteDraft) ? current : nextSaluteDraft))
     setSaluteError(null)
   }, [nextSaluteDraft])
+
+  useEffect(() => {
+    setSelectedChokepointId(current => (
+      current && doctrineChokepoints.some(point => point.id === current)
+        ? current
+        : current &&
+            pendingSelectedChokepoint &&
+            pendingSelectedChokepoint.id === current &&
+            pendingSelectedChokepoint.area_of_operation_id === selectedDoctrineAoId
+        ? current
+        : ''
+    ))
+  }, [selectedDoctrineAoId, doctrineChokepointIdsKey, doctrineChokepoints, pendingSelectedChokepoint])
+
+  useEffect(() => {
+    if (!pendingSelectedChokepoint) return
+    if (pendingSelectedChokepoint.area_of_operation_id !== selectedDoctrineAoId) {
+      setPendingSelectedChokepoint(null)
+      return
+    }
+    if (doctrineChokepoints.some(point => point.id === pendingSelectedChokepoint.id)) {
+      setPendingSelectedChokepoint(null)
+    }
+  }, [doctrineChokepoints, pendingSelectedChokepoint, selectedDoctrineAoId])
+
+  useEffect(() => {
+    setChokepointDraft(current => (sameChokepointDraft(current, nextChokepointDraft) ? current : nextChokepointDraft))
+    setChokepointError(null)
+  }, [nextChokepointDraft])
 
   // ── Derived values (dataset is small; no memoization needed) ────────────
 
@@ -400,9 +536,11 @@ export default function PlanningPage() {
 
   function handleDoctrineAoChange(areaOfOperationId: string) {
     setSelectedDoctrineAoId(areaOfOperationId)
+    setPendingSelectedChokepoint(null)
     setIntentNotice(null)
     setPaceNotice(null)
     setSaluteNotice(null)
+    setChokepointNotice(null)
   }
 
   function handleConfirm(taskId: string, assetId: string | null) {
@@ -496,6 +634,60 @@ export default function PlanningPage() {
       })
     } catch (error) {
       setSaluteError(getApiErrorMessage(error, 'Failed to submit SALUTE report'))
+    }
+  }
+
+  async function handleChokepointSave() {
+    if (!selectedDoctrineAoId) return
+
+    setChokepointError(null)
+    setChokepointNotice(null)
+
+    const latitude = Number(chokepointDraft.latitude)
+    const longitude = Number(chokepointDraft.longitude)
+    const watchRadius = Number(chokepointDraft.watch_radius_km)
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !Number.isFinite(watchRadius)) {
+      setChokepointError('Latitude, longitude, and watch radius must be valid numbers.')
+      return
+    }
+
+    const body = {
+      area_of_operation_id: selectedDoctrineAoId,
+      name: chokepointDraft.name.trim(),
+      category: chokepointDraft.category,
+      status: chokepointDraft.status,
+      latitude,
+      longitude,
+      watch_radius_km: watchRadius,
+      notes: chokepointDraft.notes.trim() || null,
+    }
+
+    try {
+      const saved = selectedChokepoint
+        ? await updateChokepoint.mutateAsync({ id: selectedChokepoint.id, body })
+        : await createChokepoint.mutateAsync(body)
+      setPendingSelectedChokepoint(saved)
+      setSelectedChokepointId(saved.id)
+      setChokepointNotice(selectedChokepoint ? 'Chokepoint updated.' : 'Chokepoint created.')
+    } catch (error) {
+      setChokepointError(getApiErrorMessage(error, 'Failed to save chokepoint'))
+    }
+  }
+
+  async function handleChokepointDelete() {
+    if (!selectedChokepoint) return
+    if (!window.confirm(`Delete chokepoint "${selectedChokepoint.name}"?`)) return
+
+    setChokepointError(null)
+    setChokepointNotice(null)
+
+    try {
+      await deleteChokepoint.mutateAsync(selectedChokepoint.id)
+      setPendingSelectedChokepoint(null)
+      setSelectedChokepointId('')
+      setChokepointNotice('Chokepoint deleted.')
+    } catch (error) {
+      setChokepointError(getApiErrorMessage(error, 'Failed to delete chokepoint'))
     }
   }
 
@@ -791,6 +983,202 @@ export default function PlanningPage() {
               </tbody>
             </HTMLTable>
           </>
+        )}
+      </section>
+
+      <section style={{ marginBottom: 28 }}>
+        <h3 className="bp6-heading" style={{ fontSize: 14, marginBottom: 10, color: 'var(--bp6-text-muted-color)' }}>
+          MARITIME CHOKEPOINTS
+        </h3>
+        {areas_of_operation.length === 0 ? (
+          <Callout intent="warning" compact>
+            Create an area of operation before recording monitored straits, canals, or harbor approaches.
+          </Callout>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(340px, 420px) minmax(0, 1fr)', gap: 16 }}>
+            <Card style={{ background: 'rgba(255,255,255,0.02)' }}>
+              <FormGroup label="Area of operation" inline>
+                <HTMLSelect
+                  fill
+                  value={selectedDoctrineAoId}
+                  onChange={e => handleDoctrineAoChange(e.target.value)}
+                  options={areas_of_operation.map(ao => ({ label: ao.name, value: ao.id }))}
+                />
+              </FormGroup>
+              <FormGroup label="Editing" labelFor="chokepoint-editing">
+                <HTMLSelect
+                  id="chokepoint-editing"
+                  fill
+                  value={selectedChokepointId}
+                  onChange={e => {
+                    setPendingSelectedChokepoint(null)
+                    setSelectedChokepointId(e.target.value)
+                    setChokepointNotice(null)
+                    setChokepointError(null)
+                  }}
+                  options={[
+                    { label: 'New chokepoint', value: '' },
+                    ...(
+                      pendingSelectedChokepoint &&
+                      pendingSelectedChokepoint.area_of_operation_id === selectedDoctrineAoId &&
+                      !doctrineChokepoints.some(point => point.id === pendingSelectedChokepoint.id)
+                        ? [{ label: pendingSelectedChokepoint.name, value: pendingSelectedChokepoint.id }]
+                        : []
+                    ),
+                    ...doctrineChokepoints.map(point => ({ label: point.name, value: point.id })),
+                  ]}
+                />
+              </FormGroup>
+              <FormGroup label="Name" labelFor="chokepoint-name">
+                <InputGroup
+                  id="chokepoint-name"
+                  value={chokepointDraft.name}
+                  onChange={e => setChokepointDraft(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="Hormuz outbound lane"
+                />
+              </FormGroup>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <FormGroup label="Category" labelFor="chokepoint-category">
+                  <HTMLSelect
+                    id="chokepoint-category"
+                    fill
+                    value={chokepointDraft.category}
+                    onChange={e => setChokepointDraft(prev => ({ ...prev, category: e.target.value as ChokepointCategory }))}
+                    options={CHOKEPOINT_CATEGORY_OPTIONS.map(option => ({ label: option.label, value: option.value }))}
+                  />
+                </FormGroup>
+                <FormGroup label="Status" labelFor="chokepoint-status">
+                  <HTMLSelect
+                    id="chokepoint-status"
+                    fill
+                    value={chokepointDraft.status}
+                    onChange={e => setChokepointDraft(prev => ({ ...prev, status: e.target.value as ChokepointStatus }))}
+                    options={CHOKEPOINT_STATUS_OPTIONS.map(option => ({ label: option.label, value: option.value }))}
+                  />
+                </FormGroup>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                <FormGroup label="Latitude" labelFor="chokepoint-latitude">
+                  <InputGroup
+                    id="chokepoint-latitude"
+                    value={chokepointDraft.latitude}
+                    onChange={e => setChokepointDraft(prev => ({ ...prev, latitude: e.target.value }))}
+                    placeholder="25.285447"
+                  />
+                </FormGroup>
+                <FormGroup label="Longitude" labelFor="chokepoint-longitude">
+                  <InputGroup
+                    id="chokepoint-longitude"
+                    value={chokepointDraft.longitude}
+                    onChange={e => setChokepointDraft(prev => ({ ...prev, longitude: e.target.value }))}
+                    placeholder="56.334457"
+                  />
+                </FormGroup>
+                <FormGroup label="Watch radius (km)" labelFor="chokepoint-radius">
+                  <InputGroup
+                    id="chokepoint-radius"
+                    value={chokepointDraft.watch_radius_km}
+                    onChange={e => setChokepointDraft(prev => ({ ...prev, watch_radius_km: e.target.value }))}
+                    placeholder="25"
+                  />
+                </FormGroup>
+              </div>
+              <FormGroup label="Notes" labelFor="chokepoint-notes">
+                <TextArea
+                  id="chokepoint-notes"
+                  fill
+                  rows={4}
+                  value={chokepointDraft.notes}
+                  onChange={e => setChokepointDraft(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Traffic restrictions, boarding pattern, ISR emphasis, or escalation thresholds."
+                />
+              </FormGroup>
+              {chokepointError && <Callout intent="danger" compact style={{ marginBottom: 12 }}>{chokepointError}</Callout>}
+              {chokepointNotice && <Callout intent="success" compact style={{ marginBottom: 12 }}>{chokepointNotice}</Callout>}
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
+                <span className="bp6-text-muted" style={{ fontSize: 12 }}>
+                  {selectedDoctrineAo ? `${selectedDoctrineAo.name} · ${doctrineChokepoints.length} chokepoint${doctrineChokepoints.length === 1 ? '' : 's'}` : 'Select an area of operation'}
+                </span>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {selectedChokepoint && (
+                    <Button
+                      intent="danger"
+                      outlined
+                      loading={deleteChokepoint.isPending}
+                      onClick={handleChokepointDelete}
+                    >
+                      Delete
+                    </Button>
+                  )}
+                  <Button
+                    intent="primary"
+                    loading={createChokepoint.isPending || updateChokepoint.isPending}
+                    onClick={handleChokepointSave}
+                  >
+                    {selectedChokepoint ? 'Update chokepoint' : 'Create chokepoint'}
+                  </Button>
+                </div>
+              </div>
+            </Card>
+
+            <Card style={{ background: 'rgba(255,255,255,0.02)' }}>
+              <HTMLTable compact bordered style={{ width: '100%' }}>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Category</th>
+                    <th>Status</th>
+                    <th>Radius</th>
+                    <th>Location</th>
+                    <th>Updated</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {doctrineChokepoints.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="bp6-text-muted" style={{ fontSize: 12 }}>
+                        No chokepoints recorded for this area of operation yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    doctrineChokepoints.map(point => (
+                      <tr key={point.id}>
+                        <td style={{ fontSize: 12 }}>{point.name}</td>
+                        <td style={{ fontSize: 12 }}>{humanize(point.category)}</td>
+                        <td style={{ fontSize: 12 }}>
+                          <Tag minimal intent={
+                            point.status === 'closed' ? 'danger' :
+                              point.status === 'contested' ? 'warning' :
+                                point.status === 'constrained' ? 'primary' :
+                                  'none'
+                          }>
+                            {humanize(point.status)}
+                          </Tag>
+                        </td>
+                        <td style={{ fontSize: 12 }}>{point.watch_radius_km.toFixed(1)} km</td>
+                        <td style={{ fontSize: 12 }}>{point.latitude.toFixed(3)}, {point.longitude.toFixed(3)}</td>
+                        <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{new Date(point.updated_at).toLocaleString()}</td>
+                        <td style={{ fontSize: 12 }}>
+                          <Button
+                            small
+                            minimal
+                            icon="edit"
+                            onClick={() => {
+                              setPendingSelectedChokepoint(null)
+                              setSelectedChokepointId(point.id)
+                            }}
+                          >
+                            Edit
+                          </Button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </HTMLTable>
+            </Card>
+          </div>
         )}
       </section>
 

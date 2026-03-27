@@ -120,6 +120,10 @@ export function useSseEvents({
           timeout: 10_000,
         }))
       }
+
+      if (e.event === 'chokepoint_updated') {
+        queryClient.invalidateQueries({ queryKey: ['chokepoints'] })
+      }
     },
   })
 }

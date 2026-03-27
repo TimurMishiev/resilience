@@ -32,12 +32,55 @@ const planningState = vi.hoisted(() => ({
     mutateAsync: vi.fn(async () => ({})),
     isPending: false,
   },
+  createChokepoint: {
+    mutateAsync: vi.fn(async () => ({
+      id: 'cp-1',
+      area_of_operation_id: 'ao-1',
+      area_of_operation_name: 'North Gulf',
+      name: 'Hormuz East',
+      category: 'strait',
+      status: 'monitor',
+      latitude: 25.285447,
+      longitude: 56.334457,
+      watch_radius_km: 25,
+      notes: null,
+      created_by_id: 'user-1',
+      updated_by_id: 'user-1',
+      created_at: '2026-03-27T12:00:00Z',
+      updated_at: '2026-03-27T12:00:00Z',
+    })),
+    isPending: false,
+  },
+  updateChokepoint: {
+    mutateAsync: vi.fn(async () => ({
+      id: 'cp-1',
+      area_of_operation_id: 'ao-1',
+      area_of_operation_name: 'North Gulf',
+      name: 'Hormuz East',
+      category: 'strait',
+      status: 'monitor',
+      latitude: 25.285447,
+      longitude: 56.334457,
+      watch_radius_km: 25,
+      notes: null,
+      created_by_id: 'user-1',
+      updated_by_id: 'user-1',
+      created_at: '2026-03-27T12:00:00Z',
+      updated_at: '2026-03-27T12:00:00Z',
+    })),
+    isPending: false,
+  },
+  deleteChokepoint: {
+    mutateAsync: vi.fn(async () => undefined),
+    isPending: false,
+  },
   planning: {
     tasks: [],
     assets: [],
     areas_of_operation: [
       { id: 'ao-1', name: 'North Gulf', posture: 'defensive' },
     ],
+    chokepoints: [],
     commander_intents: [],
     pace_plans: [],
     salute_reports: [],
@@ -83,6 +126,12 @@ vi.mock('../hooks/usePlanningDoctrine', () => ({
   useCreatePacePlan: () => planningState.createPacePlan,
   useUpdatePacePlan: () => planningState.updatePacePlan,
   useCreateSaluteReport: () => planningState.createSaluteReport,
+}))
+
+vi.mock('../hooks/useChokepoints', () => ({
+  useCreateChokepoint: () => planningState.createChokepoint,
+  useUpdateChokepoint: () => planningState.updateChokepoint,
+  useDeleteChokepoint: () => planningState.deleteChokepoint,
 }))
 
 vi.mock('../hooks/useRole', () => ({
@@ -136,12 +185,16 @@ describe('PlanningPage', () => {
     planningState.createPacePlan.mutateAsync.mockClear()
     planningState.updatePacePlan.mutateAsync.mockClear()
     planningState.createSaluteReport.mutateAsync.mockClear()
+    planningState.createChokepoint.mutateAsync.mockClear()
+    planningState.updateChokepoint.mutateAsync.mockClear()
+    planningState.deleteChokepoint.mutateAsync.mockClear()
     planningState.planning = {
       tasks: [],
       assets: [],
       areas_of_operation: [
         { id: 'ao-1', name: 'North Gulf', posture: 'defensive' },
       ],
+      chokepoints: [],
       commander_intents: [],
       pace_plans: [],
       salute_reports: [],
@@ -166,9 +219,11 @@ describe('PlanningPage', () => {
 
     expect(screen.getByRole('heading', { name: /Operational Planning Surface/i })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /Commander Doctrine/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Maritime Chokepoints/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Save commander intent/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Save PACE plan/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Submit SALUTE report/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Create chokepoint/i })).toBeInTheDocument()
   })
 
   it('submits a new commander intent for the selected AO', async () => {
@@ -206,6 +261,34 @@ describe('PlanningPage', () => {
     })
     expect(screen.getByText(/SALUTE report submitted/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/Activity/i)).toHaveValue('')
+  })
+
+  it('creates a chokepoint for the selected AO', async () => {
+    const user = userEvent.setup()
+    renderPlanningPage()
+
+    await user.type(screen.getByLabelText(/^Name$/i), 'Hormuz East')
+    await user.clear(screen.getByLabelText(/Latitude/i))
+    await user.type(screen.getByLabelText(/Latitude/i), '25.285447')
+    await user.clear(screen.getByLabelText(/Longitude/i))
+    await user.type(screen.getByLabelText(/Longitude/i), '56.334457')
+    await user.click(screen.getByRole('button', { name: /Create chokepoint/i }))
+
+    await waitFor(() => {
+      expect(planningState.createChokepoint.mutateAsync).toHaveBeenCalledWith({
+        area_of_operation_id: 'ao-1',
+        name: 'Hormuz East',
+        category: 'strait',
+        status: 'monitor',
+        latitude: 25.285447,
+        longitude: 56.334457,
+        watch_radius_km: 25,
+        notes: null,
+      })
+    })
+    expect(screen.getByText(/Chokepoint created/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Update chokepoint/i })).toBeInTheDocument()
+    expect(screen.getByLabelText(/Editing/i)).toHaveValue('cp-1')
   })
 
   it('blocks operators from the planning surface', () => {

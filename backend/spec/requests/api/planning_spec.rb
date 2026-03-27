@@ -7,6 +7,7 @@ RSpec.describe "Api::Planning", type: :request do
   let!(:ao) { create(:area_of_operation, name: "EUCOM", posture: "observe") }
   let!(:site) { create(:site, area_of_operation: ao) }
   let!(:asset) { create(:asset, name: "Asset Alpha", status: "available") }
+  let!(:chokepoint) { create(:chokepoint, area_of_operation: ao, name: "Strait Gate", status: "constrained") }
   let!(:commander_intent) { create(:commander_intent, area_of_operation: ao, title: "Hold corridor") }
   let!(:pace_plan) { create(:pace_plan, area_of_operation: ao, primary_plan: "SATCOM primary") }
   let!(:salute_report) { create(:salute_report, area_of_operation: ao, site: site, activity: "Observed shadowing pattern") }
@@ -32,6 +33,7 @@ RSpec.describe "Api::Planning", type: :request do
         "tasks",
         "assets",
         "areas_of_operation",
+        "chokepoints",
         "commander_intents",
         "pace_plans",
         "salute_reports",
@@ -91,6 +93,7 @@ RSpec.describe "Api::Planning", type: :request do
       get "/api/planning", headers: auth_headers(commander)
       body = JSON.parse(response.body)
 
+      expect(body["chokepoints"].first["name"]).to eq("Strait Gate")
       expect(body["commander_intents"].first["title"]).to eq("Hold corridor")
       expect(body["pace_plans"].first["primary_plan"]).to eq("SATCOM primary")
       expect(body["salute_reports"].first["activity"]).to eq("Observed shadowing pattern")

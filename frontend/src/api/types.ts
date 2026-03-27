@@ -5,6 +5,8 @@
 export type SiteStatus = 'active' | 'inactive'
 export type ThreatLevel = 'green' | 'amber' | 'red' | 'black'
 export type Posture = 'observe' | 'defensive' | 'weapons_free'
+export type ChokepointCategory = 'strait' | 'canal' | 'harbor_approach' | 'lane_constriction' | 'anchorage'
+export type ChokepointStatus = 'monitor' | 'constrained' | 'contested' | 'closed'
 export const POSTURES: Posture[] = ['observe', 'defensive', 'weapons_free']
 
 export interface GeoJsonPolygon {
@@ -113,6 +115,23 @@ export interface PlanningAoStub {
   posture: Posture
 }
 
+export interface Chokepoint {
+  id: string
+  area_of_operation_id: string
+  area_of_operation_name: string
+  name: string
+  category: ChokepointCategory
+  status: ChokepointStatus
+  latitude: number
+  longitude: number
+  watch_radius_km: number
+  notes: string | null
+  created_by_id: string
+  updated_by_id: string
+  created_at: string
+  updated_at: string
+}
+
 export interface CommanderIntent {
   id: string
   area_of_operation_id: string
@@ -201,10 +220,36 @@ export interface CreateSaluteReportBody {
   remarks?: string | null
 }
 
+export interface ChokepointsParams extends PaginationParams {
+  area_of_operation_id?: string
+}
+
+export interface CreateChokepointBody {
+  area_of_operation_id: string
+  name: string
+  category: ChokepointCategory
+  status: ChokepointStatus
+  latitude: number
+  longitude: number
+  watch_radius_km: number
+  notes?: string | null
+}
+
+export interface UpdateChokepointBody {
+  name?: string
+  category?: ChokepointCategory
+  status?: ChokepointStatus
+  latitude?: number
+  longitude?: number
+  watch_radius_km?: number
+  notes?: string | null
+}
+
 export interface PlanningResponse {
   tasks:               Task[]
   assets:              Asset[]
   areas_of_operation:  PlanningAoStub[]
+  chokepoints:         Chokepoint[]
   commander_intents:   CommanderIntent[]
   pace_plans:          PacePlan[]
   salute_reports:      SaluteReport[]

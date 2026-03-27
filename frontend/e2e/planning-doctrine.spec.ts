@@ -24,6 +24,7 @@ async function stubPlanningRoutes(page: Page) {
     tasks: [],
     assets: [],
     areas_of_operation: [ao],
+    chokepoints: [],
     commander_intents: [],
     pace_plans: [],
     salute_reports: [],
@@ -115,6 +116,33 @@ async function stubPlanningRoutes(page: Page) {
       body: JSON.stringify(state.commander_intents[0]),
     })
   })
+  await page.route('**/api/chokepoints', async route => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: state.chokepoints, meta: { total: state.chokepoints.length, page: 1, per_page: 50, total_pages: 1 } }),
+      })
+      return
+    }
+
+    const payload = route.request().postDataJSON() as { chokepoint: Record<string, string | number> }
+    state.chokepoints = [{
+      id: 'chokepoint-1',
+      area_of_operation_id: ao.id,
+      area_of_operation_name: ao.name,
+      created_by_id: 'user-1',
+      updated_by_id: 'user-1',
+      created_at: '2026-03-27T12:01:30Z',
+      updated_at: '2026-03-27T12:01:30Z',
+      ...payload.chokepoint,
+    }]
+    await route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify(state.chokepoints[0]),
+    })
+  })
   await page.route('**/api/pace_plans', async route => {
     const payload = route.request().postDataJSON() as { pace_plan: Record<string, string> }
     state.pace_plans = [{
@@ -152,7 +180,7 @@ async function stubPlanningRoutes(page: Page) {
   })
 }
 
-test('planning doctrine smoke: commander can save intent, PACE, and SALUTE doctrine', async ({ page }) => {
+test('planning doctrine smoke: commander can save intent, chokepoints, PACE, and SALUTE doctrine', async ({ page }) => {
   const pageErrors = capturePageErrors(page)
 
   await stubPlanningRoutes(page)
@@ -166,6 +194,13 @@ test('planning doctrine smoke: commander can save intent, PACE, and SALUTE doctr
   await page.getByLabel('End state').fill('Coverage gap closed before dawn.')
   await page.getByRole('button', { name: 'Save commander intent' }).click()
   await expect(page.getByText('Commander intent saved.')).toBeVisible()
+
+  await page.locator('#chokepoint-name').fill('Hormuz East')
+  await page.locator('#chokepoint-latitude').fill('25.285447')
+  await page.locator('#chokepoint-longitude').fill('56.334457')
+  await page.getByRole('button', { name: 'Create chokepoint' }).click()
+  await expect(page.getByText('Chokepoint created.')).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'Hormuz East' })).toBeVisible()
 
   await page.getByLabel('Primary').fill('SATCOM mission chat')
   await page.getByLabel('Alternate').fill('Secure VHF relay')

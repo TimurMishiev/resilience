@@ -123,6 +123,27 @@ CREATE TABLE public.audit_events (
 
 
 --
+-- Name: chokepoints; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.chokepoints (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    area_of_operation_id uuid NOT NULL,
+    created_by_id uuid NOT NULL,
+    updated_by_id uuid NOT NULL,
+    name character varying NOT NULL,
+    category character varying NOT NULL,
+    status character varying NOT NULL,
+    latitude numeric(10,6) NOT NULL,
+    longitude numeric(10,6) NOT NULL,
+    watch_radius_km numeric(6,2) NOT NULL,
+    notes text,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
 -- Name: commander_intents; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -699,6 +720,14 @@ ALTER TABLE ONLY public.audit_events
 
 
 --
+-- Name: chokepoints chokepoints_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chokepoints
+    ADD CONSTRAINT chokepoints_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: commander_intents commander_intents_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -908,6 +937,41 @@ CREATE INDEX index_audit_events_on_correlation_id ON public.audit_events USING b
 --
 
 CREATE INDEX index_audit_events_on_occurred_at ON public.audit_events USING btree (occurred_at);
+
+
+--
+-- Name: index_chokepoints_on_ao_id_and_lower_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_chokepoints_on_ao_id_and_lower_name ON public.chokepoints USING btree (area_of_operation_id, lower((name)::text));
+
+
+--
+-- Name: index_chokepoints_on_area_of_operation_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_chokepoints_on_area_of_operation_id ON public.chokepoints USING btree (area_of_operation_id);
+
+
+--
+-- Name: index_chokepoints_on_area_of_operation_id_and_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_chokepoints_on_area_of_operation_id_and_status ON public.chokepoints USING btree (area_of_operation_id, status);
+
+
+--
+-- Name: index_chokepoints_on_created_by_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_chokepoints_on_created_by_id ON public.chokepoints USING btree (created_by_id);
+
+
+--
+-- Name: index_chokepoints_on_updated_by_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_chokepoints_on_updated_by_id ON public.chokepoints USING btree (updated_by_id);
 
 
 --
@@ -1576,6 +1640,14 @@ CREATE TRIGGER incident_notes_no_delete BEFORE DELETE ON public.incident_notes F
 
 
 --
+-- Name: chokepoints fk_rails_05fec8fd98; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chokepoints
+    ADD CONSTRAINT fk_rails_05fec8fd98 FOREIGN KEY (updated_by_id) REFERENCES public.users(id);
+
+
+--
 -- Name: salute_reports fk_rails_0aaaed891e; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1824,6 +1896,22 @@ ALTER TABLE ONLY public.vessels
 
 
 --
+-- Name: chokepoints fk_rails_f4f59d5fbb; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chokepoints
+    ADD CONSTRAINT fk_rails_f4f59d5fbb FOREIGN KEY (created_by_id) REFERENCES public.users(id);
+
+
+--
+-- Name: chokepoints fk_rails_f514f46e00; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chokepoints
+    ADD CONSTRAINT fk_rails_f514f46e00 FOREIGN KEY (area_of_operation_id) REFERENCES public.areas_of_operation(id);
+
+
+--
 -- Name: signal_rule_matches fk_rails_f6fa1e442c; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1838,6 +1926,7 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260327030000'),
 ('20260327020000'),
 ('20260327010000'),
 ('20260325020000'),
