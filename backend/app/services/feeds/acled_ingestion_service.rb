@@ -32,6 +32,7 @@ module Feeds
     SITE_SCOPE_RADIUS_KM = 250.0
 
     def call
+      metrics = Feeds::PollMetrics.new(feed: "acled")
       @last_logged_error ||= {}
 
       api_key = ENV["ACLED_API_KEY"].to_s.strip
@@ -39,42 +40,65 @@ module Feeds
 
       if api_key.empty? || email.empty?
         Rails.logger.warn "[ACLEDFeed] ACLED_API_KEY or ACLED_EMAIL missing — skipping poll"
-        return ServiceResult.success(ingested: 0)
+        return ServiceResult.success(metrics.success_payload(status: "disabled", errors: ["ACLED_API_KEY or ACLED_EMAIL missing"]))
       end
 
       boxes = query_boxes
       if boxes.empty?
         Rails.logger.info "[ACLEDFeed] no active site/AO footprint — skipping poll"
-        return ServiceResult.success(ingested: 0)
+        return ServiceResult.success(metrics.success_payload(status: "no_scope"))
       end
 
       ingested = 0
       seen_event_ids = Set.new
       http = ssl_http(URI(BASE_URL).host, URI(BASE_URL).port, timeout: TIMEOUT)
+      metrics.increment(:query_box_count, boxes.size)
 
       boxes.each do |box|
-        fetch_events_for_box(http, api_key, email, box).each do |event|
+        fetch_events_for_box(http, api_key, email, box, metrics).each do |event|
           lat = event["latitude"].to_f
           lng = event["longitude"].to_f
 
-          next unless lat != 0.0 || lng != 0.0
-          next unless point_in_box?(box, lat, lng)
+          if lat == 0.0 && lng == 0.0
+            metrics.increment(:skipped_count)
+            next
+          end
+          unless point_in_box?(box, lat, lng)
+            metrics.increment(:skipped_count)
+            next
+          end
 
           event_id = event_identity(event, lat, lng)
-          next unless seen_event_ids.add?(event_id)
+          unless seen_event_ids.add?(event_id)
+            metrics.increment(:duplicate_count)
+            next
+          end
+
+          metrics.observe_external_time(parse_event_date(event["event_date"]))
 
           result = ingest_event(event, lat, lng)
-          ingested += 1 if result&.success && result.payload[:created]
+          if result&.success
+            if result.payload[:created]
+              ingested += 1
+              metrics.increment(:ingested_count)
+            else
+              metrics.increment(:duplicate_count)
+            end
+          else
+            metrics.increment(:error_count)
+          end
         end
       end
 
-      ServiceResult.success(ingested: ingested)
+      ServiceResult.success(metrics.success_payload)
     rescue JSON::ParserError => e
       throttled_warn("parse", "JSON parse error: #{e.message}")
-      ServiceResult.success(ingested: 0)
+      metrics.increment(:error_count)
+      ServiceResult.success(metrics.success_payload(status: "degraded", errors: ["JSON parse error: #{e.message}"]))
     rescue => e
       throttled_warn("exception", e.message)
-      ServiceResult.success(ingested: 0)
+      metrics.increment(:error_count)
+      ServiceResult.success(metrics.success_payload(status: "degraded", errors: [e.message]))
     end
 
     private
@@ -100,7 +124,7 @@ module Feeds
       uri
     end
 
-    def fetch_events_for_box(http, api_key, email, box)
+    def fetch_events_for_box(http, api_key, email, box, metrics)
       page = 1
       events = []
 
@@ -110,11 +134,14 @@ module Feeds
 
         unless response.code == "200"
           throttled_warn("fetch", "HTTP #{response.code}")
+          metrics.increment(:error_count)
           break
         end
 
         body = JSON.parse(response.body)
         page_events = Array(body["data"])
+        metrics.increment(:page_count)
+        metrics.increment(:fetched_count, page_events.size)
         events.concat(page_events)
         break if page_events.size < PER_PAGE
 
@@ -122,6 +149,14 @@ module Feeds
       end
 
       events
+    end
+
+    def parse_event_date(value)
+      return nil if value.blank?
+
+      Date.parse(value.to_s).in_time_zone("UTC").noon
+    rescue ArgumentError
+      nil
     end
 
     def query_boxes

@@ -206,12 +206,23 @@ RSpec.describe Feeds::AcledIngestionService, type: :service do
       allow(service).to receive(:ssl_http).and_return(http)
       allow(http).to receive(:get).and_return(page_1, page_2)
 
-      expect { service.call }.to change(ExternalSignal, :count).by(3)
+      result = nil
+      expect {
+        result = service.call
+      }.to change(ExternalSignal, :count).by(3)
       expect(http).to have_received(:get).twice
       expect(http).to have_received(:get).with(include("page=1"))
       expect(http).to have_received(:get).with(include("page=2"))
       expect(http).to have_received(:get).with(include("latitude_where=BETWEEN")).at_least(:once)
       expect(http).to have_received(:get).with(include("longitude_where=BETWEEN")).at_least(:once)
+      expect(result.payload[:feed_health]).to include(
+        feed: "acled",
+        status: "ok",
+        fetched_count: 3,
+        ingested_count: 3,
+        page_count: 2,
+        query_box_count: 1,
+      )
     end
 
     it "filters events to the live site/AO footprint instead of ingesting every returned event" do

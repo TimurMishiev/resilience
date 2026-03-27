@@ -1,10 +1,23 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, type Page } from '@playwright/test'
 
 const E2E_DIR = dirname(fileURLToPath(import.meta.url))
+const AUTH_STATE_PATH = resolve(E2E_DIR, '.auth/commander.json')
 const AUTH_USER_PATH = resolve(E2E_DIR, '.auth/commander-user.json')
+const SESSION_COOKIE_NAME = '_resilience_session'
+
+type StorageStateCookie = {
+  name: string
+  domain?: string
+  expires?: number
+  secure?: boolean
+}
+
+type StorageStateShape = {
+  cookies?: StorageStateCookie[]
+}
 
 export function formatDateTimeLocal(date: Date): string {
   const pad = (value: number) => String(value).padStart(2, '0')
@@ -37,6 +50,50 @@ export async function login(page: Page) {
   throw new Error('Playwright login failed after exhausting rate-limit retries')
 }
 
+function baseUrlAllowsSecureCookies(baseURL: string): boolean {
+  try {
+    return new URL(baseURL).protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+export function canReuseAuthArtifacts(baseURL: string): boolean {
+  if (!existsSync(AUTH_STATE_PATH) || !existsSync(AUTH_USER_PATH)) {
+    return false
+  }
+
+  try {
+    const state = JSON.parse(readFileSync(AUTH_STATE_PATH, 'utf8')) as StorageStateShape
+    const cookie = state.cookies?.find(entry => entry.name === SESSION_COOKIE_NAME)
+    if (!cookie) return false
+
+    if (cookie.secure && !baseUrlAllowsSecureCookies(baseURL)) {
+      return false
+    }
+
+    if (cookie.expires && cookie.expires > 0 && cookie.expires * 1000 <= Date.now() + 60_000) {
+      return false
+    }
+
+    const hostname = new URL(baseURL).hostname
+    if (cookie.domain && cookie.domain !== hostname && cookie.domain !== `.${hostname}`) {
+      return false
+    }
+
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function hasAuthenticatedApiSession(page: Page): Promise<boolean> {
+  return page.evaluate(async () => {
+    const response = await fetch('/api/sites', { credentials: 'include' })
+    return response.status !== 401
+  })
+}
+
 export async function primeAuthenticatedSession(page: Page) {
   let rawUser: string
   try {
@@ -50,9 +107,20 @@ export async function primeAuthenticatedSession(page: Page) {
   }
   const user = JSON.parse(rawUser)
 
-  await page.addInitScript((sessionUser) => {
+  await page.goto('/login')
+  await page.evaluate((sessionUser) => {
     window.sessionStorage.setItem('resilience_user', JSON.stringify(sessionUser))
   }, user)
+
+  if (!(await hasAuthenticatedApiSession(page))) {
+    await login(page)
+    return
+  }
+
+  await page.goto('/sites')
+  if (/\/login(?:\?|$)/.test(page.url())) {
+    await login(page)
+  }
 }
 
 export async function enableE2EBridge(page: Page) {

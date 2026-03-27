@@ -40,6 +40,7 @@ Rails.application.routes.draw do
     end
 
     resources :audit_events, only: [:index]
+    get "feed_health", to: "feed_health#index"
 
     get "readiness",   to: "readiness#index"
     get "risk_scores", to: "risk_scores#index"

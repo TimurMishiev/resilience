@@ -154,6 +154,7 @@ unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAM
         feed_loop.call("[AISFeed]", 30) { Feeds::AisIngestionService.call }
       end
     else
+      Feeds::PollMetrics.record_disabled(feed: "ais", errors: ["AISHUB_USERNAME not configured"])
       Rails.logger.info "[AISFeed] AISHUB_USERNAME not set — vessel feed disabled (see .env.example)"
     end
 
@@ -165,6 +166,7 @@ unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAM
         feed_loop.call("[FIRMSFeed]", 900) { Feeds::FirmsWildfireIngestionService.call }
       end
     else
+      Feeds::PollMetrics.record_disabled(feed: "firms_wildfire", errors: ["NASA_FIRMS_MAP_KEY not configured"])
       Rails.logger.info "[FIRMSFeed] NASA_FIRMS_MAP_KEY not set — wildfire feed disabled (see .env.example)"
     end
 
@@ -183,6 +185,7 @@ unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAM
         feed_loop.call("[ACLEDFeed]", 3600) { Feeds::AcledIngestionService.call }
       end
     else
+      Feeds::PollMetrics.record_disabled(feed: "acled", errors: ["ACLED_API_KEY or ACLED_EMAIL not configured"])
       Rails.logger.info "[ACLEDFeed] ACLED_API_KEY or ACLED_EMAIL not set — conflict feed disabled (see .env.example)"
     end
 

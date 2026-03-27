@@ -10,6 +10,7 @@ import {
   Tooltip,
 } from '@blueprintjs/core'
 import { postAiSummary, exportBriefing } from '../api/ai'
+import { getApiErrorMessage } from '../api/client'
 import { useSites } from '../hooks/useSites'
 import { useReplay } from '../context/ReplayContext'
 import type { AiSummaryType, AiSummaryResult } from '../api/types'
@@ -101,7 +102,7 @@ export default function BriefingPanel() {
       from:         asOf ?? undefined,
     })
       .then(({ data }) => { if (mountedRef.current) setResult(data) })
-      .catch((err: unknown) => { if (mountedRef.current) setError(err instanceof Error ? err.message : 'Failed to generate briefing') })
+      .catch((err: unknown) => { if (mountedRef.current) setError(getApiErrorMessage(err, 'Failed to generate briefing')) })
       .finally(() => { if (mountedRef.current) setLoading(false) })
   }
 
@@ -132,7 +133,7 @@ export default function BriefingPanel() {
       })
       .catch((err: unknown) => {
         if (mountedRef.current)
-          setPdfError(err instanceof Error ? err.message : 'PDF export failed')
+          setPdfError(getApiErrorMessage(err, 'PDF export failed'))
       })
       .finally(() => { if (mountedRef.current) setPdfLoading(false) })
   }
@@ -199,7 +200,7 @@ export default function BriefingPanel() {
       )}
 
       {pdfError && (
-        <Callout intent="danger" compact style={{ marginTop: 12 }}>PDF export failed: {pdfError}</Callout>
+        <Callout intent="danger" compact style={{ marginTop: 12 }}>{pdfError}</Callout>
       )}
 
       {result && (

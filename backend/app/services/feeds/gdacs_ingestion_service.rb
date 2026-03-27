@@ -41,6 +41,7 @@ module Feeds
     }.freeze
 
     def call
+      metrics = Feeds::PollMetrics.new(feed: "gdacs")
       @last_logged_error ||= {}
 
       uri  = build_uri
@@ -49,25 +50,39 @@ module Feeds
 
       unless response.code == "200"
         throttled_warn("fetch", "HTTP #{response.code}")
-        return ServiceResult.success(ingested: 0)
+        metrics.increment(:error_count)
+        return ServiceResult.success(metrics.success_payload(status: "degraded", errors: ["HTTP #{response.code}"]))
       end
 
       body     = JSON.parse(response.body)
       features = body["features"] || []
       ingested = 0
+      metrics.increment(:fetched_count, features.size)
 
       features.each do |feature|
+        metrics.observe_external_time(parse_timestamp(feature.dig("properties", "fromdate")))
         result = ingest_feature(feature)
-        ingested += 1 if result&.success && result.payload[:created]
+        if result&.success
+          if result.payload[:created]
+            ingested += 1
+            metrics.increment(:ingested_count)
+          else
+            metrics.increment(:duplicate_count)
+          end
+        else
+          metrics.increment(:skipped_count)
+        end
       end
 
-      ServiceResult.success(ingested: ingested)
+      ServiceResult.success(metrics.success_payload)
     rescue JSON::ParserError => e
       throttled_warn("parse", "JSON parse error: #{e.message}")
-      ServiceResult.success(ingested: 0)
+      metrics.increment(:error_count)
+      ServiceResult.success(metrics.success_payload(status: "degraded", errors: ["JSON parse error: #{e.message}"]))
     rescue => e
       throttled_warn("exception", e.message)
-      ServiceResult.success(ingested: 0)
+      metrics.increment(:error_count)
+      ServiceResult.success(metrics.success_payload(status: "degraded", errors: [e.message]))
     end
 
     private

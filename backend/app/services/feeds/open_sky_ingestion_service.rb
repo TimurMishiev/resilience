@@ -56,25 +56,39 @@ module Feeds
     ].freeze
 
     def call
+      metrics = Feeds::PollMetrics.new(feed: "opensky")
       total_ingested = 0
+      metrics.increment(:query_box_count, BOUNDING_BOXES.size)
 
       BOUNDING_BOXES.each_with_index do |box, idx|
         sleep 12 if idx > 0  # 12s gap between boxes — avoids burst 429s
-        response = fetch_box(box)
+        response = fetch_box(box, metrics)
         next unless response
 
         server_time = response["time"].to_i
         states      = response["states"] || []
+        metrics.increment(:fetched_count, states.size)
 
         states.each do |state|
+          metrics.observe_external_time(state_time(state, server_time))
           result = ingest_state(state, server_time)
-          total_ingested += 1 if result&.success && result.payload[:created]
+          if result&.success
+            if result.payload[:created]
+              total_ingested += 1
+              metrics.increment(:ingested_count)
+            else
+              metrics.increment(:duplicate_count)
+            end
+          else
+            metrics.increment(:skipped_count)
+          end
         end
       end
 
-      ServiceResult.success(ingested: total_ingested)
+      ServiceResult.success(metrics.success_payload)
     rescue => e
-      ServiceResult.failure(errors: [e.message])
+      metrics.increment(:error_count)
+      ServiceResult.failure(errors: [e.message], payload: { feed_health: metrics.finish(status: "error", errors: [e.message]) })
     end
 
     private
@@ -131,7 +145,7 @@ module Feeds
       nil
     end
 
-    def fetch_box(box)
+    def fetch_box(box, metrics)
       uri = URI(BASE_URL)
       uri.query = URI.encode_www_form(
         lamin: box[:lamin], lomin: box[:lomin],
@@ -151,13 +165,22 @@ module Feeds
 
       unless response.code == "200"
         throttled_warn(box[:name], "HTTP #{response.code}")
+        metrics.increment(:error_count)
         return nil
       end
 
       JSON.parse(response.body)
     rescue => e
       throttled_warn(box[:name], e.message)
+      metrics.increment(:error_count)
       nil
+    end
+
+    def state_time(state, server_time)
+      position_time = state[3] || state[4] || server_time
+      return nil if position_time.nil? || position_time.to_i.zero?
+
+      Time.at(position_time).utc
     end
 
     # Logs a warning for +key+ at most once per LOG_THROTTLE_SECONDS.

@@ -23,6 +23,7 @@ module Feeds
     TIMEOUT          = 20  # seconds per HTTP request
 
     def call
+      metrics = Feeds::PollMetrics.new(feed: "usgs_seismic")
       uri = URI(BASE_URL)
       now = Time.current.utc
       uri.query = URI.encode_www_form(
@@ -36,21 +37,37 @@ module Feeds
       http     = ssl_http(uri.host, uri.port, timeout: TIMEOUT)
       response = http.get(uri.request_uri)
       unless response.code == "200"
-        return ServiceResult.failure(errors: ["HTTP #{response.code}"])
+        metrics.increment(:error_count)
+        return ServiceResult.failure(
+          errors: ["HTTP #{response.code}"],
+          payload: { feed_health: metrics.finish(status: "error", errors: ["HTTP #{response.code}"]) },
+        )
       end
 
       data     = JSON.parse(response.body)
       features = data["features"] || []
       ingested = 0
+      metrics.increment(:fetched_count, features.size)
 
       features.each do |feature|
+        metrics.observe_external_time(feature.dig("properties", "time")&.to_f&.then { |ms| Time.at(ms / 1000.0).utc })
         result = ingest_feature(feature)
-        ingested += 1 if result&.success && result.payload[:created]
+        if result&.success
+          if result.payload[:created]
+            ingested += 1
+            metrics.increment(:ingested_count)
+          else
+            metrics.increment(:duplicate_count)
+          end
+        else
+          metrics.increment(:skipped_count)
+        end
       end
 
-      ServiceResult.success(ingested: ingested)
+      ServiceResult.success(metrics.success_payload)
     rescue => e
-      ServiceResult.failure(errors: [e.message])
+      metrics.increment(:error_count)
+      ServiceResult.failure(errors: [e.message], payload: { feed_health: metrics.finish(status: "error", errors: [e.message]) })
     end
 
     private

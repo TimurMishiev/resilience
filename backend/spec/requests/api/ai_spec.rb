@@ -80,4 +80,61 @@ RSpec.describe "Api::Ai", type: :request do
       expect(response).to have_http_status(:ok)
     end
   end
+
+  # ── /api/ai/summary ───────────────────────────────────────────────────────
+
+  describe "POST /api/ai/summary" do
+    let(:valid_payload) do
+      {
+        summary_type: "leadership_briefing",
+      }
+    end
+
+    it "requires authentication" do
+      post "/api/ai/summary", params: valid_payload, as: :json
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "returns 403 for operators" do
+      post "/api/ai/summary", params: valid_payload, headers: auth_headers(operator), as: :json
+
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "returns summary data for commanders" do
+      allow(Ai::SummaryService).to receive(:call).and_return(
+        ServiceResult.success(
+          summary: "Executive summary",
+          citations: ["audit-1"],
+          context_counts: { audit_events: 2, signals: 1, rule_fires: 0 },
+        ),
+      )
+
+      post "/api/ai/summary", params: valid_payload, headers: auth_headers(commander), as: :json
+
+      expect(response).to have_http_status(:ok)
+      body = JSON.parse(response.body)
+      expect(body["data"]).to include(
+        "summary" => "Executive summary",
+        "citations" => ["audit-1"],
+        "context_counts" => {
+          "audit_events" => 2,
+          "signals" => 1,
+          "rule_fires" => 0,
+        },
+      )
+    end
+
+    it "surfaces service validation failures" do
+      allow(Ai::SummaryService).to receive(:call).and_return(
+        ServiceResult.failure(errors: ["ANTHROPIC_API_KEY is not set"]),
+      )
+
+      post "/api/ai/summary", params: valid_payload, headers: auth_headers(commander), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(JSON.parse(response.body)).to eq("errors" => ["ANTHROPIC_API_KEY is not set"])
+    end
+  end
 end

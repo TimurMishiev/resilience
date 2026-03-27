@@ -30,29 +30,48 @@ module Feeds
     ].freeze
 
     def call
+      metrics = Feeds::PollMetrics.new(feed: "ais")
       username = ENV["AISHUB_USERNAME"]
-      return ServiceResult.failure(errors: ["AISHUB_USERNAME not configured"]) if username.blank?
+      if username.blank?
+        return ServiceResult.failure(
+          errors: ["AISHUB_USERNAME not configured"],
+          payload: { feed_health: metrics.finish(status: "disabled", errors: ["AISHUB_USERNAME not configured"]) },
+        )
+      end
 
       total_ingested = 0
+      metrics.increment(:query_box_count, BOUNDING_BOXES.size)
 
       BOUNDING_BOXES.each do |box|
-        vessels = fetch_box(box, username)
+        vessels = fetch_box(box, username, metrics)
         next unless vessels
 
+        metrics.increment(:fetched_count, vessels.size)
         vessels.each do |vessel|
+          metrics.observe_external_time(parse_vessel_time(vessel["TIME"]))
           result = ingest_vessel(vessel)
-          total_ingested += 1 if result&.success && result.payload[:created]
+          if result&.success
+            if result.payload[:created]
+              total_ingested += 1
+              metrics.increment(:ingested_count)
+            else
+              metrics.increment(:duplicate_count)
+            end
+          else
+            metrics.increment(:skipped_count)
+          end
         end
       end
 
-      ServiceResult.success(ingested: total_ingested)
+      ServiceResult.success(metrics.success_payload)
     rescue => e
-      ServiceResult.failure(errors: [e.message])
+      metrics.increment(:error_count)
+      ServiceResult.failure(errors: [e.message], payload: { feed_health: metrics.finish(status: "error", errors: [e.message]) })
     end
 
     private
 
-    def fetch_box(box, username)
+    def fetch_box(box, username, metrics)
       uri = URI(BASE_URL)
       uri.query = URI.encode_www_form(
         username: username,
@@ -70,6 +89,7 @@ module Feeds
 
       unless response.code == "200"
         Rails.logger.warn "[AISFeed] HTTP #{response.code} for #{box[:name]}"
+        metrics.increment(:error_count)
         return nil
       end
 
@@ -78,18 +98,31 @@ module Feeds
       # AIS Hub response format: [metadata_hash, vessel_hash, vessel_hash, ...]
       # where metadata_hash = {"ERROR": false, "USERNAME": "...", ...}
       # On auth failure: {"ERROR": true, "ERRORMESSAGE": "..."}
-      return nil if parsed.is_a?(Hash) && parsed["ERROR"]
+      if parsed.is_a?(Hash) && parsed["ERROR"]
+        metrics.increment(:error_count)
+        return nil
+      end
       return nil unless parsed.is_a?(Array) && parsed.length > 1
 
       metadata = parsed.first
       if metadata.is_a?(Hash) && metadata["ERROR"]
         Rails.logger.warn "[AISFeed] API error for #{box[:name]}: #{metadata['ERRORMESSAGE']}"
+        metrics.increment(:error_count)
         return nil
       end
 
       parsed[1..]  # Drop the metadata entry; remaining elements are vessel records
     rescue => e
       Rails.logger.warn "[AISFeed] fetch error for #{box[:name]}: #{e.message}"
+      metrics.increment(:error_count)
+      nil
+    end
+
+    def parse_vessel_time(value)
+      return nil if value.blank?
+
+      Time.parse("#{value} UTC")
+    rescue ArgumentError
       nil
     end
 

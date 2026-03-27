@@ -37,27 +37,37 @@ module Feeds
     ].freeze
 
     def call
+      metrics = Feeds::PollMetrics.new(feed: "gpsjam")
       @last_logged_error ||= {}
+      metrics.increment(:query_box_count, THEATER_BOXES.size)
 
       # GPSJam data lags 1-2 days — try yesterday first, then day before
-      csv_body = fetch_csv_for(Date.today - 1) || fetch_csv_for(Date.today - 2)
+      source_date = Date.today - 1
+      csv_body = fetch_csv_for(source_date, metrics)
+      unless csv_body
+        source_date = Date.today - 2
+        csv_body = fetch_csv_for(source_date, metrics)
+      end
 
       unless csv_body
         throttled_warn("fetch", "no data available for last 2 days")
-        return ServiceResult.success(ingested: 0)
+        metrics.increment(:error_count)
+        return ServiceResult.success(metrics.success_payload(status: "degraded", errors: ["no data available for last 2 days"]))
       end
 
-      ingested = parse_and_ingest(csv_body)
-      ServiceResult.success(ingested: ingested)
+      metrics.observe_external_time(source_date)
+      ingested = parse_and_ingest(csv_body, metrics)
+      ServiceResult.success(metrics.success_payload)
     rescue => e
       throttled_warn("exception", e.message)
-      ServiceResult.success(ingested: 0)
+      metrics.increment(:error_count)
+      ServiceResult.success(metrics.success_payload(status: "degraded", errors: [e.message]))
     end
 
     private
 
     # Returns decompressed CSV body string, or nil if the date is unavailable.
-    def fetch_csv_for(date)
+    def fetch_csv_for(date, metrics = Feeds::PollMetrics.new(feed: "gpsjam"))
       uri  = URI("#{BASE_URL}/#{date}-h3_4.csv")
       http = ssl_http(uri.host, uri.port, timeout: TIMEOUT)
       resp = http.get(uri.request_uri, "Accept-Encoding" => "gzip")
@@ -72,31 +82,57 @@ module Feeds
       body
     rescue => e
       throttled_warn("fetch_#{date}", e.message)
+      metrics.increment(:error_count)
       nil
     end
 
-    def parse_and_ingest(csv_body)
+    def parse_and_ingest(csv_body, metrics = Feeds::PollMetrics.new(feed: "gpsjam"))
       ingested = 0
 
       CSV.parse(csv_body, headers: true) do |row|
+        metrics.increment(:fetched_count)
         hex_str = row["hex"]&.strip
-        next if hex_str.blank?
+        if hex_str.blank?
+          metrics.increment(:skipped_count)
+          next
+        end
 
         good = row["count_good_aircraft"].to_i
         bad  = row["count_bad_aircraft"].to_i
         total = good + bad
-        next if total.zero?
+        if total.zero?
+          metrics.increment(:skipped_count)
+          next
+        end
 
         signal_level = bad.to_f / total
-        next if signal_level < MIN_SIGNAL
+        if signal_level < MIN_SIGNAL
+          metrics.increment(:skipped_count)
+          next
+        end
 
         h3_index = hex_str.to_i(16)
         lat, lng = H3.to_geo_coordinates(h3_index)
-        next unless lat && lng
-        next unless in_any_theater?(lat, lng)
+        unless lat && lng
+          metrics.increment(:skipped_count)
+          next
+        end
+        unless in_any_theater?(lat, lng)
+          metrics.increment(:skipped_count)
+          next
+        end
 
         result = ingest_hexagon(hex_str, lat, lng, signal_level)
-        ingested += 1 if result&.success && result.payload[:created]
+        if result&.success
+          if result.payload[:created]
+            ingested += 1
+            metrics.increment(:ingested_count)
+          else
+            metrics.increment(:duplicate_count)
+          end
+        else
+          metrics.increment(:error_count)
+        end
       end
 
       ingested

@@ -20,6 +20,50 @@ export class ApiError extends Error {
 
 export type QueryParams = Record<string, string | number | boolean | undefined | null>
 
+function extractApiMessage(body: unknown, fallback: string): string {
+  if (typeof body === 'string' && body.trim().length > 0) {
+    return body.trim()
+  }
+
+  if (Array.isArray(body)) {
+    const messages = body.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    return messages.length > 0 ? messages.join(', ') : fallback
+  }
+
+  if (!body || typeof body !== 'object') {
+    return fallback
+  }
+
+  const payload = body as Record<string, unknown>
+
+  if (Array.isArray(payload.errors)) {
+    const messages = payload.errors.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    if (messages.length > 0) return messages.join(', ')
+  }
+
+  if (typeof payload.error === 'string' && payload.error.trim().length > 0) {
+    return payload.error.trim()
+  }
+
+  if (typeof payload.message === 'string' && payload.message.trim().length > 0) {
+    return payload.message.trim()
+  }
+
+  return fallback
+}
+
+export function getApiErrorMessage(error: unknown, fallback = 'Request failed'): string {
+  if (error instanceof ApiError) {
+    return extractApiMessage(error.body, error.message || fallback)
+  }
+
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message
+  }
+
+  return fallback
+}
+
 // ---------------------------------------------------------------------------
 // 401 callback — AuthContext registers this so it can clear state on expiry
 // ---------------------------------------------------------------------------
@@ -79,11 +123,11 @@ async function request<T>(
 
   if (res.status === 401) {
     onUnauthorized?.()
-    throw new ApiError(res.status, payload, `Unauthorized`)
+    throw new ApiError(res.status, payload, extractApiMessage(payload, 'Unauthorized'))
   }
 
   if (!res.ok) {
-    throw new ApiError(res.status, payload, `API ${method} ${path} → ${res.status}`)
+    throw new ApiError(res.status, payload, extractApiMessage(payload, `API ${method} ${path} → ${res.status}`))
   }
 
   return payload as T
@@ -116,7 +160,7 @@ export async function postBlob(path: string, body: unknown): Promise<Blob> {
     // Try to read JSON error body for a useful message
     let errBody: unknown
     try { errBody = await res.json() } catch { errBody = null }
-    throw new ApiError(res.status, errBody, `API POST ${path} → ${res.status}`)
+    throw new ApiError(res.status, errBody, extractApiMessage(errBody, `API POST ${path} → ${res.status}`))
   }
 
   return res.blob()
