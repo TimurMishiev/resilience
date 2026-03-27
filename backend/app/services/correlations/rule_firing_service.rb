@@ -286,16 +286,23 @@ module Correlations
       # Exact Haversine is applied below; this just narrows the DB result set.
       candidates = candidates.near_point(@site.latitude, @site.longitude, proximity_km) if proximity_km > 0
 
-      nearby = candidates.select do |s|
-        proximity_km.zero? || Correlations::EvaluatorService.haversine_km(
-          @site.latitude.to_f, @site.longitude.to_f,
-          s.lat.to_f,          s.lng.to_f
-        ) <= proximity_km
-      end
+      # Exact Haversine is applied in Ruby; find_in_batches avoids materializing the
+      # full result set. We track the most-recent qualifying signal across all batches.
+      best = nil
+      candidates
+        .select(:id, :lat, :lng, :occurred_at)
+        .find_in_batches(batch_size: Correlations::EvaluatorService::SIGNAL_CANDIDATE_BATCH_SIZE) do |batch|
+          batch.each do |s|
+            next unless proximity_km.zero? || Correlations::EvaluatorService.haversine_km(
+              @site.latitude.to_f, @site.longitude.to_f,
+              s.lat.to_f,          s.lng.to_f
+            ) <= proximity_km
+            best = s if best.nil? || s.occurred_at > best.occurred_at
+          end
+        end
 
-      return 0.0 if nearby.empty?
+      return 0.0 if best.nil?
 
-      best = nearby.max_by(&:occurred_at)
       dist = Correlations::EvaluatorService.haversine_km(
         @site.latitude.to_f, @site.longitude.to_f,
         best.lat.to_f,        best.lng.to_f
