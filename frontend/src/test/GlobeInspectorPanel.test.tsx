@@ -189,6 +189,7 @@ describe('GlobeInspectorPanel', () => {
     expect(screen.getByText('GDACS')).toBeInTheDocument()
     expect(screen.getByText('Red')).toBeInTheDocument()
     expect(screen.getByText('Loitering')).toBeInTheDocument()
+    expect(screen.getByText('Loitering since')).toBeInTheDocument()
     expect(screen.getByText('Dark')).toBeInTheDocument()
     expect(screen.getByText('123456789')).toBeInTheDocument()
     expect(screen.getByText('Tropical Cyclone')).toBeInTheDocument()

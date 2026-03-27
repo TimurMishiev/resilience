@@ -1,4 +1,6 @@
 class Vessel < ApplicationRecord
+  LOITERING_SPEED_MAX_MS = 1.03 # 2 knots in m/s
+
   # ── Associations ────────────────────────────────────────────────────────────
   belongs_to :last_signal, class_name: "ExternalSignal", optional: true
   has_many   :vessel_tracks, dependent: :destroy
@@ -72,10 +74,9 @@ class Vessel < ApplicationRecord
     last_seen_at < since.ago
   end
 
-  # Is this vessel currently moving at loitering speed?
-  # Note: this is a real-time check on current speed.
-  # loitering_since is set by the background job, not here.
+  # Is this vessel currently moving at loitering speed (≤ 2 knots)?
+  # Speed is stored in m/s after AIS ingestion.
   def loitering_speed?
-    speed.present? && speed < 2.0
+    speed.present? && speed <= LOITERING_SPEED_MAX_MS
   end
 end

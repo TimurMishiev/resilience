@@ -2,6 +2,7 @@ import { Callout, Divider, Tag } from '@blueprintjs/core'
 import { Icon } from '@blueprintjs/core'
 import type { Signal } from '../api/types'
 import type { Vessel, VesselTrack } from '../api/vessels'
+import { formatTimestampFull } from '../lib/formatters'
 import { humanize } from '../utils/humanize'
 import { SIGNAL_COLORS, SIGNAL_LABELS, SOURCE_LABELS, ALERT_LEVEL_INTENT } from '../lib/signalConfig'
 import { SIGNAL_ICON_NAME } from '../lib/signalIcons'
@@ -112,6 +113,14 @@ export function MapSignalPanel({
               <div className="map-telemetry-row">
                 <span className="map-telemetry-label">Destination</span>
                 <span className="map-telemetry-value">{vessel.destination}</span>
+              </div>
+            )}
+            {vessel.loitering_since && (
+              <div className="map-telemetry-row">
+                <span className="map-telemetry-label">Loitering since</span>
+                <span className="map-telemetry-value bp6-text-muted">
+                  {formatTimestampFull(Date.parse(vessel.loitering_since) / 1000)}
+                </span>
               </div>
             )}
             {vesselTracks.length > 1 && (

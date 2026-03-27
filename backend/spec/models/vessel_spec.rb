@@ -155,12 +155,12 @@ RSpec.describe Vessel, type: :model do
   end
 
   describe "#loitering_speed?" do
-    it "returns true when speed is below 2 knots" do
-      expect(build(:vessel, speed: 1.5).loitering_speed?).to be true
+    it "returns true when speed is at or below 2 knots in m/s" do
+      expect(build(:vessel, speed: 1.03).loitering_speed?).to be true
     end
 
-    it "returns false when speed is at or above 2 knots" do
-      expect(build(:vessel, speed: 2.0).loitering_speed?).to be false
+    it "returns false when speed is above 2 knots in m/s" do
+      expect(build(:vessel, speed: 1.2).loitering_speed?).to be false
       expect(build(:vessel, speed: 12.0).loitering_speed?).to be false
     end
 

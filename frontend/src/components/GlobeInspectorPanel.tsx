@@ -332,6 +332,14 @@ export function GlobeInspectorPanel({
                 <span className="globe-telemetry-value">{selectedVessel.destination}</span>
               </div>
             )}
+            {selectedVessel?.loitering_since && (
+              <div className="globe-telemetry-row">
+                <span className="globe-telemetry-label">Loitering since</span>
+                <span className="globe-telemetry-value bp6-text-muted">
+                  {formatTimestampFull(Date.parse(selectedVessel.loitering_since) / 1000)}
+                </span>
+              </div>
+            )}
             {selectedSignal.signal_type === 'conflict_event' && typeof selectedSignal.raw_payload.event_type === 'string' && (
               <div className="globe-telemetry-row">
                 <span className="globe-telemetry-label">Event</span>

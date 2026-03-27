@@ -22,6 +22,49 @@ for (const pageSmoke of PAGE_SMOKES) {
   })
 }
 
+test('dashboard loitering smoke: flagged vessels appear in the live watchlist', async ({ page }) => {
+  const pageErrors = capturePageErrors(page)
+
+  await primeAuthenticatedSession(page)
+  await page.route('**/api/vessels**', async route => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: [
+          {
+            id: 'vessel-1',
+            mmsi: '123456789',
+            name: 'MV Sentinel',
+            vessel_type: 'Cargo',
+            flag: 'PA',
+            destination: 'Tangier',
+            lat: 36.1,
+            lng: -5.4,
+            speed: 0.8,
+            heading: 210,
+            first_seen_at: '2026-03-25T00:00:00.000Z',
+            last_seen_at: '2026-03-27T11:30:00.000Z',
+            loitering_since: '2026-03-27T11:00:00.000Z',
+            dark: true,
+            loitering: true,
+            last_signal_id: 'sig-1',
+          },
+        ],
+        meta: { total: 1, page: 1, per_page: 8, total_pages: 1 },
+      }),
+    })
+  })
+
+  await page.goto('/dashboard')
+
+  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
+  await expect(page.getByText('Loitering Watchlist')).toBeVisible()
+  await expect(page.getByText('MV Sentinel')).toBeVisible()
+  await expect(page.getByText('Dark')).toBeVisible()
+  expect(pageErrors).toEqual([])
+})
+
 test('briefing smoke: page loads and summary generation surfaces grounded output', async ({ page }) => {
   const pageErrors = capturePageErrors(page)
 

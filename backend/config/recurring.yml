@@ -34,6 +34,11 @@ production:
     queue: background
     schedule: every 5 minutes
 
+  vessel_loitering_detection:
+    class: Vessels::LoiteringDetectionJob
+    queue: background
+    schedule: every 5 minutes
+
   risk_snapshot:
     class: Risk::SnapshotJob
     queue: background
@@ -47,6 +52,11 @@ production:
 development:
   vessel_gap_detection:
     class: Vessels::GapDetectionJob
+    queue: background
+    schedule: every 5 minutes
+
+  vessel_loitering_detection:
+    class: Vessels::LoiteringDetectionJob
     queue: background
     schedule: every 5 minutes
 

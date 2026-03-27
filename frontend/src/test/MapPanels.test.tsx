@@ -229,6 +229,7 @@ describe('map data panels', () => {
 
     expect(screen.getByText('MV Sentinel')).toBeInTheDocument()
     expect(screen.getByText('Loitering')).toBeInTheDocument()
+    expect(screen.getByText('Loitering since')).toBeInTheDocument()
     expect(screen.getByText('Dark')).toBeInTheDocument()
     expect(screen.getByText('123456789')).toBeInTheDocument()
     expect(screen.getByText('Cargo')).toBeInTheDocument()
