@@ -123,9 +123,7 @@ function buildMapFacade() {
       track('setLayoutProperty', layerId, prop, value)
     },
     setPaintProperty(layerId: string, prop: string, value: unknown) {
-      void layerId
-      void prop
-      void value
+      track('setPaintProperty', layerId, prop, value)
     },
 
     // ── Map utilities ──────────────────────────────────────────────────────
@@ -608,6 +606,94 @@ describe('useMapLibreEngine adapter', () => {
         .map(c => c.args[0] as string)
 
       expect(shownIds).toContain('sensor-coverage-fill')
+    })
+  })
+
+  describe('breach pulse animation', () => {
+    const breachedSite = {
+      id: 'site-1',
+      name: 'Site One',
+      latitude: 10,
+      longitude: 20,
+      status: 'active' as const,
+      geofence_radius_km: 12,
+      area_of_operation_id: null,
+      flagged_at: null,
+      flag_reason: null,
+      created_at: '2026-03-26T00:00:00Z',
+      updated_at: '2026-03-26T00:00:00Z',
+    }
+
+    it('drives the breach ring pulse from requestAnimationFrame', async () => {
+      const containerRef = makeContainerRef()
+      const rafCallbacks = new Map<number, FrameRequestCallback>()
+      let nextFrameId = 1
+      const requestAnimationFrameSpy = vi
+        .spyOn(window, 'requestAnimationFrame')
+        .mockImplementation(callback => {
+          const frameId = nextFrameId++
+          rafCallbacks.set(frameId, callback)
+          return frameId
+        })
+      const cancelAnimationFrameSpy = vi
+        .spyOn(window, 'cancelAnimationFrame')
+        .mockImplementation(frameId => {
+          rafCallbacks.delete(frameId)
+        })
+
+      try {
+        await bootMap(facade, containerRef, defaultInput(containerRef, {
+          sites: [breachedSite],
+          breachedSiteIds: new Set(['site-1']),
+        }))
+
+        expect(requestAnimationFrameSpy).toHaveBeenCalled()
+
+        const firstFrame = rafCallbacks.get(1)
+        expect(firstFrame).toBeDefined()
+
+        await act(async () => {
+          firstFrame?.(630)
+        })
+
+        expect(facade.calls).toContainEqual({
+          method: 'setPaintProperty',
+          args: ['geofence-breach-stroke', 'line-opacity', expect.any(Number)],
+        })
+        expect(cancelAnimationFrameSpy).not.toHaveBeenCalled()
+      } finally {
+        requestAnimationFrameSpy.mockRestore()
+        cancelAnimationFrameSpy.mockRestore()
+      }
+    })
+
+    it('cancels the frame loop and restores default opacity when breaches clear', async () => {
+      const containerRef = makeContainerRef()
+      const requestAnimationFrameSpy = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 7)
+      const cancelAnimationFrameSpy = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {})
+
+      try {
+        const hook = await bootMap(facade, containerRef, defaultInput(containerRef, {
+          sites: [breachedSite],
+          breachedSiteIds: new Set(['site-1']),
+        }))
+
+        await act(async () => {
+          hook.rerender(defaultInput(containerRef, {
+            sites: [breachedSite],
+            breachedSiteIds: new Set(),
+          }))
+        })
+
+        expect(cancelAnimationFrameSpy).toHaveBeenCalledWith(7)
+        expect(facade.calls).toContainEqual({
+          method: 'setPaintProperty',
+          args: ['geofence-breach-stroke', 'line-opacity', 0.7],
+        })
+      } finally {
+        requestAnimationFrameSpy.mockRestore()
+        cancelAnimationFrameSpy.mockRestore()
+      }
     })
   })
 })

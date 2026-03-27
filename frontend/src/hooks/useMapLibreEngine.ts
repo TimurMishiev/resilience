@@ -198,7 +198,7 @@ export function useMapLibreEngine({
   // Kept in a ref so signal click handler never goes stale without re-registering
   const signalsRef       = useRef<Signal[]>([])
   const selectedSignalIdRef = useRef<string | null>(selectedSignalId)
-  const breachPulseRef   = useRef<ReturnType<typeof setInterval> | null>(null)
+  const breachPulseRef   = useRef<number | null>(null)
   const mapStyleRef      = useRef<MapStyleKey>(mapStyle)
   const appliedStyleRef  = useRef<MapStyleKey | null>(null)
 
@@ -537,25 +537,28 @@ export function useMapLibreEngine({
   useEffect(() => {
     if (!mapLoaded || breachedSiteIds.size === 0) {
       if (breachPulseRef.current !== null) {
-        clearInterval(breachPulseRef.current)
+        window.cancelAnimationFrame(breachPulseRef.current)
         breachPulseRef.current = null
-        try { mapRef.current?.setPaintProperty('geofence-breach-stroke', 'line-opacity', 0.7) } catch { /* layer may not exist yet */ }
       }
+      try { mapRef.current?.setPaintProperty('geofence-breach-stroke', 'line-opacity', 0.7) } catch { /* layer may not exist yet */ }
       return
     }
 
-    breachPulseRef.current = setInterval(() => {
+    const animate = (timestamp: number) => {
       const map = mapRef.current
       if (!map) return
       try {
-        const opacity = 0.5 + 0.35 * Math.sin((Date.now() / 630) * Math.PI)
+        const opacity = 0.5 + 0.35 * Math.sin((timestamp / 630) * Math.PI)
         map.setPaintProperty('geofence-breach-stroke', 'line-opacity', opacity)
       } catch { /* layer not yet initialised */ }
-    }, 50)
+      breachPulseRef.current = window.requestAnimationFrame(animate)
+    }
+
+    breachPulseRef.current = window.requestAnimationFrame(animate)
 
     return () => {
       if (breachPulseRef.current !== null) {
-        clearInterval(breachPulseRef.current)
+        window.cancelAnimationFrame(breachPulseRef.current)
         breachPulseRef.current = null
       }
     }

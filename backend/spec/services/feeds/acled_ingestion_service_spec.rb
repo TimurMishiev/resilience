@@ -93,29 +93,47 @@ RSpec.describe Feeds::AcledIngestionService, type: :service do
     end
   end
 
-  describe "#in_any_theater?" do
-    it "returns true for Middle East coordinates" do
-      expect(service.send(:in_any_theater?, 35.5, 37.2)).to be true
+  describe "#query_boxes" do
+    it "builds scope boxes from active site coordinates" do
+      create(:site, latitude: 35.5, longitude: 37.2, geofence_radius_km: 50)
+
+      boxes = service.send(:query_boxes)
+      expect(boxes).not_to be_empty
+      expect(service.send(:point_in_box?, boxes.first, 35.5, 37.2)).to be true
     end
 
-    it "returns true for Horn of Africa coordinates" do
-      expect(service.send(:in_any_theater?, 11.5, 42.5)).to be true
+    it "includes AO polygon bounds in the live footprint" do
+      area = create(
+        :area_of_operation,
+        geometry: {
+          "type" => "Polygon",
+          "coordinates" => [[[30.0, 10.0], [40.0, 10.0], [40.0, 15.0], [30.0, 15.0], [30.0, 10.0]]],
+        },
+      )
+      create(:site, latitude: 35.5, longitude: 37.2, area_of_operation: area)
+
+      boxes = service.send(:query_boxes)
+      expect(boxes.any? { |box| service.send(:point_in_box?, box, 12.0, 35.0) }).to be true
     end
 
-    it "returns true for Eastern Europe coordinates" do
-      expect(service.send(:in_any_theater?, 48.0, 30.0)).to be true
+    it "ignores inactive sites when building the footprint" do
+      create(:site, :inactive, latitude: 35.5, longitude: 37.2)
+
+      expect(service.send(:query_boxes)).to eq([])
     end
 
-    it "returns true for Indo-Pacific coordinates" do
-      expect(service.send(:in_any_theater?, 20.0, 105.0)).to be true
-    end
+    it "includes an AO polygon with no active site in the footprint" do
+      create(
+        :area_of_operation,
+        geometry: {
+          "type" => "Polygon",
+          "coordinates" => [[[20.0, 10.0], [25.0, 10.0], [25.0, 15.0], [20.0, 15.0], [20.0, 10.0]]],
+        },
+      )
 
-    it "returns false for coordinates outside all theater boxes (e.g. South America)" do
-      expect(service.send(:in_any_theater?, -15.0, -65.0)).to be false
-    end
-
-    it "returns false for coordinates outside all theater boxes (e.g. Northern Canada)" do
-      expect(service.send(:in_any_theater?, 70.0, -95.0)).to be false
+      boxes = service.send(:query_boxes)
+      expect(boxes).not_to be_empty
+      expect(boxes.any? { |box| service.send(:point_in_box?, box, 12.0, 22.0) }).to be true
     end
   end
 
@@ -150,6 +168,94 @@ RSpec.describe Feeds::AcledIngestionService, type: :service do
         saved_key ? ENV["ACLED_API_KEY"] = saved_key : ENV.delete("ACLED_API_KEY")
         ENV["ACLED_EMAIL"] = saved_email if saved_email
       end
+    end
+  end
+
+  describe "#call with pagination and footprint filtering" do
+    around do |example|
+      saved_key = ENV["ACLED_API_KEY"]
+      saved_email = ENV["ACLED_EMAIL"]
+      ENV["ACLED_API_KEY"] = "test-key"
+      ENV["ACLED_EMAIL"] = "test@example.com"
+      example.run
+    ensure
+      saved_key ? ENV["ACLED_API_KEY"] = saved_key : ENV.delete("ACLED_API_KEY")
+      saved_email ? ENV["ACLED_EMAIL"] = saved_email : ENV.delete("ACLED_EMAIL")
+    end
+
+    before do
+      stub_const("#{described_class}::PER_PAGE", 2)
+    end
+
+    it "paginates through ACLED pages for the current footprint" do
+      create(:site, latitude: 35.5, longitude: 37.2)
+
+      http = instance_double(Net::HTTP)
+      page_1 = instance_double(Net::HTTPResponse, code: "200", body: {
+        "data" => [
+          raw_event.merge("event_id_cnty" => "SYR-1"),
+          raw_event.merge("event_id_cnty" => "SYR-2", "latitude" => "35.6", "longitude" => "37.3"),
+        ],
+      }.to_json)
+      page_2 = instance_double(Net::HTTPResponse, code: "200", body: {
+        "data" => [
+          raw_event.merge("event_id_cnty" => "SYR-3", "latitude" => "35.7", "longitude" => "37.4"),
+        ],
+      }.to_json)
+
+      allow(service).to receive(:ssl_http).and_return(http)
+      allow(http).to receive(:get).and_return(page_1, page_2)
+
+      expect { service.call }.to change(ExternalSignal, :count).by(3)
+      expect(http).to have_received(:get).twice
+      expect(http).to have_received(:get).with(include("page=1"))
+      expect(http).to have_received(:get).with(include("page=2"))
+      expect(http).to have_received(:get).with(include("latitude_where=BETWEEN")).at_least(:once)
+      expect(http).to have_received(:get).with(include("longitude_where=BETWEEN")).at_least(:once)
+    end
+
+    it "filters events to the live site/AO footprint instead of ingesting every returned event" do
+      create(:site, latitude: 35.5, longitude: 37.2)
+
+      http = instance_double(Net::HTTP)
+      response = instance_double(Net::HTTPResponse, code: "200", body: {
+        "data" => [
+          raw_event.merge("event_id_cnty" => "SYR-1"),
+          raw_event.merge("event_id_cnty" => "FAR-1", "latitude" => "-15.0", "longitude" => "-65.0"),
+        ],
+      }.to_json)
+      empty_response = instance_double(Net::HTTPResponse, code: "200", body: {
+        "data" => [],
+      }.to_json)
+
+      allow(service).to receive(:ssl_http).and_return(http)
+      allow(http).to receive(:get).and_return(response, empty_response)
+
+      expect { service.call }.to change(ExternalSignal, :count).by(1)
+      expect(ExternalSignal.last.external_id).to eq("SYR-1")
+    end
+
+    it "deduplicates overlapping footprint hits before ingesting" do
+      create(:site, latitude: 35.5, longitude: 37.2)
+      area = create(
+        :area_of_operation,
+        geometry: {
+          "type" => "Polygon",
+          "coordinates" => [[[36.5, 34.5], [38.5, 34.5], [38.5, 36.5], [36.5, 36.5], [36.5, 34.5]]],
+        },
+      )
+      create(:site, latitude: 35.6, longitude: 37.3, area_of_operation: area)
+
+      http = instance_double(Net::HTTP)
+      response = instance_double(Net::HTTPResponse, code: "200", body: {
+        "data" => [raw_event.merge("event_id_cnty" => "SYR-DEDUP")],
+      }.to_json)
+
+      allow(service).to receive(:ssl_http).and_return(http)
+      allow(http).to receive(:get).and_return(response, response)
+
+      expect(service).to receive(:ingest_event).once.and_call_original
+      service.call
     end
   end
 end
