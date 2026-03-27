@@ -81,8 +81,25 @@ RSpec.describe Feeds::FirmsWildfireIngestionService, type: :service do
       expect(ExternalSignal.count).to eq(0)
     end
 
+    it "skips uppercase low-confidence rows (confidence = 'L')" do
+      low_conf = raw_row.merge("confidence" => "L")
+
+      result = service.send(:ingest_row, low_conf)
+
+      expect(result).to be_nil
+      expect(ExternalSignal.count).to eq(0)
+    end
+
     it "accepts nominal-confidence rows (confidence = 'n')" do
       nominal = raw_row.merge("confidence" => "n")
+      expect {
+        service.send(:ingest_row, nominal)
+      }.to change(ExternalSignal, :count).by(1)
+    end
+
+    it "accepts uppercase nominal-confidence rows (confidence = 'N')" do
+      nominal = raw_row.merge("confidence" => "N")
+
       expect {
         service.send(:ingest_row, nominal)
       }.to change(ExternalSignal, :count).by(1)

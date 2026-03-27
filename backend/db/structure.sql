@@ -983,6 +983,13 @@ CREATE INDEX index_signal_rule_matches_on_correlation_rule_id ON public.signal_r
 
 
 --
+-- Name: index_signal_rule_matches_on_correlation_rule_id_and_fired_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_signal_rule_matches_on_correlation_rule_id_and_fired_at ON public.signal_rule_matches USING btree (correlation_rule_id, fired_at);
+
+
+--
 -- Name: index_signal_rule_matches_on_fired_at; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1050,6 +1057,13 @@ CREATE INDEX index_site_risk_snapshots_on_site_id_and_recorded_at ON public.site
 --
 
 CREATE INDEX index_sites_on_area_of_operation_id ON public.sites USING btree (area_of_operation_id);
+
+
+--
+-- Name: index_sites_on_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_sites_on_status ON public.sites USING btree (status);
 
 
 --
@@ -1600,6 +1614,7 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260327010000'),
 ('20260325020000'),
 ('20260325010000'),
 ('20260324010000'),

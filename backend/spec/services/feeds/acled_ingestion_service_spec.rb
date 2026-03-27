@@ -135,6 +135,18 @@ RSpec.describe Feeds::AcledIngestionService, type: :service do
       expect(boxes).not_to be_empty
       expect(boxes.any? { |box| service.send(:point_in_box?, box, 12.0, 22.0) }).to be true
     end
+
+    it "clamps polar site boxes to valid lat/lng bounds" do
+      site = create(:site, latitude: 89.6, longitude: 179.2, geofence_radius_km: 10)
+
+      box = service.send(:site_scope_box, site)
+
+      expect(box[:latmin]).to be >= -90.0
+      expect(box[:latmax]).to eq(90.0)
+      expect(box[:lonmin]).to be >= -180.0
+      expect(box[:lonmax]).to eq(180.0)
+      expect(service.send(:point_in_box?, box, 89.6, 179.2)).to be true
+    end
   end
 
   describe "#call with missing credentials" do

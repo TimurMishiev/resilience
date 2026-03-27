@@ -76,6 +76,17 @@ RSpec.describe Feeds::AisIngestionService, type: :service do
         .to be_within(1.second).of(original_first_seen)
     end
 
+    it "treats HEADING=511 as unavailable and stores nil heading" do
+      unavailable_heading = raw_vessel.merge("HEADING" => 511)
+
+      service.send(:ingest_vessel, unavailable_heading)
+
+      signal = ExternalSignal.last
+      vessel = Vessel.find_by(mmsi: "123456789")
+      expect(signal.heading).to be_nil
+      expect(vessel.heading).to be_nil
+    end
+
     it "returns nil silently when required fields are missing" do
       bad = raw_vessel.except("MMSI")
       expect(service.send(:ingest_vessel, bad)).to be_nil
