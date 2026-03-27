@@ -62,7 +62,19 @@ class Recommendation < ApplicationRecord
   end
 
   def mark_executed!
-    update!(status: "executed", executed_at: Time.current)
+    before_status = status
+    ApplicationRecord.transaction do
+      update!(status: "executed", executed_at: Time.current)
+      Audit::EventWriter.write(
+        actor:           "system",
+        entity_type:     "Recommendation",
+        entity_id:       id,
+        event_type:      "recommendation_executed",
+        before_snapshot: { status: before_status },
+        after_snapshot:  { status: "executed" },
+        correlation_id:  SecureRandom.uuid,
+      )
+    end
   end
 
   def pending?  = status == "pending"

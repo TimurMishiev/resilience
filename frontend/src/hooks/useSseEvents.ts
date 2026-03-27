@@ -124,6 +124,21 @@ export function useSseEvents({
       if (e.event === 'chokepoint_updated') {
         queryClient.invalidateQueries({ queryKey: ['chokepoints'] })
       }
+
+      if (e.event === 'planning_doctrine_updated') {
+        const d = e.data as { kind: string; area_of_operation_id: string }
+        const KIND_LABEL: Record<string, string> = {
+          commander_intent: 'Commander Intent',
+          pace_plan:        'PACE Plan',
+          salute_report:    'SALUTE Report',
+        }
+        AppToaster.then(t => t.show({
+          message: `📋 ${KIND_LABEL[d.kind] ?? d.kind} updated`,
+          intent:  'primary',
+          icon:    'document',
+          timeout: 5_000,
+        }))
+      }
     },
   })
 }

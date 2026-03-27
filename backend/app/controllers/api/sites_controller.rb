@@ -84,7 +84,21 @@ module Api
         return
       end
 
-      site.update!(geofence_radius_km: radius)
+      before_radius = site.geofence_radius_km
+
+      ApplicationRecord.transaction do
+        site.update!(geofence_radius_km: radius)
+        Audit::EventWriter.write(
+          actor:           current_user.email,
+          entity_type:     "Site",
+          entity_id:       site.id,
+          event_type:      "site_geofence_updated",
+          before_snapshot: { geofence_radius_km: before_radius },
+          after_snapshot:  { geofence_radius_km: radius },
+          correlation_id:  SecureRandom.uuid
+        )
+      end
+
       render json: serialize_site(site)
     rescue ActiveRecord::RecordInvalid => e
       render json: { errors: e.record.errors.full_messages }, status: :unprocessable_content

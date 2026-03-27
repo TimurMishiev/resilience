@@ -293,6 +293,7 @@ export default function PlanningPage() {
     () => (selectedDoctrineAoId ? (pacePlansByAo.get(selectedDoctrineAoId) ?? null) : null),
     [pacePlansByAo, selectedDoctrineAoId],
   )
+
   const doctrineSites = useMemo(
     () => sites.filter(site => site.area_of_operation_id === selectedDoctrineAoId),
     [sites, selectedDoctrineAoId],

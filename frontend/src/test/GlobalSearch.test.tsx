@@ -145,6 +145,17 @@ describe('GlobalSearch', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
+  it('navigates to a task deep-link with ?task= param', async () => {
+    const user = userEvent.setup()
+    const { onClose } = renderPalette()
+
+    await user.type(screen.getByPlaceholderText(/Search commands, pages, sites, tasks, assets/i), 'patrol')
+    await user.click(screen.getByText('Patrol perimeter'))
+
+    expect(mockNavigate).toHaveBeenCalledWith('/sites/site-1?task=task-1')
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
   it('omits commander-only commands for operators', async () => {
     const user = userEvent.setup()
     renderPalette({ isCommander: false })

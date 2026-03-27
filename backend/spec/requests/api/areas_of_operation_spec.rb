@@ -82,6 +82,16 @@ RSpec.describe "Api::AreasOfOperation", type: :request do
       expect(body["name"]).to eq("New AO")
     end
 
+    it "writes an audit event on create" do
+      expect {
+        post "/api/areas_of_operation", params: valid_params, headers: auth_headers(commander)
+      }.to change(AuditEvent, :count).by(1)
+      event = AuditEvent.last
+      expect(event.event_type).to eq("area_of_operation_created")
+      expect(event.before_snapshot).to be_nil
+      expect(event.after_snapshot["name"]).to eq("New AO")
+    end
+
     it "returns 403 for operators" do
       post "/api/areas_of_operation", params: valid_params, headers: auth_headers(operator)
       expect(response).to have_http_status(:forbidden)
@@ -104,6 +114,18 @@ RSpec.describe "Api::AreasOfOperation", type: :request do
       expect(JSON.parse(response.body)["threat_level"]).to eq("red")
     end
 
+    it "writes an audit event with before/after snapshot on update" do
+      expect {
+        patch "/api/areas_of_operation/#{eucom.id}",
+              params:  { area_of_operation: { threat_level: "red" } },
+              headers: auth_headers(commander)
+      }.to change(AuditEvent, :count).by(1)
+      event = AuditEvent.last
+      expect(event.event_type).to eq("area_of_operation_updated")
+      expect(event.before_snapshot["threat_level"]).to eq("amber")
+      expect(event.after_snapshot["threat_level"]).to eq("red")
+    end
+
     it "returns 403 for operators" do
       patch "/api/areas_of_operation/#{eucom.id}",
             params:  { area_of_operation: { threat_level: "red" } },
@@ -113,10 +135,30 @@ RSpec.describe "Api::AreasOfOperation", type: :request do
   end
 
   describe "DELETE /api/areas_of_operation/:id" do
-    it "returns 204 for commanders" do
-      delete "/api/areas_of_operation/#{indopacom.id}", headers: auth_headers(commander)
+    it "returns 204 and destroys an AO with no attached doctrine" do
+      bare_ao = create(:area_of_operation, name: "Empty AO")
+      delete "/api/areas_of_operation/#{bare_ao.id}", headers: auth_headers(commander)
       expect(response).to have_http_status(:no_content)
-      expect(AreaOfOperation.find_by(id: indopacom.id)).to be_nil
+      expect(AreaOfOperation.find_by(id: bare_ao.id)).to be_nil
+    end
+
+    it "writes an audit event on successful delete" do
+      bare_ao = create(:area_of_operation, name: "To Delete")
+      expect {
+        delete "/api/areas_of_operation/#{bare_ao.id}", headers: auth_headers(commander)
+      }.to change(AuditEvent, :count).by(1)
+      event = AuditEvent.last
+      expect(event.event_type).to eq("area_of_operation_deleted")
+      expect(event.before_snapshot["name"]).to eq("To Delete")
+      expect(event.after_snapshot["deleted"]).to be true
+    end
+
+    it "returns 422 when AO has attached doctrine (commander_intent)" do
+      create(:commander_intent, area_of_operation: indopacom, created_by: commander, updated_by: commander)
+      delete "/api/areas_of_operation/#{indopacom.id}", headers: auth_headers(commander)
+      expect(response).to have_http_status(:unprocessable_content)
+      body = JSON.parse(response.body)
+      expect(body["errors"].first).to include("commander intent")
     end
 
     it "returns 403 for operators" do

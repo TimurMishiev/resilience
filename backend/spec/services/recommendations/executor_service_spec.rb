@@ -101,11 +101,12 @@ RSpec.describe Recommendations::ExecutorService, type: :service do
     end
 
     it "transitions the incident and writes an audit event" do
-      expect { execute(rec) }.to change(AuditEvent, :count).by(1)
+      expect { execute(rec) }.to change(AuditEvent, :count).by(2)
       expect(incident.reload.status).to eq "acknowledged"
-      audit = AuditEvent.last
-      expect(audit.event_type).to eq "incident_transitioned"
+      audit = AuditEvent.find_by(event_type: "incident_transitioned")
+      expect(audit).to be_present
       expect(audit.metadata["recommendation_id"]).to eq rec.id
+      expect(AuditEvent.find_by(event_type: "recommendation_executed")).to be_present
     end
   end
 
@@ -154,9 +155,10 @@ RSpec.describe Recommendations::ExecutorService, type: :service do
     end
 
     it "sets flagged_at and writes a site_flagged audit event" do
-      expect { execute(rec) }.to change(AuditEvent, :count).by(1)
+      expect { execute(rec) }.to change(AuditEvent, :count).by(2)
       expect(site.reload.flagged_at).to be_present
-      expect(AuditEvent.last.event_type).to eq "site_flagged"
+      expect(AuditEvent.find_by(event_type: "site_flagged")).to be_present
+      expect(AuditEvent.find_by(event_type: "recommendation_executed")).to be_present
     end
 
     it "is idempotent — does not re-flag an already-flagged site" do
@@ -169,7 +171,9 @@ RSpec.describe Recommendations::ExecutorService, type: :service do
                           affected_entity_id:   site.id,
                           action_payload:       { "site_id" => site.id },
                           expires_at:           2.hours.from_now)
-      expect { execute(second_rec) }.not_to change(AuditEvent, :count)
+      # site_flagged is skipped (idempotent), but recommendation_executed is still written
+      expect { execute(second_rec) }.to change(AuditEvent, :count).by(1)
+      expect(AuditEvent.last.event_type).to eq "recommendation_executed"
       expect(second_rec.reload.status).to eq "executed"
     end
   end
@@ -188,9 +192,10 @@ RSpec.describe Recommendations::ExecutorService, type: :service do
     end
 
     it "assigns the asset to the task and writes an audit event" do
-      expect { execute(rec) }.to change(AuditEvent, :count).by(1)
+      expect { execute(rec) }.to change(AuditEvent, :count).by(2)
       expect(task.reload.asset_id).to eq asset.id
       expect(rec.reload.status).to eq "executed"
+      expect(AuditEvent.find_by(event_type: "recommendation_executed")).to be_present
     end
 
     it "returns failure when task is not found" do

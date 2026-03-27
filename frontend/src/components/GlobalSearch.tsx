@@ -249,11 +249,11 @@ function buildResults(
           id: task.id,
           type: 'task' as const,
           title: task.title,
-          subtitle: `Task · ${siteMap[task.site_id] ?? 'Unknown site'}`,
+          subtitle: `Task · ${siteMap[task.site_id] ?? 'Unknown site'} · jump to task`,
           icon: 'th-list' as const,
           tag: humanize(task.workflow_status),
           tagIntent: workflowIntent(task.workflow_status),
-          href: `/sites/${task.site_id}`,
+          href: `/sites/${task.site_id}?task=${task.id}`,
           keywords: ['task', task.priority, task.workflow_status, siteMap[task.site_id] ?? ''],
         })),
         ...assets.map(asset => ({

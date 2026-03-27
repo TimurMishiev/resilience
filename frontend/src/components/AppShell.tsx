@@ -24,7 +24,7 @@ export default function AppShell() {
   const [searchOpen, setSearchOpen] = useState(false)
 
   // Mission posture is live-only until AO history is replay-scoped.
-  const { data: areasData } = useAreasOfOperation(undefined, { enabled: !isReplaying })
+  const { data: areasData } = useAreasOfOperation(undefined, { enabled: !isReplaying, staleTime: 60_000 })
   const areas = isReplaying ? [] : (areasData?.data ?? [])
   const missionPosture: Posture = areas.reduce<Posture>(
     (best, ao) => POSTURE_RANK[ao.posture] > POSTURE_RANK[best] ? ao.posture : best,

@@ -21,6 +21,7 @@ module Api
         )
       end
 
+      report = SaluteReport.includes(:area_of_operation).find(report.id)
       broadcast_planning_update(area_of_operation_id: report.area_of_operation_id)
       render json: serialize_salute_report(report), status: :created
     rescue ActiveRecord::RecordInvalid => e

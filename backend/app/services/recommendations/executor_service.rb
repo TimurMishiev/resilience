@@ -150,6 +150,11 @@ module Recommendations
         )
       end
 
+      Sse::Broadcaster.instance.publish(
+        event: "site_risk_updated",
+        data:  { site_id: site.id }
+      )
+
       ServiceResult.success(site: site)
     rescue ActiveRecord::RecordInvalid => e
       ServiceResult.failure(errors: [e.message])
@@ -163,12 +168,21 @@ module Recommendations
       return ServiceResult.failure(errors: ["Task #{task_id} not found"])  unless task
       return ServiceResult.failure(errors: ["Asset #{asset_id} not found"]) unless asset
 
-      Tasks::UpdateService.call(
+      result = Tasks::UpdateService.call(
         task:       task,
         params:     { "asset_id" => asset_id },
         actor:      @user,
         actor_role: @user.role,
       )
+
+      if result.success?
+        Sse::Broadcaster.instance.publish(
+          event: "task_transitioned",
+          data:  { task_id: task.id }
+        )
+      end
+
+      result
     end
 
     # Bulk-triages unacknowledged alerts at a site by iterating through

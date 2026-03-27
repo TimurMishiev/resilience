@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Button,
   Callout,
@@ -556,13 +556,17 @@ function CreateTaskDialog({ siteId, isOpen, onClose }: { siteId: string; isOpen:
 export default function SiteDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { asOf, isReplaying } = useReplay()
   const [tab, setTab]             = useState<string>('tasks')
   const [createTaskOpen, setCreateTaskOpen] = useState(false)
   const [editingGeofence, setEditingGeofence] = useState(false)
   const [geofenceInput, setGeofenceInput]     = useState('')
   const [chainMatch, setChainMatch]           = useState<import('../api/types').SignalRuleMatch | null>(null)
-  const [entityCard, setEntityCard]           = useState<{ type: 'task' | 'asset'; id: string; title: string } | null>(null)
+  const [entityCard, setEntityCard]           = useState<{ type: 'task' | 'asset'; id: string; title: string } | null>(() => {
+    const taskId = searchParams.get('task')
+    return taskId ? { type: 'task', id: taskId, title: 'Task' } : null
+  })
 
   const { isCommander } = useRole()
 

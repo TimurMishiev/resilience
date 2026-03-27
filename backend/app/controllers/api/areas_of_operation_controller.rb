@@ -21,28 +21,81 @@ module Api
       area = AreaOfOperation.new(area_params)
       area.created_by = current_user
 
-      if area.save
-        render json: serialize_area(area), status: :created
-      else
-        render json: { errors: area.errors.full_messages }, status: :unprocessable_content
+      ApplicationRecord.transaction do
+        area.save!
+
+        Audit::EventWriter.write(
+          actor:           current_user.email,
+          entity_type:     "AreaOfOperation",
+          entity_id:       area.id,
+          event_type:      "area_of_operation_created",
+          before_snapshot: nil,
+          after_snapshot:  audit_snapshot(area),
+          correlation_id:  SecureRandom.uuid
+        )
       end
+
+      render json: serialize_area(area), status: :created
+    rescue ActiveRecord::RecordInvalid => e
+      render json: { errors: e.record.errors.full_messages }, status: :unprocessable_content
     end
 
     # PATCH /api/areas_of_operation/:id
     def update
       area = AreaOfOperation.find(params[:id])
+      before = audit_snapshot(area)
 
-      if area.update(area_params)
-        render json: serialize_area(area)
-      else
-        render json: { errors: area.errors.full_messages }, status: :unprocessable_content
+      ApplicationRecord.transaction do
+        area.update!(area_params)
+
+        Audit::EventWriter.write(
+          actor:           current_user.email,
+          entity_type:     "AreaOfOperation",
+          entity_id:       area.id,
+          event_type:      "area_of_operation_updated",
+          before_snapshot: before,
+          after_snapshot:  audit_snapshot(area),
+          correlation_id:  SecureRandom.uuid
+        )
       end
+
+      render json: serialize_area(area)
+    rescue ActiveRecord::RecordInvalid => e
+      render json: { errors: e.record.errors.full_messages }, status: :unprocessable_content
     end
 
     # DELETE /api/areas_of_operation/:id
     def destroy
       area = AreaOfOperation.find(params[:id])
-      area.destroy!
+
+      attached = {
+        chokepoints:       area.chokepoints.count,
+        commander_intent:  area.commander_intent.present? ? 1 : 0,
+        pace_plan:         area.pace_plan.present? ? 1 : 0,
+        salute_reports:    area.salute_reports.count,
+      }.reject { |_, v| v.zero? }
+
+      if attached.any?
+        details = attached.map { |k, v| "#{v} #{k.to_s.humanize.downcase}" }.join(", ")
+        return render json: {
+          errors: ["Cannot delete AO with attached doctrine: #{details}. Remove doctrine records first."],
+        }, status: :unprocessable_content
+      end
+
+      ApplicationRecord.transaction do
+        snapshot = audit_snapshot(area)
+        area.destroy!
+        Audit::EventWriter.write(
+          actor:           current_user.email,
+          entity_type:     "AreaOfOperation",
+          entity_id:       area.id,
+          event_type:      "area_of_operation_deleted",
+          before_snapshot: snapshot,
+          after_snapshot:  snapshot.merge(deleted: true),
+          correlation_id:  SecureRandom.uuid
+        )
+      end
+
       head :no_content
     end
 
@@ -62,7 +115,7 @@ module Api
         area.update!(posture: posture, posture_changed_at: Time.current)
 
         Audit::EventWriter.write(
-          actor:           current_user,
+          actor:           current_user.email,
           entity_type:     "AreaOfOperation",
           entity_id:       area.id,
           event_type:      "posture_changed",
@@ -87,6 +140,10 @@ module Api
         :name, :description, :threat_level, :color,
         geometry: {}
       )
+    end
+
+    def audit_snapshot(area)
+      { name: area.name, threat_level: area.threat_level, posture: area.posture, color: area.color }
     end
 
     def serialize_area(area)
