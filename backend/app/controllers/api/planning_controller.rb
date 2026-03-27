@@ -4,6 +4,7 @@ module Api
 
     TASK_LIMIT = 500
     INCIDENT_LIMIT = 200
+    SALUTE_LIMIT = 50
 
     # GET /api/planning
     # Returns a single aggregate payload for the Operational Planning Surface:
@@ -33,6 +34,29 @@ module Api
       assets = Asset.order(:name).to_a
 
       areas = AreaOfOperation.order(:name).to_a
+      commander_intents = CommanderIntent.order(updated_at: :desc).to_a
+      pace_plans = PacePlan.order(updated_at: :desc).to_a
+
+      # Fetch up to SALUTE_LIMIT per AO so one active AO cannot starve another.
+      # areas is already loaded (small set); N small queries beats one global slice.
+      salute_reports_truncated = false
+      salute_report_meta_by_ao = {}
+      salute_reports = areas.flat_map do |ao|
+        rows = SaluteReport
+          .includes(:area_of_operation, :site, :created_by)
+          .where(area_of_operation_id: ao.id)
+          .recent_first
+          .limit(SALUTE_LIMIT + 1)
+          .to_a
+        area_truncated = rows.size > SALUTE_LIMIT
+        visible_rows = rows.first(SALUTE_LIMIT)
+        salute_reports_truncated = true if area_truncated
+        salute_report_meta_by_ao[ao.id] = {
+          truncated: area_truncated,
+          count: visible_rows.size,
+        }
+        visible_rows
+      end
 
       raw_incidents = Incident
         .includes(:assigned_to)
@@ -48,12 +72,18 @@ module Api
         tasks:               task_records.map { |t| serialize_planning_task(t) },
         assets:              assets.map { |a| serialize_planning_asset(a) },
         areas_of_operation:  areas.map  { |ao| serialize_planning_ao(ao) },
+        commander_intents:   commander_intents.map { |intent| serialize_commander_intent(intent) },
+        pace_plans:          pace_plans.map { |plan| serialize_pace_plan(plan) },
+        salute_reports:      salute_reports.map { |report| serialize_salute_report(report) },
         open_incidents:      open_incidents.map { |i| serialize_planning_incident(i) },
         meta: {
           truncated:           truncated,
           task_count:          task_records.size,
           incidents_truncated: incidents_truncated,
           incident_count:      open_incidents.size,
+          salute_reports_truncated: salute_reports_truncated,
+          salute_report_count: salute_reports.size,
+          salute_report_meta_by_ao: salute_report_meta_by_ao,
         }
       }
     end
@@ -109,6 +139,56 @@ module Api
           email: incident.assigned_to.email,
           role:  incident.assigned_to.role
         } : nil
+      }
+    end
+
+    def serialize_commander_intent(intent)
+      {
+        id: intent.id,
+        area_of_operation_id: intent.area_of_operation_id,
+        title: intent.title,
+        objective: intent.objective,
+        end_state: intent.end_state,
+        constraints: intent.constraints,
+        created_by_id: intent.created_by_id,
+        updated_by_id: intent.updated_by_id,
+        created_at: intent.created_at,
+        updated_at: intent.updated_at,
+      }
+    end
+
+    def serialize_pace_plan(plan)
+      {
+        id: plan.id,
+        area_of_operation_id: plan.area_of_operation_id,
+        primary_plan: plan.primary_plan,
+        alternate_plan: plan.alternate_plan,
+        contingency_plan: plan.contingency_plan,
+        emergency_plan: plan.emergency_plan,
+        notes: plan.notes,
+        created_by_id: plan.created_by_id,
+        updated_by_id: plan.updated_by_id,
+        created_at: plan.created_at,
+        updated_at: plan.updated_at,
+      }
+    end
+
+    def serialize_salute_report(report)
+      {
+        id: report.id,
+        area_of_operation_id: report.area_of_operation_id,
+        area_of_operation_name: report.area_of_operation.name,
+        site_id: report.site_id,
+        site_name: report.site&.name,
+        size: report.size,
+        activity: report.activity,
+        location: report.location,
+        unit: report.unit,
+        observed_at: report.observed_at,
+        equipment: report.equipment,
+        remarks: report.remarks,
+        created_by_id: report.created_by_id,
+        created_at: report.created_at,
       }
     end
   end

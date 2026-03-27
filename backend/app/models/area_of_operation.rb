@@ -7,6 +7,9 @@ class AreaOfOperation < ApplicationRecord
   belongs_to :created_by, class_name: "User"
   has_many :sites,             dependent: :nullify
   has_many :correlation_rules, dependent: :nullify
+  has_one  :commander_intent,  dependent: :destroy
+  has_one  :pace_plan,         dependent: :destroy
+  has_many :salute_reports,    dependent: :destroy
 
   validates :name,         presence: true
   validates :threat_level, inclusion: { in: THREAT_LEVELS }

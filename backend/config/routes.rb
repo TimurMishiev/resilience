@@ -116,6 +116,10 @@ Rails.application.routes.draw do
       end
     end
 
+    resources :commander_intents, only: %i[create update]
+    resources :pace_plans, only: %i[create update]
+    resources :salute_reports, only: %i[create]
+
     resources :vessels, only: %i[index show] do
       member do
         get :tracks

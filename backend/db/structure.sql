@@ -123,6 +123,24 @@ CREATE TABLE public.audit_events (
 
 
 --
+-- Name: commander_intents; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.commander_intents (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    area_of_operation_id uuid NOT NULL,
+    created_by_id uuid NOT NULL,
+    updated_by_id uuid NOT NULL,
+    title character varying NOT NULL,
+    objective text NOT NULL,
+    end_state text NOT NULL,
+    constraints text,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
 -- Name: correlation_rules; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -206,6 +224,25 @@ CREATE TABLE public.incidents (
 
 
 --
+-- Name: pace_plans; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.pace_plans (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    area_of_operation_id uuid NOT NULL,
+    created_by_id uuid NOT NULL,
+    updated_by_id uuid NOT NULL,
+    primary_plan text NOT NULL,
+    alternate_plan text NOT NULL,
+    contingency_plan text NOT NULL,
+    emergency_plan text NOT NULL,
+    notes text,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
 -- Name: recommendations; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -225,6 +262,27 @@ CREATE TABLE public.recommendations (
     review_reason text,
     executed_at timestamp without time zone,
     expires_at timestamp without time zone NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: salute_reports; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.salute_reports (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    area_of_operation_id uuid NOT NULL,
+    site_id uuid,
+    created_by_id uuid NOT NULL,
+    size character varying,
+    activity text NOT NULL,
+    location text NOT NULL,
+    unit character varying,
+    observed_at timestamp(6) without time zone NOT NULL,
+    equipment text,
+    remarks text,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL
 );
@@ -641,6 +699,14 @@ ALTER TABLE ONLY public.audit_events
 
 
 --
+-- Name: commander_intents commander_intents_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.commander_intents
+    ADD CONSTRAINT commander_intents_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: correlation_rules correlation_rules_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -673,11 +739,27 @@ ALTER TABLE ONLY public.incidents
 
 
 --
+-- Name: pace_plans pace_plans_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pace_plans
+    ADD CONSTRAINT pace_plans_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: recommendations recommendations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.recommendations
     ADD CONSTRAINT recommendations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: salute_reports salute_reports_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.salute_reports
+    ADD CONSTRAINT salute_reports_pkey PRIMARY KEY (id);
 
 
 --
@@ -829,6 +911,27 @@ CREATE INDEX index_audit_events_on_occurred_at ON public.audit_events USING btre
 
 
 --
+-- Name: index_commander_intents_on_area_of_operation_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_commander_intents_on_area_of_operation_id ON public.commander_intents USING btree (area_of_operation_id);
+
+
+--
+-- Name: index_commander_intents_on_created_by_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_commander_intents_on_created_by_id ON public.commander_intents USING btree (created_by_id);
+
+
+--
+-- Name: index_commander_intents_on_updated_by_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_commander_intents_on_updated_by_id ON public.commander_intents USING btree (updated_by_id);
+
+
+--
 -- Name: index_correlation_rules_on_area_of_operation_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -941,6 +1044,27 @@ CREATE INDEX index_incidents_on_status ON public.incidents USING btree (status);
 
 
 --
+-- Name: index_pace_plans_on_area_of_operation_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_pace_plans_on_area_of_operation_id ON public.pace_plans USING btree (area_of_operation_id);
+
+
+--
+-- Name: index_pace_plans_on_created_by_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_pace_plans_on_created_by_id ON public.pace_plans USING btree (created_by_id);
+
+
+--
+-- Name: index_pace_plans_on_updated_by_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_pace_plans_on_updated_by_id ON public.pace_plans USING btree (updated_by_id);
+
+
+--
 -- Name: index_recommendations_on_expires_at; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -959,6 +1083,34 @@ CREATE INDEX index_recommendations_on_recommendation_type ON public.recommendati
 --
 
 CREATE INDEX index_recommendations_on_status ON public.recommendations USING btree (status);
+
+
+--
+-- Name: index_salute_reports_on_area_of_operation_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_salute_reports_on_area_of_operation_id ON public.salute_reports USING btree (area_of_operation_id);
+
+
+--
+-- Name: index_salute_reports_on_area_of_operation_id_and_observed_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_salute_reports_on_area_of_operation_id_and_observed_at ON public.salute_reports USING btree (area_of_operation_id, observed_at);
+
+
+--
+-- Name: index_salute_reports_on_created_by_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_salute_reports_on_created_by_id ON public.salute_reports USING btree (created_by_id);
+
+
+--
+-- Name: index_salute_reports_on_site_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_salute_reports_on_site_id ON public.salute_reports USING btree (site_id);
 
 
 --
@@ -1424,6 +1576,14 @@ CREATE TRIGGER incident_notes_no_delete BEFORE DELETE ON public.incident_notes F
 
 
 --
+-- Name: salute_reports fk_rails_0aaaed891e; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.salute_reports
+    ADD CONSTRAINT fk_rails_0aaaed891e FOREIGN KEY (site_id) REFERENCES public.sites(id);
+
+
+--
 -- Name: areas_of_operation fk_rails_0bd4a97ef0; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1445,6 +1605,14 @@ ALTER TABLE ONLY public.incident_notes
 
 ALTER TABLE ONLY public.incidents
     ADD CONSTRAINT fk_rails_15ea701cfa FOREIGN KEY (area_of_operation_id) REFERENCES public.areas_of_operation(id);
+
+
+--
+-- Name: commander_intents fk_rails_19d7c98de8; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.commander_intents
+    ADD CONSTRAINT fk_rails_19d7c98de8 FOREIGN KEY (created_by_id) REFERENCES public.users(id);
 
 
 --
@@ -1480,6 +1648,14 @@ ALTER TABLE ONLY public.vessel_tracks
 
 
 --
+-- Name: pace_plans fk_rails_3ff56ca6ef; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pace_plans
+    ADD CONSTRAINT fk_rails_3ff56ca6ef FOREIGN KEY (updated_by_id) REFERENCES public.users(id);
+
+
+--
 -- Name: tasks fk_rails_546c3973b4; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1496,6 +1672,30 @@ ALTER TABLE ONLY public.signal_rule_matches
 
 
 --
+-- Name: salute_reports fk_rails_6c5cdccf86; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.salute_reports
+    ADD CONSTRAINT fk_rails_6c5cdccf86 FOREIGN KEY (area_of_operation_id) REFERENCES public.areas_of_operation(id);
+
+
+--
+-- Name: pace_plans fk_rails_6ddc9c0711; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pace_plans
+    ADD CONSTRAINT fk_rails_6ddc9c0711 FOREIGN KEY (created_by_id) REFERENCES public.users(id);
+
+
+--
+-- Name: commander_intents fk_rails_75058a68bc; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.commander_intents
+    ADD CONSTRAINT fk_rails_75058a68bc FOREIGN KEY (area_of_operation_id) REFERENCES public.areas_of_operation(id);
+
+
+--
 -- Name: incidents fk_rails_7d00d680b0; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1509,6 +1709,14 @@ ALTER TABLE ONLY public.incidents
 
 ALTER TABLE ONLY public.assets
     ADD CONSTRAINT fk_rails_905e385552 FOREIGN KEY (home_site_id) REFERENCES public.sites(id);
+
+
+--
+-- Name: salute_reports fk_rails_9d7b682dfe; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.salute_reports
+    ADD CONSTRAINT fk_rails_9d7b682dfe FOREIGN KEY (created_by_id) REFERENCES public.users(id);
 
 
 --
@@ -1552,6 +1760,14 @@ ALTER TABLE ONLY public.correlation_rules
 
 
 --
+-- Name: commander_intents fk_rails_cca27b17dd; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.commander_intents
+    ADD CONSTRAINT fk_rails_cca27b17dd FOREIGN KEY (updated_by_id) REFERENCES public.users(id);
+
+
+--
 -- Name: signal_rule_matches fk_rails_d0622d6dac; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1573,6 +1789,14 @@ ALTER TABLE ONLY public.incidents
 
 ALTER TABLE public.telemetry_readings
     ADD CONSTRAINT fk_rails_d477387a3c FOREIGN KEY (asset_id) REFERENCES public.assets(id) ON DELETE CASCADE;
+
+
+--
+-- Name: pace_plans fk_rails_db6b98f6a6; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.pace_plans
+    ADD CONSTRAINT fk_rails_db6b98f6a6 FOREIGN KEY (area_of_operation_id) REFERENCES public.areas_of_operation(id);
 
 
 --
@@ -1614,6 +1838,7 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260327020000'),
 ('20260327010000'),
 ('20260325020000'),
 ('20260325010000'),

@@ -113,16 +113,110 @@ export interface PlanningAoStub {
   posture: Posture
 }
 
+export interface CommanderIntent {
+  id: string
+  area_of_operation_id: string
+  title: string
+  objective: string
+  end_state: string
+  constraints: string | null
+  created_by_id: string
+  updated_by_id: string
+  created_at: string
+  updated_at: string
+}
+
+export interface PacePlan {
+  id: string
+  area_of_operation_id: string
+  primary_plan: string
+  alternate_plan: string
+  contingency_plan: string
+  emergency_plan: string
+  notes: string | null
+  created_by_id: string
+  updated_by_id: string
+  created_at: string
+  updated_at: string
+}
+
+export interface SaluteReport {
+  id: string
+  area_of_operation_id: string
+  area_of_operation_name: string
+  site_id: string | null
+  site_name: string | null
+  size: string | null
+  activity: string
+  location: string
+  unit: string | null
+  observed_at: string
+  equipment: string | null
+  remarks: string | null
+  created_by_id: string
+  created_at: string
+}
+
+export interface CreateCommanderIntentBody {
+  area_of_operation_id: string
+  title: string
+  objective: string
+  end_state: string
+  constraints?: string | null
+}
+
+export interface UpdateCommanderIntentBody {
+  title?: string
+  objective?: string
+  end_state?: string
+  constraints?: string | null
+}
+
+export interface CreatePacePlanBody {
+  area_of_operation_id: string
+  primary_plan: string
+  alternate_plan: string
+  contingency_plan: string
+  emergency_plan: string
+  notes?: string | null
+}
+
+export interface UpdatePacePlanBody {
+  primary_plan?: string
+  alternate_plan?: string
+  contingency_plan?: string
+  emergency_plan?: string
+  notes?: string | null
+}
+
+export interface CreateSaluteReportBody {
+  area_of_operation_id: string
+  site_id?: string | null
+  size?: string | null
+  activity: string
+  location: string
+  unit?: string | null
+  observed_at: string
+  equipment?: string | null
+  remarks?: string | null
+}
+
 export interface PlanningResponse {
   tasks:               Task[]
   assets:              Asset[]
   areas_of_operation:  PlanningAoStub[]
+  commander_intents:   CommanderIntent[]
+  pace_plans:          PacePlan[]
+  salute_reports:      SaluteReport[]
   open_incidents:      PlanningIncidentStub[]
   meta: {
     truncated: boolean
     task_count: number
     incidents_truncated: boolean
     incident_count: number
+    salute_reports_truncated: boolean
+    salute_report_count: number
+    salute_report_meta_by_ao: Record<string, { truncated: boolean; count: number }>
   }
 }
 
