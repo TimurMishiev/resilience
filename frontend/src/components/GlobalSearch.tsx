@@ -1,187 +1,383 @@
-import { useEffect, useRef, useState, useMemo, startTransition } from 'react'
+import { useEffect, useMemo, useRef, useState, startTransition } from 'react'
 import { Icon, Tag } from '@blueprintjs/core'
-import { useNavigate } from 'react-router-dom'
+import type { IconName } from '@blueprintjs/icons'
+import type { Intent } from '@blueprintjs/core'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useSites } from '../hooks/useSites'
 import { useTasks } from '../hooks/useTasks'
 import { useAssets } from '../hooks/useAssets'
 import { useReplayParams } from '../hooks/useReplayParams'
-import type { Site, Task, Asset } from '../api/types'
-import type { Intent } from '@blueprintjs/core'
 import { humanize } from '../utils/humanize'
 import { workflowIntent } from '../lib/taskIntents'
+import { buildMapGlobeSelectionPath } from '../lib/entitySelectionRoute'
+import type { Site, Task, Asset } from '../api/types'
 
-// ---------------------------------------------------------------------------
-// Result types
-// ---------------------------------------------------------------------------
-type EntityType = 'site' | 'task' | 'asset'
+type ResultType = 'command' | 'site' | 'task' | 'asset'
 
 interface SearchResult {
   id: string
-  type: EntityType
+  type: ResultType
   title: string
   subtitle: string
-  intent?: Intent
+  icon: IconName
+  href?: string
+  keywords?: string[]
   tag?: string
   tagIntent?: Intent
-  href: string
+  action?: 'logout'
 }
 
-// ---------------------------------------------------------------------------
-// Scoring — simple relevance: title match scores higher than subtitle
-// ---------------------------------------------------------------------------
-function score(result: SearchResult, q: string): number {
-  const lq    = q.toLowerCase()
+interface Props {
+  open: boolean
+  isCommander: boolean
+  onClose: () => void
+  onLogout: () => void
+}
+
+function score(result: SearchResult, query: string): number {
+  const normalizedQuery = query.trim().toLowerCase()
+  if (!normalizedQuery) return 0
+
   const title = result.title.toLowerCase()
-  const sub   = result.subtitle.toLowerCase()
-  if (title === lq)            return 3
-  if (title.startsWith(lq))   return 2
-  if (title.includes(lq))     return 1
-  if (sub.includes(lq))       return 0.5
-  return -1
+  const subtitle = result.subtitle.toLowerCase()
+  const keywords = (result.keywords ?? []).join(' ').toLowerCase()
+
+  let value = -1
+  if (title === normalizedQuery) value = 5
+  else if (title.startsWith(normalizedQuery)) value = 4
+  else if (title.includes(normalizedQuery)) value = 3
+  else if (subtitle.includes(normalizedQuery)) value = 2
+  else if (keywords.includes(normalizedQuery)) value = 1
+
+  if (value >= 0 && result.type === 'command') value += 0.25
+  return value
 }
 
-// ---------------------------------------------------------------------------
-// Build result list from raw data
-// ---------------------------------------------------------------------------
-function buildResults(
-  sites:  Site[],
-  tasks:  Task[],
-  assets: Asset[],
-  query:  string,
-): SearchResult[] {
-  if (!query.trim()) return []
-
-  const siteMap: Record<string, string> = {}
-  for (const s of sites) siteMap[s.id] = s.name
-
-  const candidates: SearchResult[] = [
-    ...sites.map(s => ({
-      id:        s.id,
-      type:      'site' as EntityType,
-      title:     s.name,
-      subtitle:  `Site · ${s.status}`,
-      tag:       s.status,
-      tagIntent: (s.status === 'active' ? 'success' : 'none') as Intent,
-      href:      `/sites/${s.id}`,
-    })),
-    ...tasks.map(t => ({
-      id:        t.id,
-      type:      'task' as EntityType,
-      title:     t.title,
-      subtitle:  `Task · ${siteMap[t.site_id] ?? 'Unknown site'}`,
-      tag:       humanize(t.workflow_status),
-      tagIntent: workflowIntent(t.workflow_status),
-      href:      `/sites/${t.site_id}`,
-    })),
-    ...assets.map(a => ({
-      id:        a.id,
-      type:      'asset' as EntityType,
-      title:     a.name,
-      subtitle:  `Asset · ${a.asset_type} · ${a.status}`,
-      tag:       a.status,
-      tagIntent: 'none' as Intent,
-      href:      a.home_site_id ? `/sites/${a.home_site_id}` : `/assets`,
-    })),
+function buildCommandResults({
+  isCommander,
+  mapPath,
+  globePath,
+}: {
+  isCommander: boolean
+  mapPath: string
+  globePath: string
+}): SearchResult[] {
+  const base: SearchResult[] = [
+    {
+      id: 'command-dashboard',
+      type: 'command',
+      title: 'Open Dashboard',
+      subtitle: 'Command · Mission overview and posture',
+      icon: 'dashboard',
+      href: '/dashboard',
+      keywords: ['home', 'overview', 'mission'],
+    },
+    {
+      id: 'command-map',
+      type: 'command',
+      title: 'Open Map',
+      subtitle: 'Command · 2D operational map',
+      icon: 'globe',
+      href: mapPath,
+      keywords: ['maplibre', '2d', 'tactical map'],
+    },
+    {
+      id: 'command-globe',
+      type: 'command',
+      title: 'Open Globe',
+      subtitle: 'Command · 3D operational globe',
+      icon: 'globe-network',
+      href: globePath,
+      keywords: ['cesium', '3d', 'earth'],
+    },
+    {
+      id: 'command-incidents',
+      type: 'command',
+      title: 'Open Incidents',
+      subtitle: 'Command · Incident queue and response ownership',
+      icon: 'warning-sign',
+      href: '/incidents',
+      keywords: ['incident queue', 'response', 'triage'],
+    },
+    {
+      id: 'command-alerts',
+      type: 'command',
+      title: 'Open Alert Triage',
+      subtitle: 'Command · Rule fires and alert workflow',
+      icon: 'notifications',
+      href: '/alerts',
+      keywords: ['alerts', 'rule fires', 'triage'],
+    },
+    {
+      id: 'command-signals',
+      type: 'command',
+      title: 'Open Signals',
+      subtitle: 'Command · Live signal feed',
+      icon: 'feed',
+      href: '/signals',
+      keywords: ['feed', 'signals', 'sensor feed'],
+    },
+    {
+      id: 'command-tasks',
+      type: 'command',
+      title: 'Open Tasks',
+      subtitle: 'Command · Task queue and workflow',
+      icon: 'th-list',
+      href: '/tasks',
+      keywords: ['tasking', 'workflow', 'queue'],
+    },
+    {
+      id: 'command-sites',
+      type: 'command',
+      title: 'Open Sites',
+      subtitle: 'Command · Site roster and readiness',
+      icon: 'map-marker',
+      href: '/sites',
+      keywords: ['facilities', 'sites', 'readiness'],
+    },
+    {
+      id: 'command-assets',
+      type: 'command',
+      title: 'Open Assets',
+      subtitle: 'Command · Fleet and asset availability',
+      icon: 'cube',
+      href: '/assets',
+      keywords: ['fleet', 'availability', 'platforms'],
+    },
+    {
+      id: 'command-recommendations',
+      type: 'command',
+      title: 'Open Recommendations',
+      subtitle: 'Command · Recommended actions and execution',
+      icon: 'lightbulb',
+      href: '/recommendations',
+      keywords: ['courses of action', 'coa', 'recommendations'],
+    },
+    {
+      id: 'command-graph',
+      type: 'command',
+      title: 'Open Graph',
+      subtitle: 'Command · Entity graph and relationships',
+      icon: 'graph',
+      href: '/graph',
+      keywords: ['relationships', 'graph', 'network'],
+    },
+    {
+      id: 'command-signout',
+      type: 'command',
+      title: 'Sign out',
+      subtitle: 'Action · End the current session',
+      icon: 'log-out',
+      action: 'logout',
+      keywords: ['logout', 'log out', 'exit', 'sign off'],
+      tag: 'Action',
+      tagIntent: 'warning',
+    },
   ]
 
-  return candidates
-    .map(r => ({ result: r, s: score(r, query) }))
-    .filter(({ s }) => s >= 0)
-    .sort((a, b) => b.s - a.s)
-    .map(({ result }) => result)
-    .slice(0, 20)
+  if (!isCommander) return base
+
+  return [
+    ...base.slice(0, 10),
+    {
+      id: 'command-briefing',
+      type: 'command',
+      title: 'Open Briefing',
+      subtitle: 'Command · Commander AI briefing surface',
+      icon: 'predictive-analysis',
+      href: '/briefing',
+      keywords: ['briefing', 'summary', 'intel brief'],
+    },
+    {
+      id: 'command-rules',
+      type: 'command',
+      title: 'Open Rules',
+      subtitle: 'Command · Correlation rules and compound logic',
+      icon: 'lightning',
+      href: '/rules',
+      keywords: ['rules', 'correlation', 'compound rules'],
+    },
+    {
+      id: 'command-areas',
+      type: 'command',
+      title: 'Open Areas',
+      subtitle: 'Command · Areas of operation and posture',
+      icon: 'polygon-filter',
+      href: '/areas',
+      keywords: ['ao', 'areas of operation', 'posture'],
+    },
+    {
+      id: 'command-planning',
+      type: 'command',
+      title: 'Open Planning',
+      subtitle: 'Command · Commander doctrine and chokepoints',
+      icon: 'gantt-chart',
+      href: '/planning',
+      keywords: ['planning', 'pace', 'salute', 'commander intent', 'chokepoints'],
+      tag: 'Commander',
+      tagIntent: 'warning',
+    },
+    ...base.slice(10),
+  ]
 }
 
-// ---------------------------------------------------------------------------
-// Icon per entity type
-// ---------------------------------------------------------------------------
-function typeIcon(t: EntityType) {
-  switch (t) {
-    case 'site':  return 'map-marker'
-    case 'task':  return 'th-list'
-    case 'asset': return 'cube'
+function buildResults(
+  commands: SearchResult[],
+  sites: Site[],
+  tasks: Task[],
+  assets: Asset[],
+  query: string,
+): SearchResult[] {
+  const normalizedQuery = query.trim()
+  const siteMap: Record<string, string> = {}
+  for (const site of sites) siteMap[site.id] = site.name
+
+  const entityResults: SearchResult[] = normalizedQuery
+    ? [
+        ...sites.map(site => ({
+          id: site.id,
+          type: 'site' as const,
+          title: site.name,
+          subtitle: `Site · ${site.status}`,
+          icon: 'map-marker' as const,
+          tag: site.status,
+          tagIntent: (site.status === 'active' ? 'success' : 'none') as Intent,
+          href: `/sites/${site.id}`,
+          keywords: ['site', 'readiness', site.status],
+        })),
+        ...tasks.map(task => ({
+          id: task.id,
+          type: 'task' as const,
+          title: task.title,
+          subtitle: `Task · ${siteMap[task.site_id] ?? 'Unknown site'}`,
+          icon: 'th-list' as const,
+          tag: humanize(task.workflow_status),
+          tagIntent: workflowIntent(task.workflow_status),
+          href: `/sites/${task.site_id}`,
+          keywords: ['task', task.priority, task.workflow_status, siteMap[task.site_id] ?? ''],
+        })),
+        ...assets.map(asset => ({
+          id: asset.id,
+          type: 'asset' as const,
+          title: asset.name,
+          subtitle: `Asset · ${asset.asset_type} · ${asset.status}`,
+          icon: 'cube' as const,
+          tag: asset.status,
+          tagIntent: 'none' as Intent,
+          href: asset.home_site_id ? `/sites/${asset.home_site_id}` : '/assets',
+          keywords: ['asset', asset.asset_type, asset.status],
+        })),
+      ]
+    : []
+
+  const candidates = normalizedQuery ? [...commands, ...entityResults] : commands
+  if (!normalizedQuery) return candidates
+
+  return candidates
+    .map((result, index) => ({ result, index, relevance: score(result, normalizedQuery) }))
+    .filter(entry => entry.relevance >= 0)
+    .sort((left, right) => right.relevance - left.relevance || left.index - right.index)
+    .map(entry => entry.result)
+    .slice(0, 24)
+}
+
+function groupLabel(type: ResultType) {
+  switch (type) {
+    case 'command': return 'Commands'
+    case 'site': return 'Sites'
+    case 'task': return 'Tasks'
+    case 'asset': return 'Assets'
   }
 }
 
-// ---------------------------------------------------------------------------
-// GlobalSearch
-// ---------------------------------------------------------------------------
-interface Props {
-  open: boolean
-  onClose: () => void
-}
-
-export default function GlobalSearch({ open, onClose }: Props) {
-  const navigate  = useNavigate()
-  const inputRef  = useRef<HTMLInputElement>(null)
-  const listRef   = useRef<HTMLUListElement>(null)
+export default function GlobalSearch({ open, isCommander, onClose, onLogout }: Props) {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const inputRef = useRef<HTMLInputElement>(null)
+  const listRef = useRef<HTMLUListElement>(null)
   const { asOfParam } = useReplayParams()
 
-  const [query,    setQuery]    = useState('')
+  const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(0)
 
-  // Fetch all data — React Query returns from cache instantly if already loaded
-  const sitesQuery  = useSites({ per_page: 200, ...asOfParam })
-  const tasksQuery  = useTasks({ per_page: 200, ...asOfParam })
-  const assetsQuery = useAssets({ per_page: 200, ...asOfParam })
+  const shouldLoadEntities = open && query.trim().length > 0
+  const sitesQuery = useSites({ per_page: 200, ...asOfParam }, shouldLoadEntities)
+  const tasksQuery = useTasks({ per_page: 200, ...asOfParam }, shouldLoadEntities)
+  const assetsQuery = useAssets({ per_page: 200, ...asOfParam }, shouldLoadEntities)
 
+  const preserveEntitySelection = location.pathname.startsWith('/map') || location.pathname.startsWith('/globe')
+  const mapPath = preserveEntitySelection ? buildMapGlobeSelectionPath('/map', location.search) : '/map'
+  const globePath = preserveEntitySelection ? buildMapGlobeSelectionPath('/globe', location.search) : '/globe'
+
+  const commandResults = useMemo(
+    () => buildCommandResults({ isCommander, mapPath, globePath }),
+    [globePath, isCommander, mapPath],
+  )
   const results = useMemo(
     () => buildResults(
-      sitesQuery.data?.data  ?? [],
-      tasksQuery.data?.data  ?? [],
+      commandResults,
+      sitesQuery.data?.data ?? [],
+      tasksQuery.data?.data ?? [],
       assetsQuery.data?.data ?? [],
       query,
     ),
-    [sitesQuery.data?.data, tasksQuery.data?.data, assetsQuery.data?.data, query],
+    [assetsQuery.data?.data, commandResults, query, sitesQuery.data?.data, tasksQuery.data?.data],
   )
 
-  // Reset state when opened
   useEffect(() => {
-    if (open) {
-      startTransition(() => {
-        setQuery('')
-        setSelected(0)
-      })
-      setTimeout(() => inputRef.current?.focus(), 50)
-    }
+    if (!open) return
+    startTransition(() => {
+      setQuery('')
+      setSelected(0)
+    })
+    window.setTimeout(() => inputRef.current?.focus(), 50)
   }, [open])
 
-  // Reset selection when results change
-  useEffect(() => { startTransition(() => setSelected(0)) }, [results.length])
+  useEffect(() => {
+    startTransition(() => setSelected(0))
+  }, [results.length, query])
 
-  // Scroll selected item into view
   useEffect(() => {
     const item = listRef.current?.children[selected] as HTMLElement | undefined
-    item?.scrollIntoView({ block: 'nearest' })
+    if (typeof item?.scrollIntoView === 'function') {
+      item.scrollIntoView({ block: 'nearest' })
+    }
   }, [selected])
 
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      setSelected(s => Math.min(s + 1, results.length - 1))
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      setSelected(s => Math.max(s - 1, 0))
-    } else if (e.key === 'Enter' && results[selected]) {
-      navigate(results[selected].href)
+  function executeResult(result: SearchResult) {
+    if (result.action === 'logout') {
       onClose()
-    } else if (e.key === 'Escape') {
+      onLogout()
+      return
+    }
+
+    if (result.href) {
+      navigate(result.href)
       onClose()
     }
   }
 
-  function handleSelect(result: SearchResult) {
-    navigate(result.href)
-    onClose()
+  function handleKeyDown(event: React.KeyboardEvent) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      setSelected(current => Math.min(current + 1, results.length - 1))
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      setSelected(current => Math.max(current - 1, 0))
+    } else if (event.key === 'Enter' && results[selected]) {
+      executeResult(results[selected])
+    } else if (event.key === 'Escape') {
+      onClose()
+    }
   }
 
   if (!open) return null
 
-  // Group results by type for display
-  const grouped: Record<EntityType, SearchResult[]> = { site: [], task: [], asset: [] }
-  for (const r of results) grouped[r.type].push(r)
+  const grouped: Record<ResultType, SearchResult[]> = { command: [], site: [], task: [], asset: [] }
+  for (const result of results) grouped[result.type].push(result)
 
   const flatOrder: SearchResult[] = [
+    ...grouped.command,
     ...grouped.site,
     ...grouped.task,
     ...grouped.asset,
@@ -189,15 +385,15 @@ export default function GlobalSearch({ open, onClose }: Props) {
 
   return (
     <div className="gs-backdrop" onClick={onClose}>
-      <div className="gs-modal bp6-dark" onClick={e => e.stopPropagation()}>
+      <div className="gs-modal bp6-dark" onClick={event => event.stopPropagation()}>
         <div className="gs-input-row">
           <Icon icon="search" className="gs-search-icon" />
           <input
             ref={inputRef}
             className="gs-input"
-            placeholder="Search sites, tasks, assets…"
+            placeholder="Search commands, pages, sites, tasks, assets…"
             value={query}
-            onChange={e => setQuery(e.target.value)}
+            onChange={event => setQuery(event.target.value)}
             onKeyDown={handleKeyDown}
             autoComplete="off"
             spellCheck={false}
@@ -205,56 +401,53 @@ export default function GlobalSearch({ open, onClose }: Props) {
           <kbd className="gs-esc-hint">esc</kbd>
         </div>
 
-        {query.trim() && (
-          <ul ref={listRef} className="gs-results">
-            {results.length === 0 && (
-              <li className="gs-empty">No results for "{query}"</li>
-            )}
+        <ul ref={listRef} className="gs-results">
+          {results.length === 0 && query.trim() && (
+            <li className="gs-empty">No results for "{query}"</li>
+          )}
 
-            {(['site', 'task', 'asset'] as EntityType[]).map(type => {
-              const group = grouped[type]
-              if (group.length === 0) return null
-              return (
-                <li key={type} className="gs-group">
-                  <span className="gs-group-label">
-                    {type === 'site' ? 'Sites' : type === 'task' ? 'Tasks' : 'Assets'}
-                  </span>
-                  <ul>
-                    {group.map(result => {
-                      const idx = flatOrder.indexOf(result)
-                      const isSelected = idx === selected
-                      return (
-                        <li
-                          key={result.id}
-                          className={`gs-item ${isSelected ? 'gs-item--selected' : ''}`}
-                          onClick={() => handleSelect(result)}
-                          onMouseEnter={() => setSelected(idx)}
-                        >
-                          <Icon icon={typeIcon(result.type)} className="gs-item-icon" />
-                          <div className="gs-item-text">
-                            <span className="gs-item-title">{result.title}</span>
-                            <span className="gs-item-subtitle bp6-text-muted">{result.subtitle}</span>
-                          </div>
-                          {result.tag && (
-                            <Tag minimal intent={result.tagIntent}>
-                              {result.tag}
-                            </Tag>
-                          )}
-                        </li>
-                      )
-                    })}
-                  </ul>
-                </li>
-              )
-            })}
-          </ul>
-        )}
+          {(['command', 'site', 'task', 'asset'] as ResultType[]).map(type => {
+            const group = grouped[type]
+            if (group.length === 0) return null
+
+            return (
+              <li key={type} className="gs-group">
+                <span className="gs-group-label">{groupLabel(type)}</span>
+                <ul>
+                  {group.map(result => {
+                    const idx = flatOrder.indexOf(result)
+                    const isSelected = idx === selected
+                    return (
+                      <li
+                        key={result.id}
+                        className={`gs-item ${isSelected ? 'gs-item--selected' : ''}`}
+                        onClick={() => executeResult(result)}
+                        onMouseEnter={() => setSelected(idx)}
+                      >
+                        <Icon icon={result.icon} className="gs-item-icon" />
+                        <div className="gs-item-text">
+                          <span className="gs-item-title">{result.title}</span>
+                          <span className="gs-item-subtitle bp6-text-muted">{result.subtitle}</span>
+                        </div>
+                        {result.tag && (
+                          <Tag minimal intent={result.tagIntent}>
+                            {result.tag}
+                          </Tag>
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
+              </li>
+            )
+          })}
+        </ul>
 
         {!query.trim() && (
           <div className="gs-hint">
-            <span>Type to search across all entities</span>
+            <span>Top commands are shown immediately. Start typing to narrow pages, actions, and entities.</span>
             <span className="bp6-text-muted gs-hint-keys">
-              <kbd>↑↓</kbd> navigate &nbsp; <kbd>↵</kbd> open &nbsp; <kbd>esc</kbd> close
+              <kbd>↑↓</kbd> navigate &nbsp; <kbd>↵</kbd> run &nbsp; <kbd>esc</kbd> close
             </span>
           </div>
         )}

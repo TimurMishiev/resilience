@@ -8,10 +8,11 @@ type Params = PaginationParams & AsOfParam & {
   asset_type?: string
 }
 
-export function useAssets(params?: Params) {
+export function useAssets(params?: Params, enabled = true) {
   return useQuery({
     queryKey: ['assets', params],
     queryFn: () => getAssets(params),
+    enabled,
   })
 }
 

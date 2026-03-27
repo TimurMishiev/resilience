@@ -64,7 +64,7 @@ export function AppNavbar({
           minimal small icon="search"
           onClick={onSearchOpen}
           className="gs-nav-btn"
-          title="Search (⌘K)"
+          title="Command palette (⌘K)"
         />
         <ReplaySelector />
         <NavbarDivider />

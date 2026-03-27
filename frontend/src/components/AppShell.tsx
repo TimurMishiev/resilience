@@ -81,7 +81,12 @@ export default function AppShell() {
 
       <AppBanners isOnline={isOnline} isReplaying={isReplaying} asOf={asOf} />
 
-      <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
+      <GlobalSearch
+        open={searchOpen}
+        isCommander={isCommander}
+        onClose={() => setSearchOpen(false)}
+        onLogout={handleLogout}
+      />
 
       <div className="shell-body">
         <AppSidebar />

@@ -17,7 +17,7 @@ export function useTask(id: string | undefined) {
   })
 }
 
-export function useTasks(params?: Params) {
+export function useTasks(params?: Params, enabled = true) {
   // Strip null values before passing to API
   const cleaned = params
     ? Object.fromEntries(Object.entries(params).filter(([, v]) => v != null))
@@ -26,6 +26,7 @@ export function useTasks(params?: Params) {
   return useQuery({
     queryKey: ['tasks', params],
     queryFn: () => getTasks(cleaned),
+    enabled,
   })
 }
 

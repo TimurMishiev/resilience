@@ -54,3 +54,75 @@ test('briefing smoke: page loads and summary generation surfaces grounded output
   await expect(page.getByRole('button', { name: 'Export PDF' })).toBeVisible()
   expect(pageErrors).toEqual([])
 })
+
+test('command palette smoke: commander can jump to planning with the keyboard palette', async ({ page }) => {
+  const pageErrors = capturePageErrors(page)
+  const shortcut = process.platform === 'darwin' ? 'Meta+KeyK' : 'Control+KeyK'
+
+  await primeAuthenticatedSession(page)
+
+  await page.route('**/api/planning', async route => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        tasks: [],
+        assets: [],
+        areas_of_operation: [{ id: 'ao-1', name: 'North Gulf', posture: 'defensive' }],
+        chokepoints: [],
+        commander_intents: [],
+        pace_plans: [],
+        salute_reports: [],
+        open_incidents: [],
+        meta: {
+          truncated: false,
+          task_count: 0,
+          incidents_truncated: false,
+          incident_count: 0,
+          salute_reports_truncated: false,
+          salute_report_count: 0,
+          salute_report_meta_by_ao: { 'ao-1': { truncated: false, count: 0 } },
+        },
+      }),
+    })
+  })
+  await page.route('**/api/sites**', async route => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: [
+          {
+            id: 'site-1',
+            name: 'Watchtower Bravo',
+            latitude: 10,
+            longitude: 20,
+            status: 'active',
+            area_of_operation_id: 'ao-1',
+            geofence_radius_km: 10,
+          },
+        ],
+        meta: { total: 1, page: 1, per_page: 200, total_pages: 1 },
+      }),
+    })
+  })
+  await page.route('**/api/telemetry', async route => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: [] }),
+    })
+  })
+  await page.goto('/dashboard')
+
+  await page.locator('body').click()
+  await page.keyboard.press(shortcut)
+  await expect(page.locator('.gs-modal')).toBeVisible()
+
+  await page.getByPlaceholder('Search commands, pages, sites, tasks, assets…').fill('planning')
+  await page.keyboard.press('Enter')
+
+  await expect(page).toHaveURL(/\/planning$/)
+  await expect(page.getByRole('heading', { name: 'Operational Planning Surface' })).toBeVisible()
+  expect(pageErrors).toEqual([])
+})
