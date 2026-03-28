@@ -268,6 +268,8 @@ export default function PlanningPage() {
     [pace_plans],
   )
   const aoIdsKey = areas_of_operation.map(ao => ao.id).join('|')
+  // aoIdsKey is a stable string identity proxy for areas_of_operation; intentional missing dep
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const doctrineAoIds = useMemo(() => areas_of_operation.map(ao => ao.id), [aoIdsKey])
   const firstDoctrineAoId = areas_of_operation[0]?.id ?? ''
 
@@ -376,6 +378,8 @@ export default function PlanningPage() {
     longitude: selectedChokepoint ? String(selectedChokepoint.longitude) : (firstDoctrineSite ? String(Number(firstDoctrineSite.longitude)) : ''),
     watch_radius_km: selectedChokepoint ? String(selectedChokepoint.watch_radius_km) : '25',
     notes: selectedChokepoint?.notes ?? '',
+  // Individual property deps avoid reference-equality churn; eslint missing-dep warning is intentional
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [
     selectedDoctrineAoId,
     selectedChokepoint?.id,

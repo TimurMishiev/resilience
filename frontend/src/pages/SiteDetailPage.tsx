@@ -596,6 +596,8 @@ export default function SiteDetailPage() {
   const selectedTab = isReplaying && tab === 'timeline' ? 'tasks' : tab
 
   useEffect(() => {
+    // Functional updater with equality guard prevents cascading renders; disable is intentional
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setEntityCard(current => {
       if (taskQueryParam) {
         if (current?.type === 'task' && current.id === taskQueryParam) return current
