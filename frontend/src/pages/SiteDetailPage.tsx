@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Button,
@@ -558,14 +558,14 @@ export default function SiteDetailPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { asOf, isReplaying } = useReplay()
+  const taskQueryParam = searchParams.get('task')
   const [tab, setTab]             = useState<string>('tasks')
   const [createTaskOpen, setCreateTaskOpen] = useState(false)
   const [editingGeofence, setEditingGeofence] = useState(false)
   const [geofenceInput, setGeofenceInput]     = useState('')
   const [chainMatch, setChainMatch]           = useState<import('../api/types').SignalRuleMatch | null>(null)
   const [entityCard, setEntityCard]           = useState<{ type: 'task' | 'asset'; id: string; title: string } | null>(() => {
-    const taskId = searchParams.get('task')
-    return taskId ? { type: 'task', id: taskId, title: 'Task' } : null
+    return taskQueryParam ? { type: 'task', id: taskQueryParam, title: 'Task' } : null
   })
 
   const { isCommander } = useRole()
@@ -594,6 +594,17 @@ export default function SiteDetailPage() {
   const visibleEditingGeofence = !isReplaying && editingGeofence
   const visibleChainMatch = !isReplaying ? chainMatch : null
   const selectedTab = isReplaying && tab === 'timeline' ? 'tasks' : tab
+
+  useEffect(() => {
+    setEntityCard(current => {
+      if (taskQueryParam) {
+        if (current?.type === 'task' && current.id === taskQueryParam) return current
+        return { type: 'task', id: taskQueryParam, title: 'Task' }
+      }
+
+      return current?.type === 'task' ? null : current
+    })
+  }, [taskQueryParam])
 
   if (isPending) {
     return (

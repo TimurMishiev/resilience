@@ -143,7 +143,14 @@ module Api
     end
 
     def audit_snapshot(area)
-      { name: area.name, threat_level: area.threat_level, posture: area.posture, color: area.color }
+      {
+        name: area.name,
+        description: area.description,
+        threat_level: area.threat_level,
+        posture: area.posture,
+        color: area.color,
+        geometry: area.geometry,
+      }
     end
 
     def serialize_area(area)

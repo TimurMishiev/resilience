@@ -75,32 +75,35 @@ RSpec.describe "Api::AreasOfOperation", type: :request do
 
     it "returns 201 and creates the AO for commanders" do
       expect {
-        post "/api/areas_of_operation", params: valid_params, headers: auth_headers(commander)
+        post "/api/areas_of_operation", params: valid_params, headers: auth_headers(commander), as: :json
       }.to change(AreaOfOperation, :count).by(1)
       expect(response).to have_http_status(:created)
       body = JSON.parse(response.body)
       expect(body["name"]).to eq("New AO")
+      expect(body["geometry"]).to eq(valid_params[:area_of_operation][:geometry].deep_stringify_keys)
     end
 
     it "writes an audit event on create" do
       expect {
-        post "/api/areas_of_operation", params: valid_params, headers: auth_headers(commander)
+        post "/api/areas_of_operation", params: valid_params, headers: auth_headers(commander), as: :json
       }.to change(AuditEvent, :count).by(1)
       event = AuditEvent.last
       expect(event.event_type).to eq("area_of_operation_created")
       expect(event.before_snapshot).to be_nil
       expect(event.after_snapshot["name"]).to eq("New AO")
+      expect(event.after_snapshot["geometry"]).to eq(valid_params[:area_of_operation][:geometry].deep_stringify_keys)
     end
 
     it "returns 403 for operators" do
-      post "/api/areas_of_operation", params: valid_params, headers: auth_headers(operator)
+      post "/api/areas_of_operation", params: valid_params, headers: auth_headers(operator), as: :json
       expect(response).to have_http_status(:forbidden)
     end
 
     it "returns 422 when name is missing" do
       post "/api/areas_of_operation",
            params:  { area_of_operation: valid_params[:area_of_operation].except(:name) },
-           headers: auth_headers(commander)
+           headers: auth_headers(commander),
+           as:      :json
       expect(response).to have_http_status(:unprocessable_content)
     end
   end
@@ -115,15 +118,20 @@ RSpec.describe "Api::AreasOfOperation", type: :request do
     end
 
     it "writes an audit event with before/after snapshot on update" do
+      new_geometry = { type: "Polygon", coordinates: [[[10, 10], [11, 10], [11, 11], [10, 11], [10, 10]]] }
+
       expect {
         patch "/api/areas_of_operation/#{eucom.id}",
-              params:  { area_of_operation: { threat_level: "red" } },
-              headers: auth_headers(commander)
+              params:  { area_of_operation: { threat_level: "red", geometry: new_geometry } },
+              headers: auth_headers(commander),
+              as:      :json
       }.to change(AuditEvent, :count).by(1)
       event = AuditEvent.last
       expect(event.event_type).to eq("area_of_operation_updated")
       expect(event.before_snapshot["threat_level"]).to eq("amber")
+      expect(event.before_snapshot["geometry"]).to eq(eucom.geometry.deep_stringify_keys)
       expect(event.after_snapshot["threat_level"]).to eq("red")
+      expect(event.after_snapshot["geometry"]).to eq(new_geometry.deep_stringify_keys)
     end
 
     it "returns 403 for operators" do
@@ -150,7 +158,9 @@ RSpec.describe "Api::AreasOfOperation", type: :request do
       event = AuditEvent.last
       expect(event.event_type).to eq("area_of_operation_deleted")
       expect(event.before_snapshot["name"]).to eq("To Delete")
+      expect(event.before_snapshot["geometry"]).to eq(bare_ao.geometry.deep_stringify_keys)
       expect(event.after_snapshot["deleted"]).to be true
+      expect(event.after_snapshot["geometry"]).to eq(bare_ao.geometry.deep_stringify_keys)
     end
 
     it "returns 422 when AO has attached doctrine (commander_intent)" do
