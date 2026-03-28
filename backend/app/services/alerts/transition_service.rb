@@ -7,7 +7,6 @@ module Alerts
   # Each transition records the acting user (acknowledged_by), the timestamp
   # (acknowledged_at), and optional operator notes. These three fields are
   # overwritten on every transition — they always reflect the *last* actor.
-  # Full transition history is a Phase 2 addition via AuditEvent.
   #
   # Broadcasting
   # ------------
@@ -37,12 +36,29 @@ module Alerts
         )
       end
 
-      @match.update!(
-        workflow_status:   @to_status,
-        acknowledged_by:   @actor,
-        acknowledged_at:   Time.current,
-        notes:             @notes
-      )
+      before = alert_snapshot(@match)
+      correlation_id = SecureRandom.uuid
+
+      ApplicationRecord.transaction do
+        @match.update!(
+          workflow_status:   @to_status,
+          acknowledged_by:   @actor,
+          acknowledged_at:   Time.current,
+          notes:             @notes
+        )
+
+        Audit::EventWriter.write(
+          actor: @actor.email,
+          entity_type: "SignalRuleMatch",
+          entity_id: @match.id,
+          event_type: "alert.transitioned",
+          action: "transition",
+          before_snapshot: before,
+          after_snapshot: alert_snapshot(@match),
+          metadata: { from_status: before[:workflow_status], to_status: @to_status },
+          correlation_id: correlation_id
+        )
+      end
 
       # Non-transactional broadcast — intentionally outside the update call so
       # a broadcast failure cannot roll back the DB write.
@@ -68,6 +84,17 @@ module Alerts
     rescue StandardError => e
       Rails.logger.error "[Alerts::TransitionService] match=#{@match.id} error=#{e.class}: #{e.message}"
       ServiceResult.failure(errors: [e.message])
+    end
+
+    private
+
+    def alert_snapshot(match)
+      {
+        workflow_status: match.workflow_status,
+        acknowledged_by_id: match.acknowledged_by_id,
+        acknowledged_at: match.acknowledged_at&.iso8601,
+        notes: match.notes,
+      }
     end
   end
 end

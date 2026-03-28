@@ -11,6 +11,7 @@ type PlanningState = {
   tasks: unknown[]
   assets: unknown[]
   areas_of_operation: Array<{ id: string; name: string; posture: string }>
+  chokepoints: Array<Record<string, unknown>>
   commander_intents: Array<Record<string, unknown>>
   pace_plans: Array<Record<string, unknown>>
   salute_reports: Array<Record<string, unknown>>

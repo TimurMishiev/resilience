@@ -92,6 +92,24 @@ RSpec.describe "Api::CorrelationRules", type: :request do
       expect(JSON.parse(response.body)["name"]).to eq("New Rule")
     end
 
+    it "writes an audit event on create" do
+      expect {
+        post "/api/correlation_rules", params: valid_params,
+             headers: auth_headers(commander), as: :json
+      }.to change(AuditEvent, :count).by(1)
+
+      event = AuditEvent.last
+      expect(event.event_type).to eq("correlation_rule.created")
+      expect(event.entity_type).to eq("CorrelationRule")
+      expect(event.before_snapshot).to eq({})
+      expect(event.after_snapshot).to include(
+        "name" => "New Rule",
+        "is_active" => true,
+        "conditions" => valid_params[:correlation_rule][:conditions].deep_stringify_keys,
+        "actions" => valid_params[:correlation_rule][:actions].deep_stringify_keys,
+      )
+    end
+
     it "sets created_by to the current user" do
       post "/api/correlation_rules", params: valid_params,
            headers: auth_headers(commander), as: :json
@@ -172,6 +190,27 @@ RSpec.describe "Api::CorrelationRules", type: :request do
       expect(body["is_active"]).to be false
     end
 
+    it "writes an audit event with before/after snapshots on update" do
+      expect {
+        patch "/api/correlation_rules/#{rule_active.id}",
+              params:  { correlation_rule: { name: "Renamed", is_active: false } },
+              headers: auth_headers(commander), as: :json
+      }.to change(AuditEvent, :count).by(1)
+
+      event = AuditEvent.last
+      expect(event.event_type).to eq("correlation_rule.updated")
+      expect(event.before_snapshot).to include(
+        "name" => rule_active.name,
+        "is_active" => true,
+        "conditions" => rule_active.conditions.deep_stringify_keys,
+        "actions" => rule_active.actions.deep_stringify_keys,
+      )
+      expect(event.after_snapshot).to include(
+        "name" => "Renamed",
+        "is_active" => false,
+      )
+    end
+
     it "returns 403 for operators" do
       patch "/api/correlation_rules/#{rule_active.id}",
             params:  { correlation_rule: { name: "Renamed" } },
@@ -201,6 +240,25 @@ RSpec.describe "Api::CorrelationRules", type: :request do
         delete "/api/correlation_rules/#{rule_inactive.id}", headers: auth_headers(commander)
       }.to change(CorrelationRule, :count).by(-1)
       expect(response).to have_http_status(:no_content)
+    end
+
+    it "writes an audit event on destroy" do
+      doomed_rule = create(:correlation_rule, :inactive, created_by: commander)
+
+      expect {
+        delete "/api/correlation_rules/#{doomed_rule.id}", headers: auth_headers(commander)
+      }.to change(AuditEvent, :count).by(1)
+
+      event = AuditEvent.last
+      expect(event.event_type).to eq("correlation_rule.deleted")
+      expect(event.before_snapshot).to include(
+        "name" => doomed_rule.name,
+        "is_active" => false,
+      )
+      expect(event.after_snapshot).to include(
+        "name" => doomed_rule.name,
+        "deleted" => true,
+      )
     end
 
     it "returns 403 for operators" do

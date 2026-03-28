@@ -155,6 +155,39 @@ RSpec.describe Alerts::TransitionService do
     end
   end
 
+  describe "audit trail" do
+    it "writes an audit event for a successful transition" do
+      expect {
+        described_class.call(match: match, to_status: "acknowledged", actor: actor, notes: "Confirmed by watch officer")
+      }.to change(AuditEvent, :count).by(1)
+
+      event = AuditEvent.last
+      expect(event.event_type).to eq("alert.transitioned")
+      expect(event.entity_type).to eq("SignalRuleMatch")
+      expect(event.entity_id).to eq(match.id)
+      expect(event.before_snapshot).to include(
+        "workflow_status" => "unacknowledged",
+        "acknowledged_by_id" => nil,
+        "notes" => nil,
+      )
+      expect(event.after_snapshot).to include(
+        "workflow_status" => "acknowledged",
+        "acknowledged_by_id" => actor.id,
+        "notes" => "Confirmed by watch officer",
+      )
+      expect(event.metadata).to include(
+        "from_status" => "unacknowledged",
+        "to_status" => "acknowledged",
+      )
+    end
+
+    it "does not write an audit event for an invalid transition" do
+      expect {
+        described_class.call(match: match, to_status: "invalid", actor: actor)
+      }.not_to change(AuditEvent, :count)
+    end
+  end
+
   # ── allowed_transitions_for class method ──────────────────────────────────
 
   describe ".allowed_transitions_for" do

@@ -13,6 +13,18 @@ interface Options {
   enabled?: boolean
 }
 
+const LIVE_EVENT_NAMES = [
+  'task_created',
+  'task_updated',
+  'task_transitioned',
+  'rule_fired',
+  'alert_transitioned',
+  'geofence_breach',
+  'posture_changed',
+  'planning_doctrine_updated',
+  'chokepoint_updated',
+] as const
+
 /**
  * Opens a persistent SSE connection to /api/events.
  *
@@ -64,8 +76,9 @@ export function useEventSource({ onEvent, enabled = true }: Options = {}) {
           // Heartbeats confirm the stream is alive — no action needed
         })
 
-        // Listen for task mutation, correlation engine, alert workflow, geofence, and posture events
-        for (const evt of ['task_created', 'task_updated', 'task_transitioned', 'rule_fired', 'alert_transitioned', 'geofence_breach', 'posture_changed']) {
+        // Listen for task mutation, planning, correlation engine, alert workflow,
+        // geofence, and posture events.
+        for (const evt of LIVE_EVENT_NAMES) {
           es.addEventListener(evt, (e: MessageEvent) => {
             try {
               const data = JSON.parse(e.data)

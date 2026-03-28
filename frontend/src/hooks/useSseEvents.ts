@@ -20,6 +20,8 @@ export function useSseEvents({
   return useEventSource({
     enabled,
     onEvent: (e) => {
+      const invalidatePlanning = () => queryClient.invalidateQueries({ queryKey: ['planning'] })
+
       // Tasks and readiness are invalidated on every event
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
       queryClient.invalidateQueries({ queryKey: ['readiness'] })
@@ -75,6 +77,7 @@ export function useSseEvents({
 
       if (e.event === 'task_created') {
         const d = e.data as { title: string; priority: string; site_name: string | null }
+        invalidatePlanning()
         AppToaster.then(t => t.show({
           message: `✚ Task created: "${d.title}"${d.site_name ? ` @ ${d.site_name}` : ''} [${d.priority}]`,
           intent:  'success',
@@ -83,8 +86,13 @@ export function useSseEvents({
         }))
       }
 
+      if (e.event === 'task_updated') {
+        invalidatePlanning()
+      }
+
       if (e.event === 'task_transitioned') {
         const d = e.data as { title: string; workflow_status: string; site_name: string | null }
+        invalidatePlanning()
         const STATUS_ICON: Record<string, string> = {
           resolved: '✔', blocked: '⛔', in_progress: '▶', triaged: '🔍', new: '•',
         }
@@ -112,6 +120,7 @@ export function useSseEvents({
         const d = e.data as { area_of_operation_id: string; name: string; posture: string }
         queryClient.invalidateQueries({ queryKey: ['areas_of_operation'] })
         queryClient.invalidateQueries({ queryKey: ['incidents'] })
+        invalidatePlanning()
         AppToaster.then(t => t.show({
           message: `🔰 ${d.name}: ROE posture → ${POSTURE_LABELS[d.posture] ?? d.posture}`,
           intent:  d.posture === 'weapons_free' ? 'danger' : d.posture === 'defensive' ? 'warning' : 'none',
@@ -122,7 +131,7 @@ export function useSseEvents({
 
       if (e.event === 'chokepoint_updated') {
         queryClient.invalidateQueries({ queryKey: ['chokepoints'] })
-        queryClient.invalidateQueries({ queryKey: ['planning'] })
+        invalidatePlanning()
       }
 
       if (e.event === 'planning_doctrine_updated') {
@@ -132,7 +141,7 @@ export function useSseEvents({
           pace_plan:        'PACE Plan',
           salute_report:    'SALUTE Report',
         }
-        queryClient.invalidateQueries({ queryKey: ['planning'] })
+        invalidatePlanning()
         AppToaster.then(t => t.show({
           message: `📋 ${KIND_LABEL[d.kind] ?? d.kind} updated`,
           intent:  'primary',

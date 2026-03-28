@@ -28,29 +28,69 @@ module Api
     def create
       rule = CorrelationRule.new(rule_params)
       rule.created_by = current_user
+      correlation_id = SecureRandom.uuid
 
-      if rule.save
-        render json: serialize_rule(rule), status: :created
-      else
-        render json: { errors: rule.errors.full_messages }, status: :unprocessable_content
+      ApplicationRecord.transaction do
+        rule.save!
+        Audit::EventWriter.write(
+          actor: current_user.email,
+          entity_type: "CorrelationRule",
+          entity_id: rule.id,
+          event_type: "correlation_rule.created",
+          action: "create",
+          before_snapshot: {},
+          after_snapshot: correlation_rule_snapshot(rule),
+          correlation_id: correlation_id
+        )
       end
+      render json: serialize_rule(rule), status: :created
+    rescue ActiveRecord::RecordInvalid => e
+      render json: { errors: e.record.errors.full_messages }, status: :unprocessable_content
     end
 
     # PATCH /api/correlation_rules/:id
     def update
       rule = CorrelationRule.find(params[:id])
+      before = correlation_rule_snapshot(rule)
+      correlation_id = SecureRandom.uuid
 
-      if rule.update(rule_params)
-        render json: serialize_rule(rule)
-      else
-        render json: { errors: rule.errors.full_messages }, status: :unprocessable_content
+      ApplicationRecord.transaction do
+        rule.update!(rule_params)
+        Audit::EventWriter.write(
+          actor: current_user.email,
+          entity_type: "CorrelationRule",
+          entity_id: rule.id,
+          event_type: "correlation_rule.updated",
+          action: "update",
+          before_snapshot: before,
+          after_snapshot: correlation_rule_snapshot(rule),
+          correlation_id: correlation_id
+        )
       end
+      render json: serialize_rule(rule)
+    rescue ActiveRecord::RecordInvalid => e
+      render json: { errors: e.record.errors.full_messages }, status: :unprocessable_content
     end
 
     # DELETE /api/correlation_rules/:id
     def destroy
       rule = CorrelationRule.find(params[:id])
-      rule.destroy!
+      before = correlation_rule_snapshot(rule)
+      correlation_id = SecureRandom.uuid
+
+      ApplicationRecord.transaction do
+        rule.destroy!
+        Audit::EventWriter.write(
+          actor: current_user.email,
+          entity_type: "CorrelationRule",
+          entity_id: rule.id,
+          event_type: "correlation_rule.deleted",
+          action: "destroy",
+          before_snapshot: before,
+          after_snapshot: before.merge(deleted: true),
+          correlation_id: correlation_id
+        )
+      end
       head :no_content
     end
 
@@ -232,6 +272,19 @@ module Api
         actions:     {},
         mitre_tags:  []
       )
+    end
+
+    def correlation_rule_snapshot(rule)
+      {
+        name: rule.name,
+        description: rule.description,
+        is_active: rule.is_active,
+        cooldown_minutes: rule.cooldown_minutes,
+        area_of_operation_id: rule.area_of_operation_id,
+        conditions: rule.conditions,
+        actions: rule.actions,
+        mitre_tags: rule.mitre_tags || [],
+      }
     end
 
     def serialize_rule(rule)
