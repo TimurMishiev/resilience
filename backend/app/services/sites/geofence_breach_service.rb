@@ -54,24 +54,11 @@ module Sites
           }
         )
 
-        # Fuse this breach into an existing or new incident before broadcasting.
-        # The SSE event intentionally fires after fusion so that when the client
-        # invalidates ['incidents'] the incident row is already committed.
-        Incidents::FusionService.call(match: match)
-
-        Sse::Broadcaster.instance.publish(
-          event: "geofence_breach",
-          data: {
-            site_id:        site.id,
-            site_name:      site.name,
-            signal_id:      @signal.id,
-            signal_type:    @signal.signal_type,
-            distance_km:    distance_km.round(1),
-            geofence_km:    site.geofence_radius_km,
-            match_id:       match.id,
-            fired_at:       Time.current.iso8601
-          }
-        )
+        # Preserve the breach notification even if incident fusion fails.
+        # Fusion enriches downstream incident state, but operators should still
+        # see the geofence alert as soon as the match is committed.
+        fuse_incident(match)
+        publish_breach(site:, match:, distance_km:)
 
         breached << { site_id: site.id, match_id: match.id, distance_km: distance_km.round(1) }
       rescue ActiveRecord::RecordNotUnique
@@ -85,6 +72,31 @@ module Sites
     end
 
     private
+
+    def fuse_incident(match)
+      Incidents::FusionService.call(match: match)
+    rescue StandardError => e
+      Rails.logger.error(
+        "[GeofenceBreachService] incident fusion failed match=#{match.id} " \
+        "site=#{match.site_id} signal=#{match.signal_id} error=#{e.class}: #{e.message}"
+      )
+    end
+
+    def publish_breach(site:, match:, distance_km:)
+      Sse::Broadcaster.instance.publish(
+        event: "geofence_breach",
+        data: {
+          site_id:        site.id,
+          site_name:      site.name,
+          signal_id:      @signal.id,
+          signal_type:    @signal.signal_type,
+          distance_km:    distance_km.round(1),
+          geofence_km:    site.geofence_radius_km,
+          match_id:       match.id,
+          fired_at:       Time.current.iso8601
+        }
+      )
+    end
 
     # Confidence ranges from 1.0 (signal at site centre) to near 0 at the boundary.
     def breach_confidence(distance_km, radius_km)

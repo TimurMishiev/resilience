@@ -261,6 +261,25 @@ RSpec.describe Correlations::RuleFiringService do
       expect(site.reload.flag_reason).to include("seismic_event")
     end
 
+    it "writes a site_flagged audit event for the rule-driven flag" do
+      expect { result }.to change(AuditEvent, :count).by(1)
+
+      event = AuditEvent.order(:occurred_at).last
+      expect(event.event_type).to eq("site_flagged")
+      expect(event.actor).to eq("correlation_engine")
+      expect(event.entity_type).to eq("Site")
+      expect(event.entity_id).to eq(site.id)
+      expect(event.before_snapshot["flagged_at"]).to be_nil
+      expect(event.after_snapshot["flagged_at"]).to be_present
+      expect(event.after_snapshot["flag_reason"]).to include("Site Alpha")
+      expect(event.metadata).to include(
+        "source" => "correlation_engine",
+        "rule_id" => flag_rule.id,
+        "rule_name" => flag_rule.name,
+        "signal_id" => signal.id
+      )
+    end
+
     it "still creates a SignalRuleMatch" do
       expect { result }.to change(SignalRuleMatch, :count).by(1)
     end

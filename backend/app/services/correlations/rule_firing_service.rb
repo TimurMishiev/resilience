@@ -181,7 +181,29 @@ module Correlations
     def execute_flag_site
       action = @rule.actions["flag_site"]
       reason = interpolate(action["reason"].presence || "Rule '#{@rule.name}' flagged this site.")
-      @site.update!(flagged_at: Time.current, flag_reason: reason)
+      before = @site.as_json(only: %i[flagged_at flag_reason])
+
+      ApplicationRecord.transaction do
+        @site.update!(flagged_at: Time.current, flag_reason: reason)
+
+        Audit::EventWriter.write(
+          actor:           "correlation_engine",
+          entity_type:     "Site",
+          entity_id:       @site.id,
+          event_type:      "site_flagged",
+          action:          "flag",
+          before_snapshot: before,
+          after_snapshot:  @site.as_json(only: %i[flagged_at flag_reason]),
+          metadata: {
+            source:    "correlation_engine",
+            rule_id:   @rule.id,
+            rule_name: @rule.name,
+            signal_id: @signal.id
+          },
+          correlation_id:  SecureRandom.uuid
+        )
+      end
+
       ServiceResult.success(site: @site)
     rescue ActiveRecord::RecordInvalid => e
       ServiceResult.failure(errors: e.record.errors.full_messages)

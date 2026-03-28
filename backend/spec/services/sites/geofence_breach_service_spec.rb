@@ -1,6 +1,14 @@
 require 'rails_helper'
 
 RSpec.describe Sites::GeofenceBreachService, type: :service do
+  let(:logger) { instance_double(ActiveSupport::Logger, error: nil, warn: nil, debug: nil) }
+
+  before do
+    allow(Rails).to receive(:logger).and_return(logger)
+    allow(Sse::Broadcaster.instance).to receive(:publish)
+    allow(Incidents::FusionService).to receive(:call)
+  end
+
   # Site centred on London (51.5°N, 0.0°E) with a 100 km geofence.
   let!(:site) { create(:site, latitude: 51.5, longitude: 0.0, geofence_radius_km: 100.0) }
 
@@ -58,6 +66,19 @@ RSpec.describe Sites::GeofenceBreachService, type: :service do
         expect {
           described_class.call(signal: signal_inside)
         }.not_to change(SignalRuleMatch, :count)
+      end
+
+      it "still publishes the breach when incident fusion raises unexpectedly" do
+        allow(Incidents::FusionService).to receive(:call).and_raise(StandardError, "fusion exploded")
+
+        result = described_class.call(signal: signal_inside)
+
+        expect(result.success).to be true
+        expect(result.payload[:count]).to eq 1
+        expect(Sse::Broadcaster.instance).to have_received(:publish).with(
+          hash_including(event: "geofence_breach", data: hash_including(site_id: site.id, signal_id: signal_inside.id))
+        )
+        expect(logger).to have_received(:error).with(include("incident fusion failed", "fusion exploded"))
       end
     end
 
