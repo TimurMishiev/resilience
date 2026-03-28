@@ -76,21 +76,21 @@ RSpec.describe Feeds::GpsjamIngestionService, type: :service do
     it "skips rows below MIN_SIGNAL threshold" do
       csv_body = "hex,count_good_aircraft,count_bad_aircraft\n841fa4dfffffff,90,5\n"
       expect {
-        service.send(:parse_and_ingest, csv_body)
+        service.send(:parse_and_ingest, csv_body, Feeds::PollMetrics.new(feed: "gpsjam"))
       }.not_to change(ExternalSignal, :count)
     end
 
     it "skips rows with zero total aircraft" do
       csv_body = "hex,count_good_aircraft,count_bad_aircraft\n841fa4dfffffff,0,0\n"
       expect {
-        service.send(:parse_and_ingest, csv_body)
+        service.send(:parse_and_ingest, csv_body, Feeds::PollMetrics.new(feed: "gpsjam"))
       }.not_to change(ExternalSignal, :count)
     end
 
     it "skips blank hex values" do
       csv_body = "hex,count_good_aircraft,count_bad_aircraft\n,10,8\n"
       expect {
-        service.send(:parse_and_ingest, csv_body)
+        service.send(:parse_and_ingest, csv_body, Feeds::PollMetrics.new(feed: "gpsjam"))
       }.not_to change(ExternalSignal, :count)
     end
   end

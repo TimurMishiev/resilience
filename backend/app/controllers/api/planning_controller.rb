@@ -44,7 +44,7 @@ module Api
       salute_report_meta_by_ao = {}
       salute_reports = areas.flat_map do |ao|
         rows = SaluteReport
-          .includes(:area_of_operation, :site, :created_by)
+          .includes(:site, :created_by)
           .where(area_of_operation_id: ao.id)
           .recent_first
           .limit(SALUTE_LIMIT + 1)
@@ -56,7 +56,7 @@ module Api
           truncated: area_truncated,
           count: visible_rows.size,
         }
-        visible_rows
+        visible_rows.map { |report| [report, ao.name] }
       end
 
       raw_incidents = Incident
@@ -76,7 +76,7 @@ module Api
         chokepoints:         chokepoints.map { |point| serialize_chokepoint(point) },
         commander_intents:   commander_intents.map { |intent| serialize_commander_intent(intent) },
         pace_plans:          pace_plans.map { |plan| serialize_pace_plan(plan) },
-        salute_reports:      salute_reports.map { |report| serialize_salute_report(report) },
+        salute_reports:      salute_reports.map { |report, ao_name| serialize_salute_report(report, ao_name: ao_name) },
         open_incidents:      open_incidents.map { |i| serialize_planning_incident(i) },
         meta: {
           truncated:           truncated,
@@ -194,11 +194,11 @@ module Api
       }
     end
 
-    def serialize_salute_report(report)
+    def serialize_salute_report(report, ao_name:)
       {
         id: report.id,
         area_of_operation_id: report.area_of_operation_id,
-        area_of_operation_name: report.area_of_operation.name,
+        area_of_operation_name: ao_name,
         site_id: report.site_id,
         site_name: report.site&.name,
         size: report.size,

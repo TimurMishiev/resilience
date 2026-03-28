@@ -23,7 +23,6 @@ export function useSseEvents({
       // Tasks and readiness are invalidated on every event
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
       queryClient.invalidateQueries({ queryKey: ['readiness'] })
-      queryClient.invalidateQueries({ queryKey: ['planning'] })
 
       if (e.event === 'rule_fired') {
         const d = e.data as {
@@ -123,6 +122,7 @@ export function useSseEvents({
 
       if (e.event === 'chokepoint_updated') {
         queryClient.invalidateQueries({ queryKey: ['chokepoints'] })
+        queryClient.invalidateQueries({ queryKey: ['planning'] })
       }
 
       if (e.event === 'planning_doctrine_updated') {
@@ -132,6 +132,7 @@ export function useSseEvents({
           pace_plan:        'PACE Plan',
           salute_report:    'SALUTE Report',
         }
+        queryClient.invalidateQueries({ queryKey: ['planning'] })
         AppToaster.then(t => t.show({
           message: `📋 ${KIND_LABEL[d.kind] ?? d.kind} updated`,
           intent:  'primary',

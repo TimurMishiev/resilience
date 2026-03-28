@@ -1,5 +1,9 @@
 module Feeds
   class HealthRegistry
+    # FIXME: process-local — on multi-machine deployments each machine holds its
+    # own snapshot state. `/api/feed_health` returns stale data if the request
+    # is routed to a machine that hasn't run a poll cycle. Migrate to a DB-backed
+    # or Redis-backed store if HA feed health visibility is required.
     @snapshots = {}
     @mutex = Mutex.new
 

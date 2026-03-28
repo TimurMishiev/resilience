@@ -67,7 +67,7 @@ module Feeds
     private
 
     # Returns decompressed CSV body string, or nil if the date is unavailable.
-    def fetch_csv_for(date, metrics = Feeds::PollMetrics.new(feed: "gpsjam"))
+    def fetch_csv_for(date, metrics)
       uri  = URI("#{BASE_URL}/#{date}-h3_4.csv")
       http = ssl_http(uri.host, uri.port, timeout: TIMEOUT)
       resp = http.get(uri.request_uri, "Accept-Encoding" => "gzip")
@@ -86,7 +86,7 @@ module Feeds
       nil
     end
 
-    def parse_and_ingest(csv_body, metrics = Feeds::PollMetrics.new(feed: "gpsjam"))
+    def parse_and_ingest(csv_body, metrics)
       ingested = 0
 
       CSV.parse(csv_body, headers: true) do |row|
