@@ -21,10 +21,8 @@ export function useSseEvents({
     enabled,
     onEvent: (e) => {
       const invalidatePlanning = () => queryClient.invalidateQueries({ queryKey: ['planning'] })
-
-      // Tasks and readiness are invalidated on every event
-      queryClient.invalidateQueries({ queryKey: ['tasks'] })
-      queryClient.invalidateQueries({ queryKey: ['readiness'] })
+      const invalidateTasks    = () => queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      const invalidateReadiness = () => queryClient.invalidateQueries({ queryKey: ['readiness'] })
 
       if (e.event === 'rule_fired') {
         const d = e.data as {
@@ -37,6 +35,7 @@ export function useSseEvents({
           confidence:    number | null
           actions_taken: string[]
         }
+        invalidateTasks()
         queryClient.invalidateQueries({ queryKey: ['signal_rule_matches'] })
         queryClient.invalidateQueries({ queryKey: ['correlation_rules'] })
         queryClient.invalidateQueries({ queryKey: ['sites'] })
@@ -77,6 +76,8 @@ export function useSseEvents({
 
       if (e.event === 'task_created') {
         const d = e.data as { title: string; priority: string; site_name: string | null }
+        invalidateTasks()
+        invalidateReadiness()
         invalidatePlanning()
         AppToaster.then(t => t.show({
           message: `✚ Task created: "${d.title}"${d.site_name ? ` @ ${d.site_name}` : ''} [${d.priority}]`,
@@ -87,11 +88,15 @@ export function useSseEvents({
       }
 
       if (e.event === 'task_updated') {
+        invalidateTasks()
+        invalidateReadiness()
         invalidatePlanning()
       }
 
       if (e.event === 'task_transitioned') {
         const d = e.data as { title: string; workflow_status: string; site_name: string | null }
+        invalidateTasks()
+        invalidateReadiness()
         invalidatePlanning()
         const STATUS_ICON: Record<string, string> = {
           resolved: '✔', blocked: '⛔', in_progress: '▶', triaged: '🔍', new: '•',
@@ -118,6 +123,7 @@ export function useSseEvents({
 
       if (e.event === 'posture_changed') {
         const d = e.data as { area_of_operation_id: string; name: string; posture: string }
+        invalidateReadiness()
         queryClient.invalidateQueries({ queryKey: ['areas_of_operation'] })
         queryClient.invalidateQueries({ queryKey: ['incidents'] })
         invalidatePlanning()

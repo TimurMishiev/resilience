@@ -9,6 +9,11 @@ module Api
       render json: { data: records.map { |record| serialize_chokepoint(record) }, meta: meta }
     end
 
+    def show
+      chokepoint = Chokepoint.includes(:area_of_operation).find(params[:id])
+      render json: serialize_chokepoint(chokepoint)
+    end
+
     def create
       chokepoint = Chokepoint.new(chokepoint_params)
       chokepoint.created_by = current_user

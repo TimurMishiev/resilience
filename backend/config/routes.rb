@@ -116,7 +116,7 @@ Rails.application.routes.draw do
       end
     end
 
-    resources :chokepoints, only: %i[index create update destroy]
+    resources :chokepoints, only: %i[index show create update destroy]
     resources :commander_intents, only: %i[create update]
     resources :pace_plans, only: %i[create update]
     resources :salute_reports, only: %i[create]

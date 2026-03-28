@@ -15,8 +15,11 @@ class ExternalSignal < ApplicationRecord
   scope :by_source,   ->(src)          { where(source: src) }
   scope :by_type,     ->(type)         { where(signal_type: type) }
   scope :near_point,  ->(lat, lng, km) {
-    # Rough bounding-box pre-filter (exact Haversine done in Ruby)
-    deg = km / 111.0
-    where(lat: (lat.to_f - deg)..(lat.to_f + deg), lng: (lng.to_f - deg)..(lng.to_f + deg))
+    # Rough bounding-box pre-filter (exact Haversine applied in Ruby callers).
+    # Latitude degrees are uniform (~111 km/deg). Longitude degrees narrow toward
+    # the poles, so we divide by cos(lat) to avoid an over-wide box at high latitudes.
+    deg_lat = km / 111.0
+    deg_lng = km / (111.0 * [Math.cos(lat.to_f * Math::PI / 180.0).abs, 0.01].max)
+    where(lat: (lat.to_f - deg_lat)..(lat.to_f + deg_lat), lng: (lng.to_f - deg_lng)..(lng.to_f + deg_lng))
   }
 end

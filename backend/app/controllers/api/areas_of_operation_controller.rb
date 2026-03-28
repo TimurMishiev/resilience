@@ -66,23 +66,27 @@ module Api
 
     # DELETE /api/areas_of_operation/:id
     def destroy
-      area = AreaOfOperation.find(params[:id])
-
-      attached = {
-        chokepoints:       area.chokepoints.count,
-        commander_intent:  area.commander_intent.present? ? 1 : 0,
-        pace_plan:         area.pace_plan.present? ? 1 : 0,
-        salute_reports:    area.salute_reports.count,
-      }.reject { |_, v| v.zero? }
-
-      if attached.any?
-        details = attached.map { |k, v| "#{v} #{k.to_s.humanize.downcase}" }.join(", ")
-        return render json: {
-          errors: ["Cannot delete AO with attached doctrine: #{details}. Remove doctrine records first."],
-        }, status: :unprocessable_content
-      end
-
       ApplicationRecord.transaction do
+        # Lock the row so concurrent doctrine-create requests cannot sneak a
+        # chokepoint/intent/plan in between our attachment check and the destroy.
+        area = AreaOfOperation.lock.find(params[:id])
+
+        attached = {
+          chokepoints:      area.chokepoints.count,
+          commander_intent: area.commander_intent.present? ? 1 : 0,
+          pace_plan:        area.pace_plan.present? ? 1 : 0,
+          salute_reports:   area.salute_reports.count,
+        }.reject { |_, v| v.zero? }
+
+        if attached.any?
+          details = attached.map { |k, v| "#{v} #{k.to_s.humanize.downcase}" }.join(", ")
+          render json: {
+            errors: ["Cannot delete AO with attached doctrine: #{details}. Remove doctrine records first."],
+          }, status: :unprocessable_content
+          raise ActiveRecord::Rollback
+          return
+        end
+
         snapshot = audit_snapshot(area)
         area.destroy!
         Audit::EventWriter.write(
@@ -96,7 +100,7 @@ module Api
         )
       end
 
-      head :no_content
+      head :no_content unless performed?
     end
 
     # PATCH /api/areas_of_operation/:id/posture
