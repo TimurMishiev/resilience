@@ -1,6 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { REPLAY_STEP_MINUTES, type PlaybackRate } from './replayTransport'
+import {
+  REPLAY_STEP_LOOKBACK_DAYS,
+  REPLAY_STEP_MINUTES,
+  type PlaybackRate,
+} from './replayTransport'
 
 const TICK_MS = 500
 
@@ -53,7 +57,9 @@ export function ReplayProvider({ children }: { children: ReactNode }) {
         return
       }
 
-      const advanceMs = playbackRate * TICK_MS * 60   // minutes × ms per tick × 60 s/min
+      // playbackRate is simulated minutes per real second:
+      // (min / real sec) × TICK_MS (ms real) × 60 = simulated ms per tick.
+      const advanceMs = playbackRate * TICK_MS * 60
       const nextMs = new Date(current).getTime() + advanceMs
       const nowMs = Date.now()
 
@@ -94,20 +100,19 @@ export function ReplayProvider({ children }: { children: ReactNode }) {
       new Date(current).getTime() + REPLAY_STEP_MINUTES * 60_000,
       nowMs - 1_000,
     )
-    const next = new Date(nextMs).toISOString()
-    asOfRef.current = next
-    setAsOfState(next)
-  }, [])
+    setAsOf(new Date(nextMs).toISOString())
+  }, [setAsOf])
 
   const stepBackward = useCallback(() => {
     const current = asOfRef.current
     if (!current) return
-    const prev = new Date(
-      new Date(current).getTime() - REPLAY_STEP_MINUTES * 60_000,
-    ).toISOString()
-    asOfRef.current = prev
-    setAsOfState(prev)
-  }, [])
+    const currentMs = new Date(current).getTime()
+    const floorMs = Date.now() - REPLAY_STEP_LOOKBACK_DAYS * 86_400_000
+    const prevMs = currentMs <= floorMs
+      ? currentMs
+      : Math.max(currentMs - REPLAY_STEP_MINUTES * 60_000, floorMs)
+    setAsOf(new Date(prevMs).toISOString())
+  }, [setAsOf])
 
   return (
     <ReplayContext.Provider value={{

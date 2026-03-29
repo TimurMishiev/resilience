@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { renderHook, act } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ReplayProvider, useReplay } from '../context/ReplayContext'
-import { REPLAY_STEP_MINUTES } from '../context/replayTransport'
+import { REPLAY_STEP_LOOKBACK_DAYS, REPLAY_STEP_MINUTES } from '../context/replayTransport'
 
 function wrapper({ children }: { children: ReactNode }) {
   return <ReplayProvider>{children}</ReplayProvider>
@@ -98,6 +98,54 @@ describe('ReplayContext', () => {
       expect(new Date(result.current.asOf!).getTime()).toBeLessThan(Date.now())
     })
 
+    it('stepForward() pauses playback', () => {
+      const { result } = renderHook(() => useReplay(), { wrapper })
+      act(() => result.current.setAsOf(baseTs))
+      act(() => result.current.play())
+
+      expect(result.current.isPlaying).toBe(true)
+
+      act(() => result.current.stepForward())
+
+      expect(result.current.isPlaying).toBe(false)
+      expect(result.current.asOf).toBe(new Date(
+        new Date(baseTs).getTime() + REPLAY_STEP_MINUTES * 60_000,
+      ).toISOString())
+    })
+
+    it('stepBackward() pauses playback', () => {
+      const { result } = renderHook(() => useReplay(), { wrapper })
+      act(() => result.current.setAsOf(baseTs))
+      act(() => result.current.play())
+
+      expect(result.current.isPlaying).toBe(true)
+
+      act(() => result.current.stepBackward())
+
+      expect(result.current.isPlaying).toBe(false)
+      expect(result.current.asOf).toBe(new Date(
+        new Date(baseTs).getTime() - REPLAY_STEP_MINUTES * 60_000,
+      ).toISOString())
+    })
+
+    it('stepBackward() does not go earlier than the configured lookback floor', () => {
+      vi.useFakeTimers()
+      try {
+        vi.setSystemTime(new Date('2026-03-31T12:00:00.000Z'))
+
+        const floorMs = Date.now() - REPLAY_STEP_LOOKBACK_DAYS * 86_400_000
+        const startMs = floorMs + 2 * 60_000
+        const { result } = renderHook(() => useReplay(), { wrapper })
+
+        act(() => result.current.setAsOf(new Date(startMs).toISOString()))
+        act(() => result.current.stepBackward())
+
+        expect(result.current.asOf).toBe(new Date(floorMs).toISOString())
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
     it('stepForward/stepBackward are no-ops when not replaying', () => {
       const { result } = renderHook(() => useReplay(), { wrapper })
       act(() => result.current.stepForward())
@@ -151,6 +199,26 @@ describe('ReplayContext', () => {
       expect(result.current.asOf).toBeNull()
       expect(result.current.isReplaying).toBe(false)
       expect(result.current.isPlaying).toBe(false)
+    })
+
+    it('uses the latest playback rate after it changes mid-play', async () => {
+      const baseMs = Date.now() - 60 * 60_000
+      const baseTs = new Date(baseMs).toISOString()
+
+      const { result } = renderHook(() => useReplay(), { wrapper })
+      act(() => result.current.setAsOf(baseTs))
+      act(() => result.current.setPlaybackRate(1))
+      act(() => result.current.play())
+
+      await act(async () => { vi.advanceTimersByTime(500) })
+      const afterFirstTickMs = new Date(result.current.asOf!).getTime()
+      expect(afterFirstTickMs - baseMs).toBe(30_000)
+
+      act(() => result.current.setPlaybackRate(60))
+      await act(async () => { vi.advanceTimersByTime(500) })
+
+      const afterSecondTickMs = new Date(result.current.asOf!).getTime()
+      expect(afterSecondTickMs - afterFirstTickMs).toBe(1_800_000)
     })
   })
 })

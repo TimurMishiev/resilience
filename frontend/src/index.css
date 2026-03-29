@@ -522,7 +522,7 @@ body {
   gap: 2px;
 }
 
-.replay-rate-btn {
+.replay-rate-btn.bp6-button {
   background: transparent;
   border: 1px solid #4a5568;
   border-radius: 3px;
@@ -531,17 +531,17 @@ body {
   font-weight: 600;
   padding: 2px 5px;
   height: 22px;
-  cursor: pointer;
   line-height: 1;
   transition: background 0.1s, color 0.1s;
 }
 
-.replay-rate-btn:hover {
+.replay-rate-btn.bp6-button:hover {
   background: #2f363f;
   color: #d3d8de;
 }
 
-.replay-rate-btn--active {
+.replay-rate-btn--active.bp6-button,
+.replay-rate-btn--active.bp6-button:hover {
   background: #1d3557;
   border-color: #7986cb;
   color: #a9b7f8;
@@ -2650,7 +2650,21 @@ body {
 .alerts-list {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+}
+
+.alerts-list-scroll {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  background: #151a1f;
+}
+
+.alerts-list-viewport {
+  position: relative;
+  width: 100%;
+}
+
+.alerts-list-item {
+  padding-bottom: 1px;
 }
 
 .alert-row {

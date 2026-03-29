@@ -1,5 +1,6 @@
-import { useState, useRef, useCallback, useMemo } from 'react'
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   Alert,
   Button,
@@ -85,6 +86,9 @@ function fmtTime(iso: string) {
     hour: '2-digit', minute: '2-digit',
   })
 }
+
+const ALERT_ROW_ESTIMATE = 86
+const ALERT_LIST_MAX_HEIGHT = 640
 
 // ── AlertRow ─────────────────────────────────────────────────────────────────
 
@@ -230,6 +234,7 @@ export default function AlertTriagePage() {
   const [chainMatch,    setChainMatch]    = useState<SignalRuleMatch | null>(null)
   // Index of the last row clicked — used to resolve shift-click ranges
   const lastClickedIdxRef = useRef<number | null>(null)
+  const scrollRef = useRef<HTMLDivElement | null>(null)
 
   const {
     data,
@@ -251,6 +256,18 @@ export default function AlertTriagePage() {
     [data?.pages],
   )
   const totalCount = data?.pages[0]?.meta.total ?? null
+
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const virtualizer = useVirtualizer({
+    count: matches.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ALERT_ROW_ESTIMATE,
+    overscan: 8,
+    getItemKey: (index) => matches[index]?.id ?? index,
+  })
+  const virtualItems = virtualizer.getVirtualItems()
+  const totalHeight = virtualizer.getTotalSize()
+  const listHeight = Math.min(totalHeight, ALERT_LIST_MAX_HEIGHT)
 
   const bulkMutate = useBulkTransitionAlerts()
 
@@ -309,6 +326,15 @@ export default function AlertTriagePage() {
       executeBulk(toStatus)
     }
   }
+
+  useEffect(() => {
+    if (!scrollRef.current) return
+    scrollRef.current.scrollTo?.({ top: 0 })
+  }, [statusFilter])
+
+  useEffect(() => {
+    virtualizer.measure()
+  }, [matches.length, someSelected, virtualizer])
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -371,12 +397,12 @@ export default function AlertTriagePage() {
           indeterminate={someSelected && !allSelected}
           onChange={handleToggleAll}
           style={{ margin: 0 }}
-          title="Select / deselect all visible"
+          title="Select / deselect all loaded alerts"
         />
         {someSelected ? (
           <>
             <span style={{ fontSize: 12, color: '#8a9ba8' }}>
-              {selectedIds.size} selected
+              {selectedIds.size} of {matches.length} loaded selected
             </span>
             {BULK_ACTIONS.map(action => (
               <Button
@@ -400,7 +426,7 @@ export default function AlertTriagePage() {
           </>
         ) : (
           <span style={{ fontSize: 12, color: '#5c7080' }}>
-            {isLoading ? '' : `${matches.length} alert${matches.length !== 1 ? 's' : ''} — select to bulk-triage`}
+            {isLoading ? '' : `${matches.length} loaded alert${matches.length !== 1 ? 's' : ''} — select to bulk-triage`}
           </span>
         )}
       </div>
@@ -427,18 +453,43 @@ export default function AlertTriagePage() {
       )}
 
       {!isLoading && matches.length > 0 && (
-        <div className="alerts-list">
-          {matches.map((m, idx) => (
-            <AlertRow
-              key={m.id}
-              match={m}
-              isChecked={selectedIds.has(m.id)}
-              someSelected={someSelected}
-              rowIndex={idx}
-              onCheck={handleRowCheck}
-              onChainClick={setChainMatch}
-            />
-          ))}
+        <div
+          ref={scrollRef}
+          className="alerts-list-scroll"
+          style={{ height: listHeight, maxHeight: ALERT_LIST_MAX_HEIGHT, overflowY: 'auto' }}
+        >
+          <div className="alerts-list-viewport" style={{ height: totalHeight, position: 'relative' }}>
+            <div
+              className="alerts-list"
+              style={{
+                position: 'absolute',
+                top: virtualItems[0]?.start ?? 0,
+                left: 0,
+                right: 0,
+              }}
+            >
+              {virtualItems.map((vItem) => {
+                const match = matches[vItem.index]
+                return (
+                  <div
+                    key={match.id}
+                    data-index={vItem.index}
+                    ref={virtualizer.measureElement}
+                    className="alerts-list-item"
+                  >
+                    <AlertRow
+                      match={match}
+                      isChecked={selectedIds.has(match.id)}
+                      someSelected={someSelected}
+                      rowIndex={vItem.index}
+                      onCheck={handleRowCheck}
+                      onChainClick={setChainMatch}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         </div>
       )}
 

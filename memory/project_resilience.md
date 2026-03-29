@@ -158,7 +158,7 @@ Every new entity must answer: "Is this an entity, a property, a relationship, or
 - **Phase 4** is partially complete:
   - risk scores are shipped
   - CI + auto-deploy to Fly are shipped
-  - virtualization currently exists in the signal feed, not broadly across all large data surfaces
+  - virtualization currently exists in the signal feed and alert triage feed
   - globe benchmarking/perf instrumentation exists and the focused-to-global reconcile benchmark is now budgeted in Playwright + CI
   - broader perf budgets and guardrails beyond the globe benchmark remain a closeout task
 
@@ -195,6 +195,7 @@ Every new entity must answer: "Is this an entity, a property, a relationship, or
 
 - **Virtual rendering**
   - Signal feed is virtualized.
+  - Alert triage is virtualized as a bounded scroll surface over the loaded infinite-query pages, preserving bulk actions and load-more behavior while capping live DOM growth.
   - Other potentially large tables/surfaces should be evaluated and virtualized only where needed.
   - Current Phase 4 audit result: the remaining list/table pages are mostly bounded at 50-100 rows and do not yet justify blanket virtualization. The next pressure point should be chosen based on measured volume, not roadmap cargo culting.
 - **Benchmarks**

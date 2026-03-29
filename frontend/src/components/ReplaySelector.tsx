@@ -1,7 +1,11 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { Button, Tag } from '@blueprintjs/core'
 import { useReplay } from '../context/ReplayContext'
 import { PLAYBACK_RATES, type PlaybackRate } from '../context/replayTransport'
+
+function formatInputValue(asOf: string | null): string {
+  return asOf ? new Date(asOf).toISOString().slice(0, 16) : ''
+}
 
 export default function ReplaySelector() {
   const {
@@ -9,6 +13,9 @@ export default function ReplaySelector() {
     play, pause, setPlaybackRate, stepForward, stepBackward,
   } = useReplay()
   const inputRef = useRef<HTMLInputElement>(null)
+  const [isEditing, setIsEditing] = useState(false)
+  const [draftValue, setDraftValue] = useState('')
+  const inputValue = isEditing ? draftValue : formatInputValue(asOf)
 
   function commit(val: string) {
     if (!val) {
@@ -23,14 +30,10 @@ export default function ReplaySelector() {
   }
 
   function handleClear() {
+    setIsEditing(false)
     setAsOf(null)
-    if (inputRef.current) inputRef.current.value = ''
+    setDraftValue('')
   }
-
-  // Convert ISO string back to datetime-local format for the input
-  const inputValue = asOf
-    ? new Date(asOf).toISOString().slice(0, 16)
-    : ''
 
   return (
     <div className="replay-selector">
@@ -46,11 +49,23 @@ export default function ReplaySelector() {
         ref={inputRef}
         type="datetime-local"
         className="replay-input"
-        defaultValue={inputValue}
-        key={inputValue}          /* re-mount when cleared so the value resets */
+        value={inputValue}
         max={new Date().toISOString().slice(0, 16)}
-        onChange={(e) => commit(e.currentTarget.value)}
-        onBlur={(e) => commit(e.currentTarget.value)}
+        onChange={(e) => setDraftValue(e.currentTarget.value)}
+        onFocus={(e) => {
+          setDraftValue(e.currentTarget.value)
+          setIsEditing(true)
+        }}
+        onBlur={(e) => {
+          setIsEditing(false)
+          commit(e.currentTarget.value)
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            inputRef.current?.blur()
+          }
+        }}
         title="Set replay timestamp — leave empty for live data"
       />
 
@@ -59,7 +74,7 @@ export default function ReplaySelector() {
           <Button
             minimal small icon="step-backward"
             onClick={stepBackward}
-            title="Step back 5 minutes"
+            title="Step back 5 minutes and pause"
           />
           <Button
             minimal small
@@ -71,19 +86,22 @@ export default function ReplaySelector() {
           <Button
             minimal small icon="step-forward"
             onClick={stepForward}
-            title="Step forward 5 minutes"
+            title="Step forward 5 minutes and pause"
           />
           <div className="replay-rate-selector" role="group" aria-label="Playback speed">
             {PLAYBACK_RATES.map((rate: PlaybackRate) => (
-              <button
+              <Button
                 key={rate}
+                minimal
+                small
                 className={`replay-rate-btn${playbackRate === rate ? ' replay-rate-btn--active' : ''}`}
                 onClick={() => setPlaybackRate(rate)}
                 title={`${rate} min / sec`}
                 aria-pressed={playbackRate === rate}
+                active={playbackRate === rate}
               >
                 {rate}×
-              </button>
+              </Button>
             ))}
           </div>
           <Button

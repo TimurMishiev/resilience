@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PlaybackRate } from '../context/replayTransport'
@@ -56,7 +56,7 @@ describe('ReplaySelector', () => {
     it('does not show transport controls', () => {
       renderSelector()
       expect(screen.queryByTitle('Start playback')).toBeNull()
-      expect(screen.queryByTitle('Step back 5 minutes')).toBeNull()
+      expect(screen.queryByTitle('Step back 5 minutes and pause')).toBeNull()
       expect(screen.queryByTitle('Return to live')).toBeNull()
     })
   })
@@ -74,9 +74,9 @@ describe('ReplaySelector', () => {
 
     it('shows step-back, play, step-forward, rate buttons, and clear button', () => {
       renderSelector()
-      expect(screen.getByTitle('Step back 5 minutes')).toBeInTheDocument()
+      expect(screen.getByTitle('Step back 5 minutes and pause')).toBeInTheDocument()
       expect(screen.getByTitle('Start playback')).toBeInTheDocument()
-      expect(screen.getByTitle('Step forward 5 minutes')).toBeInTheDocument()
+      expect(screen.getByTitle('Step forward 5 minutes and pause')).toBeInTheDocument()
       expect(screen.getByTitle('Return to live')).toBeInTheDocument()
       // All four rate buttons present
       expect(screen.getByText('1×')).toBeInTheDocument()
@@ -102,13 +102,13 @@ describe('ReplaySelector', () => {
 
     it('step-back button calls stepBackward()', async () => {
       renderSelector()
-      await userEvent.click(screen.getByTitle('Step back 5 minutes'))
+      await userEvent.click(screen.getByTitle('Step back 5 minutes and pause'))
       expect(replayState.stepBackward).toHaveBeenCalledOnce()
     })
 
     it('step-forward button calls stepForward()', async () => {
       renderSelector()
-      await userEvent.click(screen.getByTitle('Step forward 5 minutes'))
+      await userEvent.click(screen.getByTitle('Step forward 5 minutes and pause'))
       expect(replayState.stepForward).toHaveBeenCalledOnce()
     })
 
@@ -121,13 +121,37 @@ describe('ReplaySelector', () => {
     it('active rate button has --active class', () => {
       replayState.playbackRate = 5
       renderSelector()
-      expect(screen.getByText('5×').className).toContain('replay-rate-btn--active')
-      expect(screen.getByText('1×').className).not.toContain('replay-rate-btn--active')
+      expect(screen.getByRole('button', { name: '5×' }).className).toContain('replay-rate-btn--active')
+      expect(screen.getByRole('button', { name: '1×' }).className).not.toContain('replay-rate-btn--active')
+      expect(screen.getByRole('button', { name: '5×' })).toHaveAttribute('aria-pressed', 'true')
+      expect(screen.getByRole('button', { name: '1×' })).toHaveAttribute('aria-pressed', 'false')
     })
 
     it('clear button calls setAsOf(null)', async () => {
       renderSelector()
       await userEvent.click(screen.getByTitle('Return to live'))
+      expect(replayState.setAsOf).toHaveBeenCalledWith(null)
+    })
+
+    it('commits an edited datetime value on blur', () => {
+      renderSelector()
+      const input = screen.getByTitle('Set replay timestamp — leave empty for live data')
+
+      fireEvent.focus(input)
+      fireEvent.change(input, { target: { value: '2026-03-01T10:15' } })
+      fireEvent.blur(input)
+
+      expect(replayState.setAsOf).toHaveBeenCalledWith(new Date('2026-03-01T10:15').toISOString())
+    })
+
+    it('clearing the datetime input on blur returns to live', () => {
+      renderSelector()
+      const input = screen.getByTitle('Set replay timestamp — leave empty for live data')
+
+      fireEvent.focus(input)
+      fireEvent.change(input, { target: { value: '' } })
+      fireEvent.blur(input)
+
       expect(replayState.setAsOf).toHaveBeenCalledWith(null)
     })
   })
