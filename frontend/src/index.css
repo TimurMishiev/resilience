@@ -516,6 +516,37 @@ body {
   border-color: #7986cb;
 }
 
+.replay-rate-selector {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.replay-rate-btn {
+  background: transparent;
+  border: 1px solid #4a5568;
+  border-radius: 3px;
+  color: #8a9ba8;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 5px;
+  height: 22px;
+  cursor: pointer;
+  line-height: 1;
+  transition: background 0.1s, color 0.1s;
+}
+
+.replay-rate-btn:hover {
+  background: #2f363f;
+  color: #d3d8de;
+}
+
+.replay-rate-btn--active {
+  background: #1d3557;
+  border-color: #7986cb;
+  color: #a9b7f8;
+}
+
 /* ── Map page ──────────────────────────────────────────────── */
 
 .map-page {
