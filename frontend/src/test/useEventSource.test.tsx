@@ -44,7 +44,7 @@ describe('useEventSource', () => {
     vi.unstubAllGlobals()
   })
 
-  it('subscribes to planning doctrine and chokepoint SSE events', async () => {
+  it('subscribes to planning, chokepoint, and site-risk SSE events', async () => {
     renderHook(() => useEventSource({ enabled: true }))
 
     await waitFor(() => {
@@ -55,6 +55,7 @@ describe('useEventSource', () => {
     expect(Array.from(source.listeners.keys())).toEqual(expect.arrayContaining([
       'planning_doctrine_updated',
       'chokepoint_updated',
+      'site_risk_updated',
       'task_updated',
     ]))
   })

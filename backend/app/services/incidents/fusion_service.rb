@@ -15,8 +15,13 @@ module Incidents
   #
   # Skips fusion (no-op) if the match has no site_id.
   class FusionService < ApplicationService
-    FUSION_WINDOW   = 6.hours
-    SEVERITY_ORDER  = Incident::SEVERITY_ORDER
+    FUSION_WINDOW        = 6.hours
+    SEVERITY_ORDER       = Incident::SEVERITY_ORDER
+    # Cap the in-row rationale at 5 KB.  After this point every new fusion still
+    # updates confidence/severity/updated_at (keeping the incident alive), but
+    # further text is omitted.  The full history is always available via AuditEvents.
+    RATIONALE_MAX_BYTES  = 5_000
+    RATIONALE_OVERFLOW   = " [further fusions omitted — see audit log for full history]"
 
     def initialize(match:)
       @match = match
@@ -76,7 +81,7 @@ module Incidents
       dist        = @match.metadata["distance_km"]&.round(1)
       dist_str    = dist ? " (#{dist} km away)" : ""
 
-      Incident.create!(
+      incident = Incident.create!(
         title:            "#{signal_type} activity near #{site_name}",
         site_id:          @match.site_id,
         area_of_operation_id: @match.site&.area_of_operation_id,
@@ -86,13 +91,25 @@ module Incidents
         fusion_rationale: "Opened: rule '#{rule_name}' fired on #{signal_type.downcase} signal#{dist_str} " \
                           "(conf #{(@match.confidence.to_f * 100).round}%)."
       )
+      Audit::EventWriter.write(
+        actor:           "system",
+        entity_type:     "Incident",
+        entity_id:       incident.id,
+        event_type:      "incident.opened",
+        action:          "create",
+        before_snapshot: {},
+        after_snapshot:  { site_id: incident.site_id, severity: incident.severity, confidence: incident.confidence },
+        metadata:        { match_id: @match.id, rule_name: rule_name },
+        correlation_id:  SecureRandom.uuid,
+      )
+      incident
     end
 
     def attach_to_existing(incident)
       rule_name  = @match.correlation_rule&.name || "Geofence Monitor"
       addition   = "· Rule '#{rule_name}' fired (conf #{(@match.confidence.to_f * 100).round}%)."
 
-      new_rationale = [incident.fusion_rationale, addition].compact.join(" ")
+      new_rationale = build_rationale(incident.fusion_rationale.to_s, addition)
       new_conf      = [@match.confidence.to_f, incident.confidence.to_f].max
       new_sev       = higher_severity(incident.severity, severity_from_confidence(@match.confidence.to_f))
 
@@ -102,6 +119,31 @@ module Incidents
         severity:         new_sev,
         updated_at:       Time.current   # explicit refresh so FUSION_WINDOW stays alive
       )
+      Audit::EventWriter.write(
+        actor:           "system",
+        entity_type:     "Incident",
+        entity_id:       incident.id,
+        event_type:      "incident.fusion_attached",
+        action:          "update",
+        before_snapshot: { confidence: incident.confidence_before_last_save, severity: incident.severity_before_last_save },
+        after_snapshot:  { confidence: new_conf, severity: new_sev },
+        metadata:        { match_id: @match.id, rule_name: rule_name },
+        correlation_id:  SecureRandom.uuid,
+      )
+    end
+
+    # Appends +addition+ to +current+ unless the rationale has already hit the
+    # byte cap.  Once the cap is reached the overflow sentinel is written once
+    # and then no further changes are made to the text on subsequent fusions.
+    def build_rationale(current, addition)
+      return current if current.end_with?(RATIONALE_OVERFLOW)
+
+      candidate = [current.presence, addition].compact.join(" ")
+      if candidate.bytesize > RATIONALE_MAX_BYTES
+        "#{current}#{RATIONALE_OVERFLOW}"
+      else
+        candidate
+      end
     end
 
     # ── helpers ─────────────────────────────────────────────────────────────────

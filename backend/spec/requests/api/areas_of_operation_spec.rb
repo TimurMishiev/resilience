@@ -171,6 +171,37 @@ RSpec.describe "Api::AreasOfOperation", type: :request do
       expect(body["errors"].first).to include("commander intent")
     end
 
+    it "returns 422 when AO has attached doctrine (pace_plan)" do
+      create(:pace_plan, area_of_operation: indopacom, created_by: commander, updated_by: commander)
+      delete "/api/areas_of_operation/#{indopacom.id}", headers: auth_headers(commander)
+      expect(response).to have_http_status(:unprocessable_content)
+      body = JSON.parse(response.body)
+      expect(body["errors"].first).to include("pace plan")
+    end
+
+    it "returns 422 when AO has attached doctrine (chokepoints)" do
+      create(:chokepoint, area_of_operation: indopacom, created_by: commander, updated_by: commander)
+      delete "/api/areas_of_operation/#{indopacom.id}", headers: auth_headers(commander)
+      expect(response).to have_http_status(:unprocessable_content)
+      body = JSON.parse(response.body)
+      expect(body["errors"].first).to include("chokepoints")
+    end
+
+    it "returns 422 when AO has attached doctrine (salute_reports)" do
+      create(:salute_report, area_of_operation: indopacom, created_by: commander)
+      delete "/api/areas_of_operation/#{indopacom.id}", headers: auth_headers(commander)
+      expect(response).to have_http_status(:unprocessable_content)
+      body = JSON.parse(response.body)
+      expect(body["errors"].first).to include("salute reports")
+    end
+
+    it "does not write an audit event when destroy is blocked by attached doctrine" do
+      create(:commander_intent, area_of_operation: indopacom, created_by: commander, updated_by: commander)
+      expect {
+        delete "/api/areas_of_operation/#{indopacom.id}", headers: auth_headers(commander)
+      }.not_to change(AuditEvent, :count)
+    end
+
     it "returns 403 for operators" do
       delete "/api/areas_of_operation/#{indopacom.id}", headers: auth_headers(operator)
       expect(response).to have_http_status(:forbidden)

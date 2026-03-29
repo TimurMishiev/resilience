@@ -50,15 +50,51 @@ class Recommendation < ApplicationRecord
   end
 
   def accept!(user:, reason: nil)
-    update!(status: "accepted", reviewed_by_id: user.id, reviewed_at: Time.current, review_reason: reason)
+    before_status = status
+    ApplicationRecord.transaction do
+      update!(status: "accepted", reviewed_by_id: user.id, reviewed_at: Time.current, review_reason: reason)
+      Audit::EventWriter.write(
+        actor:           user.email,
+        entity_type:     "Recommendation",
+        entity_id:       id,
+        event_type:      "recommendation_accepted",
+        before_snapshot: { status: before_status },
+        after_snapshot:  { status: "accepted", review_reason: reason },
+        correlation_id:  SecureRandom.uuid,
+      )
+    end
   end
 
   def reject!(user:, reason: nil)
-    update!(status: "rejected", reviewed_by_id: user.id, reviewed_at: Time.current, review_reason: reason)
+    before_status = status
+    ApplicationRecord.transaction do
+      update!(status: "rejected", reviewed_by_id: user.id, reviewed_at: Time.current, review_reason: reason)
+      Audit::EventWriter.write(
+        actor:           user.email,
+        entity_type:     "Recommendation",
+        entity_id:       id,
+        event_type:      "recommendation_rejected",
+        before_snapshot: { status: before_status },
+        after_snapshot:  { status: "rejected", review_reason: reason },
+        correlation_id:  SecureRandom.uuid,
+      )
+    end
   end
 
   def defer!(user:, reason: nil)
-    update!(status: "deferred", reviewed_by_id: user.id, reviewed_at: Time.current, review_reason: reason)
+    before_status = status
+    ApplicationRecord.transaction do
+      update!(status: "deferred", reviewed_by_id: user.id, reviewed_at: Time.current, review_reason: reason)
+      Audit::EventWriter.write(
+        actor:           user.email,
+        entity_type:     "Recommendation",
+        entity_id:       id,
+        event_type:      "recommendation_deferred",
+        before_snapshot: { status: before_status },
+        after_snapshot:  { status: "deferred", review_reason: reason },
+        correlation_id:  SecureRandom.uuid,
+      )
+    end
   end
 
   def mark_executed!

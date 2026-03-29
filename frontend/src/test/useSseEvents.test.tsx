@@ -31,18 +31,42 @@ describe('useSseEvents', () => {
     onEventCallback = undefined
   })
 
+  it('invalidates sites and readiness for site_risk_updated', () => {
+    renderHook(() => useSseEvents({ enabled: true, queryClient }))
+    onEventCallback?.({ event: 'site_risk_updated', data: { site_id: 'site-1' } })
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['sites'] })
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['readiness'] })
+  })
+
   it.each([
     ['task_created', { title: 'Create task', priority: 'high', site_name: 'Watchtower Bravo' }],
     ['task_updated', { id: 'task-1', title: 'Update task' }],
     ['task_transitioned', { title: 'Transition task', workflow_status: 'resolved', site_name: 'Watchtower Bravo' }],
     ['posture_changed', { area_of_operation_id: 'ao-1', name: 'North Gulf', posture: 'defensive' }],
     ['planning_doctrine_updated', { kind: 'pace_plan', area_of_operation_id: 'ao-1' }],
-    ['chokepoint_updated', { kind: 'updated', area_of_operation_id: 'ao-1' }],
+    ['chokepoint_updated', { kind: 'updated', chokepoint_name: 'Hormuz East', area_of_operation_name: 'Northern Gulf' }],
   ])('invalidates planning for %s events', (eventName, data) => {
     renderHook(() => useSseEvents({ enabled: true, queryClient }))
 
     onEventCallback?.({ event: eventName, data })
 
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['planning'] })
+  })
+
+  it('shows a toast for chokepoint_updated events', async () => {
+    renderHook(() => useSseEvents({ enabled: true, queryClient }))
+
+    onEventCallback?.({
+      event: 'chokepoint_updated',
+      data: { kind: 'created', chokepoint_name: 'Bab el-Mandeb West', area_of_operation_name: 'Southern Arc' },
+    })
+
+    await vi.waitFor(() => expect(mocks.showMock).toHaveBeenCalledOnce())
+    expect(mocks.showMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining('Bab el-Mandeb West'),
+        intent:  'primary',
+      })
+    )
   })
 })

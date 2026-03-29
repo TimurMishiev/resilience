@@ -262,9 +262,11 @@ RSpec.describe Correlations::RuleFiringService do
     end
 
     it "writes a site_flagged audit event for the rule-driven flag" do
-      expect { result }.to change(AuditEvent, :count).by(1)
+      expect {
+        result
+      }.to change { AuditEvent.where(event_type: "site_flagged").count }.by(1)
 
-      event = AuditEvent.order(:occurred_at).last
+      event = AuditEvent.where(event_type: "site_flagged").order(:occurred_at).last
       expect(event.event_type).to eq("site_flagged")
       expect(event.actor).to eq("correlation_engine")
       expect(event.entity_type).to eq("Site")

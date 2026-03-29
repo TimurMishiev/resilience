@@ -121,6 +121,11 @@ export function useSseEvents({
         }))
       }
 
+      if (e.event === 'site_risk_updated') {
+        queryClient.invalidateQueries({ queryKey: ['sites'] })
+        invalidateReadiness()
+      }
+
       if (e.event === 'posture_changed') {
         const d = e.data as { area_of_operation_id: string; name: string; posture: string }
         invalidateReadiness()
@@ -136,8 +141,16 @@ export function useSseEvents({
       }
 
       if (e.event === 'chokepoint_updated') {
+        const d = e.data as { kind: string; chokepoint_name: string; area_of_operation_name: string }
         queryClient.invalidateQueries({ queryKey: ['chokepoints'] })
         invalidatePlanning()
+        const KIND_LABEL: Record<string, string> = { created: 'created', updated: 'updated', deleted: 'deleted' }
+        AppToaster.then(t => t.show({
+          message: `📍 Chokepoint ${KIND_LABEL[d.kind] ?? d.kind}: ${d.chokepoint_name} (${d.area_of_operation_name})`,
+          intent:  'primary',
+          icon:    'map-marker',
+          timeout: 5_000,
+        }))
       }
 
       if (e.event === 'planning_doctrine_updated') {

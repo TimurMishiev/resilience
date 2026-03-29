@@ -53,6 +53,23 @@ RSpec.describe "Api::Chokepoints", type: :request do
       expect(AuditEvent.last.event_type).to eq("chokepoint.created")
     end
 
+    it "broadcasts an SSE event with chokepoint_name and area_of_operation_name" do
+      broadcaster = instance_double(Sse::Broadcaster)
+      allow(Sse::Broadcaster).to receive(:instance).and_return(broadcaster)
+      allow(broadcaster).to receive(:publish)
+
+      post "/api/chokepoints", params: valid_params, headers: auth_headers(commander)
+
+      expect(broadcaster).to have_received(:publish).with(
+        event: "chokepoint_updated",
+        data: hash_including(
+          kind: "created",
+          chokepoint_name: "Hormuz East",
+          area_of_operation_name: "Northern Gulf"
+        )
+      )
+    end
+
     it "forbids operators" do
       post "/api/chokepoints", params: valid_params, headers: auth_headers(operator)
 

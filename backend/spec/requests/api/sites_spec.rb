@@ -77,6 +77,52 @@ RSpec.describe "Api::Sites", type: :request do
     end
   end
 
+  describe "PATCH /api/sites/:id/toggle_status" do
+    let(:operator) { create(:user, role: "operator") }
+
+    it "toggles site status and broadcasts site_risk_updated" do
+      broadcaster = instance_double(Sse::Broadcaster)
+      allow(Sse::Broadcaster).to receive(:instance).and_return(broadcaster)
+      allow(broadcaster).to receive(:publish)
+
+      patch "/api/sites/#{alpha.id}/toggle_status", headers: auth_headers(current_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(alpha.reload.status).to eq("inactive")
+      expect(broadcaster).to have_received(:publish).with(
+        event: "site_risk_updated", data: { site_id: alpha.id }
+      )
+    end
+
+    it "returns 403 for operators" do
+      patch "/api/sites/#{alpha.id}/toggle_status", headers: auth_headers(operator)
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
+
+  describe "PATCH /api/sites/:id/unflag" do
+    let!(:flagged_site) { create(:site, name: "Flagged", flagged_at: 1.hour.ago, flag_reason: "Test") }
+
+    it "clears flag and broadcasts site_risk_updated" do
+      broadcaster = instance_double(Sse::Broadcaster)
+      allow(Sse::Broadcaster).to receive(:instance).and_return(broadcaster)
+      allow(broadcaster).to receive(:publish)
+
+      patch "/api/sites/#{flagged_site.id}/unflag", headers: auth_headers(current_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(flagged_site.reload.flagged_at).to be_nil
+      expect(broadcaster).to have_received(:publish).with(
+        event: "site_risk_updated", data: { site_id: flagged_site.id }
+      )
+    end
+
+    it "returns 422 when site is not flagged" do
+      patch "/api/sites/#{alpha.id}/unflag", headers: auth_headers(current_user)
+      expect(response).to have_http_status(:unprocessable_content)
+    end
+  end
+
   describe "PATCH /api/sites/:id/update_geofence" do
     let(:operator) { create(:user, role: "operator") }
 
@@ -113,6 +159,20 @@ RSpec.describe "Api::Sites", type: :request do
             headers: auth_headers(current_user), as: :json
 
       expect(response).to have_http_status(:not_found)
+    end
+
+    it "broadcasts site_risk_updated on success" do
+      broadcaster = instance_double(Sse::Broadcaster)
+      allow(Sse::Broadcaster).to receive(:instance).and_return(broadcaster)
+      allow(broadcaster).to receive(:publish)
+
+      patch "/api/sites/#{alpha.id}/update_geofence",
+            params:  { geofence_radius_km: 8.0 },
+            headers: auth_headers(current_user), as: :json
+
+      expect(broadcaster).to have_received(:publish).with(
+        event: "site_risk_updated", data: { site_id: alpha.id }
+      )
     end
   end
 end

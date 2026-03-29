@@ -55,6 +55,16 @@ RSpec.describe "Api::Recommendations", type: :request do
       expect(json["review_reason"]).to eq "Looks right"
     end
 
+    it "writes a recommendation_accepted audit event" do
+      expect {
+        post "/api/recommendations/#{rec.id}/accept",
+             params:  { reason: "Looks right" },
+             headers: auth_headers(commander)
+      }.to change(AuditEvent, :count).by(1)
+      expect(AuditEvent.last.event_type).to eq("recommendation_accepted")
+      expect(AuditEvent.last.actor).to eq(commander.email)
+    end
+
     it "returns 422 for already-reviewed rec" do
       rec.update!(status: "accepted")
       post "/api/recommendations/#{rec.id}/accept", headers: auth_headers(commander)
@@ -77,6 +87,13 @@ RSpec.describe "Api::Recommendations", type: :request do
       expect(response).to have_http_status(:ok)
       expect(json["status"]).to eq "rejected"
     end
+
+    it "writes a recommendation_rejected audit event" do
+      expect {
+        post "/api/recommendations/#{rec.id}/reject", headers: auth_headers(commander)
+      }.to change(AuditEvent, :count).by(1)
+      expect(AuditEvent.last.event_type).to eq("recommendation_rejected")
+    end
   end
 
   describe "POST /api/recommendations/:id/defer" do
@@ -86,6 +103,13 @@ RSpec.describe "Api::Recommendations", type: :request do
       post "/api/recommendations/#{rec.id}/defer", headers: auth_headers(commander)
       expect(response).to have_http_status(:ok)
       expect(json["status"]).to eq "deferred"
+    end
+
+    it "writes a recommendation_deferred audit event" do
+      expect {
+        post "/api/recommendations/#{rec.id}/defer", headers: auth_headers(commander)
+      }.to change(AuditEvent, :count).by(1)
+      expect(AuditEvent.last.event_type).to eq("recommendation_deferred")
     end
   end
 

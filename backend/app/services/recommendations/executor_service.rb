@@ -176,9 +176,10 @@ module Recommendations
       )
 
       if result.success?
+        task.reload
         Sse::Broadcaster.instance.publish(
-          event: "task_transitioned",
-          data:  { task_id: task.id }
+          event: "task_updated",
+          data:  { task_id: task.id, title: task.title, site_name: task.site&.name }
         )
       end
 

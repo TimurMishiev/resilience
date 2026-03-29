@@ -72,6 +72,7 @@ module Api
         )
       end
 
+      Sse::Broadcaster.instance.publish(event: "site_risk_updated", data: { site_id: site.id })
       render json: serialize_site(site)
     end
 
@@ -99,6 +100,7 @@ module Api
         )
       end
 
+      Sse::Broadcaster.instance.publish(event: "site_risk_updated", data: { site_id: site.id })
       render json: serialize_site(site)
     rescue ActiveRecord::RecordInvalid => e
       render json: { errors: e.record.errors.full_messages }, status: :unprocessable_content
@@ -129,6 +131,7 @@ module Api
         )
       end
 
+      Sse::Broadcaster.instance.publish(event: "site_risk_updated", data: { site_id: site.id })
       render json: serialize_site(site)
     end
 

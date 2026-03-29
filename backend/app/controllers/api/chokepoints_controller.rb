@@ -34,7 +34,7 @@ module Api
         )
       end
 
-      broadcast_chokepoint_update(kind: "created", area_of_operation_id: chokepoint.area_of_operation_id)
+      broadcast_chokepoint_update(kind: "created", chokepoint: chokepoint)
       render json: serialize_chokepoint(chokepoint), status: :created
     rescue ActiveRecord::RecordInvalid => e
       render json: { errors: e.record.errors.full_messages }, status: :unprocessable_content
@@ -66,7 +66,7 @@ module Api
         )
       end
 
-      broadcast_chokepoint_update(kind: "updated", area_of_operation_id: chokepoint.area_of_operation_id)
+      broadcast_chokepoint_update(kind: "updated", chokepoint: chokepoint)
       render json: serialize_chokepoint(chokepoint)
     rescue ActiveRecord::RecordInvalid => e
       render json: { errors: e.record.errors.full_messages }, status: :unprocessable_content
@@ -91,7 +91,7 @@ module Api
         )
       end
 
-      broadcast_chokepoint_update(kind: "deleted", area_of_operation_id: before[:area_of_operation_id])
+      broadcast_chokepoint_update(kind: "deleted", chokepoint: chokepoint)
       head :no_content
     end
 
@@ -159,12 +159,14 @@ module Api
       }
     end
 
-    def broadcast_chokepoint_update(kind:, area_of_operation_id:)
+    def broadcast_chokepoint_update(kind:, chokepoint:)
       Sse::Broadcaster.instance.publish(
         event: "chokepoint_updated",
         data: {
-          kind: kind,
-          area_of_operation_id: area_of_operation_id,
+          kind:                   kind,
+          chokepoint_name:        chokepoint.name,
+          area_of_operation_id:   chokepoint.area_of_operation_id,
+          area_of_operation_name: chokepoint.area_of_operation.name,
         }
       )
     end

@@ -335,6 +335,8 @@ export default function PlanningPage() {
     objective: selectedCommanderIntent?.objective ?? '',
     end_state: selectedCommanderIntent?.end_state ?? '',
     constraints: selectedCommanderIntent?.constraints ?? '',
+  // id/updated_at + selectedDoctrineAoId are AO-switch and identity guards; not read in body.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [
     selectedDoctrineAoId,
     selectedCommanderIntent?.id,
@@ -350,6 +352,8 @@ export default function PlanningPage() {
     contingency_plan: selectedPacePlan?.contingency_plan ?? '',
     emergency_plan: selectedPacePlan?.emergency_plan ?? '',
     notes: selectedPacePlan?.notes ?? '',
+  // id/updated_at + selectedDoctrineAoId are AO-switch and identity guards; not read in body.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [
     selectedDoctrineAoId,
     selectedPacePlan?.id,
@@ -369,6 +373,8 @@ export default function PlanningPage() {
     observed_at: makeDefaultObservedAt(),
     equipment: '',
     remarks: '',
+  // doctrineSiteIdsKey + selectedDoctrineAoId are AO-switch and site-list guards; not read in body.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [selectedDoctrineAoId, doctrineSiteIdsKey, firstDoctrineSiteId])
   const nextChokepointDraft = useMemo(() => ({
     name: selectedChokepoint?.name ?? '',

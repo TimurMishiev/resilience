@@ -48,6 +48,40 @@ RSpec.describe Sse::Broadcaster do
     expect(queue.closed?).to be(true)
     expect(broadcaster.subscriber_count).to eq(0)
     expect(Rails.logger).to have_received(:warn)
-      .with(include("[SSE] evict_slow_client", "client=#{queue.object_id}", "event=task_updated", "queue_size=500", "queue_capacity=500", "subscribers=1"))
+      .with(include("[SSE] evict_slow_client", "client=#{queue.object_id}", "event=task_updated", "queue_size=500", "queue_capacity=500", "snapshot_subscribers=1"))
+  end
+
+  it "delivers to healthy clients when another client closes mid-publish" do
+    # Simulate a client that disconnects between the snapshot and the push loop.
+    # The ClosedQueueError must not abort delivery to subsequent healthy clients.
+    healthy = broadcaster.subscribe
+    zombie  = broadcaster.subscribe
+
+    zombie.close
+
+    broadcaster.publish(event: "task_updated", data: { id: "task-1" })
+
+    # Healthy client must receive the message.
+    expect(healthy.size).to eq(1)
+    payload = JSON.parse(healthy.pop)
+    expect(payload["event"]).to eq("task_updated")
+    expect(payload["data"]["id"]).to eq("task-1")
+
+    # Zombie is removed from the client list after publish.
+    expect(broadcaster.subscriber_count).to eq(1)
+  end
+
+  it "removes all errored and evicted clients atomically after publish" do
+    healthy = broadcaster.subscribe
+    slow    = broadcaster.subscribe
+    described_class::MAX_QUEUE_SIZE.times { |i| slow << { seq: i }.to_json }
+
+    allow(Rails.logger).to receive(:warn)
+
+    broadcaster.publish(event: "signal_fired", data: {})
+
+    expect(broadcaster.subscriber_count).to eq(1)
+    expect(healthy.size).to eq(1)
+    expect(slow.closed?).to be(true)
   end
 end

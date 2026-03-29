@@ -198,6 +198,20 @@ RSpec.describe Recommendations::ExecutorService, type: :service do
       expect(AuditEvent.find_by(event_type: "recommendation_executed")).to be_present
     end
 
+    it "broadcasts task_updated (not task_transitioned) with correct payload" do
+      broadcaster = instance_double(Sse::Broadcaster)
+      allow(Sse::Broadcaster).to receive(:instance).and_return(broadcaster)
+      allow(broadcaster).to receive(:publish)
+
+      execute(rec)
+
+      expect(broadcaster).to have_received(:publish).with(
+        event: "task_updated",
+        data:  hash_including(task_id: task.id, title: task.title)
+      )
+      expect(broadcaster).not_to have_received(:publish).with(hash_including(event: "task_transitioned"))
+    end
+
     it "returns failure when task is not found" do
       rec.update!(action_payload: { "task_id" => "nonexistent", "asset_id" => asset.id })
       result = execute(rec)

@@ -62,7 +62,7 @@ module Sse
         if q.size >= MAX_QUEUE_SIZE
           Rails.logger.warn(
             "[SSE] evict_slow_client client=#{q.object_id} event=#{event} queue_size=#{q.size} " \
-            "queue_capacity=#{MAX_QUEUE_SIZE} subscribers=#{snapshot.size}"
+            "queue_capacity=#{MAX_QUEUE_SIZE} snapshot_subscribers=#{snapshot.size}"
           )
           q.close unless q.closed?
           dropped << q

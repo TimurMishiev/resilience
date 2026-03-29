@@ -91,7 +91,9 @@ module Recommendations
 
       scores = recent_high.each_with_object({}) { |r, h| h[r.site_id] ||= r.score }
 
-      Site.active.where(flagged_at: nil).where(id: site_ids).limit(5).map do |s|
+      # site_ids is already bounded by the upstream .limit(10) snapshot query;
+      # a second cap here would silently drop high-risk sites from the LLM context.
+      Site.active.where(flagged_at: nil).where(id: site_ids).map do |s|
         { id: s.id, name: s.name, risk_score: (scores[s.id].to_f / 100.0) }
       end
     rescue => e

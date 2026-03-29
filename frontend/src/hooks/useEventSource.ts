@@ -20,6 +20,7 @@ const LIVE_EVENT_NAMES = [
   'rule_fired',
   'alert_transitioned',
   'geofence_breach',
+  'site_risk_updated',
   'posture_changed',
   'planning_doctrine_updated',
   'chokepoint_updated',
@@ -77,7 +78,7 @@ export function useEventSource({ onEvent, enabled = true }: Options = {}) {
         })
 
         // Listen for task mutation, planning, correlation engine, alert workflow,
-        // geofence, and posture events.
+        // site-state, geofence, and posture events.
         for (const evt of LIVE_EVENT_NAMES) {
           es.addEventListener(evt, (e: MessageEvent) => {
             try {
