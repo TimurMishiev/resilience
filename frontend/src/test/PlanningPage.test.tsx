@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { PlanningResponse } from '../api/types'
 
 const planningState = vi.hoisted(() => ({
   isCommander: true,
@@ -94,7 +95,7 @@ const planningState = vi.hoisted(() => ({
       salute_report_count: 0,
       salute_report_meta_by_ao: { 'ao-1': { truncated: false, count: 0 } },
     },
-  },
+  } as PlanningResponse,
   sites: [
     { id: 'site-1', name: 'Watchtower Bravo', latitude: 10, longitude: 20, status: 'active', area_of_operation_id: 'ao-1', geofence_radius_km: 10 },
   ],
@@ -245,6 +246,62 @@ describe('PlanningPage', () => {
       })
     })
     expect(screen.getByText(/Commander intent saved/i)).toBeInTheDocument()
+  })
+
+  it('re-seeds commander intent and PACE drafts when the selected AO changes', async () => {
+    const user = userEvent.setup()
+    planningState.planning = {
+      ...planningState.planning,
+      areas_of_operation: [
+        { id: 'ao-1', name: 'North Gulf', posture: 'defensive' },
+        { id: 'ao-2', name: 'South Gulf', posture: 'observe' },
+      ],
+      commander_intents: [
+        {
+          id: 'intent-2',
+          area_of_operation_id: 'ao-2',
+          title: 'Hold southern lanes',
+          objective: 'Maintain escort coverage.',
+          end_state: 'Commercial traffic moves without interruption.',
+          constraints: 'Avoid escalation near civilian traffic.',
+          created_by_id: 'user-1',
+          updated_by_id: 'user-1',
+          created_at: '2026-03-27T12:00:00Z',
+          updated_at: '2026-03-27T12:00:00Z',
+        },
+      ],
+      pace_plans: [
+        {
+          id: 'pace-2',
+          area_of_operation_id: 'ao-2',
+          primary_plan: 'SATCOM net',
+          alternate_plan: 'VHF relay',
+          contingency_plan: 'Burst SMS',
+          emergency_plan: 'HF voice',
+          notes: 'Escalate after 3 missed check-ins.',
+          created_by_id: 'user-1',
+          updated_by_id: 'user-1',
+          created_at: '2026-03-27T12:00:00Z',
+          updated_at: '2026-03-27T12:00:00Z',
+        },
+      ],
+    }
+
+    renderPlanningPage()
+
+    await user.selectOptions(screen.getAllByRole('combobox')[0], 'ao-2')
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Intent title/i)).toHaveValue('Hold southern lanes')
+      expect(screen.getByLabelText(/^Objective$/i)).toHaveValue('Maintain escort coverage.')
+      expect(screen.getByLabelText(/End state/i)).toHaveValue('Commercial traffic moves without interruption.')
+      expect(screen.getByLabelText(/Constraints/i)).toHaveValue('Avoid escalation near civilian traffic.')
+      expect(screen.getByLabelText(/Primary/i)).toHaveValue('SATCOM net')
+      expect(screen.getByLabelText(/Alternate/i)).toHaveValue('VHF relay')
+      expect(screen.getByLabelText(/Contingency/i)).toHaveValue('Burst SMS')
+      expect(screen.getByLabelText(/Emergency/i)).toHaveValue('HF voice')
+      expect(screen.getByLabelText(/Notes/i, { selector: 'textarea#pace-notes' })).toHaveValue('Escalate after 3 missed check-ins.')
+    })
   })
 
   it('submits a SALUTE report and resets the composer on success', async () => {

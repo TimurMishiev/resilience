@@ -1553,6 +1553,75 @@ body {
   flex-shrink: 0;
 }
 
+.map-heatmap-toggle {
+  position: absolute;
+  bottom: 36px;
+  left: 128px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(28, 33, 39, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  color: #8f99a8;
+  user-select: none;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.map-heatmap-toggle:hover {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.map-heatmap-toggle--active {
+  color: #ffe0a3;
+  border-color: rgba(249, 115, 22, 0.35);
+}
+
+.map-heatmap-toggle-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #20a39e, #ef4444);
+}
+
+.map-heatmap-legend {
+  position: absolute;
+  bottom: 64px;
+  left: 128px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 8px 12px;
+  background: rgba(28, 33, 39, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.map-heatmap-legend-bar {
+  width: 168px;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(32, 163, 158, 0.82) 0%, rgba(74, 222, 128, 0.86) 28%, rgba(250, 204, 21, 0.9) 56%, rgba(249, 115, 22, 0.94) 78%, rgba(239, 68, 68, 0.98) 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.map-heatmap-legend-labels {
+  display: flex;
+  justify-content: space-between;
+  color: #c5cbd3;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
 /* Signal hover popup */
 .signal-popup-container .maplibregl-popup-content {
   background: rgba(20, 24, 32, 0.95) !important;

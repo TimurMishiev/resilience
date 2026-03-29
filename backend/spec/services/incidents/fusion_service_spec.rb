@@ -168,6 +168,27 @@ RSpec.describe Incidents::FusionService, type: :service do
         expect(rationale).to end_with(described_class::RATIONALE_OVERFLOW)
       end
 
+      it "preserves context from the fusion that first triggers overflow" do
+        near_full = "x" * (described_class::RATIONALE_MAX_BYTES - 10)
+        existing = Incident.create!(
+          title:            "High-frequency incident",
+          site:             site,
+          status:           "open",
+          severity:         "low",
+          confidence:       0.3,
+          opened_at:        1.hour.ago,
+          fusion_rationale: near_full
+        )
+
+        described_class.call(match: match)
+
+        rationale = existing.reload.fusion_rationale
+        expect(rationale).to include("[latest:")
+        expect(rationale).to include("Rule")
+        expect(rationale).to include("75%")
+        expect(rationale).to end_with(described_class::RATIONALE_OVERFLOW)
+      end
+
       it "does not append the overflow sentinel more than once" do
         already_capped = "Opened: earlier." + described_class::RATIONALE_OVERFLOW
         existing = Incident.create!(

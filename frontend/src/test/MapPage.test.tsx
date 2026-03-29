@@ -37,6 +37,8 @@ const mockState = vi.hoisted(() => ({
 const engineState = vi.hoisted(() => ({
   flyTo: vi.fn(),
   latestInput: null as null | {
+    showSignals: boolean
+    showHeatmap: boolean
     onSiteClick: (siteId: string | null) => void
     onAssetClick: (assetId: string | null) => void
     onSignalClick: (signalId: string | null) => void
@@ -138,6 +140,8 @@ vi.mock('../hooks/useMapLibreEngine', () => ({
     street: { label: 'Street', style: {} },
   },
   useMapLibreEngine: (input: {
+    showSignals: boolean
+    showHeatmap: boolean
     onSiteClick: (siteId: string | null) => void
     onAssetClick: (assetId: string | null) => void
     onSignalClick: (signalId: string | null) => void
@@ -393,6 +397,47 @@ describe('MapPage selection routing', () => {
 
     expect(await screen.findByTestId('location-search')).toBeEmptyDOMElement()
     expect(screen.queryByTestId('map-signal-panel')).not.toBeInTheDocument()
+  })
+
+  it('toggles the heatmap control and legend independently of the signal legend', async () => {
+    renderMapPage('/map')
+
+    const heatmapToggle = screen.getByRole('button', { name: 'Toggle signal heatmap' })
+
+    expect(heatmapToggle).toHaveTextContent('HEATMAP OFF')
+    expect(screen.queryByText('LOW DENSITY')).not.toBeInTheDocument()
+    expect(engineState.latestInput?.showHeatmap).toBe(false)
+
+    await act(async () => {
+      heatmapToggle.click()
+    })
+
+    expect(heatmapToggle).toHaveTextContent('HEATMAP ON')
+    expect(screen.getByText('LOW DENSITY')).toBeInTheDocument()
+    expect(screen.getByText('HIGH DENSITY')).toBeInTheDocument()
+    expect(engineState.latestInput?.showHeatmap).toBe(true)
+  })
+
+  it('keeps the heatmap legend hidden when the signal layer is turned off', async () => {
+    renderMapPage('/map')
+
+    const heatmapToggle = screen.getByRole('button', { name: 'Toggle signal heatmap' })
+    const signalToggle = screen.getByRole('button', { name: 'Toggle signal layer' })
+
+    await act(async () => {
+      heatmapToggle.click()
+    })
+
+    expect(screen.getByText('LOW DENSITY')).toBeInTheDocument()
+
+    await act(async () => {
+      signalToggle.click()
+    })
+
+    expect(screen.queryByText('LOW DENSITY')).not.toBeInTheDocument()
+    expect(screen.queryByText('HIGH DENSITY')).not.toBeInTheDocument()
+    expect(engineState.latestInput?.showSignals).toBe(false)
+    expect(engineState.latestInput?.showHeatmap).toBe(true)
   })
 
   it('gives an external same-signal retry a fresh SSE grace window in a long-lived session', async () => {

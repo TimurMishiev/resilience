@@ -13,6 +13,7 @@
  *   - showSignals toggle hides/shows all 9 signal layers and clears
  *     selection on hide (the critical path that prevents stale signal state)
  *   - showCoverage toggle hides/shows coverage fill and stroke layers
+ *   - showHeatmap toggle hides/shows the dedicated heatmap layer
  */
 
 import { renderHook, act } from '@testing-library/react'
@@ -181,6 +182,7 @@ function defaultInput(
     readings: new Map(),
     showSignals: true,
     showCoverage: true,
+    showHeatmap: false,
     mapStyle: 'tactical',
     isReplaying: false,
     selectedSiteId: null,
@@ -272,7 +274,8 @@ describe('useMapLibreEngine adapter', () => {
       expect(facade.layerIds.has('site-circles')).toBe(true)
       expect(facade.layerIds.has('site-selection-ring')).toBe(true)
 
-      // Signal layer group (all 9)
+      // Signal layer group
+      expect(facade.layerIds.has('signal-heatmap')).toBe(true)
       expect(facade.layerIds.has('signal-clusters')).toBe(true)
       expect(facade.layerIds.has('signal-circles')).toBe(true)
       expect(facade.layerIds.has('signal-symbols')).toBe(true)
@@ -282,17 +285,19 @@ describe('useMapLibreEngine adapter', () => {
       expect(facade.layerIds.has('sensor-coverage-fill')).toBe(true)
     })
 
-    it('does not call setLayoutProperty for signal layers during init when showSignals is true', async () => {
+    it('does not hide the core signal layers during init when showSignals is true', async () => {
       const containerRef = makeContainerRef()
       await bootMap(facade, containerRef, defaultInput(containerRef, { showSignals: true }))
 
-      // Visibility defaults to 'visible' on init — setLayoutProperty should not be
-      // called to hide any signal layer during normal startup.
+      // Visibility defaults to 'visible' on init for the interactive signal layers.
+      // The dedicated heatmap overlay is allowed to initialize hidden because it is
+      // a separate optional density view, not part of the default symbol stack.
       const hideCalls = facade.calls.filter(
         c => c.method === 'setLayoutProperty' &&
              c.args[1] === 'visibility' &&
              c.args[2] === 'none' &&
-             String(c.args[0]).startsWith('signal'),
+             String(c.args[0]).startsWith('signal') &&
+             c.args[0] !== 'signal-heatmap',
       )
       expect(hideCalls).toHaveLength(0)
     })
@@ -606,6 +611,59 @@ describe('useMapLibreEngine adapter', () => {
         .map(c => c.args[0] as string)
 
       expect(shownIds).toContain('sensor-coverage-fill')
+    })
+  })
+
+  describe('heatmap visibility toggle', () => {
+    it('hides the heatmap layer when showHeatmap becomes false', async () => {
+      const containerRef = makeContainerRef()
+      const hook = await bootMap(
+        facade, containerRef,
+        defaultInput(containerRef, { showHeatmap: true }),
+      )
+
+      facade.calls.length = 0
+
+      await act(async () => {
+        hook.rerender(defaultInput(containerRef, { showHeatmap: false }))
+      })
+
+      expect(facade.calls).toContainEqual({
+        method: 'setLayoutProperty',
+        args: ['signal-heatmap', 'visibility', 'none'],
+      })
+    })
+
+    it('shows the heatmap layer when showHeatmap becomes true', async () => {
+      const containerRef = makeContainerRef()
+      const hook = await bootMap(
+        facade, containerRef,
+        defaultInput(containerRef, { showHeatmap: false }),
+      )
+
+      facade.calls.length = 0
+
+      await act(async () => {
+        hook.rerender(defaultInput(containerRef, { showHeatmap: true }))
+      })
+
+      expect(facade.calls).toContainEqual({
+        method: 'setLayoutProperty',
+        args: ['signal-heatmap', 'visibility', 'visible'],
+      })
+    })
+
+    it('keeps the heatmap hidden when signals are globally hidden', async () => {
+      const containerRef = makeContainerRef()
+      await bootMap(
+        facade, containerRef,
+        defaultInput(containerRef, { showHeatmap: true, showSignals: false }),
+      )
+
+      expect(facade.calls).toContainEqual({
+        method: 'setLayoutProperty',
+        args: ['signal-heatmap', 'visibility', 'none'],
+      })
     })
   })
 

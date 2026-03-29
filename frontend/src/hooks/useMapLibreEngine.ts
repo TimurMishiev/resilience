@@ -37,7 +37,7 @@ import {
   buildSignalPopupContent,
   buildSiteFeatureCollection,
 } from '../lib/mapRenderData'
-import { buildMapSignalRenderCollections } from '../lib/mapSignalRendering'
+import { buildMapSignalFeatureCollection, buildMapSignalRenderCollections } from '../lib/mapSignalRendering'
 import { preloadMapRuntime } from '../lib/preloadRoutes'
 import { SIGNAL_COLORS } from '../lib/signalConfig'
 import type { TelemetryMap } from '../lib/telemetry'
@@ -141,6 +141,7 @@ export interface MapEngineInput {
   // Visibility toggles
   showSignals:  boolean
   showCoverage: boolean
+  showHeatmap:  boolean
   mapStyle:     MapStyleKey
   isReplaying:  boolean
   selectedSiteId:   string | null
@@ -184,6 +185,7 @@ export function useMapLibreEngine({
   readings,
   showSignals,
   showCoverage,
+  showHeatmap,
   mapStyle,
   isReplaying,
   selectedSiteId,
@@ -627,8 +629,10 @@ export function useMapLibreEngine({
     const { clusterable, selected } = buildMapSignalRenderCollections(signals, selectedSignalId)
     const clusterSource = map.getSource('signal-points') as GeoJSONSource | undefined
     const selectedSource = map.getSource('selected-signal-point') as GeoJSONSource | undefined
+    const heatmapSource = map.getSource('signal-heatmap-points') as GeoJSONSource | undefined
     if (clusterSource) clusterSource.setData(clusterable)
     if (selectedSource) selectedSource.setData(selected)
+    if (heatmapSource) heatmapSource.setData(buildMapSignalFeatureCollection(signals))
   }, [mapLoaded, selectedSignalId, signals])
 
   // ---------------------------------------------------------------------------
@@ -647,6 +651,13 @@ export function useMapLibreEngine({
       map.addSource('selected-signal-point', {
         type: 'geojson',
         data: signalCollections.selected,
+      })
+    }
+
+    if (!map.getSource('signal-heatmap-points')) {
+      map.addSource('signal-heatmap-points', {
+        type: 'geojson',
+        data: buildMapSignalFeatureCollection(signalsRef.current),
       })
     }
 
@@ -684,6 +695,60 @@ export function useMapLibreEngine({
           'text-halo-width': 1,
         },
       })
+    }
+
+    if (!map.getLayer('signal-heatmap')) {
+      map.addLayer({
+        id: 'signal-heatmap',
+        type: 'heatmap',
+        source: 'signal-heatmap-points',
+        maxzoom: 13,
+        layout: {
+          // The dedicated visibility effect owns toggle state so layer
+          // creation stays style-load-only and lint-clean.
+          visibility: 'none',
+        },
+        paint: {
+          'heatmap-weight': [
+            'match', ['get', 'signal_type'],
+            'seismic_event', 1.3,
+            'wildfire', 1.25,
+            'conflict_event', 1.15,
+            'disaster_alert', 1.15,
+            'gps_jamming', 1.1,
+            1,
+          ],
+          'heatmap-intensity': [
+            'interpolate', ['linear'], ['zoom'],
+            0, 0.7,
+            6, 1.1,
+            10, 1.6,
+            13, 2.1,
+          ],
+          'heatmap-color': [
+            'interpolate', ['linear'], ['heatmap-density'],
+            0, 'rgba(16, 24, 40, 0)',
+            0.15, 'rgba(32, 163, 158, 0.25)',
+            0.35, 'rgba(74, 222, 128, 0.45)',
+            0.55, 'rgba(250, 204, 21, 0.62)',
+            0.75, 'rgba(249, 115, 22, 0.78)',
+            1, 'rgba(239, 68, 68, 0.94)',
+          ],
+          'heatmap-radius': [
+            'interpolate', ['linear'], ['zoom'],
+            0, 12,
+            5, 18,
+            9, 28,
+            13, 40,
+          ],
+          'heatmap-opacity': [
+            'interpolate', ['linear'], ['zoom'],
+            0, 0.72,
+            8, 0.68,
+            13, 0.28,
+          ],
+        },
+      }, 'signal-clusters')
     }
 
     if (!map.getLayer('signal-glow')) {
@@ -956,6 +1021,15 @@ export function useMapLibreEngine({
     // Synchronously clear selection when signals are hidden
     if (!showSignals) onSignalClickRef.current(null)
   }, [showSignals, mapLoaded])
+
+  // ---------------------------------------------------------------------------
+  // Heatmap visibility — derived from both signal visibility and heatmap toggle
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapLoaded || !map.getLayer('signal-heatmap')) return
+    map.setLayoutProperty('signal-heatmap', 'visibility', showSignals && showHeatmap ? 'visible' : 'none')
+  }, [showHeatmap, showSignals, mapLoaded])
 
   // ---------------------------------------------------------------------------
   // Coverage layer visibility

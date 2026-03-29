@@ -34,14 +34,16 @@ module Api
         )
       end
 
-      broadcast_chokepoint_update(kind: "created", chokepoint: chokepoint)
-      render json: serialize_chokepoint(chokepoint), status: :created
+      area_of_operation_name = AreaOfOperation.where(id: chokepoint.area_of_operation_id).pick(:name)
+
+      broadcast_chokepoint_update(kind: "created", chokepoint: chokepoint, area_of_operation_name: area_of_operation_name)
+      render json: serialize_chokepoint(chokepoint, area_of_operation_name: area_of_operation_name), status: :created
     rescue ActiveRecord::RecordInvalid => e
       render json: { errors: e.record.errors.full_messages }, status: :unprocessable_content
     end
 
     def update
-      chokepoint = Chokepoint.find(params[:id])
+      chokepoint = Chokepoint.includes(:area_of_operation).find(params[:id])
       if area_of_operation_reassignment?(chokepoint)
         render json: { errors: ["area_of_operation_id cannot be changed"] }, status: :unprocessable_content
         return
@@ -66,14 +68,16 @@ module Api
         )
       end
 
-      broadcast_chokepoint_update(kind: "updated", chokepoint: chokepoint)
-      render json: serialize_chokepoint(chokepoint)
+      area_of_operation_name = chokepoint.area_of_operation.name
+
+      broadcast_chokepoint_update(kind: "updated", chokepoint: chokepoint, area_of_operation_name: area_of_operation_name)
+      render json: serialize_chokepoint(chokepoint, area_of_operation_name: area_of_operation_name)
     rescue ActiveRecord::RecordInvalid => e
       render json: { errors: e.record.errors.full_messages }, status: :unprocessable_content
     end
 
     def destroy
-      chokepoint = Chokepoint.find(params[:id])
+      chokepoint = Chokepoint.includes(:area_of_operation).find(params[:id])
       before = chokepoint_snapshot(chokepoint)
       correlation_id = SecureRandom.uuid
 
@@ -91,7 +95,7 @@ module Api
         )
       end
 
-      broadcast_chokepoint_update(kind: "deleted", chokepoint: chokepoint)
+      broadcast_chokepoint_update(kind: "deleted", chokepoint: chokepoint, area_of_operation_name: chokepoint.area_of_operation.name)
       head :no_content
     end
 
@@ -140,11 +144,11 @@ module Api
       }
     end
 
-    def serialize_chokepoint(chokepoint)
+    def serialize_chokepoint(chokepoint, area_of_operation_name: nil)
       {
         id: chokepoint.id,
         area_of_operation_id: chokepoint.area_of_operation_id,
-        area_of_operation_name: chokepoint.area_of_operation.name,
+        area_of_operation_name: area_of_operation_name || chokepoint.area_of_operation.name,
         name: chokepoint.name,
         category: chokepoint.category,
         status: chokepoint.status,
@@ -159,14 +163,14 @@ module Api
       }
     end
 
-    def broadcast_chokepoint_update(kind:, chokepoint:)
+    def broadcast_chokepoint_update(kind:, chokepoint:, area_of_operation_name:)
       Sse::Broadcaster.instance.publish(
         event: "chokepoint_updated",
         data: {
           kind:                   kind,
           chokepoint_name:        chokepoint.name,
           area_of_operation_id:   chokepoint.area_of_operation_id,
-          area_of_operation_name: chokepoint.area_of_operation.name,
+          area_of_operation_name: area_of_operation_name,
         }
       )
     end

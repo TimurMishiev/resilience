@@ -23,6 +23,7 @@ export function useSseEvents({
       const invalidatePlanning = () => queryClient.invalidateQueries({ queryKey: ['planning'] })
       const invalidateTasks    = () => queryClient.invalidateQueries({ queryKey: ['tasks'] })
       const invalidateReadiness = () => queryClient.invalidateQueries({ queryKey: ['readiness'] })
+      const invalidateRiskScores = () => queryClient.invalidateQueries({ queryKey: ['risk_scores'] })
 
       if (e.event === 'rule_fired') {
         const d = e.data as {
@@ -41,6 +42,7 @@ export function useSseEvents({
         queryClient.invalidateQueries({ queryKey: ['sites'] })
         queryClient.invalidateQueries({ queryKey: ['incidents'] })
         queryClient.invalidateQueries({ queryKey: ['recommendations'] })
+        invalidateRiskScores()
         const confPct = d.confidence != null ? ` · ${Math.round(d.confidence * 100)}% conf` : ''
         AppToaster.then(t => t.show({
           message: `⚡ ${d.rule_name} fired near ${d.site_name} — ${d.signal_type}, ${d.distance_km} km${confPct}`,
@@ -59,6 +61,7 @@ export function useSseEvents({
           notes:           string | null
         }
         queryClient.invalidateQueries({ queryKey: ['signal_rule_matches'] })
+        invalidateRiskScores()
         const STATUS_ICON: Record<string, string> = {
           acknowledged: '👁', investigating: '🔍', closed: '✔', unacknowledged: '⚠',
         }
@@ -79,6 +82,7 @@ export function useSseEvents({
         invalidateTasks()
         invalidateReadiness()
         invalidatePlanning()
+        invalidateRiskScores()
         AppToaster.then(t => t.show({
           message: `✚ Task created: "${d.title}"${d.site_name ? ` @ ${d.site_name}` : ''} [${d.priority}]`,
           intent:  'success',
@@ -98,6 +102,7 @@ export function useSseEvents({
         invalidateTasks()
         invalidateReadiness()
         invalidatePlanning()
+        invalidateRiskScores()
         const STATUS_ICON: Record<string, string> = {
           resolved: '✔', blocked: '⛔', in_progress: '▶', triaged: '🔍', new: '•',
         }

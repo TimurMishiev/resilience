@@ -36,6 +36,7 @@ describe('useSseEvents', () => {
     onEventCallback?.({ event: 'site_risk_updated', data: { site_id: 'site-1' } })
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['sites'] })
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['readiness'] })
+    expect(invalidateQueries).not.toHaveBeenCalledWith({ queryKey: ['risk_scores'] })
   })
 
   it.each([
@@ -53,6 +54,33 @@ describe('useSseEvents', () => {
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['planning'] })
   })
 
+  it.each([
+    ['rule_fired', { rule_name: 'Perimeter Watch', site_name: 'Watchtower Bravo', task_title: null, priority: null, signal_type: 'wildfire', distance_km: 12.5, confidence: 0.84, actions_taken: [] }],
+    ['alert_transitioned', { workflow_status: 'closed', acknowledged_by: 'commander@demo.com', rule_name: 'Perimeter Watch', site_name: 'Watchtower Bravo', notes: null }],
+    ['task_created', { title: 'Create task', priority: 'high', site_name: 'Watchtower Bravo' }],
+    ['task_transitioned', { title: 'Transition task', workflow_status: 'resolved', site_name: 'Watchtower Bravo' }],
+  ])('invalidates risk_scores for %s events', (eventName, data) => {
+    renderHook(() => useSseEvents({ enabled: true, queryClient }))
+
+    onEventCallback?.({ event: eventName, data })
+
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['risk_scores'] })
+  })
+
+  it.each([
+    ['task_updated', { id: 'task-1', title: 'Update task' }],
+    ['site_risk_updated', { site_id: 'site-1' }],
+    ['posture_changed', { area_of_operation_id: 'ao-1', name: 'North Gulf', posture: 'defensive' }],
+    ['planning_doctrine_updated', { kind: 'pace_plan', area_of_operation_id: 'ao-1' }],
+    ['chokepoint_updated', { kind: 'updated', chokepoint_name: 'Hormuz East', area_of_operation_name: 'Northern Gulf' }],
+  ])('does not invalidate risk_scores for %s events', (eventName, data) => {
+    renderHook(() => useSseEvents({ enabled: true, queryClient }))
+
+    onEventCallback?.({ event: eventName, data })
+
+    expect(invalidateQueries).not.toHaveBeenCalledWith({ queryKey: ['risk_scores'] })
+  })
+
   it('shows a toast for chokepoint_updated events', async () => {
     renderHook(() => useSseEvents({ enabled: true, queryClient }))
 
@@ -65,6 +93,23 @@ describe('useSseEvents', () => {
     expect(mocks.showMock).toHaveBeenCalledWith(
       expect.objectContaining({
         message: expect.stringContaining('Bab el-Mandeb West'),
+        intent:  'primary',
+      })
+    )
+  })
+
+  it('shows a toast for planning_doctrine_updated events', async () => {
+    renderHook(() => useSseEvents({ enabled: true, queryClient }))
+
+    onEventCallback?.({
+      event: 'planning_doctrine_updated',
+      data: { kind: 'commander_intent', area_of_operation_id: 'ao-1' },
+    })
+
+    await vi.waitFor(() => expect(mocks.showMock).toHaveBeenCalledOnce())
+    expect(mocks.showMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining('Commander Intent updated'),
         intent:  'primary',
       })
     )

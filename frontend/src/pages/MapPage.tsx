@@ -105,6 +105,7 @@ export default function MapPage() {
   // ---------------------------------------------------------------------------
   const [showSignals,  setShowSignals]  = useState(true)
   const [showCoverage, setShowCoverage] = useState(true)
+  const [showHeatmap,  setShowHeatmap]  = useState(false)
   const [mapStyle,     setMapStyle]     = useState<MapStyleKey>('tactical')
 
   // ---------------------------------------------------------------------------
@@ -306,6 +307,7 @@ export default function MapPage() {
     readings,
     showSignals,
     showCoverage,
+    showHeatmap,
     mapStyle,
     isReplaying,
     selectedSiteId,
@@ -609,6 +611,15 @@ export default function MapPage() {
           ))}
         </div>
       )}
+      {showSignals && showHeatmap && (
+        <div className="map-heatmap-legend">
+          <div className="map-heatmap-legend-bar" />
+          <div className="map-heatmap-legend-labels">
+            <span>LOW DENSITY</span>
+            <span>HIGH DENSITY</span>
+          </div>
+        </div>
+      )}
       <div
         className={`map-signal-toggle${showSignals ? ' map-signal-toggle--active' : ''}`}
         onClick={() => setShowSignals(v => !v)}
@@ -617,6 +628,15 @@ export default function MapPage() {
       >
         <span className="map-signal-toggle-dot" />
         SIGNALS {showSignals ? 'ON' : 'OFF'}
+      </div>
+      <div
+        className={`map-heatmap-toggle${showHeatmap ? ' map-heatmap-toggle--active' : ''}`}
+        onClick={() => setShowHeatmap(v => !v)}
+        role="button"
+        aria-label="Toggle signal heatmap"
+      >
+        <span className="map-heatmap-toggle-dot" />
+        HEATMAP {showHeatmap ? 'ON' : 'OFF'}
       </div>
 
       {/* ── Site panel ── */}

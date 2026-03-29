@@ -139,11 +139,18 @@ module Incidents
       return current if current.end_with?(RATIONALE_OVERFLOW)
 
       candidate = [current.presence, addition].compact.join(" ")
-      if candidate.bytesize > RATIONALE_MAX_BYTES
-        "#{current}#{RATIONALE_OVERFLOW}"
-      else
-        candidate
-      end
+      return candidate if candidate.bytesize <= RATIONALE_MAX_BYTES
+
+      overflow_suffix = build_overflow_suffix(addition)
+      available_bytes = [RATIONALE_MAX_BYTES - overflow_suffix.bytesize, 0].max
+      preserved = current.to_s.byteslice(0, available_bytes).to_s.scrub.rstrip
+
+      "#{preserved}#{overflow_suffix}"
+    end
+
+    def build_overflow_suffix(addition)
+      latest_excerpt = addition.to_s.squish.byteslice(0, 96).to_s.scrub.rstrip
+      latest_excerpt.present? ? " [latest: #{latest_excerpt}]#{RATIONALE_OVERFLOW}" : RATIONALE_OVERFLOW
     end
 
     # ── helpers ─────────────────────────────────────────────────────────────────
