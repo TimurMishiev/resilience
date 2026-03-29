@@ -34,11 +34,41 @@ const mockState = vi.hoisted(() => ({
   ],
 }))
 
+const mockChokepoints = vi.hoisted(() => ({
+  data: [
+    {
+      id: 'cp-1',
+      name: 'Narrows',
+      status: 'monitor',
+      category: 'strait',
+      latitude: 12,
+      longitude: 22,
+      watch_radius_km: 40,
+      area_of_operation_id: 'ao-1',
+      area_of_operation_name: 'AO One',
+      notes: null,
+      created_by_id: 'user-1',
+      updated_by_id: 'user-1',
+      created_at: '2026-03-24T00:00:00Z',
+      updated_at: '2026-03-24T00:00:00Z',
+    },
+  ],
+}))
+
+const mockReplay = vi.hoisted(() => ({
+  asOf: null as string | null,
+  isReplaying: false,
+  asOfParam: {} as Record<string, string>,
+  signalQueryParams: {} as Record<string, string>,
+}))
+
 const engineState = vi.hoisted(() => ({
   flyTo: vi.fn(),
   latestInput: null as null | {
     showSignals: boolean
     showHeatmap: boolean
+    showChokepoints: boolean
+    chokepoints: Array<{ id: string }>
     onSiteClick: (siteId: string | null) => void
     onAssetClick: (assetId: string | null) => void
     onSignalClick: (signalId: string | null) => void
@@ -88,6 +118,12 @@ vi.mock('../hooks/useAreasOfOperation', () => ({
   }),
 }))
 
+vi.mock('../hooks/useChokepoints', () => ({
+  useChokepoints: () => ({
+    data: { data: mockChokepoints.data },
+  }),
+}))
+
 vi.mock('../hooks/useSignals', () => ({
   useSignalsLive: () => ({
     signals: mockState.signals,
@@ -125,12 +161,7 @@ vi.mock('../hooks/useRole', () => ({
 }))
 
 vi.mock('../hooks/useReplayParams', () => ({
-  useReplayParams: () => ({
-    asOf: null,
-    isReplaying: false,
-    asOfParam: {},
-    signalQueryParams: {},
-  }),
+  useReplayParams: () => mockReplay,
 }))
 
 vi.mock('../hooks/useMapLibreEngine', () => ({
@@ -142,6 +173,8 @@ vi.mock('../hooks/useMapLibreEngine', () => ({
   useMapLibreEngine: (input: {
     showSignals: boolean
     showHeatmap: boolean
+    showChokepoints: boolean
+    chokepoints: Array<{ id: string }>
     onSiteClick: (siteId: string | null) => void
     onAssetClick: (assetId: string | null) => void
     onSignalClick: (signalId: string | null) => void
@@ -254,6 +287,28 @@ describe('MapPage selection routing', () => {
         raw_payload: { version: 'v1', name: 'Initial alert' },
       },
     ]
+    mockChokepoints.data = [
+      {
+        id: 'cp-1',
+        name: 'Narrows',
+        status: 'monitor',
+        category: 'strait',
+        latitude: 12,
+        longitude: 22,
+        watch_radius_km: 40,
+        area_of_operation_id: 'ao-1',
+        area_of_operation_name: 'AO One',
+        notes: null,
+        created_by_id: 'user-1',
+        updated_by_id: 'user-1',
+        created_at: '2026-03-24T00:00:00Z',
+        updated_at: '2026-03-24T00:00:00Z',
+      },
+    ]
+    mockReplay.asOf = null
+    mockReplay.isReplaying = false
+    mockReplay.asOfParam = {}
+    mockReplay.signalQueryParams = {}
     window.localStorage.clear()
   })
 
@@ -438,6 +493,39 @@ describe('MapPage selection routing', () => {
     expect(screen.queryByText('HIGH DENSITY')).not.toBeInTheDocument()
     expect(engineState.latestInput?.showSignals).toBe(false)
     expect(engineState.latestInput?.showHeatmap).toBe(true)
+  })
+
+  it('toggles the chokepoint overlay and legend through page state', async () => {
+    renderMapPage('/map')
+
+    const chokepointToggle = screen.getByRole('button', { name: 'Toggle chokepoint overlay' })
+
+    expect(chokepointToggle).toHaveTextContent('CHOKEPOINTS ON')
+    expect(screen.getByText('Monitor')).toBeInTheDocument()
+    expect(engineState.latestInput?.showChokepoints).toBe(true)
+    expect(engineState.latestInput?.chokepoints).toHaveLength(1)
+
+    await act(async () => {
+      chokepointToggle.click()
+    })
+
+    expect(chokepointToggle).toHaveTextContent('CHOKEPOINTS OFF')
+    expect(screen.queryByText('Monitor')).not.toBeInTheDocument()
+    expect(engineState.latestInput?.showChokepoints).toBe(false)
+  })
+
+  it('hides chokepoint controls and clears chokepoint data during replay', async () => {
+    mockReplay.asOf = '2026-03-24T12:00'
+    mockReplay.isReplaying = true
+    mockReplay.asOfParam = { as_of: mockReplay.asOf }
+    mockReplay.signalQueryParams = { as_of: mockReplay.asOf }
+
+    renderMapPage('/map')
+
+    expect(screen.queryByRole('button', { name: 'Toggle chokepoint overlay' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Monitor')).not.toBeInTheDocument()
+    expect(engineState.latestInput?.chokepoints).toEqual([])
+    expect(screen.getByText(/AO overlays, chokepoint overlays,/i)).toBeInTheDocument()
   })
 
   it('gives an external same-signal retry a fresh SSE grace window in a long-lived session', async () => {

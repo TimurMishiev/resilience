@@ -32,6 +32,34 @@ const mockState = vi.hoisted(() => ({
   }>,
 }))
 
+const mockChokepoints = vi.hoisted(() => ({
+  data: [
+    {
+      id: 'cp-1',
+      name: 'Narrows',
+      status: 'monitor',
+      category: 'strait',
+      latitude: 12,
+      longitude: 22,
+      watch_radius_km: 40,
+      area_of_operation_id: 'ao-1',
+      area_of_operation_name: 'AO One',
+      notes: null,
+      created_by_id: 'user-1',
+      updated_by_id: 'user-1',
+      created_at: '2026-03-24T00:00:00Z',
+      updated_at: '2026-03-24T00:00:00Z',
+    },
+  ],
+}))
+
+const mockReplay = vi.hoisted(() => ({
+  asOf: null as string | null,
+  isReplaying: false,
+  asOfParam: {} as Record<string, string>,
+  signalQueryParams: {} as Record<string, string>,
+}))
+
 vi.mock('../hooks/useSites', () => ({
   useSites: () => ({
     data: { data: mockState.sites },
@@ -71,6 +99,12 @@ vi.mock('../hooks/useAreasOfOperation', () => ({
   }),
 }))
 
+vi.mock('../hooks/useChokepoints', () => ({
+  useChokepoints: () => ({
+    data: { data: mockChokepoints.data },
+  }),
+}))
+
 vi.mock('../hooks/useSignals', () => ({
   useSignalsLive: () => ({
     signals: mockState.signals,
@@ -96,12 +130,7 @@ vi.mock('../hooks/useSignalRuleMatches', () => ({
 }))
 
 vi.mock('../hooks/useReplayParams', () => ({
-  useReplayParams: () => ({
-    asOf: null,
-    isReplaying: false,
-    asOfParam: {},
-    signalQueryParams: {},
-  }),
+  useReplayParams: () => mockReplay,
 }))
 
 vi.mock('../lib/perfInstrumentation', () => ({
@@ -112,6 +141,10 @@ const globeEngineState = vi.hoisted(() => ({
   onSiteClick: null as ((siteId: string | null) => void) | null,
   onAssetClick: null as ((assetId: string | null) => void) | null,
   onSignalClick: null as ((signalId: string | null) => void) | null,
+  latestInput: null as null | {
+    showChokepoints: boolean
+    chokepoints: Array<{ id: string }>
+  },
 }))
 
 const routerState = vi.hoisted(() => ({
@@ -123,10 +156,16 @@ vi.mock('../hooks/useGlobeEngine', () => ({
     onSiteClick?: (siteId: string | null) => void
     onAssetClick?: (assetId: string | null) => void
     onSignalClick?: (signalId: string | null) => void
+    showChokepoints?: boolean
+    chokepoints?: Array<{ id: string }>
   }) => {
     globeEngineState.onSiteClick = input.onSiteClick ?? null
     globeEngineState.onAssetClick = input.onAssetClick ?? null
     globeEngineState.onSignalClick = input.onSignalClick ?? null
+    globeEngineState.latestInput = {
+      showChokepoints: input.showChokepoints ?? false,
+      chokepoints: input.chokepoints ?? [],
+    }
     return {
       viewerReady: true,
       isCloseView: false,
@@ -196,6 +235,7 @@ describe('GlobePage selection routing', () => {
     globeEngineState.onSiteClick = null
     globeEngineState.onAssetClick = null
     globeEngineState.onSignalClick = null
+    globeEngineState.latestInput = null
     routerState.navigate = null
     mockState.sites = [
       { id: 'site-1', name: 'Site One', latitude: 1, longitude: 2, status: 'active', geofence_radius_km: 0 },
@@ -213,6 +253,28 @@ describe('GlobePage selection routing', () => {
       },
     ]
     mockState.signals = []
+    mockChokepoints.data = [
+      {
+        id: 'cp-1',
+        name: 'Narrows',
+        status: 'monitor',
+        category: 'strait',
+        latitude: 12,
+        longitude: 22,
+        watch_radius_km: 40,
+        area_of_operation_id: 'ao-1',
+        area_of_operation_name: 'AO One',
+        notes: null,
+        created_by_id: 'user-1',
+        updated_by_id: 'user-1',
+        created_at: '2026-03-24T00:00:00Z',
+        updated_at: '2026-03-24T00:00:00Z',
+      },
+    ]
+    mockReplay.asOf = null
+    mockReplay.isReplaying = false
+    mockReplay.asOfParam = {}
+    mockReplay.signalQueryParams = {}
     window.localStorage.clear()
   })
 
@@ -412,6 +474,38 @@ describe('GlobePage selection routing', () => {
     })
 
     expect(screen.getByTestId('location-search')).toHaveTextContent('?signal_id=sig-a')
+  })
+
+  it('toggles the chokepoint overlay through globe page state', async () => {
+    renderGlobePage('/globe')
+
+    const chokepointToggle = screen.getByText('CHOKEPOINTS ON')
+
+    expect(screen.getByText('Monitor')).toBeInTheDocument()
+    expect(globeEngineState.latestInput?.showChokepoints).toBe(true)
+    expect(globeEngineState.latestInput?.chokepoints).toHaveLength(1)
+
+    await act(async () => {
+      chokepointToggle.click()
+    })
+
+    expect(screen.getByText('CHOKEPOINTS OFF')).toBeInTheDocument()
+    expect(screen.queryByText('Monitor')).not.toBeInTheDocument()
+    expect(globeEngineState.latestInput?.showChokepoints).toBe(false)
+  })
+
+  it('hides chokepoint controls and clears chokepoint data during replay', async () => {
+    mockReplay.asOf = '2026-03-24T12:00'
+    mockReplay.isReplaying = true
+    mockReplay.asOfParam = { as_of: mockReplay.asOf }
+    mockReplay.signalQueryParams = { as_of: mockReplay.asOf }
+
+    renderGlobePage('/globe')
+
+    expect(screen.queryByText(/CHOKEPOINTS (ON|OFF)/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Monitor')).not.toBeInTheDocument()
+    expect(globeEngineState.latestInput?.chokepoints).toEqual([])
+    expect(screen.getByText(/Replay mode hides live-only/)).toHaveTextContent('chokepoint overlays')
   })
 
   it('keeps a stable globe benchmark bridge across live array replacement while exposing updated state', async () => {

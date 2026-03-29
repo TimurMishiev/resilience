@@ -22,7 +22,7 @@ import type {
   MapMouseEvent,
   StyleSpecification,
 } from 'maplibre-gl'
-import type { Site, Task, Asset, Signal, AreaOfOperation } from '../api/types'
+import type { Site, Task, Asset, Signal, AreaOfOperation, Chokepoint } from '../api/types'
 import type { VesselTrack } from '../api/vessels'
 import type { CoverageCircle } from '../lib/coverage'
 import { circlePolygon } from '../lib/coverage'
@@ -136,13 +136,15 @@ export interface MapEngineInput {
   breachedSiteIds:   Set<string>
   vesselTracks:      VesselTrack[]
   coverageCircles:   CoverageCircle[]
+  chokepoints:       Chokepoint[]
   readings:          TelemetryMap
 
   // Visibility toggles
   showSignals:  boolean
   showCoverage: boolean
-  showHeatmap:  boolean
-  mapStyle:     MapStyleKey
+  showHeatmap:     boolean
+  showChokepoints: boolean
+  mapStyle:        MapStyleKey
   isReplaying:  boolean
   selectedSiteId:   string | null
   selectedAssetId:  string | null
@@ -182,10 +184,12 @@ export function useMapLibreEngine({
   breachedSiteIds,
   vesselTracks,
   coverageCircles,
+  chokepoints,
   readings,
   showSignals,
   showCoverage,
   showHeatmap,
+  showChokepoints,
   mapStyle,
   isReplaying,
   selectedSiteId,
@@ -612,6 +616,58 @@ export function useMapLibreEngine({
       },
     })
   }, [coverageCircles, mapLoaded])
+
+  // ---------------------------------------------------------------------------
+  // Chokepoint watch circles — status-colored fill + dashed stroke
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapLoaded) return
+
+    const statusColor: ExpressionSpecification = [
+      'match', ['get', 'status'],
+      'monitor',     '#ffd43b',
+      'constrained', '#ff922b',
+      'contested',   '#fa5252',
+      /* closed → */ '#868e96',
+    ]
+
+    const geojsonData: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: chokepoints.map(cp => ({
+        ...circlePolygon(cp.latitude, cp.longitude, cp.watch_radius_km),
+        properties: { id: cp.id, name: cp.name, status: cp.status },
+      })),
+    }
+
+    const existing = map.getSource('chokepoint-circles') as GeoJSONSource | undefined
+    if (existing) { existing.setData(geojsonData); return }
+
+    map.addSource('chokepoint-circles', { type: 'geojson', data: geojsonData })
+
+    map.addLayer({
+      id: 'chokepoint-fill', type: 'fill', source: 'chokepoint-circles',
+      paint: { 'fill-color': statusColor, 'fill-opacity': 0.10 },
+    }, map.getLayer('sensor-coverage-fill') ? 'sensor-coverage-fill' : undefined)
+
+    map.addLayer({
+      id: 'chokepoint-stroke', type: 'line', source: 'chokepoint-circles',
+      paint: { 'line-color': statusColor, 'line-width': 1.5, 'line-dasharray': [4, 2], 'line-opacity': 0.65 },
+    })
+  }, [chokepoints, mapLoaded])
+
+  // ---------------------------------------------------------------------------
+  // Chokepoint layer visibility
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapLoaded || !map.getLayer('chokepoint-fill')) return
+    const vis = showChokepoints ? 'visible' : 'none'
+    map.setLayoutProperty('chokepoint-fill', 'visibility', vis)
+    if (map.getLayer('chokepoint-stroke')) {
+      map.setLayoutProperty('chokepoint-stroke', 'visibility', vis)
+    }
+  }, [showChokepoints, mapLoaded])
 
   // ---------------------------------------------------------------------------
   // Keep signalsRef current so signal click handler reads fresh data

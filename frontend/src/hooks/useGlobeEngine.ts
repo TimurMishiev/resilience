@@ -18,7 +18,7 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo, type RefObject } from 'react'
 import type * as CesiumType from 'cesium'
-import type { Site, Task, Asset, Signal, AreaOfOperation } from '../api/types'
+import type { Site, Task, Asset, Signal, AreaOfOperation, Chokepoint } from '../api/types'
 import type { VesselTrack } from '../api/vessels'
 import { assetDisplayPosition, assetSeedPosition } from '../lib/assetPresentation'
 import { haversineKm, type CoverageCircle } from '../lib/coverage'
@@ -45,6 +45,13 @@ const COVERAGE_COLOR_BY_STATUS: Record<Asset['status'], string> = {
   assigned: '#5282ff',
   degraded: '#ffb366',
   offline: '#8f99a8',
+}
+
+const CHOKEPOINT_COLOR_BY_STATUS: Record<string, string> = {
+  monitor:     '#ffd43b',
+  constrained: '#ff922b',
+  contested:   '#fa5252',
+  closed:      '#868e96',
 }
 
 // ---------------------------------------------------------------------------
@@ -373,6 +380,10 @@ function resolvePickCandidates(
       sawOverlay = true
       continue
     }
+    if (candidate.idString.startsWith('chokepoint-')) {
+      sawOverlay = true
+      continue
+    }
     if (candidate.idString === 'vessel-track') {
       continue
     }
@@ -426,12 +437,14 @@ export interface GlobeEngineInput {
   areaOfOperations: AreaOfOperation[]
   breachedSiteIds:  Set<string>
   coverageCircles:  CoverageCircle[]
+  chokepoints:      Chokepoint[]
   vesselTracks:     VesselTrack[]
   readings:         TelemetryMap
 
   // Feature toggles
-  showSignals:  boolean
-  showCoverage: boolean
+  showSignals:     boolean
+  showCoverage:    boolean
+  showChokepoints: boolean
 
   // Included in position-update dep array so asset positions recompute on
   // replay state changes even when assets/readings identity is unchanged.
@@ -485,10 +498,12 @@ export function useGlobeEngine({
   areaOfOperations,
   breachedSiteIds,
   coverageCircles,
+  chokepoints,
   vesselTracks,
   readings,
   showSignals,
   showCoverage,
+  showChokepoints,
   asOf,
   isReplaying,
   signalFocusCenter,
@@ -507,6 +522,7 @@ export function useGlobeEngine({
   const geofenceEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
   const breachEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
   const coverageEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
+  const chokepointEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
   const vesselTrackEntityRef = useRef<CesiumType.Entity | null>(null)
   
   // High-volume point features use PointPrimitiveCollection to avoid Entity API overhead
@@ -639,6 +655,7 @@ export function useGlobeEngine({
     const geofenceEntities = geofenceEntitiesRef.current
     const breachEntities = breachEntitiesRef.current
     const coverageEntities = coverageEntitiesRef.current
+    const chokepointEntities = chokepointEntitiesRef.current
     const vesselTrackEntity = vesselTrackEntityRef.current
     const signalPrimitives = signalPrimitivesRef.current
 
@@ -657,6 +674,7 @@ export function useGlobeEngine({
       geofenceEntities.clear()
       breachEntities.clear()
       coverageEntities.clear()
+      chokepointEntities.clear()
       vesselTrackEntityRef.current = null
       signalPrimitives.clear()
       signalCollectionRef.current = null
@@ -1000,6 +1018,58 @@ export function useGlobeEngine({
       coverageEntitiesRef.current.set(key, entity)
     }
   }, [coverageCircles, showCoverage, viewerReady])
+
+  // ---------------------------------------------------------------------------
+  // Chokepoint watch circles — status-colored ellipse entities
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const Cesium = cesiumRef.current
+    const viewer = viewerRef.current
+    if (!viewerReady || !viewer || !Cesium) return
+
+    const currentIds = new Set(chokepoints.map(cp => `chokepoint-${cp.id}`))
+    pruneEntityMap(viewer, chokepointEntitiesRef.current, currentIds)
+
+    for (const cp of chokepoints) {
+      const key = `chokepoint-${cp.id}`
+      const radiusMeters = cp.watch_radius_km * 1000
+      const hex = CHOKEPOINT_COLOR_BY_STATUS[cp.status] ?? '#868e96'
+      const baseColor = Cesium.Color.fromCssColorString(hex)
+      const fillColor = baseColor.withAlpha(0.10)
+      const outlineColor = baseColor.withAlpha(0.65)
+      const existing = chokepointEntitiesRef.current.get(key)
+
+      if (existing?.ellipse) {
+        existing.show = showChokepoints
+        existing.name = cp.name
+        setEntityPosition(Cesium, existing, cp.longitude, cp.latitude)
+        setEllipseNumericProperty(Cesium, existing.ellipse.semiMajorAxis, radiusMeters, next => { existing.ellipse!.semiMajorAxis = next })
+        setEllipseNumericProperty(Cesium, existing.ellipse.semiMinorAxis, radiusMeters, next => { existing.ellipse!.semiMinorAxis = next })
+        setEllipseNumericProperty(Cesium, existing.ellipse.height, 0, next => { existing.ellipse!.height = next })
+        setEllipseNumericProperty(Cesium, existing.ellipse.outlineWidth, 1.5, next => { existing.ellipse!.outlineWidth = next })
+        setEllipseMaterialColor(Cesium, existing.ellipse, fillColor)
+        setEllipseColorProperty(Cesium, existing.ellipse.outlineColor, outlineColor, next => { existing.ellipse!.outlineColor = next })
+        continue
+      }
+
+      const entity = viewer.entities.add({
+        id: key,
+        name: cp.name,
+        show: showChokepoints,
+        position: Cesium.Cartesian3.fromDegrees(cp.longitude, cp.latitude),
+        ellipse: {
+          semiMajorAxis: new Cesium.ConstantProperty(radiusMeters),
+          semiMinorAxis: new Cesium.ConstantProperty(radiusMeters),
+          material: new Cesium.ColorMaterialProperty(fillColor),
+          outline: new Cesium.ConstantProperty(true),
+          outlineColor: new Cesium.ConstantProperty(outlineColor),
+          outlineWidth: new Cesium.ConstantProperty(1.5),
+          height: new Cesium.ConstantProperty(0),
+        },
+      })
+      chokepointEntitiesRef.current.set(key, entity)
+    }
+  }, [chokepoints, showChokepoints, viewerReady])
 
   // ---------------------------------------------------------------------------
   // Vessel track — single selected-vessel polyline, updated in place

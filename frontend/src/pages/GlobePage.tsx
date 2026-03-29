@@ -8,6 +8,7 @@ import { useAreasOfOperation } from '../hooks/useAreasOfOperation'
 import { useSignalsLive } from '../hooks/useSignals'
 import { useVessels, useVesselTracks } from '../hooks/useVessels'
 import { useActiveBreachSiteIds } from '../hooks/useSignalRuleMatches'
+import { useChokepoints } from '../hooks/useChokepoints'
 import { useReplayParams } from '../hooks/useReplayParams'
 import { useGlobeEngine, type GlobeEngineReturn } from '../hooks/useGlobeEngine'
 import type { Asset, Site, Task, Signal } from '../api/types'
@@ -222,6 +223,7 @@ export default function GlobePage() {
   const [selectedSignalId, setSelectedSignalId] = useState<string | null>(null)
   const [showSignals,      setShowSignals]      = useState(true)
   const [showCoverage,     setShowCoverage]     = useState(true)
+  const [showChokepoints,  setShowChokepoints]  = useState(true)
 
   // ---------------------------------------------------------------------------
   // Data queries
@@ -321,6 +323,12 @@ export default function GlobePage() {
     readings,
     allowHistoricalTelemetry: isReplaying,
   }), [assets, isReplaying, readings, sites, tasks])
+
+  const { data: chokepointsRes } = useChokepoints({ per_page: 200 }, { enabled: !isReplaying })
+  const chokepoints = useMemo(
+    () => (isReplaying ? [] : (chokepointsRes?.data ?? [])),
+    [chokepointsRes?.data, isReplaying],
+  )
 
   const updateSelectionRoute = useCallback((selection: {
     siteId: string | null
@@ -454,10 +462,12 @@ export default function GlobePage() {
     areaOfOperations,
     breachedSiteIds,
     coverageCircles,
+    chokepoints,
     vesselTracks,
     readings,
     showSignals,
     showCoverage,
+    showChokepoints,
     asOf: asOf ?? undefined,
     isReplaying,
     signalFocusCenter: selectedCenter,
@@ -954,11 +964,20 @@ export default function GlobePage() {
         >
           COVERAGE {showCoverage ? 'ON' : 'OFF'}
         </div>
+        {!isReplaying && (
+          <div
+            className={`globe-signal-toggle${showChokepoints ? ' globe-signal-toggle--active' : ''}`}
+            onClick={() => setShowChokepoints(v => !v)}
+            role="button"
+          >
+            CHOKEPOINTS {showChokepoints ? 'ON' : 'OFF'}
+          </div>
+        )}
         <span className="globe-toolbar-hint bp6-text-muted">
           {signalError && !isReplaying
             ? 'Live signal baseline sync is incomplete. Signals may be temporarily missing while the client retries.'
             : isReplaying
-            ? 'Replay mode hides live-only AO posture, breach overlays, and vessel enrichment data.'
+            ? 'Replay mode hides live-only AO posture, chokepoint overlays, breach overlays, and vessel enrichment data.'
             : isCloseView
             ? 'Signals hidden at close range. Use the 2D map for tactical inspection.'
             : 'Click any site, asset, or signal to inspect it'}
@@ -1021,6 +1040,23 @@ export default function GlobePage() {
         <div className="globe-legend-item">
           <span className="globe-legend-dot" style={{ background: '#00ffff' }} />Asset (live)
         </div>
+        {!isReplaying && showChokepoints && (
+          <>
+            <div className="globe-legend-section-title" style={{ marginTop: 10 }}>CHOKEPOINTS</div>
+            <div className="globe-legend-item">
+              <span className="globe-legend-dot" style={{ background: '#ffd43b' }} />Monitor
+            </div>
+            <div className="globe-legend-item">
+              <span className="globe-legend-dot" style={{ background: '#ff922b' }} />Constrained
+            </div>
+            <div className="globe-legend-item">
+              <span className="globe-legend-dot" style={{ background: '#fa5252' }} />Contested
+            </div>
+            <div className="globe-legend-item">
+              <span className="globe-legend-dot" style={{ background: '#868e96' }} />Closed
+            </div>
+          </>
+        )}
         {showCoverage && (
           <>
             <div className="globe-legend-section-title" style={{ marginTop: 10 }}>COVERAGE</div>

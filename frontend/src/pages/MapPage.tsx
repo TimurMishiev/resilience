@@ -13,6 +13,7 @@ import { useSignalsLive } from '../hooks/useSignals'
 import { useVessels, useVesselTracks } from '../hooks/useVessels'
 import { useRiskScores } from '../hooks/useRiskScores'
 import { useActiveBreachSiteIds } from '../hooks/useSignalRuleMatches'
+import { useChokepoints } from '../hooks/useChokepoints'
 import { useRole } from '../hooks/useRole'
 import { useReplayParams } from '../hooks/useReplayParams'
 import { useMapLibreEngine, MAP_STYLE_CONFIGS, type MapStyleKey } from '../hooks/useMapLibreEngine'
@@ -103,10 +104,11 @@ export default function MapPage() {
   // ---------------------------------------------------------------------------
   // Map UI state — passed to engine
   // ---------------------------------------------------------------------------
-  const [showSignals,  setShowSignals]  = useState(true)
-  const [showCoverage, setShowCoverage] = useState(true)
-  const [showHeatmap,  setShowHeatmap]  = useState(false)
-  const [mapStyle,     setMapStyle]     = useState<MapStyleKey>('tactical')
+  const [showSignals,     setShowSignals]     = useState(true)
+  const [showCoverage,    setShowCoverage]    = useState(true)
+  const [showHeatmap,     setShowHeatmap]     = useState(false)
+  const [showChokepoints, setShowChokepoints] = useState(true)
+  const [mapStyle,        setMapStyle]        = useState<MapStyleKey>('tactical')
 
   // ---------------------------------------------------------------------------
   // Data queries
@@ -229,6 +231,12 @@ export default function MapPage() {
     return map
   }, [allTasks])
 
+  const { data: chokepointsRes } = useChokepoints({ per_page: 200 }, { enabled: !isReplaying })
+  const chokepoints = useMemo(
+    () => (isReplaying ? [] : (chokepointsRes?.data ?? [])),
+    [chokepointsRes?.data, isReplaying],
+  )
+
   const coverageCircles = useMemo(() => buildCoverageCircles({
     assets, tasks: allTasks, sites, readings, allowHistoricalTelemetry: isReplaying,
   }), [assets, allTasks, isReplaying, sites, readings])
@@ -304,10 +312,12 @@ export default function MapPage() {
     breachedSiteIds,
     vesselTracks,
     coverageCircles,
+    chokepoints,
     readings,
     showSignals,
     showCoverage,
     showHeatmap,
+    showChokepoints,
     mapStyle,
     isReplaying,
     selectedSiteId,
@@ -548,7 +558,7 @@ export default function MapPage() {
       {isReplaying && (
         <div className="map-overlay map-overlay--error" style={{ top: 56, left: 16, right: 'auto', bottom: 'auto', maxWidth: 420 }}>
           <Callout intent="warning" title="Replay limitations" compact>
-            AO overlays, geofence breach rings, and vessel enrichment are hidden during replay because those layers are only available as live state.
+            AO overlays, chokepoint overlays, geofence breach rings, and vessel enrichment are hidden during replay because those layers are only available as live state.
           </Callout>
         </div>
       )}
@@ -599,6 +609,39 @@ export default function MapPage() {
         <span className="map-coverage-toggle-dot" />
         COVERAGE {showCoverage ? 'ON' : 'OFF'}
       </div>
+
+      {/* Chokepoint layer legend + toggle */}
+      {!isReplaying && showChokepoints && (
+        <div className="map-chokepoint-legend">
+          <div className="map-chokepoint-legend-item">
+            <span className="map-coverage-legend-swatch" style={{ background: 'rgba(255,212,59,0.22)', borderColor: '#ffd43b' }} />
+            Monitor
+          </div>
+          <div className="map-chokepoint-legend-item">
+            <span className="map-coverage-legend-swatch" style={{ background: 'rgba(255,146,43,0.22)', borderColor: '#ff922b' }} />
+            Constrained
+          </div>
+          <div className="map-chokepoint-legend-item">
+            <span className="map-coverage-legend-swatch" style={{ background: 'rgba(250,82,82,0.20)', borderColor: '#fa5252' }} />
+            Contested
+          </div>
+          <div className="map-chokepoint-legend-item">
+            <span className="map-coverage-legend-swatch map-coverage-legend-swatch--dashed" style={{ background: 'rgba(134,142,150,0.18)', borderColor: '#868e96' }} />
+            Closed
+          </div>
+        </div>
+      )}
+      {!isReplaying && (
+        <div
+          className={`map-coverage-toggle${showChokepoints ? ' map-coverage-toggle--active' : ''}`}
+          onClick={() => setShowChokepoints(v => !v)}
+          role="button"
+          aria-label="Toggle chokepoint overlay"
+        >
+          <span className="map-coverage-toggle-dot" />
+          CHOKEPOINTS {showChokepoints ? 'ON' : 'OFF'}
+        </div>
+      )}
 
       {/* Signal layer toggle */}
       {showSignals && (

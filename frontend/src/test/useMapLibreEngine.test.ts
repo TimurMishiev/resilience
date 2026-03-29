@@ -14,6 +14,7 @@
  *     selection on hide (the critical path that prevents stale signal state)
  *   - showCoverage toggle hides/shows coverage fill and stroke layers
  *   - showHeatmap toggle hides/shows the dedicated heatmap layer
+ *   - chokepoint layers are created, toggled, and emptied deterministically
  */
 
 import { renderHook, act } from '@testing-library/react'
@@ -179,10 +180,12 @@ function defaultInput(
     breachedSiteIds: new Set(),
     vesselTracks: [],
     coverageCircles: [],
+    chokepoints: [],
     readings: new Map(),
     showSignals: true,
     showCoverage: true,
     showHeatmap: false,
+    showChokepoints: true,
     mapStyle: 'tactical',
     isReplaying: false,
     selectedSiteId: null,
@@ -266,7 +269,7 @@ describe('useMapLibreEngine adapter', () => {
       expect(hook.result.current.mapLoaded).toBe(true)
     })
 
-    it('adds site, signal, and coverage layers once mapLoaded becomes true', async () => {
+    it('adds site, signal, coverage, and chokepoint layers once mapLoaded becomes true', async () => {
       const containerRef = makeContainerRef()
       await bootMap(facade, containerRef, defaultInput(containerRef))
 
@@ -283,6 +286,10 @@ describe('useMapLibreEngine adapter', () => {
 
       // Coverage layer group
       expect(facade.layerIds.has('sensor-coverage-fill')).toBe(true)
+
+      // Chokepoint layer group
+      expect(facade.layerIds.has('chokepoint-fill')).toBe(true)
+      expect(facade.layerIds.has('chokepoint-stroke')).toBe(true)
     })
 
     it('does not hide the core signal layers during init when showSignals is true', async () => {
@@ -611,6 +618,103 @@ describe('useMapLibreEngine adapter', () => {
         .map(c => c.args[0] as string)
 
       expect(shownIds).toContain('sensor-coverage-fill')
+    })
+  })
+
+  describe('chokepoint overlay lifecycle', () => {
+    const chokepoint = {
+      id: 'cp-1',
+      name: 'Narrows',
+      status: 'monitor' as const,
+      category: 'strait' as const,
+      latitude: 12,
+      longitude: 22,
+      watch_radius_km: 40,
+      area_of_operation_id: 'ao-1',
+      area_of_operation_name: 'AO One',
+      notes: null,
+      created_by_id: 'user-1',
+      updated_by_id: 'user-1',
+      created_at: '2026-03-26T00:00:00Z',
+      updated_at: '2026-03-26T00:00:00Z',
+    }
+
+    it('hides chokepoint fill and stroke when showChokepoints becomes false', async () => {
+      const containerRef = makeContainerRef()
+      const hook = await bootMap(
+        facade,
+        containerRef,
+        defaultInput(containerRef, { chokepoints: [chokepoint], showChokepoints: true }),
+      )
+
+      facade.calls.length = 0
+
+      await act(async () => {
+        hook.rerender(defaultInput(containerRef, { chokepoints: [chokepoint], showChokepoints: false }))
+      })
+
+      const hiddenIds = facade.calls
+        .filter(c =>
+          c.method === 'setLayoutProperty' &&
+          c.args[1] === 'visibility' &&
+          c.args[2] === 'none',
+        )
+        .map(c => c.args[0] as string)
+
+      expect(hiddenIds).toContain('chokepoint-fill')
+      expect(hiddenIds).toContain('chokepoint-stroke')
+    })
+
+    it('shows chokepoint fill and stroke when showChokepoints becomes true', async () => {
+      const containerRef = makeContainerRef()
+      const hook = await bootMap(
+        facade,
+        containerRef,
+        defaultInput(containerRef, { chokepoints: [chokepoint], showChokepoints: false }),
+      )
+
+      facade.calls.length = 0
+
+      await act(async () => {
+        hook.rerender(defaultInput(containerRef, { chokepoints: [chokepoint], showChokepoints: true }))
+      })
+
+      const shownIds = facade.calls
+        .filter(c =>
+          c.method === 'setLayoutProperty' &&
+          c.args[1] === 'visibility' &&
+          c.args[2] === 'visible',
+        )
+        .map(c => c.args[0] as string)
+
+      expect(shownIds).toContain('chokepoint-fill')
+      expect(shownIds).toContain('chokepoint-stroke')
+    })
+
+    it('empties the chokepoint source when the data set becomes empty', async () => {
+      const containerRef = makeContainerRef()
+      const hook = await bootMap(
+        facade,
+        containerRef,
+        defaultInput(containerRef, { chokepoints: [chokepoint] }),
+      )
+
+      facade.calls.length = 0
+
+      await act(async () => {
+        hook.rerender(defaultInput(containerRef, { chokepoints: [] }))
+      })
+
+      expect(facade.calls).toContainEqual({
+        method: 'setData',
+        args: [
+          'chokepoint-circles',
+          {
+            type: 'FeatureCollection',
+            features: [],
+          },
+        ],
+      })
     })
   })
 

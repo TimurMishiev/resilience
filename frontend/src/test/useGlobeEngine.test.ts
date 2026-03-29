@@ -12,6 +12,7 @@
  *   - Signal collection .show is toggled when showSignals changes
  *   - Coverage entity .show is set from showCoverage on creation and update
  *   - isCloseView flips when the camera crosses SIGNAL_CLOSE_VIEW_HEIGHT_M (2 000 000 m)
+ *   - chokepoint entities are created, toggled, and pruned correctly
  */
 
 import { renderHook, act } from '@testing-library/react'
@@ -436,10 +437,12 @@ function defaultInput(
     areaOfOperations: [],
     breachedSiteIds:  new Set(),
     coverageCircles:  [],
+    chokepoints:      [],
     vesselTracks:     [],
     readings:         new Map(),
     showSignals:      true,
     showCoverage:     true,
+    showChokepoints:  true,
     asOf:             undefined,
     isReplaying:      false,
     signalFocusCenter: null,
@@ -552,6 +555,26 @@ function makeCoverageCircle(overrides: Partial<CoverageCircle> = {}): CoverageCi
     radiusKm: 50,
     ...overrides,
   }
+}
+
+function makeChokepoint(overrides: Partial<GlobeEngineInput['chokepoints'][number]> = {}) {
+  return {
+    id: 'cp-1',
+    name: 'Narrows',
+    status: 'monitor',
+    category: 'strait',
+    latitude: 12,
+    longitude: 22,
+    watch_radius_km: 40,
+    area_of_operation_id: 'ao-1',
+    area_of_operation_name: 'AO One',
+    notes: null,
+    created_by_id: 'user-1',
+    updated_by_id: 'user-1',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+    ...overrides,
+  } satisfies GlobeEngineInput['chokepoints'][number]
 }
 
 /**
@@ -903,6 +926,57 @@ describe('useGlobeEngine adapter', () => {
     })
   })
 
+  describe('chokepoint entity lifecycle', () => {
+    const chokepoint = makeChokepoint()
+
+    it('creates chokepoint entity with show=true when showChokepoints is true', async () => {
+      const refs = makeContainerRef()
+      await bootGlobe(cesium, refs, defaultInput(refs, {
+        chokepoints: [chokepoint],
+        showChokepoints: true,
+      }))
+
+      const key = 'chokepoint-cp-1'
+      expect(cesium.entityRegistry.has(key)).toBe(true)
+      expect(cesium.entityRegistry.get(key)!.show).toBe(true)
+    })
+
+    it('updates existing chokepoint entity.show when showChokepoints changes', async () => {
+      const refs = makeContainerRef()
+      const hook = await bootGlobe(cesium, refs, defaultInput(refs, {
+        chokepoints: [chokepoint],
+        showChokepoints: true,
+      }))
+
+      await act(async () => {
+        hook.rerender(defaultInput(refs, {
+          chokepoints: [chokepoint],
+          showChokepoints: false,
+        }))
+        await Promise.resolve()
+      })
+
+      const key = 'chokepoint-cp-1'
+      expect(cesium.entityRegistry.get(key)!.show).toBe(false)
+    })
+
+    it('prunes stale chokepoint entities when the chokepoint set becomes empty', async () => {
+      const refs = makeContainerRef()
+      const hook = await bootGlobe(cesium, refs, defaultInput(refs, {
+        chokepoints: [chokepoint],
+      }))
+
+      expect(cesium.entityRegistry.has('chokepoint-cp-1')).toBe(true)
+
+      await act(async () => {
+        hook.rerender(defaultInput(refs, { chokepoints: [] }))
+        await Promise.resolve()
+      })
+
+      expect(cesium.entityRegistry.has('chokepoint-cp-1')).toBe(false)
+    })
+  })
+
   describe('vessel track lifecycle', () => {
     it('adds, updates, and removes the selected vessel track entity', async () => {
       const refs = makeContainerRef()
@@ -950,6 +1024,33 @@ describe('useGlobeEngine adapter', () => {
 
       expect(hook.result.current.dispatchSyntheticPick(['signal-sig-1'])).toBe(true)
       expect(onSignalClick).toHaveBeenCalledWith('sig-1')
+    })
+
+    it('treats chokepoint-* as a passthrough overlay and resolves the underlying entity', async () => {
+      const refs = makeContainerRef()
+      const onSiteClick = vi.fn()
+      const hook = await bootGlobe(cesium, refs, defaultInput(refs, {
+        sites: [makeSite()],
+        onSiteClick,
+      }))
+
+      // chokepoint overlay on top, site underneath — site should win
+      expect(hook.result.current.dispatchSyntheticPick(['chokepoint-cp-1', 'site-site-1'])).toBe(true)
+      expect(onSiteClick).toHaveBeenCalledWith('site-1')
+    })
+
+    it('does not clear the active selection when only chokepoint overlays are picked', async () => {
+      const refs = makeContainerRef()
+      const onSiteClick = vi.fn()
+      const hook = await bootGlobe(cesium, refs, defaultInput(refs, {
+        sites: [makeSite()],
+        selectedSiteId: 'site-1',
+        onSiteClick,
+      }))
+
+      // only a chokepoint overlay in the pick stack — should not fire any callback
+      expect(hook.result.current.dispatchSyntheticPick(['chokepoint-cp-1'])).toBe(false)
+      expect(onSiteClick).not.toHaveBeenCalled()
     })
 
     it('toggles a selected site off when the same site is picked again', async () => {

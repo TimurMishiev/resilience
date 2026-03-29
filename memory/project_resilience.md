@@ -137,6 +137,121 @@ Every new entity must answer: "Is this an entity, a property, a relationship, or
 | Phase 3 | Visual intelligence (track trails, heatmap, swimlane viz, globe playback) |
 | Phase 4 | Command polish (virtual rendering, risk score, benchmarks, auto-deploy) |
 
+### Roadmap Reality Check (2026-03-28)
+
+- **Phase 1** is complete and hardened.
+- **Phase 2** is functionally complete at the CRUD/workflow layer:
+  - loitering is shipped
+  - chokepoints are shipped in planning/backend workflows
+  - SALUTE / PACE / commander intent are shipped
+  - keyboard command palette is shipped
+- **Phase 2 adjunct still worth tracking:** chokepoints currently exist only in the planning/doctrine surface. Geographic overlays on the map/globe are not implemented yet, so chokepoints are not spatially visible outside PlanningPage.
+- **Phase 3** is partially complete:
+  - selected-vessel track trails are shipped on map and globe
+  - map heatmap is shipped
+  - swimlane visualization is not started
+  - replay exists, but it is still timestamp-based rather than a full playback product with transport controls
+  - many live-control-plane surfaces are intentionally unavailable during replay
+- **Phase 4** is partially complete:
+  - risk scores are shipped
+  - CI + auto-deploy to Fly are shipped
+  - virtualization currently exists in the signal feed, not broadly across all large data surfaces
+  - globe benchmarking/perf instrumentation exists, but broader perf budgets and guardrails remain a closeout task
+
+### Roadmap Clarifications
+
+#### Phase 2 closeout adjuncts
+
+- **Chokepoint geographic overlays**
+  - MapPage does not render chokepoints yet.
+  - GlobePage does not render chokepoints yet.
+  - This is not part of the original Phase 2 table entry, but it is a sensible operator-facing completion step for chokepoint analysis.
+
+#### Phase 3 closeout specifics
+
+- **Track trails**
+  - Current implementation is selected-vessel trail rendering.
+  - Remaining work is broader playback-grade trail behavior and replay integration, not first-time trail support from zero.
+- **Heatmap**
+  - Map heatmap is shipped.
+  - Globe heatmap parity is not implemented and should be treated as optional polish unless Phase 3 scope is explicitly expanded.
+- **Swimlane visualization**
+  - No dedicated swimlane view exists yet.
+  - Existing site-level timeline UI can likely seed the data model and interaction pattern, but the product surface is still missing.
+- **Globe playback / replay**
+  - Replay currently means "query historical state at an as_of timestamp."
+  - True playback still needs transport controls (play/pause/step/scrub/speed) plus broader historical-state coverage across live-only surfaces.
+
+#### Phase 4 closeout specifics
+
+- **Virtual rendering**
+  - Signal feed is virtualized.
+  - Other potentially large tables/surfaces should be evaluated and virtualized only where needed.
+- **Benchmarks**
+  - Globe benchmark coverage exists.
+  - Remaining work is to formalize performance budgets and keep them as an explicit release-quality bar.
+- **Auto-deploy**
+  - Already implemented through GitHub Actions + Fly deploy on main after green checks.
+
+### Post-v1 Candidate Expansions
+
+- **Kill-chain / prosecution workflow**
+  - Not part of the current canonical 4-phase roadmap.
+  - Sensible future addition if the product evolves from incident response into end-to-end prosecution workflow.
+- **Cross-entity natural-language ontology query**
+  - Not part of the current canonical 4-phase roadmap.
+  - Natural-language filter translation exists for tasks/signals, but graph-style ontology traversal via NL does not.
+  - Treat as a future expansion unless it is explicitly promoted into the roadmap.
+
+### Locked Finish Plan (2026-03-28)
+
+Future agents should treat this as the current required completion sequence unless the user explicitly changes roadmap scope.
+
+If any external summary, audit, or delegated-agent note disagrees with this section, prefer this section unless the codebase itself has changed and been re-verified.
+
+#### Required completion track
+
+1. **Chokepoint geographic overlays**
+   - Add operator-facing chokepoint rendering on MapPage and GlobePage.
+   - This is the only visibly half-built operational feature already shipped in PlanningPage/doctrine workflows.
+   - Use the real chokepoint status enum from `backend/app/models/chokepoint.rb`:
+     - `monitor`
+     - `constrained`
+     - `contested`
+     - `closed`
+   - Do not invent alternate labels like `open`, `clear`, or `monitored`.
+2. **Replay / playback closeout**
+   - Upgrade replay from timestamp-only mode into a real playback product.
+   - Add transport controls and tighten historical-state coverage where Phase 3 depends on replay.
+3. **Swimlane visualization**
+   - Build the missing cross-entity temporal intelligence surface.
+   - Existing site-level timeline primitives can seed the data model, but no swimlane product surface exists yet.
+4. **Phase 4 closeout**
+   - Expand virtualization where large data surfaces justify it.
+   - Formalize benchmark/perf budgets as an explicit release bar.
+
+#### Explicit non-goals for current v1 closeout
+
+- Do **not** rebuild map heatmap from scratch; it is already shipped.
+- Do **not** treat globe heatmap parity as required unless Phase 3 scope is explicitly expanded.
+- Do **not** treat kill-chain/prosecution or cross-entity NL ontology query as current v1 blockers.
+  - They remain post-v1 expansions unless the user explicitly promotes them into the roadmap.
+
+#### Sequence lock
+
+- The required implementation order is:
+  1. chokepoint overlays
+  2. replay / playback closeout
+  3. swimlane visualization
+  4. Phase 4 closeout
+- If another summary proposes `swimlane` before `replay / playback`, treat that as misaligned with the locked plan unless the user explicitly reprioritizes it.
+
+#### Expected remaining canonical phases
+
+- **Phase 3** remains open.
+- **Phase 4** remains partially open.
+- Phase 2 is functionally complete, with chokepoint overlays tracked as an adjunct operator-facing closeout task rather than evidence that the whole phase is still incomplete.
+
 ---
 
 ## Architectural Decisions
@@ -155,7 +270,6 @@ Every new entity must answer: "Is this an entity, a property, a relationship, or
 - ServiceResult (Data.define) exposes result.success (boolean), NOT result.success? (method). Using .success? raises NoMethodError.
 - AIS raw_payload uses key "dest" for destination, not "destination".
 - Tasks::UpdateService requires string-keyed params, not symbol keys.
-- Backend request specs currently cannot be run in this environment because `bundler 2.7.2` from `Gemfile.lock` is not installed locally.
 
 ---
 
@@ -172,7 +286,9 @@ Every new entity must answer: "Is this an entity, a property, a relationship, or
 - Cesium attribution is visible again via a custom credit container; prior hidden-credit behavior was removed.
 - Remaining “next level” work if resumed later:
   - selection highlighting on the globe
-  - track trails for moving assets / vessels
+  - broader playback-grade trails for moving assets / vessels
+  - chokepoint overlays if spatial planning parity is promoted into the globe scope
+  - globe heatmap parity if Phase 3 scope is expanded beyond the shipped map heatmap
   - batched or clustered signal rendering if density grows beyond entity comfort
 
 ---
