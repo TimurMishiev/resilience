@@ -159,7 +159,8 @@ Every new entity must answer: "Is this an entity, a property, a relationship, or
   - risk scores are shipped
   - CI + auto-deploy to Fly are shipped
   - virtualization currently exists in the signal feed, not broadly across all large data surfaces
-  - globe benchmarking/perf instrumentation exists, but broader perf budgets and guardrails remain a closeout task
+  - globe benchmarking/perf instrumentation exists and the focused-to-global reconcile benchmark is now budgeted in Playwright + CI
+  - broader perf budgets and guardrails beyond the globe benchmark remain a closeout task
 
 ### Roadmap Clarifications
 
@@ -195,9 +196,11 @@ Every new entity must answer: "Is this an entity, a property, a relationship, or
 - **Virtual rendering**
   - Signal feed is virtualized.
   - Other potentially large tables/surfaces should be evaluated and virtualized only where needed.
+  - Current Phase 4 audit result: the remaining list/table pages are mostly bounded at 50-100 rows and do not yet justify blanket virtualization. The next pressure point should be chosen based on measured volume, not roadmap cargo culting.
 - **Benchmarks**
-  - Globe benchmark coverage exists.
-  - Remaining work is to formalize performance budgets and keep them as an explicit release-quality bar.
+  - Globe benchmark coverage exists and now enforces explicit release budgets on the focused-to-global reconcile path.
+  - CI runs the Dockerized app and fails if the benchmark breaches its budget.
+  - Remaining work is to broaden budgets/guardrails beyond the globe benchmark where justified.
 - **Auto-deploy**
   - Already implemented through GitHub Actions + Fly deploy on main after green checks.
 
@@ -220,8 +223,8 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
 #### Required completion track
 
 1. **Phase 4 closeout**
-   - Expand virtualization where large data surfaces justify it.
-   - Formalize benchmark/perf budgets as an explicit release bar.
+   - Expand virtualization only where measured large data surfaces justify it.
+   - Broaden benchmark/perf budgets beyond the current globe reconcile gate as an explicit release bar.
 
 #### Recently closed
 

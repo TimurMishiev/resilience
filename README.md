@@ -232,6 +232,7 @@ cd ../frontend
 yarn tsc --noEmit                         # type check
 yarn lint                                 # ESLint
 yarn build                                # production build
+E2E_BASE_URL=http://127.0.0.1:3000 yarn benchmark:globe  # focused globe perf budget
 ```
 
 ---
@@ -257,6 +258,9 @@ The `Recommendations::Validator` runs four checks on every LLM-produced recommen
 
 **Virtual list for the signal feed**
 The signal feed uses `@tanstack/react-virtual`. Regardless of how many signals are in the database, only ~25 DOM nodes are rendered at any scroll position. `useInfiniteQuery` fetches the next page of 75 rows when the last virtual item scrolls within 10 rows of the bottom.
+
+**Budgeted globe reconcile benchmark**
+The globe has a Playwright benchmark for the focused-to-global signal reconcile path. It runs against the Dockerized production-style app and fails if the measured mean, p95, or worst sample breaches the current budget. This keeps the performance story as an enforced release bar instead of a one-off manual check.
 
 ---
 

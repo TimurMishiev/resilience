@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { primeAuthenticatedSession } from './helpers'
+
 type PerfEvent = {
   name: string
   durationMs?: number
@@ -11,6 +12,17 @@ type GlobeBenchmarkTarget = {
   siteName: string
   focusedSignalCount: number
   globalSignalCount: number
+}
+
+const DEFAULT_MAX_MEAN_MS = 10
+const DEFAULT_MAX_P95_MS = 20
+const DEFAULT_MAX_SINGLE_SAMPLE_MS = 25
+
+function readBudget(envKey: string, fallback: number): number {
+  const raw = process.env[envKey]
+  if (!raw) return fallback
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
 }
 
 function mean(values: number[]): number {
@@ -106,13 +118,34 @@ test('benchmark focused-to-global globe signal reconcile', async ({ page }, test
     maxSignalDelta: Math.max(...deltas),
   }
 
+  const maxMeanMs = readBudget('GLOBE_BENCH_MAX_MEAN_MS', DEFAULT_MAX_MEAN_MS)
+  const maxP95Ms = readBudget('GLOBE_BENCH_MAX_P95_MS', DEFAULT_MAX_P95_MS)
+  const maxSingleSampleMs = readBudget('GLOBE_BENCH_MAX_SINGLE_SAMPLE_MS', DEFAULT_MAX_SINGLE_SAMPLE_MS)
+
   await testInfo.attach('globe-benchmark-summary', {
-    body: Buffer.from(JSON.stringify(summary, null, 2)),
+    body: Buffer.from(JSON.stringify({
+      ...summary,
+      budgets: {
+        maxMeanMs,
+        maxP95Ms,
+        maxSingleSampleMs,
+      },
+    }, null, 2)),
     contentType: 'application/json',
   })
 
-  console.log(`globe-benchmark ${JSON.stringify(summary)}`)
+  console.log(`globe-benchmark ${JSON.stringify({
+    ...summary,
+    budgets: {
+      maxMeanMs,
+      maxP95Ms,
+      maxSingleSampleMs,
+    },
+  })}`)
 
   expect(durations.length).toBe(5)
   expect(summary.maxSignalDelta).toBeGreaterThan(0)
+  expect(summary.meanMs).toBeLessThanOrEqual(maxMeanMs)
+  expect(summary.p95Ms).toBeLessThanOrEqual(maxP95Ms)
+  expect(summary.maxMs).toBeLessThanOrEqual(maxSingleSampleMs)
 })
