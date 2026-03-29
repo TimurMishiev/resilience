@@ -404,10 +404,14 @@ export default function GlobePage() {
   const selectedVesselMmsi = selectedSignal?.signal_type === 'vessel_position' ? selectedSignal.external_id : null
   const { data: vesselLookup } = useVessels(
     selectedVesselMmsi ? { mmsi: selectedVesselMmsi, per_page: 1 } : undefined,
-    { enabled: !!selectedVesselMmsi && !isReplaying },
+    { enabled: !!selectedVesselMmsi, refetchInterval: isReplaying ? false : 30_000 },
   )
-  const selectedVessel = vesselLookup?.data?.[0] ?? null
-  const { data: vesselTrackRes } = useVesselTracks(!isReplaying ? (selectedVessel?.id ?? null) : null, { limit: 300 })
+  const selectedVesselRecord = vesselLookup?.data?.[0] ?? null
+  const selectedVessel = isReplaying ? null : selectedVesselRecord
+  const { data: vesselTrackRes } = useVesselTracks(selectedVesselRecord?.id ?? null, {
+    limit: 300,
+    ...(isReplaying && asOf ? { to: asOf } : {}),
+  })
   const vesselTracks = useMemo(() => vesselTrackRes?.data ?? [], [vesselTrackRes?.data])
 
   // ---------------------------------------------------------------------------
@@ -977,7 +981,7 @@ export default function GlobePage() {
           {signalError && !isReplaying
             ? 'Live signal baseline sync is incomplete. Signals may be temporarily missing while the client retries.'
             : isReplaying
-            ? 'Replay mode hides live-only AO posture, chokepoint overlays, breach overlays, and vessel enrichment data.'
+            ? 'Replay mode hides live-only AO posture, chokepoint overlays, breach overlays, and live vessel enrichment data. Historical vessel trails remain visible up to the replay timestamp.'
             : isCloseView
             ? 'Signals hidden at close range. Use the 2D map for tactical inspection.'
             : 'Click any site, asset, or signal to inspect it'}

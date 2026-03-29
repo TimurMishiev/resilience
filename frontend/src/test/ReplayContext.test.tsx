@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 import { renderHook, act } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ReplayProvider, useReplay, REPLAY_STEP_MINUTES } from '../context/ReplayContext'
+import { ReplayProvider, useReplay } from '../context/ReplayContext'
+import { REPLAY_STEP_MINUTES } from '../context/replayTransport'
 
 function wrapper({ children }: { children: ReactNode }) {
   return <ReplayProvider>{children}</ReplayProvider>

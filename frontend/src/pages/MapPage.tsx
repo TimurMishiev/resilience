@@ -196,12 +196,16 @@ export default function MapPage() {
   // Vessel lookup — only when a vessel_position signal is selected
   const { data: vesselLookup } = useVessels(
     selectedVesselMmsi ? { mmsi: selectedVesselMmsi, per_page: 1 } : undefined,
-    { enabled: !!selectedVesselMmsi && !isReplaying },
+    { enabled: !!selectedVesselMmsi, refetchInterval: isReplaying ? false : 30_000 },
   )
-  const selectedVessel = vesselLookup?.data?.[0] ?? null
+  const selectedVesselRecord = vesselLookup?.data?.[0] ?? null
+  const selectedVessel = isReplaying ? null : selectedVesselRecord
 
   // Track history for the selected vessel
-  const { data: vesselTrackRes } = useVesselTracks(!isReplaying ? (selectedVessel?.id ?? null) : null, { limit: 300 })
+  const { data: vesselTrackRes } = useVesselTracks(selectedVesselRecord?.id ?? null, {
+    limit: 300,
+    ...(isReplaying && asOf ? { to: asOf } : {}),
+  })
   const vesselTracks = useMemo(() => vesselTrackRes?.data ?? [], [vesselTrackRes?.data])
 
   // Active geofence breach site IDs — backed by an unpaginated backend query
@@ -558,7 +562,7 @@ export default function MapPage() {
       {isReplaying && (
         <div className="map-overlay map-overlay--error" style={{ top: 56, left: 16, right: 'auto', bottom: 'auto', maxWidth: 420 }}>
           <Callout intent="warning" title="Replay limitations" compact>
-            AO overlays, chokepoint overlays, geofence breach rings, and vessel enrichment are hidden during replay because those layers are only available as live state.
+            AO overlays, chokepoint overlays, geofence breach rings, and live vessel enrichment are hidden during replay because those layers are only available as live state. Historical vessel trails remain available up to the replay timestamp.
           </Callout>
         </div>
       )}

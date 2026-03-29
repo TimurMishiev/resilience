@@ -112,6 +112,27 @@ RSpec.describe "Api::Vessels", type: :request do
       expect(body["data"].first["id"]).to eq(track2.id)
     end
 
+    it "supports an upper-bound only replay query" do
+      cutoff = 90.minutes.ago.iso8601
+
+      get "/api/vessels/#{vessel1.id}/tracks", params: { to: cutoff }, headers: auth_headers(user)
+
+      body = JSON.parse(response.body)
+      expect(body["data"].map { |t| t["id"] }).to eq([track1.id])
+    end
+
+    it "returns the most recent limited slice in chronological order" do
+      track3 = create(:vessel_track, vessel: vessel1, occurred_at: 30.minutes.ago)
+
+      get "/api/vessels/#{vessel1.id}/tracks", params: { limit: 2 }, headers: auth_headers(user)
+
+      body = JSON.parse(response.body)
+      expect(body["data"].map { |t| t["id"] }).to eq([track2.id, track3.id])
+      expect(body["data"].map { |t| t["occurred_at"] }).to eq(
+        body["data"].map { |t| t["occurred_at"] }.sort
+      )
+    end
+
     it "requires authentication" do
       get "/api/vessels/#{vessel1.id}/tracks"
       expect(response).to have_http_status(:unauthorized)

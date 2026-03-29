@@ -31,7 +31,16 @@ const mockState = vi.hoisted(() => ({
       external_id: null,
       raw_payload: { version: 'v1', name: 'Initial alert' },
     },
-  ],
+  ] as Array<{
+    id: string
+    signal_type: string
+    source: string
+    lat: number
+    lng: number
+    occurred_at: string
+    external_id: string | null
+    raw_payload: Record<string, unknown>
+  }>,
 }))
 
 const mockChokepoints = vi.hoisted(() => ({
@@ -60,6 +69,11 @@ const mockReplay = vi.hoisted(() => ({
   isReplaying: false,
   asOfParam: {} as Record<string, string>,
   signalQueryParams: {} as Record<string, string>,
+}))
+
+const vesselHookState = vi.hoisted(() => ({
+  useVessels: vi.fn(),
+  useVesselTracks: vi.fn(),
 }))
 
 const engineState = vi.hoisted(() => ({
@@ -134,12 +148,8 @@ vi.mock('../hooks/useSignals', () => ({
 }))
 
 vi.mock('../hooks/useVessels', () => ({
-  useVessels: () => ({
-    data: { data: [] },
-  }),
-  useVesselTracks: () => ({
-    data: { data: [] },
-  }),
+  useVessels: (...args: unknown[]) => vesselHookState.useVessels(...args),
+  useVesselTracks: (...args: unknown[]) => vesselHookState.useVesselTracks(...args),
 }))
 
 vi.mock('../hooks/useRiskScores', () => ({
@@ -309,6 +319,10 @@ describe('MapPage selection routing', () => {
     mockReplay.isReplaying = false
     mockReplay.asOfParam = {}
     mockReplay.signalQueryParams = {}
+    vesselHookState.useVessels.mockReset()
+    vesselHookState.useVesselTracks.mockReset()
+    vesselHookState.useVessels.mockReturnValue({ data: { data: [] } })
+    vesselHookState.useVesselTracks.mockReturnValue({ data: { data: [] } })
     window.localStorage.clear()
   })
 
@@ -526,6 +540,39 @@ describe('MapPage selection routing', () => {
     expect(screen.queryByText('Monitor')).not.toBeInTheDocument()
     expect(engineState.latestInput?.chokepoints).toEqual([])
     expect(screen.getByText(/AO overlays, chokepoint overlays,/i)).toBeInTheDocument()
+  })
+
+  it('keeps selected-vessel trail queries replay-aware', () => {
+    mockReplay.asOf = '2026-03-29T10:00:00.000Z'
+    mockReplay.isReplaying = true
+    mockReplay.asOfParam = { as_of: mockReplay.asOf }
+    mockReplay.signalQueryParams = { to: mockReplay.asOf }
+    mockState.signals = [
+      {
+        id: 'sig-vessel',
+        signal_type: 'vessel_position',
+        source: 'ais',
+        lat: 10,
+        lng: 20,
+        occurred_at: '2026-03-29T09:55:00.000Z',
+        external_id: '111000001',
+        raw_payload: { version: 'v1' },
+      },
+    ]
+    vesselHookState.useVessels.mockReturnValue({
+      data: { data: [{ id: 'vessel-1', mmsi: '111000001', name: 'MV Alpha' }] },
+    })
+
+    renderMapPage('/map?signal_id=sig-vessel')
+
+    expect(vesselHookState.useVessels).toHaveBeenCalledWith(
+      { mmsi: '111000001', per_page: 1 },
+      { enabled: true, refetchInterval: false },
+    )
+    expect(vesselHookState.useVesselTracks).toHaveBeenCalledWith(
+      'vessel-1',
+      { limit: 300, to: '2026-03-29T10:00:00.000Z' },
+    )
   })
 
   it('gives an external same-signal retry a fresh SSE grace window in a long-lived session', async () => {

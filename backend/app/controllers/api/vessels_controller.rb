@@ -19,10 +19,14 @@ module Api
     # GET /api/vessels/:id/tracks?from=ISO&to=ISO&limit=500
     def tracks
       vessel = Vessel.find(params[:id])
-      scope  = vessel.vessel_tracks.order(occurred_at: :asc)
-      scope  = scope.between(safe_parse_datetime(params[:from]), safe_parse_datetime(params[:to])) if params[:from].present? && params[:to].present?
-      scope  = scope.limit([(params[:limit] || 500).to_i, 1000].min)
-      render json: { data: scope.map { |t| serialize_track(t) } }
+      scope  = vessel.vessel_tracks
+      scope  = scope.where("occurred_at >= ?", safe_parse_datetime(params[:from])) if params[:from].present?
+      scope  = scope.where("occurred_at <= ?", safe_parse_datetime(params[:to])) if params[:to].present?
+      tracks = scope.order(occurred_at: :desc)
+                    .limit([(params[:limit] || 500).to_i, 1000].min)
+                    .to_a
+                    .reverse
+      render json: { data: tracks.map { |t| serialize_track(t) } }
     end
 
     private

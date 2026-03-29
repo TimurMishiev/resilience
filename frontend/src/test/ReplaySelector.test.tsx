@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { PlaybackRate } from '../context/ReplayContext'
+import type { PlaybackRate } from '../context/replayTransport'
 
 // ---------------------------------------------------------------------------
 // Mock useReplay so we control context state without a real provider

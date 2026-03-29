@@ -137,21 +137,24 @@ Every new entity must answer: "Is this an entity, a property, a relationship, or
 | Phase 3 | Visual intelligence (track trails, heatmap, swimlane viz, globe playback) |
 | Phase 4 | Command polish (virtual rendering, risk score, benchmarks, auto-deploy) |
 
-### Roadmap Reality Check (2026-03-28)
+### Roadmap Reality Check (2026-03-29)
 
 - **Phase 1** is complete and hardened.
 - **Phase 2** is functionally complete at the CRUD/workflow layer:
   - loitering is shipped
   - chokepoints are shipped in planning/backend workflows
+  - chokepoint geographic overlays are now shipped on map and globe
   - SALUTE / PACE / commander intent are shipped
   - keyboard command palette is shipped
-- **Phase 2 adjunct still worth tracking:** chokepoints currently exist only in the planning/doctrine surface. Geographic overlays on the map/globe are not implemented yet, so chokepoints are not spatially visible outside PlanningPage.
+- **Phase 2 adjunct closeout is complete:** chokepoints are now spatially visible on both MapPage and GlobePage, so the doctrine/planning workflow is no longer isolated from the operational surfaces.
 - **Phase 3** is partially complete:
   - selected-vessel track trails are shipped on map and globe
   - map heatmap is shipped
   - swimlane visualization is not started
-  - replay exists, but it is still timestamp-based rather than a full playback product with transport controls
-  - many live-control-plane surfaces are intentionally unavailable during replay
+  - replay transport controls are shipped: play/pause, step-forward/step-backward (5 min), speed selector (1×/5×/15×/60×), auto-advance timer, and clear-to-live
+  - replay state machine lives in `ReplayContext.tsx` + `replayTransport.ts`; UI in `ReplaySelector.tsx`
+  - many live-control-plane surfaces are intentionally unavailable during replay (AO overlays, chokepoints, breach rings, vessel tracks, SSE polling, risk scores, telemetry freeze-point)
+  - vessel tracks are disabled during replay; playback-grade trail integration for moving vessels/assets remains open
 - **Phase 4** is partially complete:
   - risk scores are shipped
   - CI + auto-deploy to Fly are shipped
@@ -163,9 +166,10 @@ Every new entity must answer: "Is this an entity, a property, a relationship, or
 #### Phase 2 closeout adjuncts
 
 - **Chokepoint geographic overlays**
-  - MapPage does not render chokepoints yet.
-  - GlobePage does not render chokepoints yet.
-  - This is not part of the original Phase 2 table entry, but it is a sensible operator-facing completion step for chokepoint analysis.
+  - Shipped on MapPage and GlobePage.
+  - Rendered as non-primary spatial overlays with legend/toggle support.
+  - On the globe, chokepoint ellipses intentionally behave as passthrough overlays rather than first-class selectable entities.
+  - This adjunct is now closed and should not remain in the required completion track.
 
 #### Phase 3 closeout specifics
 
@@ -179,8 +183,9 @@ Every new entity must answer: "Is this an entity, a property, a relationship, or
   - No dedicated swimlane view exists yet.
   - Existing site-level timeline UI can likely seed the data model and interaction pattern, but the product surface is still missing.
 - **Globe playback / replay**
-  - Replay currently means "query historical state at an as_of timestamp."
-  - True playback still needs transport controls (play/pause/step/scrub/speed) plus broader historical-state coverage across live-only surfaces.
+  - Transport controls are shipped: play/pause, step ±5 min, speed selector, auto-advance timer, clear-to-live.
+  - Replay correctly gates live-only surfaces off during playback.
+  - Remaining open work: vessel tracks are disabled during replay; playback-grade trail rendering for moving vessels and assets is not yet implemented.
 
 #### Phase 4 closeout specifics
 
@@ -203,7 +208,7 @@ Every new entity must answer: "Is this an entity, a property, a relationship, or
   - Natural-language filter translation exists for tasks/signals, but graph-style ontology traversal via NL does not.
   - Treat as a future expansion unless it is explicitly promoted into the roadmap.
 
-### Locked Finish Plan (2026-03-28)
+### Locked Finish Plan (2026-03-29)
 
 Future agents should treat this as the current required completion sequence unless the user explicitly changes roadmap scope.
 
@@ -211,24 +216,37 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
 
 #### Required completion track
 
-1. **Chokepoint geographic overlays**
-   - Add operator-facing chokepoint rendering on MapPage and GlobePage.
-   - This is the only visibly half-built operational feature already shipped in PlanningPage/doctrine workflows.
-   - Use the real chokepoint status enum from `backend/app/models/chokepoint.rb`:
-     - `monitor`
-     - `constrained`
-     - `contested`
-     - `closed`
-   - Do not invent alternate labels like `open`, `clear`, or `monitored`.
-2. **Replay / playback closeout**
-   - Upgrade replay from timestamp-only mode into a real playback product.
-   - Add transport controls and tighten historical-state coverage where Phase 3 depends on replay.
-3. **Swimlane visualization**
+1. **Replay / playback closeout**
+   - Transport controls are shipped (play/pause, step, speed, auto-advance, clear-to-live).
+   - Remaining: vessel track replay integration — tracks are currently disabled during replay; playback-grade trail rendering for moving vessels/assets needs to be wired to the `asOf` timestamp.
+2. **Swimlane visualization**
    - Build the missing cross-entity temporal intelligence surface.
    - Existing site-level timeline primitives can seed the data model, but no swimlane product surface exists yet.
-4. **Phase 4 closeout**
+3. **Phase 4 closeout**
    - Expand virtualization where large data surfaces justify it.
    - Formalize benchmark/perf budgets as an explicit release bar.
+
+#### Recently closed
+
+- **Chokepoint geographic overlays**
+  - Shipped on both MapPage and GlobePage.
+  - Status-colored fill + dashed stroke on MapLibre; ellipse entities on Cesium.
+  - Globe pick resolver treats `chokepoint-*` as passthrough overlays (not selectable entities).
+  - Viewer cleanup correctly captures and clears `chokepointEntitiesRef` on unmount.
+  - The real chokepoint status enum remains:
+    - `monitor`
+    - `constrained`
+    - `contested`
+    - `closed`
+  - Do not invent alternate labels like `open`, `clear`, or `monitored`.
+
+- **Replay transport controls**
+  - `ReplayContext.tsx`: `isPlaying`, `playbackRate`, `play`, `pause`, `setPlaybackRate`, `stepForward`, `stepBackward`.
+  - `replayTransport.ts`: `PLAYBACK_RATES = [1, 5, 15, 60]`, `REPLAY_STEP_MINUTES = 5`, `TICK_MS = 500`.
+  - `ReplaySelector.tsx`: full transport UI gated on `isReplaying`.
+  - Auto-advance formula: `playbackRate × TICK_MS × 60` ms per tick (correct; at rate=1: 30 s simulated per 500 ms real).
+  - `stepForward` caps at 1 second before now.
+  - `setAsOf` always pauses playback when called.
 
 #### Explicit non-goals for current v1 closeout
 
@@ -240,17 +258,16 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
 #### Sequence lock
 
 - The required implementation order is:
-  1. chokepoint overlays
-  2. replay / playback closeout
-  3. swimlane visualization
-  4. Phase 4 closeout
+  1. replay / playback closeout
+  2. swimlane visualization
+  3. Phase 4 closeout
 - If another summary proposes `swimlane` before `replay / playback`, treat that as misaligned with the locked plan unless the user explicitly reprioritizes it.
 
 #### Expected remaining canonical phases
 
 - **Phase 3** remains open.
 - **Phase 4** remains partially open.
-- Phase 2 is functionally complete, with chokepoint overlays tracked as an adjunct operator-facing closeout task rather than evidence that the whole phase is still incomplete.
+- Phase 2 is functionally complete, and the chokepoint overlay adjunct is now closed.
 
 ---
 
@@ -287,7 +304,6 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
 - Remaining “next level” work if resumed later:
   - selection highlighting on the globe
   - broader playback-grade trails for moving assets / vessels
-  - chokepoint overlays if spatial planning parity is promoted into the globe scope
   - globe heatmap parity if Phase 3 scope is expanded beyond the shipped map heatmap
   - batched or clustered signal rendering if density grows beyond entity comfort
 

@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import { Button, Tag } from '@blueprintjs/core'
-import { useReplay, PLAYBACK_RATES } from '../context/ReplayContext'
-import type { PlaybackRate } from '../context/ReplayContext'
+import { useReplay } from '../context/ReplayContext'
+import { PLAYBACK_RATES, type PlaybackRate } from '../context/replayTransport'
 
 export default function ReplaySelector() {
   const {

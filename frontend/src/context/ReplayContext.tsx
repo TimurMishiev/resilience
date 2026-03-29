@@ -1,12 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-
-// Playback rates: simulated minutes advanced per real second of playback
-export const PLAYBACK_RATES = [1, 5, 15, 60] as const
-export type PlaybackRate = (typeof PLAYBACK_RATES)[number]
-
-/** Minutes jumped per step-forward / step-backward button press */
-export const REPLAY_STEP_MINUTES = 5
+import { REPLAY_STEP_MINUTES, type PlaybackRate } from './replayTransport'
 
 const TICK_MS = 500
 
@@ -60,8 +54,8 @@ export function ReplayProvider({ children }: { children: ReactNode }) {
       }
 
       const advanceMs = playbackRate * TICK_MS * 60   // minutes × ms per tick × 60 s/min
-      const nextMs    = new Date(current).getTime() + advanceMs
-      const nowMs     = Date.now()
+      const nextMs = new Date(current).getTime() + advanceMs
+      const nowMs = Date.now()
 
       if (nextMs >= nowMs) {
         // Reached live — stop playback and clear the frozen timestamp
@@ -95,8 +89,8 @@ export function ReplayProvider({ children }: { children: ReactNode }) {
   const stepForward = useCallback(() => {
     const current = asOfRef.current
     if (!current) return
-    const nowMs   = Date.now()
-    const nextMs  = Math.min(
+    const nowMs = Date.now()
+    const nextMs = Math.min(
       new Date(current).getTime() + REPLAY_STEP_MINUTES * 60_000,
       nowMs - 1_000,
     )

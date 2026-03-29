@@ -11,6 +11,7 @@ const ON_DEMAND_EXPERIENCE_ASSET_GLOBS = [
 ]
 
 const ON_DEMAND_EXPERIENCE_ASSET_REGEX = /\/assets\/(?:MapPage|GlobePage|maplibre-gl)-.*\.(?:js|css)$/i
+const ON_DEMAND_VENDOR_WARNING_LIMIT_KB = 1100
 
 export default defineConfig({
   plugins: [
@@ -95,6 +96,24 @@ export default defineConfig({
       '/api': {
         target: process.env['VITE_API_TARGET'] ?? 'http://localhost:3000',
         changeOrigin: true,
+      },
+    },
+  },
+  build: {
+    // The MapLibre runtime is intentionally isolated into its own on-demand
+    // chunk, excluded from precache, and only loaded for map sessions. Raise
+    // the warning threshold just above that known vendor chunk so build output
+    // continues to flag unexpected growth elsewhere instead of this stable,
+    // lazy-loaded dependency.
+    chunkSizeWarningLimit: ON_DEMAND_VENDOR_WARNING_LIMIT_KB,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('/node_modules/maplibre-gl/')) {
+            return 'maplibre-gl'
+          }
+          return undefined
+        },
       },
     },
   },

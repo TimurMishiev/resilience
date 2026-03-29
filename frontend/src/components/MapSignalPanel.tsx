@@ -81,7 +81,7 @@ export function MapSignalPanel({
       {isReplaying && signal.signal_type === 'vessel_position' && (
         <>
           <Callout intent="warning" compact className="map-replay-notice">
-            Vessel metadata and track history are unavailable in replay mode.
+            Live vessel metadata is unavailable in replay mode. Historical trail data reflects positions up to the replay timestamp.
           </Callout>
           <Divider />
         </>
