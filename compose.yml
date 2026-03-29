@@ -19,6 +19,9 @@ services:
       - "3000:80"
     environment:
       DATABASE_URL: postgres://resilience:resilience@db/resilience_production
+      # Local production-style app and CI benchmark both hit the bundled app on :3000.
+      # Keep this explicit so Rails production boot does not abort on missing CORS_ORIGINS.
+      CORS_ORIGINS: "${CORS_ORIGINS:-http://127.0.0.1:3000,http://localhost:3000}"
       # Non-secret dev key — fine for local demo, not for production deployment
       SECRET_KEY_BASE: "resilience-dev-key-000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
       RAILS_LOG_TO_STDOUT: "true"
