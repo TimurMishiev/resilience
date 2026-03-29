@@ -24,6 +24,7 @@ export function useSseEvents({
       const invalidateTasks    = () => queryClient.invalidateQueries({ queryKey: ['tasks'] })
       const invalidateReadiness = () => queryClient.invalidateQueries({ queryKey: ['readiness'] })
       const invalidateRiskScores = () => queryClient.invalidateQueries({ queryKey: ['risk_scores'] })
+      const invalidateSwimlane = () => queryClient.invalidateQueries({ queryKey: ['analytics', 'swimlane'] })
 
       if (e.event === 'rule_fired') {
         const d = e.data as {
@@ -43,6 +44,7 @@ export function useSseEvents({
         queryClient.invalidateQueries({ queryKey: ['incidents'] })
         queryClient.invalidateQueries({ queryKey: ['recommendations'] })
         invalidateRiskScores()
+        invalidateSwimlane()
         const confPct = d.confidence != null ? ` · ${Math.round(d.confidence * 100)}% conf` : ''
         AppToaster.then(t => t.show({
           message: `⚡ ${d.rule_name} fired near ${d.site_name} — ${d.signal_type}, ${d.distance_km} km${confPct}`,
@@ -62,6 +64,7 @@ export function useSseEvents({
         }
         queryClient.invalidateQueries({ queryKey: ['signal_rule_matches'] })
         invalidateRiskScores()
+        invalidateSwimlane()
         const STATUS_ICON: Record<string, string> = {
           acknowledged: '👁', investigating: '🔍', closed: '✔', unacknowledged: '⚠',
         }
@@ -83,6 +86,7 @@ export function useSseEvents({
         invalidateReadiness()
         invalidatePlanning()
         invalidateRiskScores()
+        invalidateSwimlane()
         AppToaster.then(t => t.show({
           message: `✚ Task created: "${d.title}"${d.site_name ? ` @ ${d.site_name}` : ''} [${d.priority}]`,
           intent:  'success',
@@ -95,6 +99,7 @@ export function useSseEvents({
         invalidateTasks()
         invalidateReadiness()
         invalidatePlanning()
+        invalidateSwimlane()
       }
 
       if (e.event === 'task_transitioned') {
@@ -103,6 +108,7 @@ export function useSseEvents({
         invalidateReadiness()
         invalidatePlanning()
         invalidateRiskScores()
+        invalidateSwimlane()
         const STATUS_ICON: Record<string, string> = {
           resolved: '✔', blocked: '⛔', in_progress: '▶', triaged: '🔍', new: '•',
         }
@@ -129,6 +135,7 @@ export function useSseEvents({
       if (e.event === 'site_risk_updated') {
         queryClient.invalidateQueries({ queryKey: ['sites'] })
         invalidateReadiness()
+        invalidateSwimlane()
       }
 
       if (e.event === 'posture_changed') {

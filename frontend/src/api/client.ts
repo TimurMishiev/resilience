@@ -18,7 +18,13 @@ export class ApiError extends Error {
   }
 }
 
-export type QueryParams = Record<string, string | number | boolean | undefined | null>
+type QueryParamScalar = string | number | boolean
+export type QueryParamValue =
+  | QueryParamScalar
+  | QueryParamScalar[]
+  | undefined
+  | null
+export type QueryParams = Record<string, QueryParamValue>
 
 function extractApiMessage(body: unknown, fallback: string): string {
   if (typeof body === 'string' && body.trim().length > 0) {
@@ -86,7 +92,11 @@ function buildUrl(path: string, params?: QueryParams): string {
   if (params) {
     for (const [key, value] of Object.entries(params)) {
       if (value !== undefined && value !== null) {
-        url.searchParams.set(key, String(value))
+        if (Array.isArray(value)) {
+          value.forEach((item) => url.searchParams.append(`${key}[]`, String(item)))
+        } else {
+          url.searchParams.set(key, String(value))
+        }
       }
     }
   }

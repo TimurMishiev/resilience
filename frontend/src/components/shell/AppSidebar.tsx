@@ -92,6 +92,7 @@ export function AppSidebar() {
         {isCommander && (
           <MenuItem icon="gantt-chart" text="Planning" active={pathname.startsWith('/planning')} onClick={() => navigate('/planning')} />
         )}
+        <MenuItem icon="timeline-events" text="Swimlane" active={pathname.startsWith('/swimlane')} onClick={() => navigate('/swimlane')} />
       </Menu>
     </nav>
   )

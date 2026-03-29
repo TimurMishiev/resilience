@@ -2877,3 +2877,159 @@ body {
   flex-wrap: wrap;
   gap: 4px;
 }
+
+/* ── Swimlane ─────────────────────────────────────────────────────────────── */
+
+.swimlane-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.swimlane-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.swimlane-summary {
+  font-size: 12px;
+}
+
+.swimlane-axis {
+  position: relative;
+  height: 18px;
+  margin-bottom: -6px;
+}
+
+.swimlane-axis-label {
+  position: absolute;
+  transform: translateX(-50%);
+  font-size: 10px;
+  color: #8a9ba8;
+  white-space: nowrap;
+}
+
+.swimlane-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.swimlane-lane {
+  border: 1px solid #2f363f;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 12px;
+}
+
+.swimlane-lane-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.swimlane-lane-link {
+  color: #d3d8de;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.swimlane-lane-link:hover {
+  color: #ffffff;
+  text-decoration: underline;
+}
+
+.swimlane-lane-subtitle {
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.swimlane-lane-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.swimlane-track {
+  position: relative;
+  min-height: 66px;
+  border-radius: 6px;
+  border: 1px solid #2f363f;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01)),
+    radial-gradient(circle at top, rgba(121, 134, 203, 0.08), transparent 55%);
+  overflow: hidden;
+}
+
+.swimlane-gridline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(138, 155, 168, 0.18);
+}
+
+.swimlane-event-dot {
+  position: absolute;
+  transform: translate(-50%, 0);
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  box-shadow: 0 0 0 2px rgba(15, 18, 24, 0.85);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  padding: 0;
+}
+
+.swimlane-tooltip {
+  max-width: 260px;
+}
+
+.swimlane-tooltip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.swimlane-tooltip-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.swimlane-tooltip-subtitle {
+  font-size: 11px;
+  color: #b7c0cc;
+  margin-top: 4px;
+}
+
+.swimlane-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+}
+
+@media (max-width: 768px) {
+  .swimlane-lane-header {
+    flex-direction: column;
+  }
+
+  .swimlane-lane-tags {
+    justify-content: flex-start;
+  }
+
+  .swimlane-axis {
+    display: none;
+  }
+}

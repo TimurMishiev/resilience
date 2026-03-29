@@ -47,6 +47,7 @@ Rails.application.routes.draw do
 
     namespace :analytics do
       get :throughput
+      get :swimlane
     end
 
     namespace :ai do

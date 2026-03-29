@@ -31,6 +31,7 @@ const IncidentsPage       = lazy(() => import('./pages/IncidentsPage'))
 const IncidentDetailPage  = lazy(() => import('./pages/IncidentDetailPage'))
 const RecommendationsPage = lazy(() => import('./pages/RecommendationsPage'))
 const PlanningPage        = lazy(() => import('./pages/PlanningPage'))
+const SwimlanePage        = lazy(() => import('./pages/SwimlanePage'))
 
 export default function App() {
   return (
@@ -58,6 +59,7 @@ export default function App() {
               <Route path="rules" element={<PageErrorBoundary pageName="Rules"><CorrelationRulesPage /></PageErrorBoundary>} />
               <Route path="areas" element={<PageErrorBoundary pageName="Areas"><AreasPage /></PageErrorBoundary>} />
               <Route path="planning" element={<PageErrorBoundary pageName="Planning"><PlanningPage /></PageErrorBoundary>} />
+              <Route path="swimlane" element={<PageErrorBoundary pageName="Swimlane"><SwimlanePage /></PageErrorBoundary>} />
               <Route path="*" element={<NonIdealState icon="error" title="Page not found" description="The URL you entered does not match any page in this application." />} />
             </Route>
           </Route>

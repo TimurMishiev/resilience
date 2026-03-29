@@ -36,7 +36,22 @@ describe('useSseEvents', () => {
     onEventCallback?.({ event: 'site_risk_updated', data: { site_id: 'site-1' } })
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['sites'] })
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['readiness'] })
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['analytics', 'swimlane'] })
     expect(invalidateQueries).not.toHaveBeenCalledWith({ queryKey: ['risk_scores'] })
+  })
+
+  it.each([
+    ['rule_fired', { rule_name: 'Perimeter Watch', site_name: 'Watchtower Bravo', task_title: null, priority: null, signal_type: 'wildfire', distance_km: 12.5, confidence: 0.84, actions_taken: [] }],
+    ['alert_transitioned', { workflow_status: 'closed', acknowledged_by: 'commander@demo.com', rule_name: 'Perimeter Watch', site_name: 'Watchtower Bravo', notes: null }],
+    ['task_created', { title: 'Create task', priority: 'high', site_name: 'Watchtower Bravo' }],
+    ['task_updated', { id: 'task-1', title: 'Update task' }],
+    ['task_transitioned', { title: 'Transition task', workflow_status: 'resolved', site_name: 'Watchtower Bravo' }],
+  ])('invalidates swimlane for %s events', (eventName, data) => {
+    renderHook(() => useSseEvents({ enabled: true, queryClient }))
+
+    onEventCallback?.({ event: eventName, data })
+
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['analytics', 'swimlane'] })
   })
 
   it.each([

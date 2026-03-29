@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { getReadiness, getThroughput } from '../api/readiness'
-import type { AsOfParam } from '../api/types'
+import { getReadiness, getSwimlane, getThroughput } from '../api/readiness'
+import type { AsOfParam, SwimlaneParams } from '../api/types'
 
 interface QueryOptions {
   enabled?: boolean
@@ -19,5 +19,14 @@ export function useThroughput(options?: QueryOptions) {
     queryKey: ['analytics', 'throughput'],
     queryFn: () => getThroughput(),
     enabled: options?.enabled ?? true,
+  })
+}
+
+export function useSwimlane(params?: SwimlaneParams, options?: QueryOptions) {
+  return useQuery({
+    queryKey: ['analytics', 'swimlane', params],
+    queryFn: () => getSwimlane(params),
+    enabled: options?.enabled ?? true,
+    refetchInterval: 60_000,
   })
 }

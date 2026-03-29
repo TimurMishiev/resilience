@@ -147,14 +147,14 @@ Every new entity must answer: "Is this an entity, a property, a relationship, or
   - SALUTE / PACE / commander intent are shipped
   - keyboard command palette is shipped
 - **Phase 2 adjunct closeout is complete:** chokepoints are now spatially visible on both MapPage and GlobePage, so the doctrine/planning workflow is no longer isolated from the operational surfaces.
-- **Phase 3** is partially complete:
+- **Phase 3** is complete for the current canonical v1 scope:
   - selected-vessel track trails are shipped on map and globe
   - map heatmap is shipped
-  - swimlane visualization is not started
+  - swimlane visualization is shipped as a dedicated live-only page backed by `/api/analytics/swimlane`
   - replay transport controls are shipped: play/pause, step-forward/step-backward (5 min), speed selector (1×/5×/15×/60×), auto-advance timer, and clear-to-live
   - replay state machine lives in `ReplayContext.tsx` + `replayTransport.ts`; UI in `ReplaySelector.tsx`
-  - many live-control-plane surfaces are intentionally unavailable during replay (AO overlays, chokepoints, breach rings, vessel tracks, SSE polling, risk scores, telemetry freeze-point)
-  - vessel tracks are disabled during replay; playback-grade trail integration for moving vessels/assets remains open
+  - replay-aware selected-vessel trail queries are wired on both MapPage and GlobePage via `to=asOf` track windows
+  - many live-control-plane surfaces remain intentionally unavailable during replay (AO overlays, chokepoints, breach rings, SSE polling, risk scores, telemetry freeze-point), but that is no longer a Phase 3 blocker
 - **Phase 4** is partially complete:
   - risk scores are shipped
   - CI + auto-deploy to Fly are shipped
@@ -174,18 +174,21 @@ Every new entity must answer: "Is this an entity, a property, a relationship, or
 #### Phase 3 closeout specifics
 
 - **Track trails**
-  - Current implementation is selected-vessel trail rendering.
-  - Remaining work is broader playback-grade trail behavior and replay integration, not first-time trail support from zero.
+  - Current implementation is selected-vessel trail rendering on map and globe.
+  - Replay integration is shipped for selected-vessel trails via replay-aware `to=asOf` track queries.
+  - Broader asset trail playback remains a future enhancement, not a current v1 blocker.
 - **Heatmap**
   - Map heatmap is shipped.
   - Globe heatmap parity is not implemented and should be treated as optional polish unless Phase 3 scope is explicitly expanded.
 - **Swimlane visualization**
-  - No dedicated swimlane view exists yet.
-  - Existing site-level timeline UI can likely seed the data model and interaction pattern, but the product surface is still missing.
+  - Shipped as a dedicated live-only `/swimlane` page.
+  - Backed by `Analytics::SwimlaneService`, which aggregates the existing `Sites::TimelineService` event model into per-site lanes.
+  - Supports lookback and event-kind filters, site lane ranking, and SSE invalidation for rule/task/site changes.
 - **Globe playback / replay**
   - Transport controls are shipped: play/pause, step ±5 min, speed selector, auto-advance timer, clear-to-live.
   - Replay correctly gates live-only surfaces off during playback.
-  - Remaining open work: vessel tracks are disabled during replay; playback-grade trail rendering for moving vessels and assets is not yet implemented.
+  - Selected-vessel trails remain available during replay on both MapPage and GlobePage.
+  - Remaining “next level” work here is broader asset trail playback, not a current canonical blocker.
 
 #### Phase 4 closeout specifics
 
@@ -216,13 +219,7 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
 
 #### Required completion track
 
-1. **Replay / playback closeout**
-   - Transport controls are shipped (play/pause, step, speed, auto-advance, clear-to-live).
-   - Remaining: vessel track replay integration — tracks are currently disabled during replay; playback-grade trail rendering for moving vessels/assets needs to be wired to the `asOf` timestamp.
-2. **Swimlane visualization**
-   - Build the missing cross-entity temporal intelligence surface.
-   - Existing site-level timeline primitives can seed the data model, but no swimlane product surface exists yet.
-3. **Phase 4 closeout**
+1. **Phase 4 closeout**
    - Expand virtualization where large data surfaces justify it.
    - Formalize benchmark/perf budgets as an explicit release bar.
 
@@ -248,6 +245,16 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
   - `stepForward` caps at 1 second before now.
   - `setAsOf` always pauses playback when called.
 
+- **Replay trail integration**
+  - `Api::VesselsController#tracks` now supports replay-safe `to` windows and returns the most recent limited slice in chronological order.
+  - MapPage and GlobePage keep selected-vessel trails visible during replay while hiding live vessel enrichment.
+
+- **Swimlane visualization**
+  - Live-only `/swimlane` page shipped.
+  - Backend aggregate endpoint: `GET /api/analytics/swimlane`.
+  - Frontend filters: lookback window and event-kind toggles.
+  - Uses the existing site timeline event model rather than inventing a parallel event taxonomy.
+
 #### Explicit non-goals for current v1 closeout
 
 - Do **not** rebuild map heatmap from scratch; it is already shipped.
@@ -258,14 +265,11 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
 #### Sequence lock
 
 - The required implementation order is:
-  1. replay / playback closeout
-  2. swimlane visualization
-  3. Phase 4 closeout
-- If another summary proposes `swimlane` before `replay / playback`, treat that as misaligned with the locked plan unless the user explicitly reprioritizes it.
+  1. Phase 4 closeout
 
 #### Expected remaining canonical phases
 
-- **Phase 3** remains open.
+- **Phase 3** is complete for the current canonical v1 scope.
 - **Phase 4** remains partially open.
 - Phase 2 is functionally complete, and the chokepoint overlay adjunct is now closed.
 

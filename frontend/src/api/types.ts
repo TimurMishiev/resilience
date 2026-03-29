@@ -656,3 +656,33 @@ export interface SiteTimelineParams {
   days?:  number
   kinds?: TimelineEventKind[]
 }
+
+export interface SwimlaneLane {
+  site_id: string
+  site_name: string
+  area_of_operation_id: string | null
+  area_of_operation_name: string | null
+  event_count: number
+  visible_event_count: number
+  last_event_at: string
+  events: TimelineEvent[]
+}
+
+export interface SwimlaneResponse {
+  data: SwimlaneLane[]
+  meta: {
+    days: number
+    lane_limit: number
+    lane_count: number
+    total_events: number
+    event_kinds: TimelineEventKind[]
+    selected_site_ids: string[]
+  }
+}
+
+export interface SwimlaneParams {
+  days?: number
+  kinds?: TimelineEventKind[]
+  lane_limit?: number
+  site_ids?: string[]
+}

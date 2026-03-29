@@ -21,5 +21,16 @@ module Api
 
       render json: { data: data }
     end
+
+    # GET /api/analytics/swimlane
+    # Returns recent per-site event lanes for the live swimlane page.
+    def swimlane
+      render json: Analytics::SwimlaneService.call(
+        days:       params[:days],
+        kinds:      params[:kinds],
+        lane_limit: params[:lane_limit],
+        site_ids:   params[:site_ids]
+      )
+    end
   end
 end
