@@ -6,6 +6,11 @@ module Recommendations
     STALE_ALERT_HOURS       = 4    # unacknowledged alert older than this = stale
     HIGH_CONF_THRESHOLD     = 0.70
     BULK_TRIAGE_THRESHOLD   = 5    # ≥5 unacknowledged alerts at one site → bulk suggest
+    # Caps the number of sites loaded into the LLM context window for posture
+    # enrichment. Keep this tight — the LLM prompt budget is finite and posture
+    # data beyond ~500 sites produces no useful signal at the resolution the
+    # rule engine operates at.
+    POSTURE_SITE_LIMIT      = 500
 
     def call
       ServiceResult.success(context: build_context)
@@ -130,7 +135,7 @@ module Recommendations
       Site
         .includes(:area_of_operation)
         .where.not(area_of_operation_id: nil)
-        .limit(500)
+        .limit(POSTURE_SITE_LIMIT)
         .each_with_object({}) do |site, h|
           ao = site.area_of_operation
           next unless ao

@@ -176,6 +176,17 @@ RSpec.describe Recommendations::ExecutorService, type: :service do
       expect(AuditEvent.last.event_type).to eq "recommendation_executed"
       expect(second_rec.reload.status).to eq "executed"
     end
+
+    it "still flags the site and returns success when the broadcaster raises" do
+      broadcaster = instance_double(Sse::Broadcaster)
+      allow(Sse::Broadcaster).to receive(:instance).and_return(broadcaster)
+      allow(broadcaster).to receive(:publish).and_raise(StandardError, "Redis connection lost")
+
+      result = execute(rec)
+
+      expect(result).to be_success
+      expect(site.reload.flagged_at).to be_present
+    end
   end
 
   describe "assign_asset" do
@@ -224,6 +235,17 @@ RSpec.describe Recommendations::ExecutorService, type: :service do
       result = execute(rec)
       expect(result).not_to be_success
       expect(result.errors.first).to include("Asset nonexistent not found")
+    end
+
+    it "still assigns the asset and returns success when the broadcaster raises" do
+      broadcaster = instance_double(Sse::Broadcaster)
+      allow(Sse::Broadcaster).to receive(:instance).and_return(broadcaster)
+      allow(broadcaster).to receive(:publish).and_raise(StandardError, "Redis connection lost")
+
+      result = execute(rec)
+
+      expect(result).to be_success
+      expect(task.reload.asset_id).to eq asset.id
     end
   end
 end

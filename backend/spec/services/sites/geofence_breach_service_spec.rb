@@ -125,5 +125,16 @@ RSpec.describe Sites::GeofenceBreachService, type: :service do
         }.not_to change(SignalRuleMatch, :count)
       end
     end
+
+    context "SSE broadcast resilience" do
+      it "still creates the breach record and returns success when the broadcaster raises" do
+        allow(Sse::Broadcaster.instance).to receive(:publish).and_raise(StandardError, "Redis connection lost")
+
+        result = described_class.call(signal: signal_inside)
+
+        expect(result.success).to be true
+        expect(SignalRuleMatch.count).to eq(1)
+      end
+    end
   end
 end

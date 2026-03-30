@@ -106,5 +106,17 @@ RSpec.describe Signals::IngestService do
         expect(signal.magnitude.to_f).to eq(3.5)
       end
     end
+
+    context "SSE broadcast resilience" do
+      it "still persists the signal and returns success when the broadcaster raises" do
+        allow(broadcaster).to receive(:publish).and_raise(StandardError, "Redis connection lost")
+
+        result = described_class.call(**base_attrs)
+
+        expect(result.success).to be true
+        expect(result.payload[:created]).to be true
+        expect(ExternalSignal.count).to eq(1)
+      end
+    end
   end
 end

@@ -215,4 +215,17 @@ RSpec.describe Alerts::TransitionService do
       expect(described_class.allowed_transitions_for("unknown")).to eq([])
     end
   end
+
+  # ── SSE broadcast resilience ───────────────────────────────────────────────
+
+  describe "SSE broadcast resilience" do
+    it "still succeeds and commits the DB write when the broadcaster raises" do
+      allow(Sse::Broadcaster.instance).to receive(:publish).and_raise(StandardError, "Redis connection lost")
+
+      result = described_class.call(match: match, to_status: "acknowledged", actor: actor)
+
+      expect(result.success).to be true
+      expect(match.reload.workflow_status).to eq("acknowledged")
+    end
+  end
 end
