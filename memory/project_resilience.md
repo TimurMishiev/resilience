@@ -216,6 +216,7 @@ Canonical v1 is complete. The user has explicitly promoted the following former 
 1. **Kill-chain / prosecution workflow**
 2. **Cross-entity natural-language ontology query**
 3. **Globe heatmap parity**
+4. **Playback-grade multi-asset trails** (defined next on 2026-03-30 after SSE/thread scaling hardening closed)
 
 These are no longer “ignore for now” items for future agents; they are the next build track after canonical v1 closeout.
 
@@ -249,6 +250,8 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
 1. ~~**Kill-chain / prosecution workflow**~~ — **SHIPPED (2026-03-29)**
 2. ~~**Cross-entity natural-language ontology query**~~ — **SHIPPED (2026-03-29)**
 3. ~~**Globe heatmap parity**~~ — **SHIPPED (2026-03-30)**
+4. **Playback-grade multi-asset trails** — **NEXT (defined 2026-03-30)**
+   - Intended scope: replay-aware historical trails for moving assets (not just selected vessels), available on both MapPage and GlobePage with bounded query windows and toggleable multi-entity rendering.
 
 #### Recently closed
 
@@ -278,6 +281,13 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
   - Heatmap overlays are passthrough-only in pick resolution (`heatmap-*` does not steal site/asset/signal selection).
   - Close-range globe inspection still suppresses signal overlays, so the heatmap remains an operational/global layer rather than a tactical close-zoom layer.
   - Validation for this slice: 268 Vitest, frontend lint passed, frontend build passed, `git diff --check` passed.
+
+- **SSE/thread scaling hardening** (shipped 2026-03-30)
+  - Added DB-backed `SseStreamLease` admission control so active live streams are capped across Puma workers instead of only being limited by per-process thread starvation.
+  - Default live-stream caps are now bounded per user and per remote IP (`SSE_MAX_STREAMS_PER_USER`, `SSE_MAX_STREAMS_PER_IP`) with lease refresh on heartbeat and deterministic release on disconnect.
+  - `/api/events`, `/api/signals/stream`, and `/api/telemetry/stream` now reject excess concurrent live streams with `429` before opening the long-lived SSE response.
+  - `Rack::Attack` now throttles `POST /api/sse_token` and repeated SSE stream opens to blunt reconnect storms before they consume Puma threads.
+  - Validation for this slice: focused SSE proof 37 RSpec, full backend 1058 RSpec, Brakeman 0 warnings, `git diff --check` passed.
 
 - **Chokepoint geographic overlays**
   - Shipped on both MapPage and GlobePage.
@@ -337,6 +347,7 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
   1. ~~Kill-chain / prosecution workflow~~ — SHIPPED
   2. ~~Cross-entity natural-language ontology query~~ — SHIPPED
   3. ~~Globe heatmap parity~~ — SHIPPED
+  4. Playback-grade multi-asset trails — NEXT
 
 #### Expected remaining canonical phases
 
@@ -349,7 +360,8 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
 
 - Cross-process live streams and basic ops health visibility are now closed.
 - External error tracking is now integrated through env-gated Sentry on backend and frontend.
-- The remaining meaningful infrastructure hardening debt is SSE/thread scaling safeguards under higher live concurrency (persistent EventSource connections still consume Puma request threads).
+- SSE/thread scaling safeguards are now closed for the current deployment target through active-stream admission caps plus reconnect throttling.
+- The remaining architectural ceiling is still thread-per-connection SSE itself; replacing that transport is a future scale project, not an agreed near-term blocker.
 
 ---
 
@@ -385,7 +397,7 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
 - Cesium attribution is visible again via a custom credit container; prior hidden-credit behavior was removed.
 - Remaining “next level” work if resumed later:
   - selection highlighting on the globe
-  - broader playback-grade trails for moving assets / vessels
+  - broader playback-grade trails for moving assets / vessels (now promoted as the next product slice)
   - batched or clustered signal rendering if density grows beyond entity comfort
 
 ---

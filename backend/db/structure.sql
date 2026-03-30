@@ -430,6 +430,22 @@ CREATE TABLE public.sites (
 
 
 --
+-- Name: sse_stream_leases; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.sse_stream_leases (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    user_id uuid NOT NULL,
+    stream_name character varying NOT NULL,
+    remote_ip character varying NOT NULL,
+    lease_key character varying NOT NULL,
+    expires_at timestamp(6) without time zone NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
 -- Name: tasks; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -996,6 +1012,14 @@ ALTER TABLE ONLY public.sites
 
 
 --
+-- Name: sse_stream_leases sse_stream_leases_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sse_stream_leases
+    ADD CONSTRAINT sse_stream_leases_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: tasks tasks_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1081,6 +1105,34 @@ CREATE INDEX idx_recommendations_entity ON public.recommendations USING btree (a
 --
 
 CREATE UNIQUE INDEX idx_recommendations_pending_dedup ON public.recommendations USING btree (recommendation_type, affected_entity_type, affected_entity_id) WHERE ((status)::text = 'pending'::text);
+
+
+--
+-- Name: idx_sse_stream_leases_ip_expiry; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sse_stream_leases_ip_expiry ON public.sse_stream_leases USING btree (remote_ip, expires_at);
+
+
+--
+-- Name: idx_sse_stream_leases_lease_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_sse_stream_leases_lease_key ON public.sse_stream_leases USING btree (lease_key);
+
+
+--
+-- Name: idx_sse_stream_leases_stream_expiry; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sse_stream_leases_stream_expiry ON public.sse_stream_leases USING btree (stream_name, expires_at);
+
+
+--
+-- Name: idx_sse_stream_leases_user_expiry; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sse_stream_leases_user_expiry ON public.sse_stream_leases USING btree (user_id, expires_at);
 
 
 --
@@ -1501,6 +1553,13 @@ CREATE INDEX index_sites_on_area_of_operation_id ON public.sites USING btree (ar
 --
 
 CREATE INDEX index_sites_on_status ON public.sites USING btree (status);
+
+
+--
+-- Name: index_sse_stream_leases_on_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_sse_stream_leases_on_user_id ON public.sse_stream_leases USING btree (user_id);
 
 
 --
@@ -2029,6 +2088,14 @@ ALTER TABLE ONLY public.incident_notes
 
 
 --
+-- Name: sse_stream_leases fk_rails_20ad4565e9; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sse_stream_leases
+    ADD CONSTRAINT fk_rails_20ad4565e9 FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
 -- Name: site_risk_snapshots fk_rails_2321d15556; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2283,6 +2350,7 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260330010000'),
 ('20260329230000'),
 ('20260329020000'),
 ('20260329010000'),

@@ -8,6 +8,9 @@ module Api
     # The client receives a heartbeat every 25 seconds to keep the
     # connection alive through proxies and load balancers.
     def stream
+      lease = admit_sse_stream!(stream_name: "events")
+      return unless lease
+
       response.headers["Content-Type"]  = "text/event-stream"
       response.headers["Cache-Control"] = "no-cache"
       response.headers["X-Accel-Buffering"] = "no"
@@ -20,6 +23,7 @@ module Api
 
       # Heartbeat thread — keeps the TCP connection alive
       heartbeat = start_sse_heartbeat(stream_name: "events") do
+        refresh_sse_stream_lease(lease, stream_name: "events")
         sse_write(response.stream, event: "heartbeat", data: { ts: Time.current.to_i })
       end
 
@@ -32,6 +36,7 @@ module Api
       loop do
         payload = queue.pop          # blocks until a message arrives
         break if payload.nil?
+        refresh_sse_stream_lease(lease, stream_name: "events")
         parsed  = JSON.parse(payload)
         break unless sse_write(response.stream, event: parsed["event"], data: parsed["data"])
       rescue JSON::ParserError => e
@@ -42,8 +47,9 @@ module Api
 
     ensure
       heartbeat&.kill
-      broadcaster.unsubscribe(queue)
-      response.stream.close
+      broadcaster&.unsubscribe(queue) if queue
+      release_sse_stream_lease(lease, stream_name: "events")
+      response.stream.close if response.stream.respond_to?(:close)
     end
 
     private

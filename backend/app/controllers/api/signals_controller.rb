@@ -51,6 +51,9 @@ module Api
         render json: { error: "Invalid 'since' datetime" }, status: :bad_request and return
       end
 
+      lease = admit_sse_stream!(stream_name: "signals")
+      return unless lease
+
       response.headers["Content-Type"]      = "text/event-stream"
       response.headers["Cache-Control"]     = "no-cache"
       response.headers["X-Accel-Buffering"] = "no"
@@ -66,7 +69,7 @@ module Api
 
       if since
         baseline_upper_bound = Time.current
-        baseline_result = stream_signal_baseline(response.stream, since, baseline_upper_bound)
+        baseline_result = stream_signal_baseline(response.stream, since, baseline_upper_bound, lease: lease)
         return if baseline_result.fetch(:disconnected)
 
         last_streamed_cursor = baseline_result.fetch(:cursor)
@@ -78,6 +81,7 @@ module Api
           response.stream,
           catchup_since,
           catchup_upper_bound,
+          lease: lease,
           after_cursor: last_streamed_cursor,
         )
         return if catchup_result.fetch(:disconnected)
@@ -86,6 +90,7 @@ module Api
       end
 
       heartbeat = start_sse_heartbeat(stream_name: "signals") do
+        refresh_sse_stream_lease(lease, stream_name: "signals")
         sse_write(response.stream, event: "heartbeat", data: { ts: Time.current.to_i })
       end
 
@@ -93,6 +98,7 @@ module Api
         payload = queue.pop
         break if payload.nil?
         next unless signal_payload_after_cursor?(payload, last_streamed_cursor)
+        refresh_sse_stream_lease(lease, stream_name: "signals")
         response.stream.write("event: signal\ndata: #{payload}\n\n")
       rescue IOError, ActionController::Live::ClientDisconnected
         break
@@ -100,6 +106,7 @@ module Api
     ensure
       heartbeat&.kill
       broadcaster.unsubscribe(queue) if queue
+      release_sse_stream_lease(lease, stream_name: "signals")
       response.stream.close rescue nil
     end
 
@@ -149,7 +156,7 @@ module Api
       [since, SIGNAL_STREAM_BASELINE_MAX_AGE.ago].max
     end
 
-    def stream_signal_baseline(stream, since, upper_bound, after_cursor: nil)
+    def stream_signal_baseline(stream, since, upper_bound, lease: nil, after_cursor: nil)
       cursor_ingested_at = nil
       cursor_id = nil
 
@@ -178,6 +185,7 @@ module Api
         break if batch.empty?
 
         batch.each do |signal|
+          refresh_sse_stream_lease(lease, stream_name: "signals")
           return {
             cursor: signal_stream_cursor(cursor_ingested_at, cursor_id),
             disconnected: true,

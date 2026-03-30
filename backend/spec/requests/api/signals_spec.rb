@@ -161,6 +161,26 @@ RSpec.describe "Api::Signals", type: :request do
       allow(Signals::Broadcaster).to receive(:instance).and_return(broadcaster)
     end
 
+    it "returns 429 when the user is already at live stream capacity" do
+      original_user_limit = ENV["SSE_MAX_STREAMS_PER_USER"]
+      ENV["SSE_MAX_STREAMS_PER_USER"] = "1"
+
+      SseStreamLease.create!(
+        user: user,
+        stream_name: "events",
+        remote_ip: "127.0.0.1",
+        lease_key: SecureRandom.uuid,
+        expires_at: 5.minutes.from_now,
+      )
+
+      get "/api/signals/stream", params: { token: sse_token, since: 6.hours.ago.iso8601 }
+
+      expect(response).to have_http_status(:too_many_requests)
+      expect(JSON.parse(response.body).fetch("errors").first).to match(/Too many live streams/)
+    ensure
+      original_user_limit ? ENV["SSE_MAX_STREAMS_PER_USER"] = original_user_limit : ENV.delete("SSE_MAX_STREAMS_PER_USER")
+    end
+
     it "streams a capped, batched signal baseline in ingested_at/id order" do
       queue << nil
 

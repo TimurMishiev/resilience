@@ -71,5 +71,25 @@ RSpec.describe "Api::Telemetry", type: :request do
       expect(response.body).not_to include("event: telemetry")
       expect(broadcaster).to have_received(:unsubscribe).with(queue)
     end
+
+    it "returns 429 when the remote IP is already at live stream capacity" do
+      original_ip_limit = ENV["SSE_MAX_STREAMS_PER_IP"]
+      ENV["SSE_MAX_STREAMS_PER_IP"] = "1"
+
+      SseStreamLease.create!(
+        user: create(:user),
+        stream_name: "events",
+        remote_ip: "127.0.0.1",
+        lease_key: SecureRandom.uuid,
+        expires_at: 5.minutes.from_now,
+      )
+
+      get "/api/telemetry/stream", params: { token: sse_token }
+
+      expect(response).to have_http_status(:too_many_requests)
+      expect(JSON.parse(response.body).fetch("errors").first).to match(/Too many live streams/)
+    ensure
+      original_ip_limit ? ENV["SSE_MAX_STREAMS_PER_IP"] = original_ip_limit : ENV.delete("SSE_MAX_STREAMS_PER_IP")
+    end
   end
 end

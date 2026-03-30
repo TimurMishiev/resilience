@@ -25,8 +25,9 @@
 # Any libraries that use a connection pool or another resource pool should
 # be configured to provide at least as many connections as the number of
 # threads. This includes Active Record's `pool` parameter in `database.yml`.
-# SSE long-polling (events + telemetry streams) permanently occupy threads.
-# Use 16 threads so regular API requests always have headroom alongside live streams.
+# SSE streams permanently occupy Puma threads while connected. The default 32
+# thread pool works with the runtime SSE admission caps to preserve headroom
+# for regular API traffic instead of letting reconnect storms consume the pool.
 threads_count = ENV.fetch("RAILS_MAX_THREADS", 32)
 threads threads_count, threads_count
 
