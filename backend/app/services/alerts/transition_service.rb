@@ -62,21 +62,25 @@ module Alerts
 
       # Non-transactional broadcast — intentionally outside the update call so
       # a broadcast failure cannot roll back the DB write.
-      Sse::Broadcaster.instance.publish(
-        event: "alert_transitioned",
-        data: {
-          id:              @match.id,
-          workflow_status: @match.workflow_status,
-          acknowledged_by: @actor.email,
-          acknowledged_at: @match.acknowledged_at.iso8601,
-          notes:           @match.notes,
-          rule_id:         @match.correlation_rule_id,
-          rule_name:       @match.correlation_rule&.name,
-          site_id:         @match.site_id,
-          site_name:       @match.site&.name,
-          confidence:      @match.confidence
-        }
-      )
+      begin
+        Sse::Broadcaster.instance.publish(
+          event: "alert_transitioned",
+          data: {
+            id:              @match.id,
+            workflow_status: @match.workflow_status,
+            acknowledged_by: @actor.email,
+            acknowledged_at: @match.acknowledged_at.iso8601,
+            notes:           @match.notes,
+            rule_id:         @match.correlation_rule_id,
+            rule_name:       @match.correlation_rule&.name,
+            site_id:         @match.site_id,
+            site_name:       @match.site&.name,
+            confidence:      @match.confidence
+          }
+        )
+      rescue StandardError => e
+        Rails.logger.error "[Alerts::TransitionService] SSE broadcast failed (non-fatal): #{e.class}: #{e.message}"
+      end
 
       ServiceResult.success(match: @match)
     rescue ActiveRecord::RecordInvalid => e

@@ -96,6 +96,8 @@ module Sites
           fired_at:       Time.current.iso8601
         }
       )
+    rescue StandardError => e
+      Rails.logger.error "[GeofenceBreachService] SSE broadcast failed (non-fatal): #{e.class}: #{e.message}"
     end
 
     # Confidence ranges from 1.0 (signal at site centre) to near 0 at the boundary.

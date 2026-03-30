@@ -34,7 +34,13 @@ module Signals
 
       signal.assign_attributes(@attrs)
       signal.save!
-      Signals::Broadcaster.instance.publish(Signals::PayloadSerializer.call(signal))
+
+      begin
+        Signals::Broadcaster.instance.publish(Signals::PayloadSerializer.call(signal))
+      rescue StandardError => e
+        Rails.logger.error "[Signals::IngestService] SSE broadcast failed (non-fatal): #{e.class}: #{e.message}"
+      end
+
       ServiceResult.success(signal: signal, created: true)
 
     rescue ActiveRecord::RecordNotUnique

@@ -130,6 +130,7 @@ module Recommendations
       Site
         .includes(:area_of_operation)
         .where.not(area_of_operation_id: nil)
+        .limit(500)
         .each_with_object({}) do |site, h|
           ao = site.area_of_operation
           next unless ao

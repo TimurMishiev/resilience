@@ -77,25 +77,29 @@ module Correlations
       end
 
       # SSE broadcast is a non-transactional side-effect — runs after commit.
-      Sse::Broadcaster.instance.publish(
-        event: "rule_fired",
-        data: {
-          rule_id:       @rule.id,
-          rule_name:     @rule.name,
-          site_id:       @site.id,
-          site_name:     @site.name,
-          task_id:       task&.id,
-          task_title:    task&.title,
-          priority:      task&.priority,
-          signal_type:   @signal.signal_type,
-          source:        @signal.source,
-          distance_km:   distance_to_site.round(1),
-          confidence:      match&.confidence,
-          workflow_status: match&.workflow_status,
-          fired_at:        Time.current.iso8601,
-          actions_taken: actions_taken
-        }
-      )
+      begin
+        Sse::Broadcaster.instance.publish(
+          event: "rule_fired",
+          data: {
+            rule_id:       @rule.id,
+            rule_name:     @rule.name,
+            site_id:       @site.id,
+            site_name:     @site.name,
+            task_id:       task&.id,
+            task_title:    task&.title,
+            priority:      task&.priority,
+            signal_type:   @signal.signal_type,
+            source:        @signal.source,
+            distance_km:   distance_to_site.round(1),
+            confidence:      match&.confidence,
+            workflow_status: match&.workflow_status,
+            fired_at:        Time.current.iso8601,
+            actions_taken: actions_taken
+          }
+        )
+      rescue StandardError => e
+        Rails.logger.error "[RuleFiringService] SSE broadcast failed (non-fatal): #{e.class}: #{e.message}"
+      end
 
       # Incident fusion — runs after commit, non-transactional.
       Incidents::FusionService.call(match: match) if match

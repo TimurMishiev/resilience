@@ -150,10 +150,14 @@ module Recommendations
         )
       end
 
-      Sse::Broadcaster.instance.publish(
-        event: "site_risk_updated",
-        data:  { site_id: site.id }
-      )
+      begin
+        Sse::Broadcaster.instance.publish(
+          event: "site_risk_updated",
+          data:  { site_id: site.id }
+        )
+      rescue StandardError => e
+        Rails.logger.error "[ExecutorService#flag_site] SSE broadcast failed (non-fatal): #{e.class}: #{e.message}"
+      end
 
       ServiceResult.success(site: site)
     rescue ActiveRecord::RecordInvalid => e
@@ -177,10 +181,14 @@ module Recommendations
 
       if result.success?
         task.reload
-        Sse::Broadcaster.instance.publish(
-          event: "task_updated",
-          data:  { task_id: task.id, title: task.title, site_name: task.site&.name }
-        )
+        begin
+          Sse::Broadcaster.instance.publish(
+            event: "task_updated",
+            data:  { task_id: task.id, title: task.title, site_name: task.site&.name }
+          )
+        rescue StandardError => e
+          Rails.logger.error "[ExecutorService#assign_asset] SSE broadcast failed (non-fatal): #{e.class}: #{e.message}"
+        end
       end
 
       result
