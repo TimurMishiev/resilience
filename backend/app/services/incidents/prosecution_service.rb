@@ -86,10 +86,14 @@ module Incidents
         )
       end
 
-      Sse::Broadcaster.instance.publish(
-        event: "prosecution_started",
-        data:  { incident_id: @incident.id, prosecution_phase: "assessing" }
-      )
+      begin
+        Sse::Broadcaster.instance.publish(
+          event: "prosecution_started",
+          data:  { incident_id: @incident.id, prosecution_phase: "assessing" }
+        )
+      rescue StandardError => e
+        Rails.logger.error "[ProsecutionService#initiate] SSE broadcast failed (non-fatal): #{e.class}: #{e.message}"
+      end
 
       ServiceResult.success(incident: @incident, step: step)
     rescue ActiveRecord::RecordInvalid => e
@@ -160,10 +164,14 @@ module Incidents
         )
       end
 
-      Sse::Broadcaster.instance.publish(
-        event: "prosecution_step_added",
-        data:  { incident_id: @incident.id, prosecution_phase: @incident.prosecution_phase }
-      )
+      begin
+        Sse::Broadcaster.instance.publish(
+          event: "prosecution_step_added",
+          data:  { incident_id: @incident.id, prosecution_phase: @incident.prosecution_phase }
+        )
+      rescue StandardError => e
+        Rails.logger.error "[ProsecutionService#add_step] SSE broadcast failed (non-fatal): #{e.class}: #{e.message}"
+      end
 
       ServiceResult.success(incident: @incident, step: step)
     rescue ActiveRecord::RecordInvalid => e

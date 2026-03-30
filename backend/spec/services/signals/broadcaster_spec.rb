@@ -48,7 +48,7 @@ RSpec.describe Signals::Broadcaster do
     broadcaster.publish(id: "signal-1", signal_type: "disaster_alert")
 
     expect(Rails.logger).to have_received(:warn)
-      .with(include("[Signals] evict_slow_client", "client=#{queue.object_id}", "queue_size=200", "queue_capacity=200", "subscribers=1"))
+      .with(include("[Signals] evict_slow_client", "client=#{queue.object_id}", "queue_size=200", "queue_capacity=200", "snapshot_subscribers=1"))
     expect(broadcaster.subscriber_count).to eq(0)
     expect(queue.closed?).to be(true)
   end

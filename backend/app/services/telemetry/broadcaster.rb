@@ -82,33 +82,32 @@ module Telemetry
     end
 
     def deliver_payload(payload)
-      dropped = []
+      snapshot = @mutex.synchronize { @clients.dup }
+      dropped  = []
 
-      @mutex.synchronize do
-        @clients.each do |queue|
-          begin
-            queue.push(payload, true)
-          rescue ThreadError
-            Rails.logger.warn(
-              "[Telemetry] evict_slow_client client=#{queue.object_id} queue_size=#{queue.size} " \
-              "queue_capacity=#{MAX_QUEUE_SIZE} subscribers=#{@clients.size}"
-            )
-            queue.close unless queue.closed?
-            dropped << queue
-          rescue ClosedQueueError
-            dropped << queue
-          rescue StandardError => e
-            Rails.logger.error(
-              "[Telemetry] publish_error client=#{queue.object_id} error=#{e.class} " \
-              "message=#{e.message} subscribers=#{@clients.size}"
-            )
-            queue.close unless queue.closed?
-            dropped << queue
-          end
+      snapshot.each do |queue|
+        begin
+          queue.push(payload, true)
+        rescue ThreadError
+          Rails.logger.warn(
+            "[Telemetry] evict_slow_client client=#{queue.object_id} queue_size=#{queue.size} " \
+            "queue_capacity=#{MAX_QUEUE_SIZE} snapshot_subscribers=#{snapshot.size}"
+          )
+          queue.close unless queue.closed?
+          dropped << queue
+        rescue ClosedQueueError
+          dropped << queue
+        rescue StandardError => e
+          Rails.logger.error(
+            "[Telemetry] publish_error client=#{queue.object_id} error=#{e.class} " \
+            "message=#{e.message} snapshot_subscribers=#{snapshot.size}"
+          )
+          queue.close unless queue.closed?
+          dropped << queue
         end
-
-        @clients -= dropped unless dropped.empty?
       end
+
+      @mutex.synchronize { @clients -= dropped } unless dropped.empty?
     end
   end
 end

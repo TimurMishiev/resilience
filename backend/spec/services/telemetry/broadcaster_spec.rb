@@ -48,7 +48,7 @@ RSpec.describe Telemetry::Broadcaster do
     broadcaster.publish(asset_id: "asset-1", lat: 1.0, lng: 2.0, battery: 99, speed: 3.0, heading: 45.0, ts: 123)
 
     expect(Rails.logger).to have_received(:warn)
-      .with(include("[Telemetry] evict_slow_client", "client=#{queue.object_id}", "queue_size=200", "queue_capacity=200", "subscribers=1"))
+      .with(include("[Telemetry] evict_slow_client", "client=#{queue.object_id}", "queue_size=200", "queue_capacity=200", "snapshot_subscribers=1"))
     expect(broadcaster.subscriber_count).to eq(0)
     expect(queue.closed?).to be(true)
   end

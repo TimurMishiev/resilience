@@ -4,7 +4,7 @@ module Api
     # Query params: status, severity, site_id, assigned_to_id, page, per_page
     def index
       incidents = Incident
-        .includes(:site, :area_of_operation, :signal_rule_matches, :assigned_to)
+        .includes(:site, :area_of_operation, :signal_rule_matches, :assigned_to, :prosecuted_by)
         .by_severity
         .recent
 
