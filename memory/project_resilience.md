@@ -290,6 +290,15 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
   - Frontend filters: lookback window and event-kind toggles.
   - Uses the existing site timeline event model rather than inventing a parallel event taxonomy.
 
+- **Production-hardening live-stream + ops visibility slice** (shipped 2026-03-29)
+  - `Sse::Broadcaster`, `Signals::Broadcaster`, and `Telemetry::Broadcaster` now relay across processes via PostgreSQL `LISTEN` / `NOTIFY`, so live streams are no longer limited to a single in-process subscriber island.
+  - Telemetry publishing no longer depends on local subscriber count; remote-only subscribers still receive simulator updates.
+  - Feed health snapshots are DB-backed through `OperationalStatus` instead of the old process-local in-memory registry.
+  - Commander-only `GET /api/operational_health` exposes DB-backed operational status snapshots.
+  - `Telemetry::PreparePartitionsJob` now records success/failure operational status, including the partition-window exhaustion date.
+  - `Recommendations::GenerationJob` now uses a PostgreSQL advisory lock to skip overlapping recurring runs and records success / skipped / error status snapshots.
+  - Full backend after this slice: 1018 RSpec, 0 failures.
+
 #### Explicit non-goals for canonical v1 closeout
 
 - Do **not** rebuild map heatmap from scratch; it is already shipped.
@@ -309,6 +318,11 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
 - **Phase 4** is complete.
 - Phase 2 is functionally complete, and the chokepoint overlay adjunct is now closed.
 - No canonical phases remain open.
+
+#### Remaining production-hardening debt (non-roadmap blocker)
+
+- Cross-process live streams and basic ops health visibility are now closed.
+- Full external error tracking / alerting integration is still optional future hardening if the user wants stronger production observability beyond the DB-backed status surfaces.
 
 ---
 

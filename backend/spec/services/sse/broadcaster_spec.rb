@@ -5,6 +5,8 @@ RSpec.describe Sse::Broadcaster do
 
   before do
     broadcaster.instance_variable_set(:@clients, [])
+    broadcaster.instance_variable_set(:@relay_listener, nil)
+    allow(Realtime::PostgresRelay).to receive(:publish)
   end
 
   after do
@@ -83,5 +85,39 @@ RSpec.describe Sse::Broadcaster do
     expect(broadcaster.subscriber_count).to eq(1)
     expect(healthy.size).to eq(1)
     expect(slow.closed?).to be(true)
+  end
+
+  it "publishes a relay payload for cross-process fanout" do
+    broadcaster.publish(event: "task_updated", data: { id: "task-1" })
+
+    expect(Realtime::PostgresRelay).to have_received(:publish).with(
+      channel: described_class::RELAY_CHANNEL,
+      payload: include('"event":"task_updated"', '"origin":')
+    )
+  end
+
+  it "delivers remote relay payloads from other processes" do
+    queue = broadcaster.subscribe
+
+    broadcaster.send(
+      :handle_relay_payload,
+      { origin: "remote-process", event: "task_updated", data: { id: "task-9" } }.to_json
+    )
+
+    expect(queue.size).to eq(1)
+    payload = JSON.parse(queue.pop)
+    expect(payload["event"]).to eq("task_updated")
+    expect(payload["data"]["id"]).to eq("task-9")
+  end
+
+  it "ignores relay payloads that originated from the same process" do
+    queue = broadcaster.subscribe
+
+    broadcaster.send(
+      :handle_relay_payload,
+      { origin: broadcaster.instance_variable_get(:@relay_instance_id), event: "task_updated", data: { id: "task-9" } }.to_json
+    )
+
+    expect(queue.size).to eq(0)
   end
 end

@@ -5,6 +5,8 @@ RSpec.describe Signals::Broadcaster do
 
   before do
     broadcaster.instance_variable_set(:@clients, [])
+    broadcaster.instance_variable_set(:@relay_listener, nil)
+    allow(Realtime::PostgresRelay).to receive(:publish)
   end
 
   after do
@@ -49,5 +51,44 @@ RSpec.describe Signals::Broadcaster do
       .with(include("[Signals] evict_slow_client", "client=#{queue.object_id}", "queue_size=200", "queue_capacity=200", "subscribers=1"))
     expect(broadcaster.subscriber_count).to eq(0)
     expect(queue.closed?).to be(true)
+  end
+
+  it "publishes small payloads directly through the relay" do
+    broadcaster.publish(id: "signal-1", signal_type: "disaster_alert")
+
+    expect(Realtime::PostgresRelay).to have_received(:publish).with(
+      channel: described_class::RELAY_CHANNEL,
+      payload: include('"payload":{"id":"signal-1","signal_type":"disaster_alert"}')
+    )
+  end
+
+  it "falls back to signal_id relay payloads when the payload is too large" do
+    oversized_payload = {
+      id: "signal-1",
+      signal_type: "disaster_alert",
+      raw_payload: { body: "x" * 8_000 },
+    }
+
+    broadcaster.publish(oversized_payload)
+
+    expect(Realtime::PostgresRelay).to have_received(:publish).with(
+      channel: described_class::RELAY_CHANNEL,
+      payload: include('"signal_id":"signal-1"')
+    )
+  end
+
+  it "rebuilds payloads from signal ids received over the relay" do
+    queue = broadcaster.subscribe
+    signal = create(:external_signal, signal_type: "disaster_alert", raw_payload: { "body" => "ok" })
+
+    broadcaster.send(
+      :handle_relay_payload,
+      { origin: "remote-process", signal_id: signal.id }.to_json
+    )
+
+    expect(queue.size).to eq(1)
+    payload = JSON.parse(queue.pop)
+    expect(payload["id"]).to eq(signal.id)
+    expect(payload["signal_type"]).to eq("disaster_alert")
   end
 end

@@ -85,7 +85,10 @@ module Telemetry
       end
 
       persist!(rows, occurred_at)
-      publish(rows) unless Telemetry::Broadcaster.instance.subscriber_count.zero?
+      # Always publish into the broadcaster. In multi-process deployments the
+      # simulator may run on a process with zero local subscribers while other
+      # web workers still have active telemetry streams.
+      publish(rows)
     end
 
     def update_asset!(s)

@@ -248,6 +248,39 @@ CREATE TABLE public.incidents (
 
 
 --
+-- Name: operational_statuses; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.operational_statuses (
+    id bigint NOT NULL,
+    category character varying NOT NULL,
+    key character varying NOT NULL,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: operational_statuses_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.operational_statuses_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: operational_statuses_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.operational_statuses_id_seq OWNED BY public.operational_statuses.id;
+
+
+--
 -- Name: pace_plans; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -668,7 +701,7 @@ CREATE TABLE public.users (
     role character varying DEFAULT 'operator'::character varying NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    CONSTRAINT users_role_check CHECK (((role)::text = ANY (ARRAY[('operator'::character varying)::text, ('commander'::character varying)::text])))
+    CONSTRAINT users_role_check CHECK (((role)::text = ANY ((ARRAY['operator'::character varying, 'commander'::character varying])::text[])))
 );
 
 
@@ -804,6 +837,13 @@ ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_rea
 
 
 --
+-- Name: operational_statuses id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.operational_statuses ALTER COLUMN id SET DEFAULT nextval('public.operational_statuses_id_seq'::regclass);
+
+
+--
 -- Name: ar_internal_metadata ar_internal_metadata_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -881,6 +921,14 @@ ALTER TABLE ONLY public.incident_notes
 
 ALTER TABLE ONLY public.incidents
     ADD CONSTRAINT incidents_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: operational_statuses operational_statuses_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.operational_statuses
+    ADD CONSTRAINT operational_statuses_pkey PRIMARY KEY (id);
 
 
 --
@@ -998,6 +1046,13 @@ CREATE INDEX idx_incidents_active_prosecution ON public.incidents USING btree (p
 --
 
 CREATE INDEX idx_on_entity_type_entity_id_occurred_at_dfd7f189aa ON public.audit_events USING btree (entity_type, entity_id, occurred_at);
+
+
+--
+-- Name: idx_operational_statuses_category_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_operational_statuses_category_key ON public.operational_statuses USING btree (category, key);
 
 
 --
@@ -1221,7 +1276,7 @@ CREATE INDEX index_incident_notes_on_incident_id ON public.incident_notes USING 
 -- Name: index_incidents_fusion_lookup; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_incidents_fusion_lookup ON public.incidents USING btree (site_id, status, updated_at) WHERE ((status)::text = ANY (ARRAY[('open'::character varying)::text, ('acknowledged'::character varying)::text]));
+CREATE INDEX index_incidents_fusion_lookup ON public.incidents USING btree (site_id, status, updated_at) WHERE ((status)::text = ANY ((ARRAY['open'::character varying, 'acknowledged'::character varying])::text[]));
 
 
 --
@@ -2228,6 +2283,7 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260329230000'),
 ('20260329020000'),
 ('20260329010000'),
 ('20260328010000'),

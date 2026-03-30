@@ -1,6 +1,31 @@
 require "rails_helper"
 
 RSpec.describe Telemetry::SimulatorService do
+  describe "#tick" do
+    let(:service) { described_class.new }
+
+    it "publishes telemetry even when the local process has no direct subscribers" do
+      state = described_class::AssetState.new(
+        id: SecureRandom.uuid,
+        name: "Asset Alpha",
+        asset_type: "vehicle",
+        lat: 1.0,
+        lng: 2.0,
+        heading: 90.0,
+        speed: 5.0,
+        battery: 80.0,
+      )
+
+      service.instance_variable_set(:@state, [state])
+      allow(service).to receive(:persist!)
+      allow(Telemetry::Broadcaster.instance).to receive(:publish)
+
+      service.send(:tick)
+
+      expect(Telemetry::Broadcaster.instance).to have_received(:publish).at_least(:once)
+    end
+  end
+
   describe "#persist!" do
     let(:service) { described_class.new }
     let(:site) { create(:site) }

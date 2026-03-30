@@ -1,4 +1,5 @@
 require "singleton"
+require "securerandom"
 
 module Sse
   # Thread-safe pub/sub broadcaster for SSE connections.
@@ -8,13 +9,19 @@ module Sse
   class Broadcaster
     include Singleton
 
+    RELAY_CHANNEL = "resilience_sse_events"
+
     def initialize
       @mutex   = Mutex.new
       @clients = []
+      @relay_instance_id = SecureRandom.uuid
+      @relay_listener = nil
+      @relay_mutex = Mutex.new
     end
 
     # Register a new client queue. Returns the queue.
     def subscribe
+      ensure_relay_listener!
       queue = Queue.new
       subscriber_count = @mutex.synchronize do
         @clients << queue
@@ -53,8 +60,41 @@ module Sse
     # blocked by a slow-client eviction or a large client set.
     def publish(event:, data: {})
       payload = { event: event, data: data }.to_json
+      relay_payload = { origin: @relay_instance_id, event: event, data: data }.to_json
 
       # Snapshot under lock — O(n) array dup, no I/O.
+      deliver_payload(payload, event: event)
+      Realtime::PostgresRelay.publish(channel: RELAY_CHANNEL, payload: relay_payload)
+    end
+
+    def subscriber_count
+      @mutex.synchronize { @clients.size }
+    end
+
+    private
+
+    def ensure_relay_listener!
+      return if Rails.env.test?
+
+      @relay_mutex.synchronize do
+        return if @relay_listener&.alive?
+
+        @relay_listener = Realtime::PostgresRelay.listen(channel: RELAY_CHANNEL, logger_prefix: "SSE") do |payload|
+          handle_relay_payload(payload)
+        end
+      end
+    end
+
+    def handle_relay_payload(payload)
+      parsed = JSON.parse(payload)
+      return if parsed["origin"] == @relay_instance_id
+
+      deliver_payload({ event: parsed.fetch("event"), data: parsed["data"] }.to_json, event: parsed["event"])
+    rescue JSON::ParserError, KeyError => e
+      Rails.logger.error("[SSE] relay_payload_error error=#{e.class} message=#{e.message}")
+    end
+
+    def deliver_payload(payload, event:)
       snapshot = @mutex.synchronize { @clients.dup }
 
       dropped = []
@@ -82,12 +122,7 @@ module Sse
         end
       end
 
-      # Remove any clients that errored or were evicted above.
       @mutex.synchronize { @clients -= dropped } unless dropped.empty?
-    end
-
-    def subscriber_count
-      @mutex.synchronize { @clients.size }
     end
   end
 end
