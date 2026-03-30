@@ -181,7 +181,8 @@ Every new entity must answer: "Is this an entity, a property, a relationship, or
   - Broader asset trail playback remains a future enhancement, not a current v1 blocker.
 - **Heatmap**
   - Map heatmap is shipped.
-  - Globe heatmap parity is not implemented and should be treated as optional polish unless Phase 3 scope is explicitly expanded.
+  - Globe heatmap parity is now shipped on the promoted expansion track.
+  - Cesium parity uses an aggregated signal-density overlay with its own `HEATMAP` toggle and density legend, gated behind the existing signal visibility control and hidden at close-range tactical zoom.
 - **Swimlane visualization**
   - Shipped as a dedicated live-only `/swimlane` page.
   - Backed by `Analytics::SwimlaneService`, which aggregates the existing `Sites::TimelineService` event model into per-site lanes.
@@ -208,7 +209,7 @@ Every new entity must answer: "Is this an entity, a property, a relationship, or
 - **Operational closeout**
   - `compose.yml` now provides local production-style `CORS_ORIGINS` defaults so Docker/CI boot does not abort before the benchmark path becomes ready.
 
-### Promoted Expansion Track (2026-03-29)
+### Promoted Expansion Track (2026-03-30)
 
 Canonical v1 is complete. The user has explicitly promoted the following former post-v1 items into the active roadmap, in this order:
 
@@ -230,7 +231,7 @@ These are no longer “ignore for now” items for future agents; they are the n
   - Returns normalized query metadata, nodes, edges, and deterministic counts/summary rather than inventing a second graph engine.
 - **Globe heatmap parity**
   - Not part of the original canonical Phase 3 closeout bar.
-  - Now explicitly promoted by the user after kill-chain and cross-entity ontology query.
+  - Now shipped after kill-chain and cross-entity ontology query.
 
 ### Locked Finish Plan (2026-03-29)
 
@@ -247,7 +248,7 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
 
 1. ~~**Kill-chain / prosecution workflow**~~ — **SHIPPED (2026-03-29)**
 2. ~~**Cross-entity natural-language ontology query**~~ — **SHIPPED (2026-03-29)**
-3. **Globe heatmap parity**
+3. ~~**Globe heatmap parity**~~ — **SHIPPED (2026-03-30)**
 
 #### Recently closed
 
@@ -270,6 +271,13 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
   - Frontend `OntologyQueryPanel.tsx` renders query controls, replay fail-closed behavior, grouped node results, and relationship edges.
   - Post-ship hardening closed the real ontology gaps: consistent time-window enforcement, relation-isolation enforcement, asset-root recommendation traversal fix, explicit Anthropic timeout with zero retries, failure logging + observability capture, 60s catalog caching, `Site.active` root resolution, singular `asset` relation typing, and direct task-root + area-root proof.
   - Verification after hardening: 1046 RSpec, 260 Vitest, 0 TypeScript errors, frontend lint passed, frontend build passed.
+
+- **Globe heatmap parity** (shipped 2026-03-30)
+  - GlobePage now mirrors the map-level heatmap UX with an independent `HEATMAP` toggle and a density legend that only appears while signals are enabled.
+  - `useGlobeEngine.ts` renders a bounded Cesium signal-density overlay from aggregated heatmap cells rather than raw per-signal blobs.
+  - Heatmap overlays are passthrough-only in pick resolution (`heatmap-*` does not steal site/asset/signal selection).
+  - Close-range globe inspection still suppresses signal overlays, so the heatmap remains an operational/global layer rather than a tactical close-zoom layer.
+  - Validation for this slice: 268 Vitest, frontend lint passed, frontend build passed, `git diff --check` passed.
 
 - **Chokepoint geographic overlays**
   - Shipped on both MapPage and GlobePage.
@@ -328,7 +336,7 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
 - The active implementation order is:
   1. ~~Kill-chain / prosecution workflow~~ — SHIPPED
   2. ~~Cross-entity natural-language ontology query~~ — SHIPPED
-  3. Globe heatmap parity  ← **NEXT**
+  3. ~~Globe heatmap parity~~ — SHIPPED
 
 #### Expected remaining canonical phases
 
@@ -378,7 +386,6 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
 - Remaining “next level” work if resumed later:
   - selection highlighting on the globe
   - broader playback-grade trails for moving assets / vessels
-  - globe heatmap parity if Phase 3 scope is expanded beyond the shipped map heatmap
   - batched or clustered signal rendering if density grows beyond entity comfort
 
 ---

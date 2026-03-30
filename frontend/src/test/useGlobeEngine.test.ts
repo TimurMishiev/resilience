@@ -441,6 +441,7 @@ function defaultInput(
     vesselTracks:     [],
     readings:         new Map(),
     showSignals:      true,
+    showHeatmap:      false,
     showCoverage:     true,
     showChokepoints:  true,
     asOf:             undefined,
@@ -877,6 +878,111 @@ describe('useGlobeEngine adapter', () => {
     })
   })
 
+  describe('signal heatmap overlay', () => {
+    it('creates heatmap ellipse entities when heatmap is enabled', async () => {
+      const refs = makeContainerRef()
+      const signals: Signal[] = [
+        makeSignal('s1', '10.0', '20.0'),
+        makeSignal('s2', '10.2', '20.2'),
+      ]
+
+      await bootGlobe(cesium, refs, defaultInput(refs, {
+        signals,
+        showHeatmap: true,
+      }))
+
+      const heatmapIds = Array.from(cesium.entityRegistry.keys()).filter(id => id.startsWith('heatmap-'))
+      expect(heatmapIds.length).toBeGreaterThan(0)
+      expect(cesium.entityRegistry.get(heatmapIds[0])?.show).toBe(true)
+    })
+
+    it('updates existing heatmap entities when heatmap visibility changes', async () => {
+      const refs = makeContainerRef()
+      const signals: Signal[] = [
+        makeSignal('s1', '10.0', '20.0'),
+        makeSignal('s2', '10.2', '20.2'),
+      ]
+
+      const hook = await bootGlobe(cesium, refs, defaultInput(refs, {
+        signals,
+        showHeatmap: true,
+      }))
+
+      const heatmapIds = Array.from(cesium.entityRegistry.keys()).filter(id => id.startsWith('heatmap-'))
+      expect(heatmapIds.length).toBeGreaterThan(0)
+
+      await act(async () => {
+        hook.rerender(defaultInput(refs, {
+          signals,
+          showHeatmap: false,
+        }))
+        await Promise.resolve()
+      })
+
+      expect(cesium.entityRegistry.get(heatmapIds[0])?.show).toBe(false)
+    })
+
+    it('hides heatmap entities when signals are toggled off', async () => {
+      const refs = makeContainerRef()
+      const signals: Signal[] = [
+        makeSignal('s1', '10.0', '20.0'),
+        makeSignal('s2', '10.2', '20.2'),
+      ]
+
+      const hook = await bootGlobe(cesium, refs, defaultInput(refs, {
+        signals,
+        showSignals: true,
+        showHeatmap: true,
+      }))
+
+      const heatmapIds = Array.from(cesium.entityRegistry.keys()).filter(id => id.startsWith('heatmap-'))
+      expect(heatmapIds.length).toBeGreaterThan(0)
+      expect(cesium.entityRegistry.get(heatmapIds[0])?.show).toBe(true)
+
+      await act(async () => {
+        hook.rerender(defaultInput(refs, {
+          signals,
+          showSignals: false,
+          showHeatmap: true,
+        }))
+        await Promise.resolve()
+      })
+
+      expect(cesium.entityRegistry.get(heatmapIds[0])?.show).toBe(false)
+    })
+
+    it('suppresses heatmap entities at close-view tactical zoom and restores them when zooming back out', async () => {
+      const refs = makeContainerRef()
+      const signals: Signal[] = [
+        makeSignal('s1', '10.0', '20.0'),
+        makeSignal('s2', '10.2', '20.2'),
+      ]
+
+      const hook = await bootGlobe(cesium, refs, defaultInput(refs, {
+        signals,
+        showHeatmap: true,
+      }))
+
+      const heatmapIds = Array.from(cesium.entityRegistry.keys()).filter(id => id.startsWith('heatmap-'))
+      expect(heatmapIds.length).toBeGreaterThan(0)
+      expect(cesium.entityRegistry.get(heatmapIds[0])?.show).toBe(true)
+
+      await act(async () => {
+        cesium.fireCameraChanged(900_000)
+      })
+
+      expect(hook.result.current.isCloseView).toBe(true)
+      expect(cesium.entityRegistry.get(heatmapIds[0])?.show).toBe(false)
+
+      await act(async () => {
+        cesium.fireCameraChanged(5_000_000)
+      })
+
+      expect(hook.result.current.isCloseView).toBe(false)
+      expect(cesium.entityRegistry.get(heatmapIds[0])?.show).toBe(true)
+    })
+  })
+
   // ── Coverage entity visibility ─────────────────────────────────────────────
   //
   // Coverage circles use viewer.entities (not a collection) because they are
@@ -1036,6 +1142,18 @@ describe('useGlobeEngine adapter', () => {
 
       // chokepoint overlay on top, site underneath — site should win
       expect(hook.result.current.dispatchSyntheticPick(['chokepoint-cp-1', 'site-site-1'])).toBe(true)
+      expect(onSiteClick).toHaveBeenCalledWith('site-1')
+    })
+
+    it('treats heatmap-* as a passthrough overlay and resolves the underlying entity', async () => {
+      const refs = makeContainerRef()
+      const onSiteClick = vi.fn()
+      const hook = await bootGlobe(cesium, refs, defaultInput(refs, {
+        sites: [makeSite()],
+        onSiteClick,
+      }))
+
+      expect(hook.result.current.dispatchSyntheticPick(['heatmap-40:80', 'site-site-1'])).toBe(true)
       expect(onSiteClick).toHaveBeenCalledWith('site-1')
     })
 

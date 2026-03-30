@@ -143,6 +143,7 @@ const globeEngineState = vi.hoisted(() => ({
   onAssetClick: null as ((assetId: string | null) => void) | null,
   onSignalClick: null as ((signalId: string | null) => void) | null,
   latestInput: null as null | {
+    showHeatmap: boolean
     showChokepoints: boolean
     chokepoints: Array<{ id: string }>
   },
@@ -157,6 +158,7 @@ vi.mock('../hooks/useGlobeEngine', () => ({
     onSiteClick?: (siteId: string | null) => void
     onAssetClick?: (assetId: string | null) => void
     onSignalClick?: (signalId: string | null) => void
+    showHeatmap?: boolean
     showChokepoints?: boolean
     chokepoints?: Array<{ id: string }>
   }) => {
@@ -164,6 +166,7 @@ vi.mock('../hooks/useGlobeEngine', () => ({
     globeEngineState.onAssetClick = input.onAssetClick ?? null
     globeEngineState.onSignalClick = input.onSignalClick ?? null
     globeEngineState.latestInput = {
+      showHeatmap: input.showHeatmap ?? false,
       showChokepoints: input.showChokepoints ?? false,
       chokepoints: input.chokepoints ?? [],
     }
@@ -497,6 +500,24 @@ describe('GlobePage selection routing', () => {
     expect(screen.getByText('CHOKEPOINTS OFF')).toBeInTheDocument()
     expect(screen.queryByText('Monitor')).not.toBeInTheDocument()
     expect(globeEngineState.latestInput?.showChokepoints).toBe(false)
+  })
+
+  it('toggles the heatmap overlay through globe page state', async () => {
+    renderGlobePage('/globe')
+
+    const heatmapToggle = screen.getByText('HEATMAP OFF')
+
+    expect(screen.queryByText('LOW DENSITY')).not.toBeInTheDocument()
+    expect(globeEngineState.latestInput?.showHeatmap).toBe(false)
+
+    await act(async () => {
+      heatmapToggle.click()
+    })
+
+    expect(screen.getByText('HEATMAP ON')).toBeInTheDocument()
+    expect(screen.getByText('LOW DENSITY')).toBeInTheDocument()
+    expect(screen.getByText('HIGH DENSITY')).toBeInTheDocument()
+    expect(globeEngineState.latestInput?.showHeatmap).toBe(true)
   })
 
   it('hides chokepoint controls and clears chokepoint data during replay', async () => {

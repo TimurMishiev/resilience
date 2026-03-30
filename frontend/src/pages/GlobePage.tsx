@@ -70,6 +70,7 @@ type GlobeBenchmarkState = {
   selectedSignalId: string | null
   isCloseView: boolean
   showSignals: boolean
+  showHeatmap: boolean
   showCoverage: boolean
   benchmarkTarget: GlobeBenchmarkTarget | null
 }
@@ -222,6 +223,7 @@ export default function GlobePage() {
   const [selectedAssetId,  setSelectedAssetId]  = useState<string | null>(null)
   const [selectedSignalId, setSelectedSignalId] = useState<string | null>(null)
   const [showSignals,      setShowSignals]      = useState(true)
+  const [showHeatmap,      setShowHeatmap]      = useState(false)
   const [showCoverage,     setShowCoverage]     = useState(true)
   const [showChokepoints,  setShowChokepoints]  = useState(true)
 
@@ -470,6 +472,7 @@ export default function GlobePage() {
     vesselTracks,
     readings,
     showSignals,
+    showHeatmap,
     showCoverage,
     showChokepoints,
     asOf: asOf ?? undefined,
@@ -492,6 +495,7 @@ export default function GlobePage() {
     selectedSignalId: null,
     isCloseView: false,
     showSignals: true,
+    showHeatmap: false,
     showCoverage: true,
     benchmarkTarget: null,
   })
@@ -508,6 +512,7 @@ export default function GlobePage() {
       selectedSignalId,
       isCloseView,
       showSignals,
+      showHeatmap,
       showCoverage,
       benchmarkTarget,
     }
@@ -521,6 +526,7 @@ export default function GlobePage() {
     selectedSignalId,
     selectedSiteId,
     showCoverage,
+    showHeatmap,
     showSignals,
     signals.length,
     sites,
@@ -962,6 +968,13 @@ export default function GlobePage() {
           SIGNALS {showSignals ? 'ON' : 'OFF'}
         </div>
         <div
+          className={`globe-signal-toggle${showHeatmap ? ' globe-signal-toggle--active' : ''}`}
+          onClick={() => setShowHeatmap(v => !v)}
+          role="button"
+        >
+          HEATMAP {showHeatmap ? 'ON' : 'OFF'}
+        </div>
+        <div
           className={`globe-signal-toggle${showCoverage ? ' globe-signal-toggle--active' : ''}`}
           onClick={() => setShowCoverage(v => !v)}
           role="button"
@@ -983,7 +996,7 @@ export default function GlobePage() {
             : isReplaying
             ? 'Replay mode hides live-only AO posture, chokepoint overlays, breach overlays, and live vessel enrichment data. Historical vessel trails remain visible up to the replay timestamp.'
             : isCloseView
-            ? 'Signals hidden at close range. Use the 2D map for tactical inspection.'
+            ? 'Signal overlays hidden at close range. Use the 2D map for tactical inspection.'
             : 'Click any site, asset, or signal to inspect it'}
         </span>
         {isCloseView && (
@@ -1084,6 +1097,16 @@ export default function GlobePage() {
                 {label}
               </div>
             ))}
+          </>
+        )}
+        {showSignals && showHeatmap && (
+          <>
+            <div className="globe-legend-section-title" style={{ marginTop: 10 }}>HEATMAP</div>
+            <div className="globe-heatmap-legend-bar" />
+            <div className="globe-heatmap-legend-labels">
+              <span>LOW DENSITY</span>
+              <span>HIGH DENSITY</span>
+            </div>
           </>
         )}
       </div>

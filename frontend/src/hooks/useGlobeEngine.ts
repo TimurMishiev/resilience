@@ -22,6 +22,7 @@ import type { Site, Task, Asset, Signal, AreaOfOperation, Chokepoint } from '../
 import type { VesselTrack } from '../api/vessels'
 import { assetDisplayPosition, assetSeedPosition } from '../lib/assetPresentation'
 import { haversineKm, type CoverageCircle } from '../lib/coverage'
+import { buildGlobeSignalHeatmapCells } from '../lib/globeSignalHeatmap'
 import { nowMs, recordPerfEvent } from '../lib/perfInstrumentation'
 import { preloadGlobeRuntime } from '../lib/preloadRoutes'
 import { SIGNAL_COLORS } from '../lib/signalConfig'
@@ -39,6 +40,8 @@ const ionToken = import.meta.env['VITE_CESIUM_ION_TOKEN'] as string | undefined
 // degradation at high entity density.
 const SIGNAL_CLOSE_VIEW_HEIGHT_M = 2_000_000
 const FOCUSED_SIGNAL_RADIUS_KM = 2_000
+const HEATMAP_MIN_RADIUS_KM = 90
+const HEATMAP_MAX_RADIUS_KM = 260
 
 const COVERAGE_COLOR_BY_STATUS: Record<Asset['status'], string> = {
   available: '#3ddc84',
@@ -330,6 +333,26 @@ function prunePrimitiveMap(
   return removed
 }
 
+function heatmapRadiusKm(intensity: number) {
+  return HEATMAP_MIN_RADIUS_KM + (HEATMAP_MAX_RADIUS_KM - HEATMAP_MIN_RADIUS_KM) * Math.sqrt(Math.max(0, intensity))
+}
+
+function heatmapColorCss(intensity: number) {
+  if (intensity >= 0.85) return '#ef4444'
+  if (intensity >= 0.65) return '#f97316'
+  if (intensity >= 0.45) return '#facc15'
+  if (intensity >= 0.25) return '#4ade80'
+  return '#20a39e'
+}
+
+function heatmapFillAlpha(intensity: number) {
+  return 0.1 + intensity * 0.22
+}
+
+function heatmapOutlineAlpha(intensity: number) {
+  return 0.18 + intensity * 0.32
+}
+
 function pickIdString(picked: unknown): { idString: string; pickedKind: 'primitive' | 'entity' } | null {
   if (!picked || typeof picked !== 'object' || !('id' in picked)) return null
   const pickedId = (picked as { id?: unknown }).id
@@ -381,6 +404,10 @@ function resolvePickCandidates(
       continue
     }
     if (candidate.idString.startsWith('chokepoint-')) {
+      sawOverlay = true
+      continue
+    }
+    if (candidate.idString.startsWith('heatmap-')) {
       sawOverlay = true
       continue
     }
@@ -443,6 +470,7 @@ export interface GlobeEngineInput {
 
   // Feature toggles
   showSignals:     boolean
+  showHeatmap:     boolean
   showCoverage:    boolean
   showChokepoints: boolean
 
@@ -502,6 +530,7 @@ export function useGlobeEngine({
   vesselTracks,
   readings,
   showSignals,
+  showHeatmap,
   showCoverage,
   showChokepoints,
   asOf,
@@ -523,6 +552,7 @@ export function useGlobeEngine({
   const breachEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
   const coverageEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
   const chokepointEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
+  const heatmapEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
   const vesselTrackEntityRef = useRef<CesiumType.Entity | null>(null)
   
   // High-volume point features use PointPrimitiveCollection to avoid Entity API overhead
@@ -656,6 +686,7 @@ export function useGlobeEngine({
     const breachEntities = breachEntitiesRef.current
     const coverageEntities = coverageEntitiesRef.current
     const chokepointEntities = chokepointEntitiesRef.current
+    const heatmapEntities = heatmapEntitiesRef.current
     const vesselTrackEntity = vesselTrackEntityRef.current
     const signalPrimitives = signalPrimitivesRef.current
 
@@ -675,6 +706,7 @@ export function useGlobeEngine({
       breachEntities.clear()
       coverageEntities.clear()
       chokepointEntities.clear()
+      heatmapEntities.clear()
       vesselTrackEntityRef.current = null
       signalPrimitives.clear()
       signalCollectionRef.current = null
@@ -1070,6 +1102,60 @@ export function useGlobeEngine({
       chokepointEntitiesRef.current.set(key, entity)
     }
   }, [chokepoints, showChokepoints, viewerReady])
+
+  // ---------------------------------------------------------------------------
+  // Signal heatmap — aggregated density cells rendered as translucent ellipses
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const Cesium = cesiumRef.current
+    const viewer = viewerRef.current
+    if (!viewerReady || !viewer || !Cesium) return
+
+    const heatmapCells = buildGlobeSignalHeatmapCells(signals)
+    const currentIds = new Set(heatmapCells.map(cell => `heatmap-${cell.key}`))
+    pruneEntityMap(viewer, heatmapEntitiesRef.current, currentIds)
+
+    const isVisible = showSignals && showHeatmap && !isCloseView
+
+    for (const cell of heatmapCells) {
+      const key = `heatmap-${cell.key}`
+      const radiusMeters = heatmapRadiusKm(cell.intensity) * 1000
+      const baseColor = Cesium.Color.fromCssColorString(heatmapColorCss(cell.intensity))
+      const fillColor = baseColor.withAlpha(heatmapFillAlpha(cell.intensity))
+      const outlineColor = baseColor.withAlpha(heatmapOutlineAlpha(cell.intensity))
+      const existing = heatmapEntitiesRef.current.get(key)
+
+      if (existing?.ellipse) {
+        existing.show = isVisible
+        existing.name = `Signal heatmap cell (${cell.count})`
+        setEntityPosition(Cesium, existing, cell.lng, cell.lat)
+        setEllipseNumericProperty(Cesium, existing.ellipse.semiMajorAxis, radiusMeters, next => { existing.ellipse!.semiMajorAxis = next })
+        setEllipseNumericProperty(Cesium, existing.ellipse.semiMinorAxis, radiusMeters, next => { existing.ellipse!.semiMinorAxis = next })
+        setEllipseNumericProperty(Cesium, existing.ellipse.height, 0, next => { existing.ellipse!.height = next })
+        setEllipseNumericProperty(Cesium, existing.ellipse.outlineWidth, 1.25, next => { existing.ellipse!.outlineWidth = next })
+        setEllipseMaterialColor(Cesium, existing.ellipse, fillColor)
+        setEllipseColorProperty(Cesium, existing.ellipse.outlineColor, outlineColor, next => { existing.ellipse!.outlineColor = next })
+        continue
+      }
+
+      const entity = viewer.entities.add({
+        id: key,
+        name: `Signal heatmap cell (${cell.count})`,
+        show: isVisible,
+        position: Cesium.Cartesian3.fromDegrees(cell.lng, cell.lat),
+        ellipse: {
+          semiMajorAxis: new Cesium.ConstantProperty(radiusMeters),
+          semiMinorAxis: new Cesium.ConstantProperty(radiusMeters),
+          material: new Cesium.ColorMaterialProperty(fillColor),
+          outline: new Cesium.ConstantProperty(true),
+          outlineColor: new Cesium.ConstantProperty(outlineColor),
+          outlineWidth: new Cesium.ConstantProperty(1.25),
+          height: new Cesium.ConstantProperty(0),
+        },
+      })
+      heatmapEntitiesRef.current.set(key, entity)
+    }
+  }, [viewerReady, signals, showSignals, showHeatmap, isCloseView])
 
   // ---------------------------------------------------------------------------
   // Vessel track — single selected-vessel polyline, updated in place
