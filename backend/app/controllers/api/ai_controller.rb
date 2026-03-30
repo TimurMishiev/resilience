@@ -17,6 +17,18 @@ module Api
       end
     end
 
+    # POST /api/ai/ontology_query
+    # Body: { q: "show incidents, alerts, and tasks connected to Forward Site Alpha" }
+    def ontology_query
+      result = Ai::OntologyQueryService.call(query: params.require(:q))
+
+      if result.success
+        render json: { data: result.payload }
+      else
+        render_service_failure(result)
+      end
+    end
+
     # POST /api/ai/export
     # Body: { summary_type:, summary:, citations:[], context_counts:{...}, site_name?: }
     # Returns: application/pdf attachment

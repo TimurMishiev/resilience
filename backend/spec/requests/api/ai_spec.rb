@@ -18,6 +18,86 @@ RSpec.describe "Api::Ai", type: :request do
     end
   end
 
+  # ── /api/ai/ontology_query ──────────────────────────────────────────────────
+
+  describe "POST /api/ai/ontology_query" do
+    let(:valid_payload) do
+      {
+        q: "show incidents, tasks, and alerts connected to Forward Site Alpha",
+      }
+    end
+
+    it "requires authentication" do
+      post "/api/ai/ontology_query", params: valid_payload, as: :json
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "returns 403 for operators" do
+      post "/api/ai/ontology_query", params: valid_payload, headers: auth_headers(operator), as: :json
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "returns ontology graph data for commanders" do
+      allow(Ai::OntologyQueryService).to receive(:call).and_return(
+        ServiceResult.success(
+          original_query: valid_payload[:q],
+          summary: "Resolved Forward Site Alpha as the focal site.",
+          normalized_query: {
+            root_type: "site",
+            root_id: "site-1",
+            root_label: "Forward Site Alpha",
+            relations: %w[incidents tasks alerts],
+            time_window_hours: 72,
+            limit: 8,
+          },
+          nodes: [
+            { id: "site:site-1", entity_id: "site-1", type: "site", label: "Forward Site Alpha", sublabel: "Site · active", root: true, metadata: {} },
+            { id: "incident:inc-1", entity_id: "inc-1", type: "incident", label: "Harbor breach watch", sublabel: "Incident · high · open", root: false, metadata: {} },
+          ],
+          edges: [
+            { source: "site:site-1", target: "incident:inc-1", relation: "site_incident" },
+          ],
+          counts: {
+            node_count: 2,
+            edge_count: 1,
+            by_type: { "site" => 1, "incident" => 1 },
+          },
+        ),
+      )
+
+      post "/api/ai/ontology_query", params: valid_payload, headers: auth_headers(commander), as: :json
+
+      expect(response).to have_http_status(:ok)
+      body = JSON.parse(response.body)
+      expect(body["data"]).to include(
+        "summary" => "Resolved Forward Site Alpha as the focal site.",
+        "normalized_query" => include(
+          "root_type" => "site",
+          "root_label" => "Forward Site Alpha",
+        ),
+        "counts" => include(
+          "node_count" => 2,
+          "edge_count" => 1,
+        ),
+      )
+      expect(body["data"]["nodes"].size).to eq(2)
+      expect(body["data"]["edges"]).to eq(
+        [{ "source" => "site:site-1", "target" => "incident:inc-1", "relation" => "site_incident" }],
+      )
+    end
+
+    it "surfaces ontology service validation failures" do
+      allow(Ai::OntologyQueryService).to receive(:call).and_return(
+        ServiceResult.failure(errors: ["No site matched 'phantom base'"]),
+      )
+
+      post "/api/ai/ontology_query", params: { q: "phantom base" }, headers: auth_headers(commander), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(JSON.parse(response.body)).to eq("errors" => ["No site matched 'phantom base'"])
+    end
+  end
+
   # ── /api/ai/export ─────────────────────────────────────────────────────────
 
   describe "POST /api/ai/export" do

@@ -1,0 +1,799 @@
+require "rails_helper"
+
+RSpec.describe Ai::OntologyQueryService, type: :service do
+  let(:tool_block) { double("tool_block", type: "tool_use", name: described_class::TOOL_NAME, input: tool_input) }
+  let(:fake_response) { double("anthropic_response", content: [tool_block]) }
+  let(:fake_messages) { double("messages", create: fake_response) }
+  let(:fake_client) { double("anthropic_client", messages: fake_messages) }
+
+  before do
+    stub_const("ENV", ENV.to_h.merge("ANTHROPIC_API_KEY" => "test_key_for_specs"))
+    allow(Anthropic::Client).to receive(:new).and_return(fake_client)
+  end
+
+  describe "validation" do
+    let(:tool_input) { {} }
+
+    it "rejects a blank query" do
+      result = described_class.call(query: "  ")
+
+      expect(result.success).to be(false)
+      expect(result.errors).to include("Query cannot be blank")
+    end
+  end
+
+  describe "planner hardening" do
+    let!(:site) { create(:site, name: "Forward Site Alpha") }
+    let(:query) { "show incidents connected to Forward Site Alpha" }
+    let(:tool_input) do
+      {
+        "root_type" => "site",
+        "root_name" => "Forward Site Alpha",
+        "relations" => ["incidents"],
+        "time_window_hours" => 24,
+        "limit" => 4,
+      }
+    end
+
+    it "initializes the Anthropic client with a bounded timeout and no retries" do
+      expect(Anthropic::Client).to receive(:new).with(
+        hash_including(
+          api_key: "test_key_for_specs",
+          timeout: described_class::ANTHROPIC_TIMEOUT_SECONDS,
+          max_retries: described_class::ANTHROPIC_MAX_RETRIES,
+        ),
+      ).and_return(fake_client)
+
+      result = described_class.call(query: query)
+
+      expect(result.success).to be(true)
+    end
+
+    it "allows the ontology model to be overridden via environment" do
+      stub_const("ENV", ENV.to_h.merge(
+        "ANTHROPIC_API_KEY" => "test_key_for_specs",
+        "ONTOLOGY_MODEL" => "claude-sonnet-4-5-20250929",
+      ))
+
+      expect(fake_messages).to receive(:create).with(
+        hash_including(model: "claude-sonnet-4-5-20250929"),
+      ).and_return(fake_response)
+
+      result = described_class.call(query: query)
+
+      expect(result.success).to be(true)
+    end
+
+    it "returns a timeout failure and captures observability" do
+      timeout_error = Anthropic::Errors::APITimeoutError.new(url: URI("https://api.anthropic.com/v1/messages"))
+      allow(fake_messages).to receive(:create).and_raise(timeout_error)
+
+      expect(Rails.logger).to receive(:error).with(a_string_including("Ontology query timed out", "APITimeoutError"))
+      expect(Observability).to receive(:capture_exception).with(
+        timeout_error,
+        hash_including(
+          tags: include(service: "ontology_query", failure: "timeout"),
+          extra: include(query: query),
+          throttle_key: a_string_including("ontology_query:timeout"),
+        ),
+      )
+
+      result = described_class.call(query: query)
+
+      expect(result.success).to be(false)
+      expect(result.errors).to eq(["Ontology query timed out"])
+    end
+
+    it "logs and captures unexpected planner failures" do
+      error = StandardError.new("planner exploded")
+      allow(fake_messages).to receive(:create).and_raise(error)
+
+      expect(Rails.logger).to receive(:error).with(a_string_including("AI service error: planner exploded", "StandardError"))
+      expect(Observability).to receive(:capture_exception).with(
+        error,
+        hash_including(
+          tags: include(service: "ontology_query", failure: "error"),
+          extra: include(query: query),
+          throttle_key: a_string_including("ontology_query:error"),
+        ),
+      )
+
+      result = described_class.call(query: query)
+
+      expect(result.success).to be(false)
+      expect(result.errors).to eq(["AI service error: planner exploded"])
+    end
+
+    it "caches the catalog context across service instances" do
+      cache = ActiveSupport::Cache::MemoryStore.new
+      allow(Rails).to receive(:cache).and_return(cache)
+
+      builder = described_class.instance_method(:build_catalog_context)
+      calls = 0
+      allow_any_instance_of(described_class).to receive(:build_catalog_context) do |service|
+        calls += 1
+        builder.bind_call(service)
+      end
+
+      first = described_class.new(query: "first")
+      second = described_class.new(query: "second")
+
+      expect(first.send(:catalog_context)).to eq(second.send(:catalog_context))
+      expect(calls).to eq(1)
+    end
+  end
+
+  describe "site-root graph execution" do
+    let(:area) { create(:area_of_operation, name: "Eastern Littoral") }
+    let(:site) do
+      create(
+        :site,
+        name: "Forward Site Alpha",
+        area_of_operation: area,
+        latitude: 25.2,
+        longitude: 56.4,
+      )
+    end
+    let!(:asset) { create(:asset, name: "Guardian 01", home_site: site, status: "available") }
+    let!(:task) do
+      create(
+        :task,
+        site: site,
+        asset: asset,
+        title: "Inspect harbor perimeter",
+        priority: "high",
+        workflow_status: "triaged",
+      )
+    end
+    let!(:incident) do
+      create(
+        :incident,
+        site: site,
+        area_of_operation: area,
+        title: "Harbor breach watch",
+        severity: "high",
+      )
+    end
+    let!(:signal) do
+      create(
+        :external_signal,
+        signal_type: "gps_jamming",
+        source: "gpsjam",
+        lat: site.latitude,
+        lng: site.longitude,
+        occurred_at: 2.hours.ago,
+      )
+    end
+    let!(:rule) { create(:correlation_rule, name: "GPS Jamming Watch") }
+    let!(:alert) do
+      create(
+        :signal_rule_match,
+        site: site,
+        incident: incident,
+        task: task,
+        signal: signal,
+        correlation_rule: rule,
+        fired_at: 90.minutes.ago,
+        confidence: 0.88,
+        workflow_status: "acknowledged",
+      )
+    end
+    let!(:site_rec) do
+      create(
+        :recommendation,
+        :for_site,
+        affected_entity_id: site.id,
+        action_payload: { site_id: site.id },
+        evidence: [{ type: "site", id: site.id, detail: "risk_score=0.91" }],
+      )
+    end
+    let!(:incident_rec) do
+      create(
+        :recommendation,
+        :for_incident,
+        affected_entity_id: incident.id,
+        action_payload: { incident_id: incident.id, to_status: "acknowledged" },
+        evidence: [{ type: "incident", id: incident.id, detail: "severity=high" }],
+      )
+    end
+    let(:tool_input) do
+      {
+        "root_type" => "site",
+        "root_name" => "Forward Site Alpha",
+        "relations" => %w[area incidents tasks assets alerts signals recommendations],
+        "time_window_hours" => 48,
+        "limit" => 6,
+      }
+    end
+
+    it "returns a bounded graph rooted on the resolved site" do
+      result = described_class.call(query: "show incidents, alerts, tasks, assets, and recommendations connected to Forward Site Alpha")
+
+      expect(result.success).to be(true)
+      expect(result.normalized_query[:root_type]).to eq("site")
+      expect(result.normalized_query[:root_id]).to eq(site.id)
+      expect(result.normalized_query[:relations]).to include("incidents", "tasks", "alerts", "recommendations")
+      expect(result.summary).to include("Forward Site Alpha")
+
+      node_types = result.nodes.map { |node| node[:type] }
+      expect(node_types).to include("site", "area_of_operation", "incident", "task", "asset", "alert", "signal", "recommendation")
+
+      edge_relations = result.edges.map { |edge| edge[:relation] }
+      expect(edge_relations).to include("site_incident", "site_task", "home_site_asset", "site_alert", "recommendation_target")
+      expect(result.counts[:node_count]).to be >= 7
+    end
+  end
+
+  describe "incident-root graph execution" do
+    let(:site) { create(:site, name: "Harbor Site Bravo") }
+    let(:incident) { create(:incident, site: site, title: "Pier intrusion investigation") }
+    let!(:step) do
+      create(
+        :prosecution_step,
+        :executing,
+        incident: incident,
+        notes: "Patrol craft launched toward pier sector.",
+      )
+    end
+    let(:tool_input) do
+      {
+        "root_type" => "incident",
+        "root_name" => "Pier intrusion investigation",
+        "relations" => %w[site prosecution_steps],
+        "time_window_hours" => 72,
+        "limit" => 4,
+      }
+    end
+
+    it "returns prosecution steps when incident prosecution is requested" do
+      result = described_class.call(query: "show the prosecution state for pier intrusion investigation")
+
+      expect(result.success).to be(true)
+      expect(result.nodes.map { |node| node[:type] }).to include("incident", "site", "prosecution_step")
+      expect(result.edges).to include(include(relation: "incident_prosecution_step"))
+    end
+  end
+
+  describe "asset-root graph execution" do
+    let(:site) { create(:site, name: "Forward Site Foxtrot") }
+    let(:asset) { create(:asset, name: "Guardian 01", home_site: site, status: "available") }
+    let!(:task) do
+      create(
+        :task,
+        site: site,
+        asset: asset,
+        title: "Escort harbor patrol",
+        priority: "high",
+        workflow_status: "triaged",
+      )
+    end
+    let!(:recent_recommendation) do
+      create(
+        :recommendation,
+        recommendation_type: "assign_asset",
+        affected_entity_type: "Asset",
+        affected_entity_id: asset.id,
+        action_payload: { task_id: task.id, asset_id: asset.id },
+        evidence: [{ type: "asset", id: asset.id, detail: "status=available" }],
+      )
+    end
+    let!(:stale_recommendation) do
+      create(
+        :recommendation,
+        :accepted,
+        recommendation_type: "assign_asset",
+        affected_entity_type: "Asset",
+        affected_entity_id: asset.id,
+        action_payload: { task_id: task.id, asset_id: asset.id },
+        evidence: [{ type: "asset", id: asset.id, detail: "status=available" }],
+      ).tap do |rec|
+        rec.update_columns(created_at: 6.days.ago, updated_at: 6.days.ago)
+      end
+    end
+    let(:tool_input) do
+      {
+        "root_type" => "asset",
+        "root_name" => "Guardian 01",
+        "relations" => %w[site tasks recommendations],
+        "time_window_hours" => 24,
+        "limit" => 5,
+      }
+    end
+
+    it "returns bounded asset context and excludes stale recommendations" do
+      result = described_class.call(query: "show the task, site, and recommendation context around Guardian 01")
+
+      expect(result.success).to be(true)
+      expect(result.normalized_query[:root_type]).to eq("asset")
+      expect(result.nodes.map { |node| node[:type] }).to include("asset", "site", "task", "recommendation")
+      expect(result.nodes.filter { |node| node[:type] == "recommendation" }.map { |node| node[:entity_id] }).to contain_exactly(recent_recommendation.id)
+      expect(result.edges).to include(include(relation: "recommendation_target"))
+    end
+  end
+
+  describe "task-root graph execution" do
+    let(:site) { create(:site, name: "Harbor Site Golf") }
+    let(:asset) { create(:asset, name: "Sentinel 02", home_site: site, status: "available") }
+    let(:task) do
+      create(
+        :task,
+        site: site,
+        asset: asset,
+        title: "Inspect quay sector 4",
+        priority: "high",
+        workflow_status: "triaged",
+      )
+    end
+    let(:incident) { create(:incident, site: site, title: "Quay intrusion investigation") }
+    let!(:signal) do
+      create(
+        :external_signal,
+        signal_type: "gps_jamming",
+        source: "gpsjam",
+        occurred_at: 90.minutes.ago,
+      )
+    end
+    let!(:alert) do
+      create(
+        :signal_rule_match,
+        task: task,
+        site: site,
+        incident: incident,
+        signal: signal,
+        fired_at: 45.minutes.ago,
+      )
+    end
+    let(:tool_input) do
+      {
+        "root_type" => "task",
+        "root_name" => "Inspect quay sector 4",
+        "relations" => %w[site asset incidents alerts],
+        "time_window_hours" => 24,
+        "limit" => 5,
+      }
+    end
+
+    it "returns bounded task context including the singular asset relation" do
+      result = described_class.call(query: "show the site, asset, incidents, and alerts for Inspect quay sector 4")
+
+      expect(result.success).to be(true)
+      expect(result.normalized_query[:root_type]).to eq("task")
+      expect(result.normalized_query[:relations]).to eq(%w[site asset incidents alerts])
+      expect(result.nodes.map { |node| node[:type] }).to include("task", "site", "asset", "incident", "alert")
+      expect(result.nodes.find { |node| node[:type] == "incident" }[:metadata]).to include(:alert_count)
+      expect(result.edges).to include(include(relation: "task_asset"), include(relation: "incident_task"))
+    end
+  end
+
+  describe "area-root graph execution" do
+    let(:area) { create(:area_of_operation, name: "Northern Approaches") }
+    let!(:primary_site) { create(:site, name: "Alpha Pier", area_of_operation: area) }
+    let!(:secondary_site) { create(:site, name: "Bravo Pier", area_of_operation: area) }
+    let!(:incident) do
+      create(
+        :incident,
+        site: secondary_site,
+        area_of_operation: area,
+        title: "Channel intrusion",
+      )
+    end
+    let(:tool_input) do
+      {
+        "root_type" => "area_of_operation",
+        "root_name" => "Northern Approaches",
+        "relations" => %w[sites incidents],
+        "time_window_hours" => 72,
+        "limit" => 1,
+      }
+    end
+
+    it "auto-injects incident sites that are outside the bounded site list" do
+      result = described_class.call(query: "show the sites and incidents in Northern Approaches")
+
+      expect(result.success).to be(true)
+      expect(result.normalized_query[:root_type]).to eq("area_of_operation")
+      expect(result.nodes.map { |node| node[:type] }).to include("area_of_operation", "site", "incident")
+      expect(result.nodes.filter { |node| node[:type] == "site" }.map { |node| node[:label] }).to include("Alpha Pier", "Bravo Pier")
+      expect(result.edges).to include(include(relation: "incident_area_of_operation"), include(relation: "site_incident"))
+    end
+  end
+
+  describe "time window enforcement" do
+    let(:site) { create(:site, name: "Harbor Site Charlie") }
+    let(:incident) { create(:incident, site: site, title: "Fuel depot intrusion") }
+    let!(:recent_signal) do
+      create(
+        :external_signal,
+        signal_type: "gps_jamming",
+        source: "gpsjam",
+        occurred_at: 6.hours.ago,
+      )
+    end
+    let!(:stale_signal) do
+      create(
+        :external_signal,
+        signal_type: "gps_jamming",
+        source: "gpsjam",
+        occurred_at: 7.days.ago,
+      )
+    end
+    let!(:recent_alert) do
+      create(
+        :signal_rule_match,
+        :without_task,
+        site: site,
+        incident: incident,
+        signal: recent_signal,
+        fired_at: 4.hours.ago,
+      )
+    end
+    let!(:stale_alert) do
+      create(
+        :signal_rule_match,
+        :without_task,
+        site: site,
+        incident: incident,
+        signal: stale_signal,
+        fired_at: 8.days.ago,
+      )
+    end
+    let!(:recent_step) do
+      create(
+        :prosecution_step,
+        incident: incident,
+        occurred_at: 3.hours.ago,
+      )
+    end
+    let!(:stale_step) do
+      create(
+        :prosecution_step,
+        :concluded,
+        incident: incident,
+        occurred_at: 9.days.ago,
+      )
+    end
+    let!(:recent_recommendation) do
+      create(
+        :recommendation,
+        :for_incident,
+        affected_entity_id: incident.id,
+        action_payload: { incident_id: incident.id, to_status: "acknowledged" },
+        evidence: [{ type: "incident", id: incident.id, detail: "severity=moderate" }],
+      )
+    end
+    let!(:stale_recommendation) do
+      create(
+        :recommendation,
+        :for_incident,
+        :accepted,
+        affected_entity_id: incident.id,
+        action_payload: { incident_id: incident.id, to_status: "acknowledged" },
+        evidence: [{ type: "incident", id: incident.id, detail: "severity=moderate" }],
+      ).tap do |rec|
+        rec.update_columns(created_at: 10.days.ago, updated_at: 10.days.ago)
+      end
+    end
+    let(:tool_input) do
+      {
+        "root_type" => "incident",
+        "root_name" => "Fuel depot intrusion",
+        "relations" => %w[alerts signals recommendations prosecution_steps],
+        "time_window_hours" => 24,
+        "limit" => 8,
+      }
+    end
+
+    it "excludes stale time-bound entities outside the requested window" do
+      result = described_class.call(query: "show recent alerts, signals, prosecution steps, and recommendations for fuel depot intrusion")
+
+      expect(result.success).to be(true)
+
+      ids_by_type = result.nodes.group_by { |node| node[:type] }
+                               .transform_values { |nodes| nodes.map { |node| node[:entity_id] } }
+
+      expect(ids_by_type["alert"]).to contain_exactly(recent_alert.id)
+      expect(ids_by_type["signal"]).to contain_exactly(recent_signal.id)
+      expect(ids_by_type["prosecution_step"]).to contain_exactly(recent_step.id)
+      expect(ids_by_type["recommendation"]).to contain_exactly(recent_recommendation.id)
+    end
+  end
+
+  describe "defaults and validation" do
+    let!(:site) { create(:site, name: "Forward Site Alpha") }
+    let(:tool_input) do
+      {
+        "root_type" => "site",
+        "root_name" => "Forward Site Alpha",
+        "relations" => ["not_real"],
+        "time_window_hours" => nil,
+        "limit" => nil,
+      }
+    end
+
+    it "falls back to default relations and limits when the tool omits them" do
+      result = described_class.call(query: "show me what is connected to Forward Site Alpha")
+
+      expect(result.success).to be(true)
+      expect(result.normalized_query[:relations]).to eq(Ai::OntologyQueryService::RELATIONS_BY_ROOT["site"])
+      expect(result.normalized_query[:time_window_hours]).to eq(Ai::OntologyQueryService::DEFAULT_WINDOW_HOURS)
+      expect(result.normalized_query[:limit]).to eq(Ai::OntologyQueryService::DEFAULT_LIMIT)
+    end
+  end
+
+  describe "relation isolation" do
+    context "for site-root alert queries" do
+      let(:site) { create(:site, name: "Harbor Site Delta") }
+      let(:incident) { create(:incident, site: site, title: "Restricted pier approach") }
+      let(:task) { create(:task, site: site, title: "Inspect restricted pier") }
+      let!(:signal) do
+        create(
+          :external_signal,
+          signal_type: "gps_jamming",
+          source: "gpsjam",
+          occurred_at: 2.hours.ago,
+        )
+      end
+      let!(:alert) do
+        create(
+          :signal_rule_match,
+          site: site,
+          incident: incident,
+          task: task,
+          signal: signal,
+          fired_at: 1.hour.ago,
+        )
+      end
+      let(:tool_input) do
+        {
+          "root_type" => "site",
+          "root_name" => "Harbor Site Delta",
+          "relations" => ["alerts"],
+          "time_window_hours" => 24,
+          "limit" => 5,
+        }
+      end
+
+      it "does not include unrequested incident or task nodes" do
+        result = described_class.call(query: "show alerts for Harbor Site Delta")
+
+        expect(result.success).to be(true)
+        expect(result.normalized_query[:relations]).to eq(["alerts"])
+        expect(result.nodes.map { |node| node[:type] }).to contain_exactly("site", "alert")
+      end
+    end
+
+    context "for task-root alert queries" do
+      let(:site) { create(:site, name: "Harbor Site Echo") }
+      let(:task) { create(:task, site: site, title: "Inspect quay sector 4") }
+      let(:incident) { create(:incident, site: site, title: "Quay intrusion investigation") }
+      let!(:signal) do
+        create(
+          :external_signal,
+          signal_type: "gps_jamming",
+          source: "gpsjam",
+          occurred_at: 90.minutes.ago,
+        )
+      end
+      let!(:alert) do
+        create(
+          :signal_rule_match,
+          task: task,
+          site: site,
+          incident: incident,
+          signal: signal,
+          fired_at: 45.minutes.ago,
+        )
+      end
+      let(:tool_input) do
+        {
+          "root_type" => "task",
+          "root_name" => "Inspect quay sector 4",
+          "relations" => ["alerts"],
+          "time_window_hours" => 24,
+          "limit" => 5,
+        }
+      end
+
+      it "does not include unrequested incident or signal nodes" do
+        result = described_class.call(query: "show alerts for Inspect quay sector 4")
+
+        expect(result.success).to be(true)
+        expect(result.normalized_query[:relations]).to eq(["alerts"])
+        expect(result.nodes.map { |node| node[:type] }).to contain_exactly("task", "alert")
+      end
+    end
+  end
+
+  describe "root resolution" do
+    let!(:site_a) { create(:site, name: "Harbor Alpha") }
+    let!(:site_b) { create(:site, name: "Harbor Bravo") }
+    let(:tool_input) do
+      {
+        "root_type" => "site",
+        "root_name" => "Harbor",
+        "relations" => ["incidents"],
+        "time_window_hours" => 72,
+        "limit" => 4,
+      }
+    end
+
+    it "returns a clear ambiguity error when multiple roots match" do
+      result = described_class.call(query: "show what is connected to harbor")
+
+      expect(result.success).to be(false)
+      expect(result.errors.first).to include("ambiguous")
+    end
+
+    it "does not resolve inactive sites that are not present in the active catalog" do
+      create(:site, :inactive, name: "Dormant Pier")
+
+      inactive_tool = {
+        "root_type" => "site",
+        "root_name" => "Dormant Pier",
+        "relations" => ["incidents"],
+        "time_window_hours" => 72,
+        "limit" => 4,
+      }
+
+      allow(fake_messages).to receive(:create).and_return(
+        double("anthropic_response", content: [double("tool_block", type: "tool_use", name: described_class::TOOL_NAME, input: inactive_tool)]),
+      )
+
+      result = described_class.call(query: "show what is connected to Dormant Pier")
+
+      expect(result.success).to be(false)
+      expect(result.errors).to eq(["No site matched 'Dormant Pier'"])
+    end
+  end
+
+  describe "task-root graph execution" do
+    let(:area) { create(:area_of_operation, name: "Northern Approaches") }
+    let(:site) { create(:site, name: "Pier Site Kilo", area_of_operation: area) }
+    let(:asset) { create(:asset, name: "Patrol Craft 07", home_site: site, status: "available") }
+    let!(:task) do
+      create(
+        :task,
+        site:            site,
+        asset:           asset,
+        title:           "Patrol northern pier",
+        priority:        "high",
+        workflow_status: "in_progress",
+      )
+    end
+    let!(:incident) { create(:incident, site: site, title: "Pier access breach") }
+    let!(:signal) do
+      create(
+        :external_signal,
+        signal_type: "gps_jamming",
+        source:      "gpsjam",
+        lat:         site.latitude,
+        lng:         site.longitude,
+        occurred_at: 3.hours.ago,
+      )
+    end
+    let!(:alert) do
+      create(
+        :signal_rule_match,
+        task:     task,
+        site:     site,
+        incident: incident,
+        signal:   signal,
+        fired_at: 2.hours.ago,
+      )
+    end
+    let!(:task_rec) do
+      create(
+        :recommendation,
+        recommendation_type:  "create_task",
+        affected_entity_type: "Task",
+        affected_entity_id:   task.id,
+        action_payload:       { task_id: task.id },
+        evidence:             [{ type: "task", id: task.id, detail: "workflow=in_progress" }],
+      )
+    end
+    let(:tool_input) do
+      {
+        "root_type"         => "task",
+        "root_name"         => "Patrol northern pier",
+        "relations"         => %w[site asset incidents alerts recommendations],
+        "time_window_hours" => 24,
+        "limit"             => 6,
+      }
+    end
+
+    it "returns a bounded graph rooted on the resolved task with all requested relations" do
+      result = described_class.call(query: "show site, asset, incidents, alerts, and recommendations for Patrol northern pier")
+
+      expect(result.success).to be(true)
+      expect(result.normalized_query[:root_type]).to eq("task")
+      expect(result.normalized_query[:root_id]).to eq(task.id)
+
+      node_types = result.nodes.map { |n| n[:type] }
+      expect(node_types).to include("task", "site", "asset", "incident", "alert", "recommendation")
+
+      edge_relations = result.edges.map { |e| e[:relation] }
+      expect(edge_relations).to include("site_task", "task_asset", "task_alert", "recommendation_target")
+
+      # Incident node must carry alert_count metadata — confirms signal_rule_matches is preloaded
+      incident_node = result.nodes.find { |n| n[:type] == "incident" }
+      expect(incident_node).not_to be_nil
+      expect(incident_node[:metadata][:alert_count]).to be_a(Integer)
+
+      # Deduplication: the same incident appears once across both the alerts→incident
+      # path and the direct signal_rule_matches join path
+      expect(result.nodes.count { |n| n[:type] == "incident" }).to eq(1)
+    end
+  end
+
+  describe "area-root graph execution" do
+    let!(:area) { create(:area_of_operation, name: "Western Littoral") }
+    let!(:site_in_ao) { create(:site, name: "Coastal Site Lima", area_of_operation: area) }
+    let!(:incident_in_ao) do
+      create(
+        :incident,
+        site:              site_in_ao,
+        area_of_operation: area,
+        title:             "Coastal perimeter breach",
+      )
+    end
+
+    context "with sites and incidents requested" do
+      let(:tool_input) do
+        {
+          "root_type"         => "area_of_operation",
+          "root_name"         => "Western Littoral",
+          "relations"         => %w[sites incidents],
+          "time_window_hours" => 72,
+          "limit"             => 6,
+        }
+      end
+
+      it "returns sites and incidents connected to the area of operation" do
+        result = described_class.call(query: "show sites and incidents in Western Littoral")
+
+        expect(result.success).to be(true)
+        expect(result.normalized_query[:root_type]).to eq("area_of_operation")
+        expect(result.normalized_query[:root_id]).to eq(area.id)
+
+        node_types = result.nodes.map { |n| n[:type] }
+        expect(node_types).to include("area_of_operation", "site", "incident")
+        # Recommendations are intentionally excluded from area-root traversal
+        expect(node_types).not_to include("recommendation")
+
+        edge_relations = result.edges.map { |e| e[:relation] }
+        expect(edge_relations).to include("in_area_of_operation", "incident_area_of_operation")
+      end
+    end
+
+    context "with only incidents requested (no sites relation)" do
+      let!(:unrelated_site) { create(:site, name: "Remote Site November") }
+      let(:tool_input) do
+        {
+          "root_type"         => "area_of_operation",
+          "root_name"         => "Western Littoral",
+          "relations"         => %w[incidents],
+          "time_window_hours" => 72,
+          "limit"             => 6,
+        }
+      end
+
+      it "auto-injects the incident site node even when the sites relation is not requested" do
+        result = described_class.call(query: "show incidents in Western Littoral")
+
+        expect(result.success).to be(true)
+
+        node_types = result.nodes.map { |n| n[:type] }
+        # Site is auto-injected from the incident even though sites was not in relations
+        expect(node_types).to include("area_of_operation", "incident", "site")
+
+        edge_relations = result.edges.map { |e| e[:relation] }
+        expect(edge_relations).to include("incident_area_of_operation", "in_area_of_operation", "site_incident")
+
+        # Only the site belonging to this AO's incident appears — unrelated sites stay out
+        site_entity_ids = result.nodes.select { |n| n[:type] == "site" }.map { |n| n[:entity_id] }
+        expect(site_entity_ids).to contain_exactly(site_in_ao.id)
+        expect(site_entity_ids).not_to include(unrelated_site.id)
+      end
+    end
+  end
+end

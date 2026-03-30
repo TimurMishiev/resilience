@@ -1,6 +1,13 @@
 import { api, postBlob } from './client'
 import type { QueryParams } from './client'
-import type { AiFilterResult, AiSummaryRequest, AiSummaryResult, AiSummaryType } from './types'
+import type {
+  AiFilterResult,
+  AiOntologyQueryRequest,
+  AiOntologyQueryResult,
+  AiSummaryRequest,
+  AiSummaryResult,
+  AiSummaryType,
+} from './types'
 
 export function getAiFilter(q: string, entityType: 'tasks' | 'signals' = 'tasks'): Promise<{ data: AiFilterResult }> {
   return api.get('/api/ai/filter', { q, entity_type: entityType } as QueryParams)
@@ -8,6 +15,10 @@ export function getAiFilter(q: string, entityType: 'tasks' | 'signals' = 'tasks'
 
 export function postAiSummary(body: AiSummaryRequest): Promise<{ data: AiSummaryResult }> {
   return api.post('/api/ai/summary', body)
+}
+
+export function postAiOntologyQuery(body: AiOntologyQueryRequest): Promise<{ data: AiOntologyQueryResult }> {
+  return api.post('/api/ai/ontology_query', body)
 }
 
 export interface AiExportRequest {

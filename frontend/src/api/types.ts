@@ -380,6 +380,61 @@ export interface AiSummaryResult {
   }
 }
 
+export type AiOntologyRootType = 'site' | 'incident' | 'task' | 'asset' | 'area_of_operation'
+export type AiOntologyNodeType = 'site' | 'area_of_operation' | 'incident' | 'task' | 'asset' | 'alert' | 'signal' | 'recommendation' | 'prosecution_step'
+export type AiOntologyRelation =
+  | 'area'
+  | 'site'
+  | 'sites'
+  | 'incidents'
+  | 'tasks'
+  | 'asset'
+  | 'assets'
+  | 'alerts'
+  | 'signals'
+  | 'recommendations'
+  | 'prosecution_steps'
+
+export interface AiOntologyQueryRequest {
+  q: string
+}
+
+export interface AiOntologyNode {
+  id: string
+  entity_id: string
+  type: AiOntologyNodeType
+  label: string
+  sublabel: string
+  root: boolean
+  metadata: Record<string, string | number | boolean | null>
+}
+
+export interface AiOntologyEdge {
+  source: string
+  target: string
+  relation: string
+}
+
+export interface AiOntologyQueryResult {
+  original_query: string
+  summary: string
+  normalized_query: {
+    root_type: AiOntologyRootType
+    root_id: string
+    root_label: string
+    relations: AiOntologyRelation[]
+    time_window_hours: number
+    limit: number
+  }
+  nodes: AiOntologyNode[]
+  edges: AiOntologyEdge[]
+  counts: {
+    node_count: number
+    edge_count: number
+    by_type: Partial<Record<AiOntologyNodeType, number>>
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Signal types
 // ---------------------------------------------------------------------------

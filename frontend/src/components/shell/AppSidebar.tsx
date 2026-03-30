@@ -74,6 +74,13 @@ export function AppSidebar() {
           onClick={() => navigate('/briefing')}
           labelElement={!isCommander ? <LockLabel /> : undefined}
         />
+        <MenuItem
+          icon="search"
+          text="Ontology Query"
+          active={pathname.startsWith('/ontology')}
+          onClick={() => navigate('/ontology')}
+          labelElement={!isCommander ? <LockLabel /> : undefined}
+        />
         <MenuItem icon="feed"      text="Signals" active={pathname.startsWith('/signals')} onClick={() => navigate('/signals')} />
         <MenuItem
           icon="lightning"
