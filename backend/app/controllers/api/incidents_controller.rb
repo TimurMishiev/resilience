@@ -222,6 +222,55 @@ module Api
       render json: { nodes: nodes, edges: edges }
     end
 
+    # POST /api/incidents/:id/prosecute
+    # Initiates kill-chain prosecution on an incident (commander-only).
+    # Body: { notes: "..." }  (optional)
+    def initiate_prosecution
+      require_commander!
+      incident = Incident.find(params[:id])
+      result   = Incidents::ProsecutionService.call(
+        operation: :initiate,
+        incident:  incident,
+        actor:     current_user,
+        notes:     params[:notes].presence,
+      )
+
+      if result.success?
+        render json: serialize_incident(result.incident), status: :created
+      else
+        render json: { errors: result.errors }, status: :unprocessable_content
+      end
+    end
+
+    # GET /api/incidents/:id/prosecution_steps
+    def list_prosecution_steps
+      incident = Incident.find(params[:id])
+      steps    = incident.prosecution_steps.includes(:actor)
+      render json: steps.map { |s| serialize_prosecution_step(s) }
+    end
+
+    # POST /api/incidents/:id/prosecution_steps
+    # Body: { phase:, action_type:, notes:, evidence_refs: { signal_ids: [], ... } }
+    def add_prosecution_step
+      require_commander!
+      incident = Incident.find(params[:id])
+      result   = Incidents::ProsecutionService.call(
+        operation:     :add_step,
+        incident:      incident,
+        actor:         current_user,
+        phase:         params[:phase].to_s,
+        action_type:   params[:action_type].to_s,
+        notes:         params[:notes].presence,
+        evidence_refs: prosecution_step_evidence_refs,
+      )
+
+      if result.success?
+        render json: serialize_prosecution_step(result.step), status: :created
+      else
+        render json: { errors: result.errors }, status: :unprocessable_content
+      end
+    end
+
     # GET /api/incidents/:id/notes
     def list_notes
       incident = Incident.find(params[:id])
@@ -307,6 +356,13 @@ module Api
           name:    incident.area_of_operation.name,
           posture: incident.area_of_operation.posture
         } : nil,
+        # Prosecution fields — present on all responses, null when not prosecuted
+        prosecution_phase:          incident.prosecution_phase,
+        prosecution_initiated_at:   incident.prosecution_initiated_at,
+        prosecuted_by:              incident.prosecuted_by ? {
+          id:    incident.prosecuted_by.id,
+          email: incident.prosecuted_by.email,
+        } : nil,
         created_at:  incident.created_at,
         updated_at:  incident.updated_at,
       }
@@ -363,6 +419,33 @@ module Api
         author:     { id: note.author.id, email: note.author.email },
         created_at: note.created_at,
       }
+    end
+
+    def serialize_prosecution_step(step)
+      {
+        id:            step.id,
+        incident_id:   step.incident_id,
+        actor:         { id: step.actor.id, email: step.actor.email },
+        phase:         step.phase,
+        action_type:   step.action_type,
+        notes:         step.notes,
+        evidence_refs: step.evidence_refs,
+        occurred_at:   step.occurred_at,
+        created_at:    step.created_at,
+      }
+    end
+
+    # Permit and sanitise evidence_refs from the request.
+    # Accepts { signal_ids: [], match_ids: [], task_ids: [], recommendation_ids: [] }.
+    # Unknown keys are dropped to prevent polluting the JSONB column.
+    def prosecution_step_evidence_refs
+      raw = params[:evidence_refs]
+      return {} unless raw.is_a?(ActionController::Parameters) || raw.is_a?(Hash)
+
+      allowed_keys = %w[signal_ids match_ids task_ids recommendation_ids]
+      raw.to_unsafe_h.slice(*allowed_keys).transform_values do |v|
+        Array(v).map(&:to_s).reject(&:empty?)
+      end
     end
   end
 end

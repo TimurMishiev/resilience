@@ -45,6 +45,41 @@ export interface IncidentTask {
   asset_id:        string | null
 }
 
+// ── Prosecution types ──────────────────────────────────────────────────────
+
+export type ProsecutionPhase = 'assessing' | 'executing' | 'concluded'
+export type ProsecutionActionType =
+  | 'phase_transition'
+  | 'evidence_linked'
+  | 'outcome_recorded'
+  | 'note_added'
+
+export interface ProsecutionEvidenceRefs {
+  signal_ids?:         string[]
+  match_ids?:          string[]
+  task_ids?:           string[]
+  recommendation_ids?: string[]
+}
+
+export interface ProsecutionStep {
+  id:            string
+  incident_id:   string
+  actor:         { id: string; email: string }
+  phase:         ProsecutionPhase
+  action_type:   ProsecutionActionType
+  notes:         string | null
+  evidence_refs: ProsecutionEvidenceRefs
+  occurred_at:   string
+  created_at:    string
+}
+
+export interface AddProsecutionStepBody {
+  phase:          ProsecutionPhase
+  action_type:    ProsecutionActionType
+  notes?:         string | null
+  evidence_refs?: ProsecutionEvidenceRefs
+}
+
 export interface Incident {
   id:               string
   title:            string
@@ -62,6 +97,10 @@ export interface Incident {
   assigned_at:      string | null
   site:             { id: string; name: string } | null
   area_of_operation: { id: string; name: string; posture: import('./types').Posture } | null
+  // Prosecution — present on all responses, null when incident is not being prosecuted
+  prosecution_phase:          ProsecutionPhase | null
+  prosecution_initiated_at:   string | null
+  prosecuted_by:              { id: string; email: string } | null
   created_at:       string
   updated_at:       string
   // only present in show response
@@ -148,4 +187,18 @@ export interface IncidentChainResponse {
 
 export function getIncidentChain(id: string): Promise<IncidentChainResponse> {
   return api.get(`/api/incidents/${id}/chain`)
+}
+
+// ── Prosecution API ────────────────────────────────────────────────────────
+
+export function initiateProsecution(id: string, notes?: string | null): Promise<Incident> {
+  return api.post(`/api/incidents/${id}/prosecute`, { notes: notes ?? null })
+}
+
+export function getProsecutionSteps(id: string): Promise<ProsecutionStep[]> {
+  return api.get(`/api/incidents/${id}/prosecution_steps`)
+}
+
+export function addProsecutionStep(id: string, body: AddProsecutionStepBody): Promise<ProsecutionStep> {
+  return api.post(`/api/incidents/${id}/prosecution_steps`, body)
 }

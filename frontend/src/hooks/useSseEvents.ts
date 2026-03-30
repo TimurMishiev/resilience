@@ -180,6 +180,25 @@ export function useSseEvents({
           timeout: 5_000,
         }))
       }
+
+      if (e.event === 'prosecution_started') {
+        const d = e.data as { incident_id: string; prosecution_phase: string }
+        queryClient.invalidateQueries({ queryKey: ['incidents', d.incident_id] })
+        queryClient.invalidateQueries({ queryKey: ['incidents'] })
+        queryClient.invalidateQueries({ queryKey: ['prosecution-steps', d.incident_id] })
+        AppToaster.then(t => t.show({
+          message: `⚖ Prosecution initiated`,
+          intent:  'warning',
+          icon:    'shield',
+          timeout: 6_000,
+        }))
+      }
+
+      if (e.event === 'prosecution_step_added') {
+        const d = e.data as { incident_id: string; prosecution_phase: string }
+        queryClient.invalidateQueries({ queryKey: ['prosecution-steps', d.incident_id] })
+        queryClient.invalidateQueries({ queryKey: ['incidents', d.incident_id] })
+      }
     },
   })
 }

@@ -240,7 +240,10 @@ CREATE TABLE public.incidents (
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
     assigned_to_id uuid,
-    assigned_at timestamp(6) without time zone
+    assigned_at timestamp(6) without time zone,
+    prosecution_phase character varying,
+    prosecuted_by_id uuid,
+    prosecution_initiated_at timestamp(6) without time zone
 );
 
 
@@ -260,6 +263,23 @@ CREATE TABLE public.pace_plans (
     notes text,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: prosecution_steps; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.prosecution_steps (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    incident_id uuid NOT NULL,
+    actor_id uuid NOT NULL,
+    phase character varying NOT NULL,
+    action_type character varying NOT NULL,
+    notes text,
+    evidence_refs jsonb DEFAULT '{}'::jsonb NOT NULL,
+    occurred_at timestamp(6) without time zone DEFAULT now() NOT NULL,
+    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
 );
 
 
@@ -648,7 +668,7 @@ CREATE TABLE public.users (
     role character varying DEFAULT 'operator'::character varying NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    CONSTRAINT users_role_check CHECK (((role)::text = ANY ((ARRAY['operator'::character varying, 'commander'::character varying])::text[])))
+    CONSTRAINT users_role_check CHECK (((role)::text = ANY (ARRAY[('operator'::character varying)::text, ('commander'::character varying)::text])))
 );
 
 
@@ -872,6 +892,14 @@ ALTER TABLE ONLY public.pace_plans
 
 
 --
+-- Name: prosecution_steps prosecution_steps_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prosecution_steps
+    ADD CONSTRAINT prosecution_steps_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: recommendations recommendations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -959,10 +987,31 @@ CREATE UNIQUE INDEX idx_geofence_breach_signal_site_unique ON public.signal_rule
 
 
 --
+-- Name: idx_incidents_active_prosecution; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_incidents_active_prosecution ON public.incidents USING btree (prosecution_phase) WHERE (prosecution_phase IS NOT NULL);
+
+
+--
 -- Name: idx_on_entity_type_entity_id_occurred_at_dfd7f189aa; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_on_entity_type_entity_id_occurred_at_dfd7f189aa ON public.audit_events USING btree (entity_type, entity_id, occurred_at);
+
+
+--
+-- Name: idx_prosecution_steps_incident_phase; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_prosecution_steps_incident_phase ON public.prosecution_steps USING btree (incident_id, phase);
+
+
+--
+-- Name: idx_prosecution_steps_incident_time; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_prosecution_steps_incident_time ON public.prosecution_steps USING btree (incident_id, occurred_at);
 
 
 --
@@ -1172,7 +1221,7 @@ CREATE INDEX index_incident_notes_on_incident_id ON public.incident_notes USING 
 -- Name: index_incidents_fusion_lookup; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_incidents_fusion_lookup ON public.incidents USING btree (site_id, status, updated_at) WHERE ((status)::text = ANY ((ARRAY['open'::character varying, 'acknowledged'::character varying])::text[]));
+CREATE INDEX index_incidents_fusion_lookup ON public.incidents USING btree (site_id, status, updated_at) WHERE ((status)::text = ANY (ARRAY[('open'::character varying)::text, ('acknowledged'::character varying)::text]));
 
 
 --
@@ -1229,6 +1278,20 @@ CREATE INDEX index_pace_plans_on_created_by_id ON public.pace_plans USING btree 
 --
 
 CREATE INDEX index_pace_plans_on_updated_by_id ON public.pace_plans USING btree (updated_by_id);
+
+
+--
+-- Name: index_prosecution_steps_on_actor_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_prosecution_steps_on_actor_id ON public.prosecution_steps USING btree (actor_id);
+
+
+--
+-- Name: index_prosecution_steps_on_incident_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_prosecution_steps_on_incident_id ON public.prosecution_steps USING btree (incident_id);
 
 
 --
@@ -1943,6 +2006,14 @@ ALTER TABLE ONLY public.pace_plans
 
 
 --
+-- Name: prosecution_steps fk_rails_49c61f9f4e; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prosecution_steps
+    ADD CONSTRAINT fk_rails_49c61f9f4e FOREIGN KEY (incident_id) REFERENCES public.incidents(id);
+
+
+--
 -- Name: tasks fk_rails_546c3973b4; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1972,6 +2043,14 @@ ALTER TABLE ONLY public.salute_reports
 
 ALTER TABLE ONLY public.pace_plans
     ADD CONSTRAINT fk_rails_6ddc9c0711 FOREIGN KEY (created_by_id) REFERENCES public.users(id);
+
+
+--
+-- Name: prosecution_steps fk_rails_70213e48a7; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.prosecution_steps
+    ADD CONSTRAINT fk_rails_70213e48a7 FOREIGN KEY (actor_id) REFERENCES public.users(id);
 
 
 --
@@ -2044,6 +2123,14 @@ ALTER TABLE ONLY public.signal_rule_matches
 
 ALTER TABLE ONLY public.correlation_rules
     ADD CONSTRAINT fk_rails_b88d28d836 FOREIGN KEY (area_of_operation_id) REFERENCES public.areas_of_operation(id) ON DELETE SET NULL;
+
+
+--
+-- Name: incidents fk_rails_b8b5a0282f; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.incidents
+    ADD CONSTRAINT fk_rails_b8b5a0282f FOREIGN KEY (prosecuted_by_id) REFERENCES public.users(id);
 
 
 --
@@ -2141,6 +2228,8 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260329020000'),
+('20260329010000'),
 ('20260328010000'),
 ('20260327030000'),
 ('20260327020000'),

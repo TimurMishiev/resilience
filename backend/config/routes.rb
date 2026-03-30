@@ -95,6 +95,9 @@ Rails.application.routes.draw do
         get   'notes', action: :list_notes
         post  'notes', action: :add_note
         get   :chain
+        post  :prosecute,                        action: :initiate_prosecution
+        get   'prosecution_steps',               action: :list_prosecution_steps
+        post  'prosecution_steps',               action: :add_prosecution_step
       end
     end
 

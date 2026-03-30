@@ -8,7 +8,7 @@ type: project
 
 ## Stack
 
-- **Backend:** Ruby on Rails (API mode), PostgreSQL, Sidekiq, Redis, SSE for real-time push
+- **Backend:** Ruby on Rails (API mode), PostgreSQL, SolidQueue recurring/background jobs, SSE for real-time push
 - **Frontend:** React + TypeScript, Vite, Blueprint UI, CesiumJS, MapLibre GL
 - **Deployment:** Fly.io (backend + postgres), Vite dev server locally
 - **Testing:** RSpec (backend), ESLint + TypeScript build validation (frontend)
@@ -155,12 +155,13 @@ Every new entity must answer: "Is this an entity, a property, a relationship, or
   - replay state machine lives in `ReplayContext.tsx` + `replayTransport.ts`; UI in `ReplaySelector.tsx`
   - replay-aware selected-vessel trail queries are wired on both MapPage and GlobePage via `to=asOf` track windows
   - many live-control-plane surfaces remain intentionally unavailable during replay (AO overlays, chokepoints, breach rings, SSE polling, risk scores, telemetry freeze-point), but that is no longer a Phase 3 blocker
-- **Phase 4** is partially complete:
+- **Phase 4** is complete for the canonical v1 roadmap:
   - risk scores are shipped
   - CI + auto-deploy to Fly are shipped
-  - virtualization currently exists in the signal feed and alert triage feed
-  - globe benchmarking/perf instrumentation exists and the focused-to-global reconcile benchmark is now budgeted in Playwright + CI
-  - broader perf budgets and guardrails beyond the globe benchmark remain a closeout task
+  - virtualization exists in the signal feed and alert triage feed
+  - globe benchmarking/perf instrumentation exists and the focused-to-global reconcile benchmark is budgeted in Playwright + CI
+  - the remaining bounded list/table pages were audited and do not currently justify blanket virtualization
+  - the Dockerized production-style boot path is closed by explicit local `CORS_ORIGINS` defaults in `compose.yml`
 
 ### Roadmap Clarifications
 
@@ -196,24 +197,39 @@ Every new entity must answer: "Is this an entity, a property, a relationship, or
 - **Virtual rendering**
   - Signal feed is virtualized.
   - Alert triage is virtualized as a bounded scroll surface over the loaded infinite-query pages, preserving bulk actions and load-more behavior while capping live DOM growth.
-  - Other potentially large tables/surfaces should be evaluated and virtualized only where needed.
-  - Current Phase 4 audit result: the remaining list/table pages are mostly bounded at 50-100 rows and do not yet justify blanket virtualization. The next pressure point should be chosen based on measured volume, not roadmap cargo culting.
+  - Other potentially large tables/surfaces should be virtualized only if measured pressure justifies it.
+  - Current Phase 4 audit result: the remaining list/table pages are mostly bounded at 50-100 rows and do not justify blanket virtualization at current scale.
 - **Benchmarks**
   - Globe benchmark coverage exists and now enforces explicit release budgets on the focused-to-global reconcile path.
   - CI runs the Dockerized app and fails if the benchmark breaches its budget.
-  - Remaining work is to broaden budgets/guardrails beyond the globe benchmark where justified.
+  - Broader budgets/guardrails beyond the globe benchmark are optional future hardening, not a canonical v1 blocker.
 - **Auto-deploy**
   - Already implemented through GitHub Actions + Fly deploy on main after green checks.
+- **Operational closeout**
+  - `compose.yml` now provides local production-style `CORS_ORIGINS` defaults so Docker/CI boot does not abort before the benchmark path becomes ready.
 
-### Post-v1 Candidate Expansions
+### Promoted Expansion Track (2026-03-29)
+
+Canonical v1 is complete. The user has explicitly promoted the following former post-v1 items into the active roadmap, in this order:
+
+1. **Kill-chain / prosecution workflow**
+2. **Cross-entity natural-language ontology query**
+3. **Globe heatmap parity**
+
+These are no longer “ignore for now” items for future agents; they are the next build track after canonical v1 closeout.
+
+### Former Post-v1 Candidate Expansions
 
 - **Kill-chain / prosecution workflow**
-  - Not part of the current canonical 4-phase roadmap.
-  - Sensible future addition if the product evolves from incident response into end-to-end prosecution workflow.
+  - Not part of the original canonical 4-phase roadmap.
+  - Now explicitly promoted by the user as the next active build item.
 - **Cross-entity natural-language ontology query**
-  - Not part of the current canonical 4-phase roadmap.
+  - Not part of the original canonical 4-phase roadmap.
   - Natural-language filter translation exists for tasks/signals, but graph-style ontology traversal via NL does not.
-  - Treat as a future expansion unless it is explicitly promoted into the roadmap.
+  - Now explicitly promoted by the user into the active roadmap after kill-chain.
+- **Globe heatmap parity**
+  - Not part of the original canonical Phase 3 closeout bar.
+  - Now explicitly promoted by the user after kill-chain and cross-entity ontology query.
 
 ### Locked Finish Plan (2026-03-29)
 
@@ -221,13 +237,28 @@ Future agents should treat this as the current required completion sequence unle
 
 If any external summary, audit, or delegated-agent note disagrees with this section, prefer this section unless the codebase itself has changed and been re-verified.
 
-#### Required completion track
+#### Canonical completion track
 
-1. **Phase 4 closeout**
-   - Expand virtualization only where measured large data surfaces justify it.
-   - Broaden benchmark/perf budgets beyond the current globe reconcile gate as an explicit release bar.
+- **Canonical v1 is complete** through Phase 4.
+- Future agents should not reopen Phase 1–4 unless the code regresses or the user explicitly expands scope.
+
+#### Promoted next-build track
+
+1. ~~**Kill-chain / prosecution workflow**~~ — **SHIPPED (2026-03-29)**
+2. **Cross-entity natural-language ontology query**
+3. **Globe heatmap parity**
 
 #### Recently closed
+
+- **Kill-chain / prosecution workflow** (shipped 2026-03-29)
+  - `prosecution_phase` column on `Incident` (assessing → executing → concluded, forward-only, orthogonal to status)
+  - `ProsecutionStep` model — append-only (before_update throws :abort), UUID PK, evidence_refs JSONB with schema validation
+  - `Incidents::ProsecutionService` — `:initiate` and `:add_step` operations; transaction-wraps save + step + Audit::EventWriter; SSE broadcast post-commit
+  - 3 new routes: `POST prosecute`, `GET prosecution_steps`, `POST prosecution_steps` (all commander-gated except GET)
+  - `ProsecutionPanel.tsx` — PhaseTrack stepper, non-prosecuted/active/concluded states, add-step form, step timeline
+  - 7th tab "Prosecution" + phase badge in `IncidentDetailPage.tsx`
+  - SSE events: `prosecution_started` and `prosecution_step_added` invalidate queries + show toast
+  - 997 RSpec (43 new), 252 Vitest (10 new), 0 TS errors, 0 ESLint errors
 
 - **Chokepoint geographic overlays**
   - Shipped on both MapPage and GlobePage.
@@ -259,23 +290,25 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
   - Frontend filters: lookback window and event-kind toggles.
   - Uses the existing site timeline event model rather than inventing a parallel event taxonomy.
 
-#### Explicit non-goals for current v1 closeout
+#### Explicit non-goals for canonical v1 closeout
 
 - Do **not** rebuild map heatmap from scratch; it is already shipped.
-- Do **not** treat globe heatmap parity as required unless Phase 3 scope is explicitly expanded.
-- Do **not** treat kill-chain/prosecution or cross-entity NL ontology query as current v1 blockers.
-  - They remain post-v1 expansions unless the user explicitly promotes them into the roadmap.
+- Canonical v1 should not be reopened over globe heatmap parity, kill-chain/prosecution, or cross-entity NL ontology query.
+- Those items now belong to the promoted expansion track above, not the canonical closeout bar.
 
 #### Sequence lock
 
-- The required implementation order is:
-  1. Phase 4 closeout
+- The active implementation order is:
+  1. ~~Kill-chain / prosecution workflow~~ — SHIPPED
+  2. Cross-entity natural-language ontology query  ← **NEXT**
+  3. Globe heatmap parity
 
 #### Expected remaining canonical phases
 
 - **Phase 3** is complete for the current canonical v1 scope.
-- **Phase 4** remains partially open.
+- **Phase 4** is complete.
 - Phase 2 is functionally complete, and the chokepoint overlay adjunct is now closed.
+- No canonical phases remain open.
 
 ---
 
@@ -292,7 +325,7 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
 
 ## Known Bugs / Quirks
 
-- ServiceResult (Data.define) exposes result.success (boolean), NOT result.success? (method). Using .success? raises NoMethodError.
+- ServiceResult (Data.define) exposes BOTH result.success (boolean) AND result.success? (method — `def success? = success`). The old MEMORY note claiming .success? raises NoMethodError was stale.
 - AIS raw_payload uses key "dest" for destination, not "destination".
 - Tasks::UpdateService requires string-keyed params, not symbol keys.
 

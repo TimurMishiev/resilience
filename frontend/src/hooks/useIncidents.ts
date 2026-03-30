@@ -2,9 +2,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   getIncidents, getIncident, updateIncident, transitionIncident,
   getIncidentAllowedTransitions, assignIncident, getIncidentNotes, addIncidentNote,
-  getIncidentChain,
+  getIncidentChain, initiateProsecution, getProsecutionSteps, addProsecutionStep,
 } from '../api/incidents'
-import type { IncidentParams, IncidentStatus, Incident } from '../api/incidents'
+import type {
+  IncidentParams, IncidentStatus, Incident,
+  AddProsecutionStepBody,
+} from '../api/incidents'
 
 interface IncidentQueryOptions {
   enabled?: boolean
@@ -107,5 +110,42 @@ export function useIncidentChain(id: string | undefined, options?: IncidentQuery
     queryFn:  () => getIncidentChain(id!),
     enabled:  Boolean(id) && (options?.enabled ?? true),
     refetchInterval: options?.refetchInterval ?? 30_000,
+  })
+}
+
+// ── Prosecution hooks ─────────────────────────────────────────────────────
+
+export function useProsecutionSteps(id: string | undefined, options?: IncidentQueryOptions) {
+  return useQuery({
+    queryKey: ['prosecution-steps', id],
+    queryFn:  () => getProsecutionSteps(id!),
+    enabled:  Boolean(id) && (options?.enabled ?? true),
+    refetchInterval: options?.refetchInterval ?? false,
+  })
+}
+
+export function useInitiateProsecution() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, notes }: { id: string; notes?: string | null }) =>
+      initiateProsecution(id, notes),
+    onSuccess: (_data, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ['incidents', id] })
+      queryClient.invalidateQueries({ queryKey: ['incidents'] })
+      queryClient.invalidateQueries({ queryKey: ['prosecution-steps', id] })
+    },
+  })
+}
+
+export function useAddProsecutionStep() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: AddProsecutionStepBody }) =>
+      addProsecutionStep(id, body),
+    onSuccess: (_data, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ['prosecution-steps', id] })
+      // Invalidate the incident itself so prosecution_phase badge updates
+      queryClient.invalidateQueries({ queryKey: ['incidents', id] })
+    },
   })
 }

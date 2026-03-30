@@ -9,6 +9,7 @@ import {
   useIncidentAllowedTransitions, useAssignIncident,
 } from '../hooks/useIncidents'
 import IntelChainPanel from '../components/IntelChainPanel'
+import ProsecutionPanel from '../components/ProsecutionPanel'
 import { AssetPicker } from '../components/AssetPicker'
 import { PostureBadge } from '../components/PostureBadge'
 import { useAuth } from '../context/AuthContext'
@@ -322,6 +323,23 @@ export default function IncidentDetailPage() {
           {incident.status}
         </Tag>
 
+        {/* Prosecution phase badge — shown only when incident is being prosecuted */}
+        {incident.prosecution_phase && (
+          <Tag
+            minimal
+            intent={
+              incident.prosecution_phase === 'concluded' ? 'success'
+                : incident.prosecution_phase === 'executing' ? 'danger'
+                : 'warning'
+            }
+            icon="shield"
+            style={{ marginLeft: 4, fontSize: 10 }}
+            title={`Prosecution: ${incident.prosecution_phase}`}
+          >
+            {incident.prosecution_phase}
+          </Tag>
+        )}
+
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
           {/* Assignment */}
           <span style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -466,6 +484,24 @@ export default function IncidentDetailPage() {
               entityId={incident.id}
             />
           }
+        />
+        <Tab
+          id="prosecution"
+          title={
+            <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              Prosecution
+              {incident.prosecution_phase && (
+                <span style={{
+                  width: 7, height: 7, borderRadius: '50%',
+                  background: incident.prosecution_phase === 'concluded' ? '#22c55e'
+                    : incident.prosecution_phase === 'executing' ? '#ef4444'
+                    : '#f97316',
+                  display: 'inline-block', flexShrink: 0,
+                }} />
+              )}
+            </span>
+          }
+          panel={<ProsecutionPanel incident={incident} />}
         />
       </Tabs>
     </div>
