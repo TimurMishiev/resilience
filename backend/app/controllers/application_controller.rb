@@ -19,6 +19,13 @@ class ApplicationController < ActionController::API
         break
       rescue StandardError => e
         Rails.logger.error("[SSE][#{stream_name}] heartbeat failed: #{e.class}: #{e.message}")
+        Observability.capture_exception(
+          e,
+          tags: { component: "sse_heartbeat", stream: stream_name },
+          extra: { interval_seconds: interval_seconds },
+          throttle_key: "sse_heartbeat:#{stream_name}:#{e.class}",
+          throttle_seconds: 300
+        )
         break
       end
     end

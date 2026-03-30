@@ -1,6 +1,7 @@
 import { Component, Suspense } from 'react'
 import type { ReactNode, ErrorInfo } from 'react'
 import { Callout, Button, Icon, Spinner } from '@blueprintjs/core'
+import { capturePageRenderException } from '../instrument'
 
 // ── Per-page loading fallback ────────────────────────────────────────────────
 function PageLoadingFallback({ pageName }: { pageName: string }) {
@@ -38,7 +39,7 @@ export default class PageErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    // In production you'd forward this to Sentry / Datadog
+    capturePageRenderException(error, info, this.props.pageName)
     console.error(`[PageErrorBoundary] ${error.message}`, info.componentStack)
   }
 

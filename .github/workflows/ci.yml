@@ -154,6 +154,11 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+      SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+      SENTRY_RELEASE: ${{ github.sha }}
 
     steps:
       - uses: actions/checkout@v4
@@ -162,4 +167,11 @@ jobs:
 
       - name: Deploy to Fly.io
         if: env.FLY_API_TOKEN != ''
-        run: flyctl deploy --remote-only
+        run: |
+          args=()
+          [ -n "$VITE_SENTRY_DSN" ] && args+=(--build-arg "VITE_SENTRY_DSN=$VITE_SENTRY_DSN")
+          [ -n "$SENTRY_RELEASE" ] && args+=(--build-arg "SENTRY_RELEASE=$SENTRY_RELEASE")
+          [ -n "$SENTRY_AUTH_TOKEN" ] && args+=(--build-arg "SENTRY_AUTH_TOKEN=$SENTRY_AUTH_TOKEN")
+          [ -n "$SENTRY_ORG" ] && args+=(--build-arg "SENTRY_ORG=$SENTRY_ORG")
+          [ -n "$SENTRY_PROJECT" ] && args+=(--build-arg "SENTRY_PROJECT=$SENTRY_PROJECT")
+          flyctl deploy --remote-only "${args[@]}"

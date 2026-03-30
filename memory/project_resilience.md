@@ -299,6 +299,13 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
   - `Recommendations::GenerationJob` now uses a PostgreSQL advisory lock to skip overlapping recurring runs and records success / skipped / error status snapshots.
   - Full backend after this slice: 1018 RSpec, 0 failures.
 
+- **Observability / Sentry slice** (shipped 2026-03-29)
+  - Backend now supports env-gated Sentry via `sentry-ruby` + `sentry-rails`.
+  - Frontend now supports env-gated Sentry via `@sentry/react`, wired through React 19 root uncaught-error handling and `PageErrorBoundary`.
+  - Vite source-map upload is wired behind build-time env gating (`SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT`) so local/CI builds stay green when Sentry upload credentials are absent.
+  - Docker/compose now distinguish runtime Rails Sentry env (`SENTRY_DSN`) from build-time browser Sentry env (`VITE_SENTRY_DSN` plus optional upload credentials).
+  - Long-lived infra loops now report throttled exceptions/messages through the new `Observability` helper for relay failures, SSE heartbeat failures, telemetry simulator failures, feed ingestion critical states, and correlation-evaluator critical states.
+
 #### Explicit non-goals for canonical v1 closeout
 
 - Do **not** rebuild map heatmap from scratch; it is already shipped.
@@ -322,7 +329,8 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
 #### Remaining production-hardening debt (non-roadmap blocker)
 
 - Cross-process live streams and basic ops health visibility are now closed.
-- Full external error tracking / alerting integration is still optional future hardening if the user wants stronger production observability beyond the DB-backed status surfaces.
+- External error tracking is now integrated through env-gated Sentry on backend and frontend.
+- The remaining meaningful infrastructure hardening debt is SSE/thread scaling safeguards under higher live concurrency (persistent EventSource connections still consume Puma request threads).
 
 ---
 

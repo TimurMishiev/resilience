@@ -10,6 +10,13 @@
 #   flyctl secrets set RAILS_MASTER_KEY=$(cat backend/config/master.key)
 #   flyctl secrets set SECRET_KEY_BASE=$(cd backend && bundle exec rails secret)
 #   flyctl secrets set ANTHROPIC_API_KEY=sk-ant-...
+#   flyctl secrets set SENTRY_DSN=https://backend-public-key@o0.ingest.sentry.io/0   # optional Rails error tracking
+#   # Browser Sentry + source-map upload are build-time args, not Fly runtime env:
+#   #   VITE_SENTRY_DSN
+#   #   SENTRY_RELEASE
+#   #   SENTRY_AUTH_TOKEN
+#   #   SENTRY_ORG
+#   #   SENTRY_PROJECT
 #   flyctl deploy
 
 app            = "resilience-ops"

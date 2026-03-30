@@ -79,3 +79,6 @@ gem "h3", "~> 3.7", require: false
 # PDF generation for operational briefing exports
 gem "prawn",       "~> 2.5"
 gem "prawn-table", "~> 0.2"
+
+gem "sentry-ruby", "~> 6.5"
+gem "sentry-rails", "~> 6.5"

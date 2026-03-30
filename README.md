@@ -34,6 +34,13 @@ Demo data (sites, tasks, signals, rules, incidents, vessels, risk scores) is see
 > ANTHROPIC_API_KEY=sk-ant-... docker compose up
 > ```
 
+> **Want Sentry error reporting too?** The Rails DSN is runtime config, but the browser DSN is compiled into the SPA bundle, so rebuild when you add it:
+> ```bash
+> SENTRY_DSN=https://backend-public-key@o0.ingest.sentry.io/0 \
+> VITE_SENTRY_DSN=https://frontend-public-key@o0.ingest.sentry.io/0 \
+> docker compose up --build
+> ```
+
 > **Stopping:** `Ctrl+C` in the terminal, then `docker compose down` to remove containers. Your data is preserved in a Docker volume — run `docker compose down -v` to reset everything.
 
 ---
@@ -182,6 +189,7 @@ Scrub backward in time to any past timestamp. Sites, tasks, readiness scores, an
 | **Real-time** | Server-Sent Events | Simpler than WebSockets for unidirectional push; HTTP/2 compatible |
 | **Auth** | JWT + Rack::Attack | Stateless tokens, short-lived SSE tokens, rate limiting |
 | **AI** | Anthropic Claude | Grounded operational summaries and actionable recommendations |
+| **Observability** | Sentry (optional) + OperationalStatus snapshots | External error tracking plus DB-backed ops health for recurring jobs and feeds |
 | **Deploy** | Docker + Fly.io | Single-image compose for local; Fly for production |
 
 ---
@@ -212,6 +220,7 @@ RAILS_MAX_THREADS=48 bundle exec rails server
 
 # 4. Frontend setup (in another terminal)
 cd ../frontend
+cp .env.example .env.local
 yarn install
 yarn dev
 ```
@@ -286,6 +295,14 @@ NASA_FIRMS_MAP_KEY=your-key AISHUB_USERNAME=your-user docker compose up
 ```
 
 To add credentials for local development, add them to `backend/.env` (see `.env.example`).
+
+For optional browser/backend Sentry, use:
+- `backend/.env` for `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`
+- `frontend/.env.local` for `VITE_SENTRY_DSN`, `VITE_SENTRY_ENVIRONMENT`, `VITE_SENTRY_RELEASE`
+
+For Fly deploys, remember the split:
+- Rails Sentry (`SENTRY_DSN`) is a Fly runtime secret
+- browser Sentry (`VITE_SENTRY_DSN`) and source-map upload credentials are Docker build args, not runtime env
 
 ---
 

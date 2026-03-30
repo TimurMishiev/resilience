@@ -14,7 +14,15 @@ services:
       retries: 10
 
   app:
-    build: .
+    build:
+      context: .
+      args:
+        VITE_SENTRY_DSN: "${VITE_SENTRY_DSN:-}"
+        VITE_SENTRY_ENVIRONMENT: "${VITE_SENTRY_ENVIRONMENT:-production}"
+        SENTRY_RELEASE: "${SENTRY_RELEASE:-}"
+        SENTRY_AUTH_TOKEN: "${SENTRY_AUTH_TOKEN:-}"
+        SENTRY_ORG: "${SENTRY_ORG:-}"
+        SENTRY_PROJECT: "${SENTRY_PROJECT:-}"
     ports:
       - "3000:80"
     environment:
@@ -26,6 +34,9 @@ services:
       SECRET_KEY_BASE: "resilience-dev-key-000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
       RAILS_LOG_TO_STDOUT: "true"
       ASSUME_SSL: "false"
+      SENTRY_DSN: "${SENTRY_DSN:-}"
+      SENTRY_ENVIRONMENT: "${SENTRY_ENVIRONMENT:-production}"
+      SENTRY_RELEASE: "${SENTRY_RELEASE:-}"
       # Optional — enables AI Briefing page. Get a free key at https://console.anthropic.com/
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
     depends_on:

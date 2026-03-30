@@ -13,14 +13,43 @@
 #   DATABASE_URL        — Fly Postgres connection string
 #   SECRET_KEY_BASE     — output of `rails secret`
 #   ANTHROPIC_API_KEY   — Claude API key
+# Optional observability:
+#   SENTRY_DSN          — Rails runtime error reporting DSN
+#
+# Optional frontend build args:
+#   VITE_SENTRY_DSN     — public browser DSN baked into the SPA bundle
+#   SENTRY_RELEASE      — release string shared by frontend and backend
+#   SENTRY_AUTH_TOKEN   — enables source map upload during the frontend build
+#   SENTRY_ORG          — Sentry org slug for source map upload
+#   SENTRY_PROJECT      — Sentry project slug for source map upload
 
 # Declare before the first FROM so it's available in all subsequent FROM lines.
 ARG RUBY_VERSION=3.4.7
+ARG VITE_SENTRY_DSN=""
+ARG VITE_SENTRY_ENVIRONMENT="production"
+ARG SENTRY_RELEASE=""
+ARG SENTRY_AUTH_TOKEN=""
+ARG SENTRY_ORG=""
+ARG SENTRY_PROJECT=""
 
 # ──── Stage 1: Build the React/Vite frontend ─────────────────────────────────
 FROM node:22-slim AS frontend-build
 
 WORKDIR /app
+
+ARG VITE_SENTRY_DSN
+ARG VITE_SENTRY_ENVIRONMENT
+ARG SENTRY_RELEASE
+ARG SENTRY_AUTH_TOKEN
+ARG SENTRY_ORG
+ARG SENTRY_PROJECT
+
+ENV VITE_SENTRY_DSN="${VITE_SENTRY_DSN}" \
+    VITE_SENTRY_ENVIRONMENT="${VITE_SENTRY_ENVIRONMENT}" \
+    VITE_SENTRY_RELEASE="${SENTRY_RELEASE}" \
+    SENTRY_AUTH_TOKEN="${SENTRY_AUTH_TOKEN}" \
+    SENTRY_ORG="${SENTRY_ORG}" \
+    SENTRY_PROJECT="${SENTRY_PROJECT}"
 
 # Install dependencies first (better layer caching)
 COPY frontend/package.json frontend/yarn.lock ./

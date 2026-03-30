@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import cesium from 'vite-plugin-cesium'
+import { sentryVitePlugin } from '@sentry/vite-plugin'
 
 const ON_DEMAND_EXPERIENCE_ASSET_GLOBS = [
   '**/assets/MapPage-*.js',
@@ -12,80 +13,99 @@ const ON_DEMAND_EXPERIENCE_ASSET_GLOBS = [
 
 const ON_DEMAND_EXPERIENCE_ASSET_REGEX = /\/assets\/(?:MapPage|GlobePage|maplibre-gl)-.*\.(?:js|css)$/i
 const ON_DEMAND_VENDOR_WARNING_LIMIT_KB = 1100
+const sentryAuthToken = process.env['SENTRY_AUTH_TOKEN']
+const sentryOrg = process.env['SENTRY_ORG']
+const sentryProject = process.env['SENTRY_PROJECT']
+const sentryRelease = process.env['SENTRY_RELEASE']
+const sentrySourcemapUploadEnabled = Boolean(sentryAuthToken && sentryOrg && sentryProject)
+
+const plugins = [
+  react(),
+  cesium(),
+  VitePWA({
+    registerType: 'autoUpdate',
+    includeAssets: ['favicon.svg', 'icons.svg'],
+    manifest: {
+      name: 'Resilience — Mission Operations Console',
+      short_name: 'RESILIENCE',
+      description: 'Mission operations console for field command and control',
+      theme_color: '#1c2127',
+      background_color: '#1c2127',
+      display: 'standalone',
+      scope: '/',
+      start_url: '/',
+      icons: [
+        {
+          src: 'favicon.svg',
+          sizes: 'any',
+          type: 'image/svg+xml',
+          purpose: 'any maskable',
+        },
+      ],
+    },
+    workbox: {
+      // Precache the common application shell; keep map/globe route assets
+      // on-demand so non-map sessions do not pay their install-time cost.
+      globPatterns: ['**/*.{js,css,html,svg,png,ico,woff,woff2}'],
+      globIgnores: ['**/Cesium.js', '**/cesium/**', ...ON_DEMAND_EXPERIENCE_ASSET_GLOBS],
+      maximumFileSizeToCacheInBytes: 6 * 1024 * 1024, // 6 MB
+      // Promote the new service worker immediately so old chunk manifests are
+      // replaced as soon as a new deploy is fetched.
+      skipWaiting: true,
+      clientsClaim: true,
+      // Remove stale precache entries from old deploys so old chunk URLs
+      // are never served after a new SW activates.
+      cleanupOutdatedCaches: true,
+      // Network-first for API — serve cached data when offline
+      runtimeCaching: [
+        {
+          urlPattern: /^\/api\/.*/i,
+          handler: 'NetworkFirst',
+          options: {
+            cacheName: 'api-cache',
+            networkTimeoutSeconds: 5,
+            expiration: {
+              maxEntries: 100,
+              maxAgeSeconds: 60 * 60 * 24, // 24 hours
+            },
+            cacheableResponse: {
+              statuses: [0, 200],
+            },
+          },
+        },
+        {
+          urlPattern: ON_DEMAND_EXPERIENCE_ASSET_REGEX,
+          handler: 'StaleWhileRevalidate',
+          options: {
+            cacheName: 'experience-asset-cache',
+            expiration: {
+              maxEntries: 16,
+              maxAgeSeconds: 60 * 60 * 24 * 7, // 7 days
+            },
+            cacheableResponse: {
+              statuses: [200],
+            },
+          },
+        },
+      ],
+    },
+  }),
+]
+
+if (sentrySourcemapUploadEnabled) {
+  plugins.push(
+    sentryVitePlugin({
+      authToken: sentryAuthToken,
+      org: sentryOrg,
+      project: sentryProject,
+      release: sentryRelease ? { name: sentryRelease } : undefined,
+      telemetry: false,
+    })
+  )
+}
 
 export default defineConfig({
-  plugins: [
-    react(),
-    cesium(),
-    VitePWA({
-      registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'icons.svg'],
-      manifest: {
-        name: 'Resilience — Mission Operations Console',
-        short_name: 'RESILIENCE',
-        description: 'Mission operations console for field command and control',
-        theme_color: '#1c2127',
-        background_color: '#1c2127',
-        display: 'standalone',
-        scope: '/',
-        start_url: '/',
-        icons: [
-          {
-            src: 'favicon.svg',
-            sizes: 'any',
-            type: 'image/svg+xml',
-            purpose: 'any maskable',
-          },
-        ],
-      },
-      workbox: {
-        // Precache the common application shell; keep map/globe route assets
-        // on-demand so non-map sessions do not pay their install-time cost.
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff,woff2}'],
-        globIgnores: ['**/Cesium.js', '**/cesium/**', ...ON_DEMAND_EXPERIENCE_ASSET_GLOBS],
-        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024, // 6 MB
-        // Promote the new service worker immediately so old chunk manifests are
-        // replaced as soon as a new deploy is fetched.
-        skipWaiting: true,
-        clientsClaim: true,
-        // Remove stale precache entries from old deploys so old chunk URLs
-        // are never served after a new SW activates.
-        cleanupOutdatedCaches: true,
-        // Network-first for API — serve cached data when offline
-        runtimeCaching: [
-          {
-            urlPattern: /^\/api\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-cache',
-              networkTimeoutSeconds: 5,
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24, // 24 hours
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
-          {
-            urlPattern: ON_DEMAND_EXPERIENCE_ASSET_REGEX,
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'experience-asset-cache',
-              expiration: {
-                maxEntries: 16,
-                maxAgeSeconds: 60 * 60 * 24 * 7, // 7 days
-              },
-              cacheableResponse: {
-                statuses: [200],
-              },
-            },
-          },
-        ],
-      },
-    }),
-  ],
+  plugins,
   resolve: {
     dedupe: ['react', 'react-dom'],
   },
@@ -100,6 +120,7 @@ export default defineConfig({
     },
   },
   build: {
+    sourcemap: sentrySourcemapUploadEnabled,
     // The MapLibre runtime is intentionally isolated into its own on-demand
     // chunk, excluded from precache, and only loaded for map sessions. Raise
     // the warning threshold just above that known vendor chunk so build output

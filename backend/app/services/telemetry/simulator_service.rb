@@ -30,11 +30,23 @@ module Telemetry
           tick
         rescue ActiveRecord::StatementInvalid, PG::Error => e
           Rails.logger.warn "[Telemetry::Simulator] DB error: #{e.message} — retrying in 10s"
+          Observability.capture_exception(
+            e,
+            tags: { component: "telemetry_simulator", error_class: "db_error" },
+            throttle_key: "telemetry_simulator:db_error:#{e.class}",
+            throttle_seconds: 60
+          )
           sleep 10
           @state = build_initial_state
           retry
         rescue StandardError => e
           Rails.logger.error "[Telemetry::Simulator] #{e.class}: #{e.message}"
+          Observability.capture_exception(
+            e,
+            tags: { component: "telemetry_simulator", error_class: "unexpected_error" },
+            throttle_key: "telemetry_simulator:unexpected_error:#{e.class}",
+            throttle_seconds: 60
+          )
           sleep TICK_INTERVAL
           retry
         end

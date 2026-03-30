@@ -46,6 +46,14 @@ module Correlations
 
               if consecutive_errors >= MAX_CONSECUTIVE_ERRORS
                 Rails.logger.error "[CorrelationEvaluator] CRITICAL: #{MAX_CONSECUTIVE_ERRORS} consecutive DB errors — pausing #{DEAD_SLEEP_SECONDS}s"
+                Observability.capture_exception(
+                  e,
+                  tags: { component: "correlation_evaluator", error_class: "db_error" },
+                  extra: { consecutive_errors: consecutive_errors },
+                  fingerprint: ["correlation_evaluator", "db_error", e.class.name],
+                  throttle_key: "correlation_evaluator:db_error:#{e.class}",
+                  throttle_seconds: DEAD_SLEEP_SECONDS
+                )
                 sleep DEAD_SLEEP_SECONDS
                 consecutive_errors = 0
                 backoff            = 5
@@ -61,6 +69,14 @@ module Correlations
 
               if consecutive_errors >= MAX_CONSECUTIVE_ERRORS
                 Rails.logger.error "[CorrelationEvaluator] CRITICAL: #{MAX_CONSECUTIVE_ERRORS} consecutive errors — pausing #{DEAD_SLEEP_SECONDS}s"
+                Observability.capture_exception(
+                  e,
+                  tags: { component: "correlation_evaluator", error_class: "unexpected_error" },
+                  extra: { consecutive_errors: consecutive_errors },
+                  fingerprint: ["correlation_evaluator", "unexpected_error", e.class.name],
+                  throttle_key: "correlation_evaluator:unexpected_error:#{e.class}",
+                  throttle_seconds: DEAD_SLEEP_SECONDS
+                )
                 sleep DEAD_SLEEP_SECONDS
                 consecutive_errors = 0
                 backoff            = 5
@@ -70,6 +86,15 @@ module Correlations
             end
           end
         end
+      rescue StandardError => e
+        Rails.logger.error "[CorrelationEvaluator] thread died: #{e.class}: #{e.message}"
+        Observability.capture_exception(
+          e,
+          tags: { component: "correlation_evaluator", lifecycle: "thread_exit" },
+          throttle_key: "correlation_evaluator:thread_exit:#{e.class}",
+          throttle_seconds: 300
+        )
+        raise
       end
     end
   end

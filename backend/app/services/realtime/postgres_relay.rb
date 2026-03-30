@@ -33,6 +33,23 @@ module Realtime
               Rails.logger.error(
                 "[#{logger_prefix}] relay_error channel=#{channel} error=#{e.class} message=#{e.message}"
               )
+              Observability.capture_exception(
+                e,
+                tags: { component: "postgres_relay", channel: channel, relay: logger_prefix.downcase.tr(" ", "_") },
+                throttle_key: "postgres_relay:#{channel}:#{e.class}",
+                throttle_seconds: 60
+              )
+              sleep RECONNECT_DELAY_SECONDS
+            rescue StandardError => e
+              Rails.logger.error(
+                "[#{logger_prefix}] relay_unexpected_error channel=#{channel} error=#{e.class} message=#{e.message}"
+              )
+              Observability.capture_exception(
+                e,
+                tags: { component: "postgres_relay", channel: channel, relay: logger_prefix.downcase.tr(" ", "_") },
+                throttle_key: "postgres_relay_unexpected:#{channel}:#{e.class}",
+                throttle_seconds: 60
+              )
               sleep RECONNECT_DELAY_SECONDS
             ensure
               begin

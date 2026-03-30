@@ -33,6 +33,15 @@ unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAM
           Thread.current.name = name
           block.call
         end
+      rescue StandardError => e
+        Rails.logger.error "[FeedIngestion] thread=#{name} died: #{e.class}: #{e.message}"
+        Observability.capture_exception(
+          e,
+          tags: { component: "feed_ingestion", thread: name },
+          throttle_key: "feed_ingestion_thread:#{name}:#{e.class}",
+          throttle_seconds: 300
+        )
+        raise
       end
     end
 
@@ -80,6 +89,14 @@ unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAM
 
             if consecutive_errors >= MAX_CONSECUTIVE_ERRORS
               Rails.logger.error "#{tag} CRITICAL: #{MAX_CONSECUTIVE_ERRORS} consecutive soft failures — pausing #{DEAD_SLEEP_SECONDS}s"
+              Observability.capture_message(
+                "#{tag} critical soft failure",
+                tags: { component: "feed_ingestion", feed: tag.delete_prefix("[").delete_suffix("]") },
+                extra: { consecutive_errors: consecutive_errors, errors: result.errors.first(3) },
+                fingerprint: ["feed_ingestion", "soft_failure", tag],
+                throttle_key: "feed_ingestion:soft_failure:#{tag}",
+                throttle_seconds: DEAD_SLEEP_SECONDS
+              )
               sleep DEAD_SLEEP_SECONDS
               consecutive_errors = 0
               backoff            = 5
@@ -96,6 +113,14 @@ unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAM
 
           if consecutive_errors >= MAX_CONSECUTIVE_ERRORS
             Rails.logger.error "#{tag} CRITICAL: #{MAX_CONSECUTIVE_ERRORS} consecutive DB errors — pausing #{DEAD_SLEEP_SECONDS}s"
+            Observability.capture_exception(
+              e,
+              tags: { component: "feed_ingestion", feed: tag.delete_prefix("[").delete_suffix("]"), error_class: "db_error" },
+              extra: { consecutive_errors: consecutive_errors },
+              fingerprint: ["feed_ingestion", "db_error", tag, e.class.name],
+              throttle_key: "feed_ingestion:db_error:#{tag}:#{e.class}",
+              throttle_seconds: DEAD_SLEEP_SECONDS
+            )
             sleep DEAD_SLEEP_SECONDS
             consecutive_errors = 0
             backoff            = 5
@@ -111,6 +136,14 @@ unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAM
 
           if consecutive_errors >= MAX_CONSECUTIVE_ERRORS
             Rails.logger.error "#{tag} CRITICAL: #{MAX_CONSECUTIVE_ERRORS} consecutive errors — pausing #{DEAD_SLEEP_SECONDS}s"
+            Observability.capture_exception(
+              e,
+              tags: { component: "feed_ingestion", feed: tag.delete_prefix("[").delete_suffix("]"), error_class: "unexpected_error" },
+              extra: { consecutive_errors: consecutive_errors },
+              fingerprint: ["feed_ingestion", "unexpected_error", tag, e.class.name],
+              throttle_key: "feed_ingestion:unexpected_error:#{tag}:#{e.class}",
+              throttle_seconds: DEAD_SLEEP_SECONDS
+            )
             sleep DEAD_SLEEP_SECONDS
             consecutive_errors = 0
             backoff            = 5
