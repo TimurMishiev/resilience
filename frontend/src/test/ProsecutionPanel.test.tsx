@@ -177,6 +177,41 @@ describe('ProsecutionPanel', () => {
     expect(screen.getByText(/cmd@test\.com/)).toBeInTheDocument()
   })
 
+  it('requires signal IDs for evidence-linked steps and labels the field precisely', () => {
+    mockRole.isCommander = true
+    renderPanel(makeIncident({ prosecution_phase: 'assessing' }))
+
+    fireEvent.click(screen.getByRole('button', { name: /add step/i }))
+    fireEvent.change(screen.getByDisplayValue('Operational note'), { target: { value: 'evidence_linked' } })
+
+    expect(screen.getByPlaceholderText(/signal ids \(comma-separated\)/i)).toBeInTheDocument()
+    expect(screen.getByText(/signal ids only/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add Step' })).toBeDisabled()
+  })
+
+  it('submits evidence-linked steps as signal_ids only when signal IDs are provided', () => {
+    mockRole.isCommander = true
+    renderPanel(makeIncident({ prosecution_phase: 'assessing' }))
+
+    fireEvent.click(screen.getByRole('button', { name: /add step/i }))
+    fireEvent.change(screen.getByDisplayValue('Operational note'), { target: { value: 'evidence_linked' } })
+    fireEvent.change(screen.getByPlaceholderText(/signal ids \(comma-separated\)/i), {
+      target: { value: 'sig-1, sig-2' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Add Step' }))
+
+    expect(mockHooks.addStepMutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'inc-1',
+        body: expect.objectContaining({
+          action_type: 'evidence_linked',
+          evidence_refs: { signal_ids: ['sig-1', 'sig-2'] },
+        }),
+      }),
+      expect.anything(),
+    )
+  })
+
   it('input does not freeze during re-renders — isEditing gate not broken', async () => {
     mockRole.isCommander = true
     renderPanel(makeIncident({ prosecution_phase: 'assessing' }))

@@ -175,6 +175,12 @@ RSpec.describe Incidents::ProsecutionService, type: :service do
       expect(result.errors.first).to match(/Invalid action_type/)
     end
 
+    it "returns failure for evidence_linked without any evidence refs" do
+      result = call(action_type: "evidence_linked", evidence_refs: {})
+      expect(result.success?).to be false
+      expect(result.errors.first).to match(/at least one evidence reference/)
+    end
+
     it "returns failure when incident is not being prosecuted" do
       fresh = create(:incident)
       result = described_class.call(

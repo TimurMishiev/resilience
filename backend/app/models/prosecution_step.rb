@@ -19,7 +19,7 @@ class ProsecutionStep < ApplicationRecord
   before_update { throw :abort }
 
   # ── Scopes ───────────────────────────────────────────────────────────────────
-  scope :for_incident, ->(id) { where(incident_id: id).order(occurred_at: :asc) }
+  scope :for_incident, ->(id) { where(incident_id: id).order(occurred_at: :asc, created_at: :asc) }
   scope :by_phase,     ->(p)  { where(phase: p) }
 
   private

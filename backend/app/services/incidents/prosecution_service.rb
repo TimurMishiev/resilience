@@ -115,6 +115,10 @@ module Incidents
         return ServiceResult.failure(errors: ["Invalid action_type: #{@action_type}"])
       end
 
+      if @action_type == "evidence_linked" && evidence_refs_empty?
+        return ServiceResult.failure(errors: ["Evidence-linked steps require at least one evidence reference"])
+      end
+
       current_idx = PHASE_ORDER.index(@incident.prosecution_phase)
       target_idx  = PHASE_ORDER.index(@phase)
 
@@ -174,6 +178,14 @@ module Incidents
 
     def terminal_status?
       %w[resolved closed].include?(@incident.status)
+    end
+
+    def evidence_refs_empty?
+      return true unless @evidence_refs.is_a?(Hash)
+
+      @evidence_refs.values.all? do |value|
+        Array(value).map(&:to_s).reject(&:blank?).empty?
+      end
     end
   end
 end

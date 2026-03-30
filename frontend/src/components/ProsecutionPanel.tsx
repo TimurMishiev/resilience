@@ -65,6 +65,10 @@ function fmt(iso: string) {
   })
 }
 
+function parseSignalIds(raw: string): string[] {
+  return raw.trim().split(/[\s,]+/).filter(Boolean)
+}
+
 // ── sub-components ────────────────────────────────────────────────────────
 
 function PhaseTrack({ phase }: { phase: ProsecutionPhase | null }) {
@@ -135,13 +139,11 @@ export default function ProsecutionPanel({ incident }: Props) {
 
   const phase     = incident.prosecution_phase ?? null
   const nextPhase = phase ? NEXT_PHASE[phase] : null
+  const signalIds = parseSignalIds(evidenceRaw)
+  const missingEvidence = actionType === 'evidence_linked' && signalIds.length === 0
 
   function parseEvidenceRefs(): ProsecutionEvidenceRefs {
-    const raw = evidenceRaw.trim()
-    if (!raw) return {}
-    // Accept comma-separated IDs; treat the whole input as signal_ids
-    const ids = raw.split(/[\s,]+/).filter(Boolean)
-    return ids.length > 0 ? { signal_ids: ids } : {}
+    return signalIds.length > 0 ? { signal_ids: signalIds } : {}
   }
 
   function handleInitiate() {
@@ -151,6 +153,8 @@ export default function ProsecutionPanel({ incident }: Props) {
   }
 
   function handleAddStep() {
+    if (missingEvidence) return
+
     const trimmed = notes.trim()
     addStep.mutate({
       id: incident.id,
@@ -321,13 +325,18 @@ export default function ProsecutionPanel({ incident }: Props) {
           />
 
           {actionType === 'evidence_linked' && (
-            <TextArea
-              value={evidenceRaw}
-              onChange={e => setEvidenceRaw(e.target.value)}
-              placeholder="Signal or entity IDs (comma-separated)"
-              rows={2}
-              style={{ fontSize: 12, resize: 'vertical' }}
-            />
+            <>
+              <TextArea
+                value={evidenceRaw}
+                onChange={e => setEvidenceRaw(e.target.value)}
+                placeholder="Signal IDs (comma-separated)"
+                rows={2}
+                style={{ fontSize: 12, resize: 'vertical' }}
+              />
+              <div style={{ fontSize: 11, color: '#6b7280' }}>
+                Evidence-linked steps currently accept signal IDs only.
+              </div>
+            </>
           )}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
@@ -335,7 +344,7 @@ export default function ProsecutionPanel({ incident }: Props) {
             <Button
               small intent="primary"
               loading={addStep.isPending}
-              disabled={!notes.trim() && actionType !== 'evidence_linked'}
+              disabled={missingEvidence || (!notes.trim() && actionType !== 'evidence_linked')}
               onClick={handleAddStep}
             >
               Add Step

@@ -370,4 +370,85 @@ RSpec.describe "Api::Incidents", type: :request do
       }.to change { AuditEvent.where(event_type: "note_added", entity_id: incident.id).count }.by(1)
     end
   end
+
+  describe "POST /api/incidents/:id/prosecute" do
+    it "requires commander role" do
+      post "/api/incidents/#{incident.id}/prosecute",
+           params: { notes: "Begin prosecution" },
+           headers: auth_headers(operator), as: :json
+
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "initiates prosecution and returns serialized incident prosecution fields" do
+      post "/api/incidents/#{incident.id}/prosecute",
+           params: { notes: "Begin prosecution" },
+           headers: auth_headers(commander), as: :json
+
+      expect(response).to have_http_status(:created)
+      body = JSON.parse(response.body)
+      expect(body["prosecution_phase"]).to eq("assessing")
+      expect(body.dig("prosecuted_by", "id")).to eq(commander.id)
+      expect(body["prosecution_initiated_at"]).not_to be_nil
+    end
+  end
+
+  describe "GET /api/incidents/:id/prosecution_steps" do
+    it "is visible to authenticated operators and returns steps oldest-first" do
+      incident.update!(
+        prosecution_phase: "assessing",
+        prosecuted_by: commander,
+        prosecution_initiated_at: 15.minutes.ago
+      )
+      older = create(:prosecution_step, incident: incident, actor: commander, occurred_at: 10.minutes.ago, created_at: 10.minutes.ago)
+      newer = create(:prosecution_step, incident: incident, actor: commander, occurred_at: 5.minutes.ago, created_at: 5.minutes.ago)
+
+      get "/api/incidents/#{incident.id}/prosecution_steps",
+          headers: auth_headers(operator)
+
+      expect(response).to have_http_status(:ok)
+      body = JSON.parse(response.body)
+      expect(body.map { |step| step["id"] }).to eq([older.id, newer.id])
+    end
+  end
+
+  describe "POST /api/incidents/:id/prosecution_steps" do
+    before do
+      Incidents::ProsecutionService.call(
+        operation: :initiate,
+        incident: incident,
+        actor: commander,
+      )
+    end
+
+    it "requires commander role" do
+      post "/api/incidents/#{incident.id}/prosecution_steps",
+           params: {
+             phase: "assessing",
+             action_type: "note_added",
+             notes: "Operator should not be able to add this",
+           },
+           headers: auth_headers(operator), as: :json
+
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "filters unknown evidence_refs keys before persisting" do
+      post "/api/incidents/#{incident.id}/prosecution_steps",
+           params: {
+             phase: "assessing",
+             action_type: "evidence_linked",
+             evidence_refs: {
+               signal_ids: ["sig-1", "sig-2"],
+               rogue_key: ["drop-me"],
+             },
+           },
+           headers: auth_headers(commander), as: :json
+
+      expect(response).to have_http_status(:created)
+      body = JSON.parse(response.body)
+      expect(body["evidence_refs"]).to eq({ "signal_ids" => ["sig-1", "sig-2"] })
+      expect(ProsecutionStep.order(:created_at).last.evidence_refs).to eq({ "signal_ids" => ["sig-1", "sig-2"] })
+    end
+  end
 end

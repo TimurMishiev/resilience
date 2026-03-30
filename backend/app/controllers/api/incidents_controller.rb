@@ -227,6 +227,7 @@ module Api
     # Body: { notes: "..." }  (optional)
     def initiate_prosecution
       require_commander!
+      return if performed?
       incident = Incident.find(params[:id])
       result   = Incidents::ProsecutionService.call(
         operation: :initiate,
@@ -245,7 +246,7 @@ module Api
     # GET /api/incidents/:id/prosecution_steps
     def list_prosecution_steps
       incident = Incident.find(params[:id])
-      steps    = incident.prosecution_steps.includes(:actor)
+      steps    = ProsecutionStep.for_incident(incident.id).includes(:actor)
       render json: steps.map { |s| serialize_prosecution_step(s) }
     end
 
@@ -253,6 +254,7 @@ module Api
     # Body: { phase:, action_type:, notes:, evidence_refs: { signal_ids: [], ... } }
     def add_prosecution_step
       require_commander!
+      return if performed?
       incident = Incident.find(params[:id])
       result   = Incidents::ProsecutionService.call(
         operation:     :add_step,
