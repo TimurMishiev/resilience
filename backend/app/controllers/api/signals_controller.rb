@@ -105,7 +105,7 @@ module Api
       end
     ensure
       heartbeat&.kill
-      broadcaster.unsubscribe(queue) if queue
+      broadcaster&.unsubscribe(queue) if queue
       release_sse_stream_lease(lease, stream_name: "signals")
       response.stream.close rescue nil
     end

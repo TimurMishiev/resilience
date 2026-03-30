@@ -28,6 +28,9 @@
 # SSE streams permanently occupy Puma threads while connected. The default 32
 # thread pool works with the runtime SSE admission caps to preserve headroom
 # for regular API traffic instead of letting reconnect storms consume the pool.
+# NOTE: production (fly.toml) overrides this to RAILS_MAX_THREADS=10. Tune
+# SSE_MAX_STREAMS_PER_USER and SSE_MAX_STREAMS_PER_IP against the actual
+# thread count in each environment, not this default.
 threads_count = ENV.fetch("RAILS_MAX_THREADS", 32)
 threads threads_count, threads_count
 

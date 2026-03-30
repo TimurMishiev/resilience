@@ -49,7 +49,17 @@ production:
     queue: background
     schedule: every 30 minutes
 
+  sse_lease_cleanup:
+    class: Sse::LeaseCleanupJob
+    queue: background
+    schedule: every 5 minutes
+
 development:
+  sse_lease_cleanup:
+    class: Sse::LeaseCleanupJob
+    queue: background
+    schedule: every 5 minutes
+
   vessel_gap_detection:
     class: Vessels::GapDetectionJob
     queue: background
