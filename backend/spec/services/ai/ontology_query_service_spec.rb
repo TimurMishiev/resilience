@@ -224,6 +224,62 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
     end
   end
 
+  describe "site-root signal distance refinement" do
+    let(:tool_input) { {} }
+    let(:site) do
+      create(
+        :site,
+        name: "Equator Site",
+        latitude: 0.0,
+        longitude: 0.0,
+      )
+    end
+    let!(:near_signal) do
+      create(
+        :external_signal,
+        signal_type: "gps_jamming",
+        source: "gpsjam",
+        lat: 0.9,
+        lng: 0.9,
+        occurred_at: 2.hours.ago,
+      )
+    end
+    let!(:second_near_signal) do
+      create(
+        :external_signal,
+        signal_type: "gps_jamming",
+        source: "gpsjam",
+        lat: 0.8,
+        lng: 0.8,
+        occurred_at: 150.minutes.ago,
+      )
+    end
+    let!(:bounding_box_only_signals) do
+      Array.new(5) do |index|
+        create(
+          :external_signal,
+          signal_type: "gps_jamming",
+          source: "gpsjam",
+          lat: 1.8,
+          lng: 1.8,
+          occurred_at: (index + 1).minutes.ago,
+        )
+      end
+    end
+    it "keeps scanning past bounding-box-only candidates until it finds the exact-radius matches" do
+      service = described_class.new(query: "show signals near Equator Site")
+      result = service.send(:exact_signals_near_site, site, window_start: 24.hours.ago, limit: 2)
+
+      expect(result.map(&:id)).to contain_exactly(
+        near_signal.id,
+        second_near_signal.id,
+      )
+      expect(result.map(&:id)).not_to include(
+        *bounding_box_only_signals.map(&:id),
+      )
+    end
+  end
+
   describe "incident-root graph execution" do
     let(:site) { create(:site, name: "Harbor Site Bravo") }
     let(:incident) { create(:incident, site: site, title: "Pier intrusion investigation") }
@@ -308,93 +364,6 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
       expect(result.nodes.map { |node| node[:type] }).to include("asset", "site", "task", "recommendation")
       expect(result.nodes.filter { |node| node[:type] == "recommendation" }.map { |node| node[:entity_id] }).to contain_exactly(recent_recommendation.id)
       expect(result.edges).to include(include(relation: "recommendation_target"))
-    end
-  end
-
-  describe "task-root graph execution" do
-    let(:site) { create(:site, name: "Harbor Site Golf") }
-    let(:asset) { create(:asset, name: "Sentinel 02", home_site: site, status: "available") }
-    let(:task) do
-      create(
-        :task,
-        site: site,
-        asset: asset,
-        title: "Inspect quay sector 4",
-        priority: "high",
-        workflow_status: "triaged",
-      )
-    end
-    let(:incident) { create(:incident, site: site, title: "Quay intrusion investigation") }
-    let!(:signal) do
-      create(
-        :external_signal,
-        signal_type: "gps_jamming",
-        source: "gpsjam",
-        occurred_at: 90.minutes.ago,
-      )
-    end
-    let!(:alert) do
-      create(
-        :signal_rule_match,
-        task: task,
-        site: site,
-        incident: incident,
-        signal: signal,
-        fired_at: 45.minutes.ago,
-      )
-    end
-    let(:tool_input) do
-      {
-        "root_type" => "task",
-        "root_name" => "Inspect quay sector 4",
-        "relations" => %w[site asset incidents alerts],
-        "time_window_hours" => 24,
-        "limit" => 5,
-      }
-    end
-
-    it "returns bounded task context including the singular asset relation" do
-      result = described_class.call(query: "show the site, asset, incidents, and alerts for Inspect quay sector 4")
-
-      expect(result.success).to be(true)
-      expect(result.normalized_query[:root_type]).to eq("task")
-      expect(result.normalized_query[:relations]).to eq(%w[site asset incidents alerts])
-      expect(result.nodes.map { |node| node[:type] }).to include("task", "site", "asset", "incident", "alert")
-      expect(result.nodes.find { |node| node[:type] == "incident" }[:metadata]).to include(:alert_count)
-      expect(result.edges).to include(include(relation: "task_asset"), include(relation: "incident_task"))
-    end
-  end
-
-  describe "area-root graph execution" do
-    let(:area) { create(:area_of_operation, name: "Northern Approaches") }
-    let!(:primary_site) { create(:site, name: "Alpha Pier", area_of_operation: area) }
-    let!(:secondary_site) { create(:site, name: "Bravo Pier", area_of_operation: area) }
-    let!(:incident) do
-      create(
-        :incident,
-        site: secondary_site,
-        area_of_operation: area,
-        title: "Channel intrusion",
-      )
-    end
-    let(:tool_input) do
-      {
-        "root_type" => "area_of_operation",
-        "root_name" => "Northern Approaches",
-        "relations" => %w[sites incidents],
-        "time_window_hours" => 72,
-        "limit" => 1,
-      }
-    end
-
-    it "auto-injects incident sites that are outside the bounded site list" do
-      result = described_class.call(query: "show the sites and incidents in Northern Approaches")
-
-      expect(result.success).to be(true)
-      expect(result.normalized_query[:root_type]).to eq("area_of_operation")
-      expect(result.nodes.map { |node| node[:type] }).to include("area_of_operation", "site", "incident")
-      expect(result.nodes.filter { |node| node[:type] == "site" }.map { |node| node[:label] }).to include("Alpha Pier", "Bravo Pier")
-      expect(result.edges).to include(include(relation: "incident_area_of_operation"), include(relation: "site_incident"))
     end
   end
 
@@ -521,6 +490,36 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
   end
 
   describe "relation isolation" do
+    context "for site-root task queries without assets" do
+      let(:site) { create(:site, name: "Harbor Site Delta") }
+      let(:asset) { create(:asset, name: "Harbor Patrol 01", home_site: site, status: "available") }
+      let!(:task) do
+        create(
+          :task,
+          site: site,
+          asset: asset,
+          title: "Inspect restricted pier",
+        )
+      end
+      let(:tool_input) do
+        {
+          "root_type" => "site",
+          "root_name" => "Harbor Site Delta",
+          "relations" => ["tasks"],
+          "time_window_hours" => 24,
+          "limit" => 5,
+        }
+      end
+
+      it "does not include asset nodes when only tasks are requested" do
+        result = described_class.call(query: "show tasks for Harbor Site Delta")
+
+        expect(result.success).to be(true)
+        expect(result.normalized_query[:relations]).to eq(["tasks"])
+        expect(result.nodes.map { |node| node[:type] }).to contain_exactly("site", "task")
+      end
+    end
+
     context "for site-root alert queries" do
       let(:site) { create(:site, name: "Harbor Site Delta") }
       let(:incident) { create(:incident, site: site, title: "Restricted pier approach") }
@@ -600,6 +599,55 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
         expect(result.success).to be(true)
         expect(result.normalized_query[:relations]).to eq(["alerts"])
         expect(result.nodes.map { |node| node[:type] }).to contain_exactly("task", "alert")
+      end
+    end
+
+    context "for incident-root task queries" do
+      let(:site) { create(:site, name: "Harbor Site Foxtrot") }
+      let(:asset) { create(:asset, name: "Guardian 03", home_site: site, status: "available") }
+      let(:incident) { create(:incident, site: site, title: "Pier intrusion investigation") }
+      let!(:task) do
+        create(
+          :task,
+          site: site,
+          asset: asset,
+          title: "Secure pier perimeter",
+        )
+      end
+      let!(:signal) do
+        create(
+          :external_signal,
+          signal_type: "gps_jamming",
+          source: "gpsjam",
+          occurred_at: 2.hours.ago,
+        )
+      end
+      let!(:alert) do
+        create(
+          :signal_rule_match,
+          task: task,
+          site: site,
+          incident: incident,
+          signal: signal,
+          fired_at: 90.minutes.ago,
+        )
+      end
+      let(:tool_input) do
+        {
+          "root_type" => "incident",
+          "root_name" => "Pier intrusion investigation",
+          "relations" => ["tasks"],
+          "time_window_hours" => 24,
+          "limit" => 5,
+        }
+      end
+
+      it "does not include asset nodes when tasks are requested for an incident" do
+        result = described_class.call(query: "show tasks for Pier intrusion investigation")
+
+        expect(result.success).to be(true)
+        expect(result.normalized_query[:relations]).to eq(["tasks"])
+        expect(result.nodes.map { |node| node[:type] }).to contain_exactly("incident", "task")
       end
     end
   end

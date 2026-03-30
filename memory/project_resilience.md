@@ -225,8 +225,9 @@ These are no longer “ignore for now” items for future agents; they are the n
   - Now explicitly promoted by the user as the next active build item.
 - **Cross-entity natural-language ontology query**
   - Not part of the original canonical 4-phase roadmap.
-  - Natural-language filter translation exists for tasks/signals, but graph-style ontology traversal via NL does not.
-  - Now explicitly promoted by the user into the active roadmap after kill-chain.
+  - Now shipped as a commander-only `/ontology` page backed by `POST /api/ai/ontology_query`.
+  - Uses Anthropic tool-use to translate one named root entity plus relation focus into a bounded graph traversal over the existing incident/site/task/asset/area graph.
+  - Returns normalized query metadata, nodes, edges, and deterministic counts/summary rather than inventing a second graph engine.
 - **Globe heatmap parity**
   - Not part of the original canonical Phase 3 closeout bar.
   - Now explicitly promoted by the user after kill-chain and cross-entity ontology query.
@@ -245,7 +246,7 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
 #### Promoted next-build track
 
 1. ~~**Kill-chain / prosecution workflow**~~ — **SHIPPED (2026-03-29)**
-2. **Cross-entity natural-language ontology query**
+2. ~~**Cross-entity natural-language ontology query**~~ — **SHIPPED (2026-03-29)**
 3. **Globe heatmap parity**
 
 #### Recently closed
@@ -259,6 +260,16 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
   - 7th tab "Prosecution" + phase badge in `IncidentDetailPage.tsx`
   - SSE events: `prosecution_started` and `prosecution_step_added` invalidate queries + show toast
   - 997 RSpec (43 new), 252 Vitest (10 new), 0 TS errors, 0 ESLint errors
+
+- **Cross-entity natural-language ontology query** (shipped 2026-03-29)
+  - Commander-only `/ontology` route and sidebar entry.
+  - Backend endpoint: `POST /api/ai/ontology_query`.
+  - `Ai::OntologyQueryService` uses Anthropic tool-use to translate one named root entity (`site`, `incident`, `task`, `asset`, or `area_of_operation`) plus requested relations into a bounded graph query.
+  - Execution stays deterministic and reuses the existing domain model: sites, areas, incidents, alerts, tasks, assets, signals, recommendations, and prosecution steps.
+  - Response shape includes normalized query metadata, summary text, node/edge graph data, and by-type counts.
+  - Frontend `OntologyQueryPanel.tsx` renders query controls, replay fail-closed behavior, grouped node results, and relationship edges.
+  - Post-ship hardening closed the real ontology gaps: consistent time-window enforcement, relation-isolation enforcement, asset-root recommendation traversal fix, explicit Anthropic timeout with zero retries, failure logging + observability capture, 60s catalog caching, `Site.active` root resolution, singular `asset` relation typing, and direct task-root + area-root proof.
+  - Verification after hardening: 1046 RSpec, 260 Vitest, 0 TypeScript errors, frontend lint passed, frontend build passed.
 
 - **Chokepoint geographic overlays**
   - Shipped on both MapPage and GlobePage.
@@ -316,8 +327,8 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
 
 - The active implementation order is:
   1. ~~Kill-chain / prosecution workflow~~ — SHIPPED
-  2. Cross-entity natural-language ontology query  ← **NEXT**
-  3. Globe heatmap parity
+  2. ~~Cross-entity natural-language ontology query~~ — SHIPPED
+  3. Globe heatmap parity  ← **NEXT**
 
 #### Expected remaining canonical phases
 

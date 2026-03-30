@@ -204,30 +204,32 @@ module Ai
       scope, label_column =
         case root_type
         when "site"
-          [Site.active, :name]
+          [Site.active.includes(:area_of_operation), :name]
         when "incident"
-          [Incident.includes(:signal_rule_matches), :title]
+          [Incident.includes(:signal_rule_matches, :site, :area_of_operation), :title]
         when "task"
-          [Task.all, :title]
+          [Task.includes(:site, :asset), :title]
         when "asset"
-          [Asset.all, :name]
+          [Asset.includes(:home_site), :name]
         when "area_of_operation"
           [AreaOfOperation.all, :name]
         end
 
       return ServiceResult.failure(errors: ["Unsupported root entity type: #{root_type}"]) if scope.nil?
 
+      quoted_column = scope.klass.connection.quote_column_name(label_column.to_s)
+
       if uuid_like?(root_name)
         record = scope.find_by(id: root_name)
         return ServiceResult.success(root: record) if record
       end
 
-      exact = scope.where("LOWER(#{label_column}) = ?", root_name.downcase).limit(2).to_a
+      exact = scope.where("LOWER(#{quoted_column}) = ?", root_name.downcase).limit(2).to_a
       return ServiceResult.success(root: exact.first) if exact.one?
       return ServiceResult.failure(errors: ["#{human_root_type(root_type)} name '#{root_name}' is ambiguous"]) if exact.many?
 
       pattern = "%#{ActiveRecord::Base.sanitize_sql_like(root_name)}%"
-      partial = scope.where("#{label_column} ILIKE ?", pattern).limit(3).to_a
+      partial = scope.where("#{quoted_column} ILIKE ?", pattern).limit(3).to_a
       return ServiceResult.success(root: partial.first) if partial.one?
 
       if partial.many?
@@ -280,13 +282,15 @@ module Ai
 
       tasks = []
       if relations.include?("tasks")
-        tasks = Task.where(site_id: site.id).includes(:asset).order(created_at: :desc).limit(limit)
+        tasks = Task.where(site_id: site.id)
+        tasks = tasks.includes(:asset) if relations.include?("assets")
+        tasks = tasks.order(created_at: :desc).limit(limit)
         tasks.each do |task|
           task_node = add_task_node(task)
           add_edge(site_node, task_node, "site_task")
           included_targets << ["Task", task.id]
 
-          next unless task.asset
+          next unless relations.include?("assets") && task.asset
 
           asset_node = add_asset_node(task.asset)
           add_edge(task_node, asset_node, "task_asset")
@@ -326,11 +330,7 @@ module Ai
       end
 
       if relations.include?("signals")
-        ExternalSignal.near_point(site.latitude.to_f, site.longitude.to_f, SIGNAL_RADIUS_KM)
-                      .where("occurred_at >= ?", window_start)
-                      .order(occurred_at: :desc)
-                      .limit(limit)
-                      .each do |signal|
+        exact_signals_near_site(site, window_start:, limit:).each do |signal|
           signal_node = add_signal_node(signal)
           add_edge(site_node, signal_node, "site_signal")
         end
@@ -378,15 +378,10 @@ module Ai
       end
 
       if relations.include?("tasks")
-        incident.tasks.distinct.includes(:asset, :site).order(created_at: :desc).limit(limit).each do |task|
+        incident.tasks.distinct.order(created_at: :desc).limit(limit).each do |task|
           task_node = add_task_node(task)
           add_edge(incident_node, task_node, "incident_task")
           included_targets << ["Task", task.id]
-
-          next unless task.asset
-
-          asset_node = add_asset_node(task.asset)
-          add_edge(task_node, asset_node, "task_asset")
         end
       end
 
@@ -459,11 +454,6 @@ module Ai
             add_edge(incident_node, alert_node, "incident_alert")
             included_targets << ["Incident", alert.incident.id]
           end
-
-          next unless relations.include?("signals") && alert.signal
-
-          signal_node = add_signal_node(alert.signal)
-          add_edge(alert_node, signal_node, "alert_signal")
         end
       end
 
@@ -567,6 +557,42 @@ module Ai
       else
         rec.affected_entity_type.to_s.underscore
       end
+    end
+
+    def exact_signals_near_site(site, window_start:, limit:)
+      matches    = []
+      batch_size = [limit * 4, 25].max
+      offset     = 0
+
+      candidates = ExternalSignal
+        .near_point(site.latitude.to_f, site.longitude.to_f, SIGNAL_RADIUS_KM)
+        .where("occurred_at >= ?", window_start)
+        .order(occurred_at: :desc, id: :desc)
+
+      loop do
+        batch = candidates.offset(offset).limit(batch_size).to_a
+        break if batch.empty?
+
+        batch.each do |signal|
+          next unless signal_within_radius?(signal, site)
+
+          matches << signal
+          return matches if matches.size >= limit
+        end
+
+        offset += batch.size
+      end
+
+      matches
+    end
+
+    def signal_within_radius?(signal, site)
+      Correlations::EvaluatorService.haversine_km(
+        signal.lat.to_f,
+        signal.lng.to_f,
+        site.latitude.to_f,
+        site.longitude.to_f,
+      ) <= SIGNAL_RADIUS_KM
     end
 
     def add_site_node(site, root: false)
