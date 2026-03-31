@@ -39,7 +39,8 @@ import {
 } from '../lib/mapRenderData'
 import { buildMapSignalFeatureCollection, buildMapSignalRenderCollections } from '../lib/mapSignalRendering'
 import { preloadMapRuntime } from '../lib/preloadRoutes'
-import { SIGNAL_COLORS } from '../lib/signalConfig'
+import { ASSET_STATUS_COLORS, SIGNAL_COLORS } from '../lib/signalConfig'
+import type { AssetTrail } from '../lib/telemetry'
 import type { TelemetryMap } from '../lib/telemetry'
 
 const EMPTY_READINGS: TelemetryMap = new Map()
@@ -135,6 +136,7 @@ export interface MapEngineInput {
   areaOfOperations:  AreaOfOperation[]
   breachedSiteIds:   Set<string>
   vesselTracks:      VesselTrack[]
+  assetTrails:       AssetTrail[]
   coverageCircles:   CoverageCircle[]
   chokepoints:       Chokepoint[]
   readings:          TelemetryMap
@@ -183,6 +185,7 @@ export function useMapLibreEngine({
   areaOfOperations,
   breachedSiteIds,
   vesselTracks,
+  assetTrails,
   coverageCircles,
   chokepoints,
   readings,
@@ -1050,6 +1053,53 @@ export function useMapLibreEngine({
       },
     }, 'signal-glow')
   }, [mapLoaded, vesselTracks])
+
+  // ---------------------------------------------------------------------------
+  // Asset trails — one LineString per asset, colored by status, replay-only
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapLoaded) return
+
+    // Always tear down stale layers/source first
+    if (map.getLayer('asset-trail-line'))  map.removeLayer('asset-trail-line')
+    if (map.getSource('asset-trails'))     map.removeSource('asset-trails')
+
+    const features = assetTrails
+      .filter(trail => trail.points.length >= 2)
+      .map(trail => ({
+        type: 'Feature' as const,
+        properties: { status: trail.status, name: trail.name },
+        geometry: {
+          type: 'LineString' as const,
+          coordinates: trail.points.map(p => [p.lng, p.lat]),
+        },
+      }))
+
+    if (features.length === 0) return
+
+    map.addSource('asset-trails', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features },
+    })
+    map.addLayer({
+      id: 'asset-trail-line',
+      type: 'line',
+      source: 'asset-trails',
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: {
+        'line-color': [
+          'match', ['get', 'status'],
+          'available', ASSET_STATUS_COLORS['available'],
+          'assigned',  ASSET_STATUS_COLORS['assigned'],
+          'degraded',  ASSET_STATUS_COLORS['degraded'],
+          ASSET_STATUS_COLORS['offline'], // fallback
+        ],
+        'line-width':   2,
+        'line-opacity':  0.7,
+      },
+    }, 'signal-glow')
+  }, [mapLoaded, assetTrails])
 
   // ---------------------------------------------------------------------------
   // Signal layer visibility — also clears selection when hidden

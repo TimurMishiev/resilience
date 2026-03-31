@@ -63,6 +63,7 @@ Rails.application.routes.draw do
 
     get "telemetry", to: "telemetry#index"
     namespace :telemetry do
+      get :trails
       get :stream
     end
 

@@ -108,9 +108,8 @@ export function ReplayProvider({ children }: { children: ReactNode }) {
     if (!current) return
     const currentMs = new Date(current).getTime()
     const floorMs = Date.now() - REPLAY_STEP_LOOKBACK_DAYS * 86_400_000
-    const prevMs = currentMs <= floorMs
-      ? currentMs
-      : Math.max(currentMs - REPLAY_STEP_MINUTES * 60_000, floorMs)
+    if (currentMs <= floorMs) return
+    const prevMs = Math.max(currentMs - REPLAY_STEP_MINUTES * 60_000, floorMs)
     setAsOf(new Date(prevMs).toISOString())
   }, [setAsOf])
 

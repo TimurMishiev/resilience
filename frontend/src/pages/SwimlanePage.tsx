@@ -138,22 +138,29 @@ function SwimlaneLaneRow({
             aria-hidden="true"
           />
         ))}
-        {eventsAscending.map((event, index) => {
-          const occurredAtMs = Date.parse(event.occurred_at)
-          const leftPct = Math.max(
-            0,
-            Math.min(100, ((occurredAtMs - windowStartMs) / windowDuration) * 100),
-          )
+        {(() => {
+          // Greedy time-aware row assignment: assign each event (oldest→newest)
+          // to the row whose last-placed event is earliest, minimising overlap.
+          const rowLastAtMs = [0, 0, 0]
+          return eventsAscending.map((event) => {
+            const occurredAtMs = Date.parse(event.occurred_at)
+            const leftPct = Math.max(
+              0,
+              Math.min(100, ((occurredAtMs - windowStartMs) / windowDuration) * 100),
+            )
+            const row = rowLastAtMs.indexOf(Math.min(...rowLastAtMs))
+            rowLastAtMs[row] = occurredAtMs
 
-          return (
-            <EventDot
-              key={event.id}
-              event={event}
-              leftPct={leftPct}
-              stackRow={index % 3}
-            />
-          )
-        })}
+            return (
+              <EventDot
+                key={event.id}
+                event={event}
+                leftPct={leftPct}
+                stackRow={row}
+              />
+            )
+          })
+        })()}
       </div>
     </section>
   )

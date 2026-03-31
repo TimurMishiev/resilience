@@ -154,5 +154,22 @@ describe('ReplaySelector', () => {
 
       expect(replayState.setAsOf).toHaveBeenCalledWith(null)
     })
+
+    it('does not overwrite draft value when asOf changes while editing', () => {
+      const { rerender } = render(<ReplaySelector />)
+      const input = screen.getByTitle('Set replay timestamp — leave empty for live data')
+
+      // User focuses and starts typing a new timestamp
+      fireEvent.focus(input)
+      fireEvent.change(input, { target: { value: '2026-03-01T10:30' } })
+      expect(input).toHaveValue('2026-03-01T10:30')
+
+      // Simulate an external asOf update (e.g., a playback tick) while still editing
+      replayState.asOf = '2026-03-01T11:00:00.000Z'
+      rerender(<ReplaySelector />)
+
+      // The draft must be preserved — not overwritten by the new asOf
+      expect(input).toHaveValue('2026-03-01T10:30')
+    })
   })
 })

@@ -48,7 +48,10 @@ module Analytics
     def base_sites
       scope = Site.active.includes(:area_of_operation).order(:name)
       scope = scope.where(id: @site_ids) if @site_ids.any?
-      scope.to_a
+      # Cap at 100 to bound the number of TimelineService calls when no site
+      # filter is provided. Sites with activity bubble up via sort-by-last-event,
+      # so the highest-signal lanes are preserved within MAX_LANE_LIMIT=12.
+      scope.limit(100).to_a
     end
 
     def build_lane(site)

@@ -11,6 +11,21 @@ export interface TelemetryReading {
 
 export type TelemetryMap = Map<string, TelemetryReading>
 
+export interface AssetTrailPoint {
+  lat:     number
+  lng:     number
+  heading: number
+  speed:   number
+  ts:      number
+}
+
+export interface AssetTrail {
+  asset_id: string
+  name:     string
+  status:   string   // AssetStatus — kept as string to avoid circular import
+  points:   AssetTrailPoint[]
+}
+
 export interface TimedTelemetryLike {
   ts: number
 }

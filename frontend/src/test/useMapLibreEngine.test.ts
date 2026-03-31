@@ -179,6 +179,7 @@ function defaultInput(
     areaOfOperations: [],
     breachedSiteIds: new Set(),
     vesselTracks: [],
+    assetTrails: [],
     coverageCircles: [],
     chokepoints: [],
     readings: new Map(),

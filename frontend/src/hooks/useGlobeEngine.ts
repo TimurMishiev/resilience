@@ -25,7 +25,8 @@ import { haversineKm, type CoverageCircle } from '../lib/coverage'
 import { buildGlobeSignalHeatmapCells } from '../lib/globeSignalHeatmap'
 import { nowMs, recordPerfEvent } from '../lib/perfInstrumentation'
 import { preloadGlobeRuntime } from '../lib/preloadRoutes'
-import { SIGNAL_COLORS } from '../lib/signalConfig'
+import { ASSET_STATUS_COLORS, SIGNAL_COLORS } from '../lib/signalConfig'
+import type { AssetTrail } from '../lib/telemetry'
 import type { TelemetryMap } from '../lib/telemetry'
 
 type CesiumModule = typeof import('cesium')
@@ -466,6 +467,7 @@ export interface GlobeEngineInput {
   coverageCircles:  CoverageCircle[]
   chokepoints:      Chokepoint[]
   vesselTracks:     VesselTrack[]
+  assetTrails:      AssetTrail[]
   readings:         TelemetryMap
 
   // Feature toggles
@@ -528,6 +530,7 @@ export function useGlobeEngine({
   coverageCircles,
   chokepoints,
   vesselTracks,
+  assetTrails,
   readings,
   showSignals,
   showHeatmap,
@@ -554,7 +557,8 @@ export function useGlobeEngine({
   const chokepointEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
   const heatmapEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
   const vesselTrackEntityRef = useRef<CesiumType.Entity | null>(null)
-  
+  const assetTrailEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
+
   // High-volume point features use PointPrimitiveCollection to avoid Entity API overhead
   const signalCollectionRef = useRef<CesiumType.PointPrimitiveCollection | null>(null)
   const signalPrimitivesRef = useRef<Map<string, CesiumType.PointPrimitive>>(new Map())
@@ -688,6 +692,7 @@ export function useGlobeEngine({
     const chokepointEntities = chokepointEntitiesRef.current
     const heatmapEntities = heatmapEntitiesRef.current
     const vesselTrackEntity = vesselTrackEntityRef.current
+    const assetTrailEntities = assetTrailEntitiesRef.current
     const signalPrimitives = signalPrimitivesRef.current
 
     return () => {
@@ -695,6 +700,9 @@ export function useGlobeEngine({
       setViewerReady(false)
       if (vesselTrackEntity) {
         viewerRef.current?.entities.remove(vesselTrackEntity)
+      }
+      for (const entity of assetTrailEntities.values()) {
+        viewerRef.current?.entities.remove(entity)
       }
       viewerRef.current?.destroy()
       viewerRef.current = null
@@ -708,6 +716,7 @@ export function useGlobeEngine({
       chokepointEntities.clear()
       heatmapEntities.clear()
       vesselTrackEntityRef.current = null
+      assetTrailEntities.clear()
       signalPrimitives.clear()
       signalCollectionRef.current = null
     }
@@ -1201,6 +1210,59 @@ export function useGlobeEngine({
       },
     })
   }, [viewerReady, vesselTracks])
+
+  // ---------------------------------------------------------------------------
+  // Asset trails — one polyline per asset, colored by status, replay-only
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const Cesium = cesiumRef.current
+    const viewer = viewerRef.current
+    if (!viewerReady || !viewer || !Cesium) return
+
+    const entityMap = assetTrailEntitiesRef.current
+
+    // Build set of current asset IDs to prune stale trails
+    const currentIds = new Set(assetTrails.filter(t => t.points.length >= 2).map(t => t.asset_id))
+
+    // Remove stale
+    for (const [id, entity] of entityMap) {
+      if (!currentIds.has(id)) {
+        viewer.entities.remove(entity)
+        entityMap.delete(id)
+      }
+    }
+
+    for (const trail of assetTrails) {
+      if (trail.points.length < 2) continue
+
+      const flatCoords = trail.points.flatMap(p => [p.lng, p.lat])
+      const positions = Cesium.Cartesian3.fromDegreesArray(flatCoords)
+      const cssColor = ASSET_STATUS_COLORS[trail.status] ?? ASSET_STATUS_COLORS['offline']
+      const material = new Cesium.PolylineGlowMaterialProperty({
+        glowPower: 0.15,
+        color: Cesium.Color.fromCssColorString(cssColor).withAlpha(0.7),
+      })
+
+      const existing = entityMap.get(trail.asset_id)
+      if (existing?.polyline) {
+        setPolylinePositions(Cesium, existing.polyline, positions)
+        existing.polyline.material = material
+        continue
+      }
+
+      const entity = viewer.entities.add({
+        id: `asset-trail-${trail.asset_id}`,
+        name: `${trail.name} trail`,
+        polyline: {
+          positions: new Cesium.ConstantProperty(positions),
+          width: new Cesium.ConstantProperty(2),
+          material,
+          clampToGround: new Cesium.ConstantProperty(false),
+        },
+      })
+      entityMap.set(trail.asset_id, entity)
+    }
+  }, [viewerReady, assetTrails])
 
   // ---------------------------------------------------------------------------
   // Signal entities — migrate to PointPrimitiveCollection for mass rendering

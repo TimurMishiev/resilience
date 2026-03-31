@@ -439,6 +439,7 @@ function defaultInput(
     coverageCircles:  [],
     chokepoints:      [],
     vesselTracks:     [],
+    assetTrails:      [],
     readings:         new Map(),
     showSignals:      true,
     showHeatmap:      false,

@@ -2,6 +2,12 @@ module Api
   class TelemetryController < BaseController
     include ActionController::Live
 
+    # Cap per-asset trail points so the response stays bounded. 30 min at 3s
+    # tick = 600 raw; 200 keeps JSON tight while preserving smooth polylines.
+    TRAIL_POINT_LIMIT = 200
+    TRAIL_WINDOW_MINUTES_DEFAULT = 30
+    TRAIL_WINDOW_MINUTES_MAX = 120
+
     # GET /api/telemetry
     # Returns the latest telemetry reading per asset, optionally as of a replay
     # timestamp. This gives replay mode a deterministic snapshot instead of
@@ -18,6 +24,54 @@ module Api
       render json: {
         data: readings.sort_by { |reading| reading.asset.name }.map { |reading| serialize_reading(reading) },
         meta: { as_of: upper_bound.iso8601, total: readings.size },
+      }
+    end
+
+    # GET /api/telemetry/trails?as_of=ISO8601&window_minutes=30
+    # Returns windowed trail points for every asset within a replay time range.
+    # Replay-only by intent — live mode uses the SSE stream for current positions.
+    def trails
+      upper_bound    = as_of || Time.current
+      window_minutes = [
+        [params.fetch(:window_minutes, TRAIL_WINDOW_MINUTES_DEFAULT).to_i, 1].max,
+        TRAIL_WINDOW_MINUTES_MAX,
+      ].min
+      lower_bound = upper_bound - window_minutes.minutes
+
+      # Use ROW_NUMBER() to cap at TRAIL_POINT_LIMIT per asset at the SQL layer
+      # so we never materialize unbounded rows in Ruby.
+      cte_sql = TelemetryReading
+        .select("telemetry_readings.*, ROW_NUMBER() OVER (PARTITION BY asset_id ORDER BY occurred_at DESC) AS rn")
+        .where(occurred_at: lower_bound..upper_bound)
+        .to_sql
+
+      readings = TelemetryReading
+        .from("(#{cte_sql}) AS telemetry_readings")
+        .where("rn <= ?", TRAIL_POINT_LIMIT)
+        .includes(:asset)
+        .order(:asset_id, occurred_at: :desc)
+
+      by_asset = readings.group_by(&:asset_id)
+
+      trails = by_asset.map do |_asset_id, rows|
+        asset = rows.first.asset
+        points = rows.reverse # oldest → newest
+        {
+          asset_id: asset.id,
+          name:     asset.name,
+          status:   asset.status,
+          points:   points.map { |r| { lat: r.lat, lng: r.lng, heading: r.heading, speed: r.speed, ts: r.occurred_at.to_i } },
+        }
+      end.sort_by { |t| t[:name] }
+
+      render json: {
+        data: trails,
+        meta: {
+          as_of:          upper_bound.iso8601,
+          from:           lower_bound.iso8601,
+          window_minutes: window_minutes,
+          asset_count:    trails.size,
+        },
       }
     end
 

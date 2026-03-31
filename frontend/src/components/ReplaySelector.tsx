@@ -98,7 +98,6 @@ export default function ReplaySelector() {
                 onClick={() => setPlaybackRate(rate)}
                 title={`${rate} min / sec`}
                 aria-pressed={playbackRate === rate}
-                active={playbackRate === rate}
               >
                 {rate}×
               </Button>

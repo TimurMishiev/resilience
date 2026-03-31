@@ -71,7 +71,8 @@ describe('ReplayContext', () => {
   })
 
   describe('stepForward / stepBackward', () => {
-    const baseTs = '2026-03-01T12:00:00.000Z'
+    // 7 days ago — always within the 30-day lookback window regardless of when tests run
+    const baseTs = new Date(Date.now() - 7 * 86_400_000).toISOString()
 
     it('stepForward() advances by REPLAY_STEP_MINUTES', () => {
       const { result } = renderHook(() => useReplay(), { wrapper })

@@ -28,6 +28,13 @@ export const SIGNAL_LABELS: Record<string, string> = {
   manual:            'Manual',
 }
 
+export const ASSET_STATUS_COLORS: Record<string, string> = {
+  available: '#3ddc84',
+  assigned:  '#5282ff',
+  degraded:  '#ffb366',
+  offline:   '#8f99a8',
+}
+
 export const SOURCE_LABELS: Record<string, string> = {
   opensky:        'OpenSky',
   ais:            'AIS',

@@ -6,6 +6,7 @@ import { useAssets } from '../hooks/useAssets'
 import { useTelemetry } from '../hooks/useTelemetry'
 import { useAreasOfOperation } from '../hooks/useAreasOfOperation'
 import { useSignalsLive } from '../hooks/useSignals'
+import { useAssetTrails } from '../hooks/useAssetTrails'
 import { useVessels, useVesselTracks } from '../hooks/useVessels'
 import { useActiveBreachSiteIds } from '../hooks/useSignalRuleMatches'
 import { useChokepoints } from '../hooks/useChokepoints'
@@ -416,6 +417,9 @@ export default function GlobePage() {
   })
   const vesselTracks = useMemo(() => vesselTrackRes?.data ?? [], [vesselTrackRes?.data])
 
+  // Replay-only multi-asset trails
+  const assetTrails = useAssetTrails(isReplaying ? asOf : null)
+
   // ---------------------------------------------------------------------------
   // Engine refs
   // ---------------------------------------------------------------------------
@@ -470,6 +474,7 @@ export default function GlobePage() {
     coverageCircles,
     chokepoints,
     vesselTracks,
+    assetTrails,
     readings,
     showSignals,
     showHeatmap,

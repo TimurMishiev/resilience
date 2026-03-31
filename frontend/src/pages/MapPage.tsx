@@ -16,6 +16,7 @@ import { useActiveBreachSiteIds } from '../hooks/useSignalRuleMatches'
 import { useChokepoints } from '../hooks/useChokepoints'
 import { useRole } from '../hooks/useRole'
 import { useReplayParams } from '../hooks/useReplayParams'
+import { useAssetTrails } from '../hooks/useAssetTrails'
 import { useMapLibreEngine, MAP_STYLE_CONFIGS, type MapStyleKey } from '../hooks/useMapLibreEngine'
 import type { Task } from '../api/types'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -208,6 +209,9 @@ export default function MapPage() {
   })
   const vesselTracks = useMemo(() => vesselTrackRes?.data ?? [], [vesselTrackRes?.data])
 
+  // Replay-only multi-asset trails
+  const assetTrails = useAssetTrails(isReplaying ? asOf : null)
+
   // Active geofence breach site IDs — backed by an unpaginated backend query
   const { data: activeBreachRes } = useActiveBreachSiteIds({
     enabled: !isReplaying,
@@ -315,6 +319,7 @@ export default function MapPage() {
     areaOfOperations,
     breachedSiteIds,
     vesselTracks,
+    assetTrails,
     coverageCircles,
     chokepoints,
     readings,
