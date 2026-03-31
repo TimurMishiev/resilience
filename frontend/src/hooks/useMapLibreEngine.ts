@@ -1055,33 +1055,43 @@ export function useMapLibreEngine({
   }, [mapLoaded, vesselTracks])
 
   // ---------------------------------------------------------------------------
-  // Asset trails — one LineString per asset, colored by status, replay-only
+  // Asset trails — one LineString per asset, colored by status, replay-only.
+  // Uses setData() on the existing source to avoid layer flicker on asOf changes.
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapLoaded) return
 
-    // Always tear down stale layers/source first
-    if (map.getLayer('asset-trail-line'))  map.removeLayer('asset-trail-line')
-    if (map.getSource('asset-trails'))     map.removeSource('asset-trails')
+    const featureCollection = {
+      type: 'FeatureCollection' as const,
+      features: assetTrails
+        .filter(trail => trail.points.length >= 2)
+        .map(trail => ({
+          type: 'Feature' as const,
+          properties: { status: trail.status, name: trail.name },
+          geometry: {
+            type: 'LineString' as const,
+            coordinates: trail.points.map(p => [p.lng, p.lat]),
+          },
+        })),
+    }
 
-    const features = assetTrails
-      .filter(trail => trail.points.length >= 2)
-      .map(trail => ({
-        type: 'Feature' as const,
-        properties: { status: trail.status, name: trail.name },
-        geometry: {
-          type: 'LineString' as const,
-          coordinates: trail.points.map(p => [p.lng, p.lat]),
-        },
-      }))
+    // If source already exists, patch data in-place — no layer flicker
+    const existingSource = map.getSource('asset-trails') as GeoJSONSource | undefined
+    if (existingSource) {
+      if (featureCollection.features.length === 0) {
+        if (map.getLayer('asset-trail-line')) map.removeLayer('asset-trail-line')
+        map.removeSource('asset-trails')
+      } else {
+        existingSource.setData(featureCollection)
+      }
+      return
+    }
 
-    if (features.length === 0) return
+    if (featureCollection.features.length === 0) return
 
-    map.addSource('asset-trails', {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features },
-    })
+    // First render: add source + layer
+    map.addSource('asset-trails', { type: 'geojson', data: featureCollection })
     map.addLayer({
       id: 'asset-trail-line',
       type: 'line',
@@ -1095,8 +1105,8 @@ export function useMapLibreEngine({
           'degraded',  ASSET_STATUS_COLORS['degraded'],
           ASSET_STATUS_COLORS['offline'], // fallback
         ],
-        'line-width':   2,
-        'line-opacity':  0.7,
+        'line-width':  2,
+        'line-opacity': 0.7,
       },
     }, 'signal-glow')
   }, [mapLoaded, assetTrails])

@@ -101,7 +101,9 @@ RSpec.describe "Api::Telemetry", type: :request do
 
     it "caps points per asset at TRAIL_POINT_LIMIT (200)" do
       now = Time.current
-      # Bulk-insert via raw SQL to avoid partitioned-table insert_all constraint
+      # Bulk-insert via raw SQL to avoid partitioned-table insert_all constraint.
+      # String interpolation here is safe — all values are SecureRandom.uuid or
+      # known-good factory IDs and numeric literals, never user-supplied input.
       values = 205.times.map do |i|
         ts = (now - (205 - i).seconds).utc.iso8601(6)
         "('#{SecureRandom.uuid}', '#{asset_a.id}', #{10.0 + (i * 0.001)}, 20.0, 90, 5.0, 80.0, '#{ts}', '#{ts}')"
