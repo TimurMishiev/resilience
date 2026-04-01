@@ -250,11 +250,21 @@ export default function PlanningPage() {
     meta           = {
       truncated: false,
       task_count: 0,
+      assets_truncated: false,
+      asset_count: 0,
+      areas_truncated: false,
+      area_count: 0,
+      chokepoints_truncated: false,
+      chokepoint_count: 0,
+      intents_truncated: false,
+      intent_count: 0,
+      pace_plans_truncated: false,
+      pace_plan_count: 0,
       incidents_truncated: false,
       incident_count: 0,
       salute_reports_truncated: false,
       salute_report_count: 0,
-      salute_report_meta_by_ao: {},
+      salute_report_meta_by_ao: {} as Record<string, { truncated: boolean; count: number }>,
     },
   } = data ?? {}
   const sites = useMemo(() => sitesQuery.data?.data ?? [], [sitesQuery.data?.data])
