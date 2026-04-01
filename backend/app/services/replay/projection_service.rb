@@ -22,6 +22,9 @@ module Replay
         .order(:occurred_at)
 
       # For each entity, keep the after_snapshot from its latest event up to as_of.
+      # entity_ids is always a bounded array from request context (never a full-table
+      # scan), so .each is safe and preserves the chronological ORDER BY occurred_at.
+      # find_each would discard that ORDER clause and produce non-deterministic snapshots.
       latest = {}
       events.each do |event|
         latest[event.entity_id] = event.after_snapshot

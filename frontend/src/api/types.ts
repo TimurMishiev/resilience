@@ -257,6 +257,16 @@ export interface PlanningResponse {
   meta: {
     truncated: boolean
     task_count: number
+    assets_truncated: boolean
+    asset_count: number
+    areas_truncated: boolean
+    area_count: number
+    chokepoints_truncated: boolean
+    chokepoint_count: number
+    intents_truncated: boolean
+    intent_count: number
+    pace_plans_truncated: boolean
+    pace_plan_count: number
     incidents_truncated: boolean
     incident_count: number
     salute_reports_truncated: boolean

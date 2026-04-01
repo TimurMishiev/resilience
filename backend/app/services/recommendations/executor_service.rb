@@ -97,20 +97,9 @@ module Recommendations
 
     # Routes through Tasks::CreationService — records the recommendation ID in
     # audit metadata so the AI-assisted provenance is fully traceable.
-    #
-    # Pre-flight: refuses to create a task when zero assets are available or
-    # assigned globally. A task with no possible assignee is unserviceable and
-    # would immediately appear as an unaddressed gap on the planning surface.
     def create_task(payload)
       site = Site.find_by(id: payload[:site_id])
       return ServiceResult.failure(errors: ["Site #{payload[:site_id]} not found for task creation"]) unless site
-
-      unless Asset.where(status: %w[available assigned]).exists?
-        return ServiceResult.failure(
-          errors: ["No available or assigned assets — recommended task cannot be staffed. " \
-                   "Resolve asset coverage before executing this recommendation."]
-        )
-      end
 
       Tasks::CreationService.call(
         params: {

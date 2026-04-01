@@ -49,9 +49,12 @@ module Briefings
     # ── data ─────────────────────────────────────────────────────────────────
 
     def fetch_risk_data
-      sites = Site.active.includes(:tasks).order(:name)
+      sites = Site.active.order(:name).to_a
+      # Batch-load tasks for all active sites in one query (avoids N+1 per site while
+      # keeping memory bounded to the active-site set rather than all tasks in the DB).
+      tasks_by_site = Task.where(site_id: sites.map(&:id)).group_by(&:site_id)
       sites.map do |site|
-        readiness = Readiness::CalculationService.call(site: site, tasks: site.tasks)
+        readiness = Readiness::CalculationService.call(site: site, tasks: tasks_by_site[site.id] || [])
         risk      = Risk::ScoringService.call(
           site:            site,
           readiness_score: readiness.payload[:score]
