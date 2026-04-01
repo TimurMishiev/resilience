@@ -13,14 +13,16 @@ module Sites
   #      RecordNotUnique rescue, so back-to-back evaluator runs can never create
   #      duplicate geofence alerts for the same signal/site.
   class GeofenceBreachService < ApplicationService
-    def initialize(signal:)
+    def initialize(signal:, sites: nil)
       @signal = signal
+      @sites  = sites
     end
 
     def call
       breached = []
 
-      Site.active.find_each do |site|
+      site_scope = @sites || Site.active.to_a
+      site_scope.each do |site|
         next unless site.geofence_radius_km&.positive?
 
         distance_km = Correlations::EvaluatorService.haversine_km(

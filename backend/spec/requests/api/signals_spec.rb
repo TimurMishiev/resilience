@@ -116,13 +116,13 @@ RSpec.describe "Api::Signals", type: :request do
     it "returns 400 when from is not a valid datetime" do
       get "/api/signals", params: { from: "not-a-date" }, headers: auth_headers(user)
       expect(response).to have_http_status(:bad_request)
-      expect(JSON.parse(response.body)["error"]).to match(/from/)
+      expect(JSON.parse(response.body)["errors"].first).to match(/from/)
     end
 
     it "returns 400 when to is not a valid datetime" do
       get "/api/signals", params: { to: "garbage" }, headers: auth_headers(user)
       expect(response).to have_http_status(:bad_request)
-      expect(JSON.parse(response.body)["error"]).to match(/to/)
+      expect(JSON.parse(response.body)["errors"].first).to match(/to/)
     end
 
     it "requires authentication" do

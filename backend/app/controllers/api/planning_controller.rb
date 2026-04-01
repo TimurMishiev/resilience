@@ -2,9 +2,14 @@ module Api
   class PlanningController < BaseController
     before_action :require_commander!
 
-    TASK_LIMIT = 500
-    INCIDENT_LIMIT = 200
-    SALUTE_LIMIT = 50
+    TASK_LIMIT      = 500
+    INCIDENT_LIMIT  = 200
+    SALUTE_LIMIT    = 50
+    ASSET_LIMIT     = 500
+    AO_LIMIT        = 50
+    CHOKEPOINT_LIMIT = 200
+    INTENT_LIMIT    = 50
+    PACE_PLAN_LIMIT = 50
 
     # GET /api/planning
     # Returns a single aggregate payload for the Operational Planning Surface:
@@ -31,12 +36,30 @@ module Api
       truncated    = raw_tasks.size > TASK_LIMIT
       task_records = truncated ? raw_tasks.first(TASK_LIMIT) : raw_tasks
 
-      assets = Asset.order(:name).to_a
+      raw_assets       = Asset.order(:name).limit(ASSET_LIMIT + 1).to_a
+      assets_truncated = raw_assets.size > ASSET_LIMIT
+      assets           = assets_truncated ? raw_assets.first(ASSET_LIMIT) : raw_assets
+      Rails.logger.warn "[PlanningController] asset cap hit (#{ASSET_LIMIT})" if assets_truncated
 
-      areas = AreaOfOperation.order(:name).to_a
-      chokepoints = Chokepoint.includes(:area_of_operation).order(:name).to_a
-      commander_intents = CommanderIntent.order(updated_at: :desc).to_a
-      pace_plans = PacePlan.order(updated_at: :desc).to_a
+      raw_areas       = AreaOfOperation.order(:name).limit(AO_LIMIT + 1).to_a
+      areas_truncated = raw_areas.size > AO_LIMIT
+      areas           = areas_truncated ? raw_areas.first(AO_LIMIT) : raw_areas
+      Rails.logger.warn "[PlanningController] AO cap hit (#{AO_LIMIT})" if areas_truncated
+
+      raw_chokepoints       = Chokepoint.includes(:area_of_operation).order(:name).limit(CHOKEPOINT_LIMIT + 1).to_a
+      chokepoints_truncated = raw_chokepoints.size > CHOKEPOINT_LIMIT
+      chokepoints           = chokepoints_truncated ? raw_chokepoints.first(CHOKEPOINT_LIMIT) : raw_chokepoints
+      Rails.logger.warn "[PlanningController] chokepoint cap hit (#{CHOKEPOINT_LIMIT})" if chokepoints_truncated
+
+      raw_intents       = CommanderIntent.order(updated_at: :desc).limit(INTENT_LIMIT + 1).to_a
+      intents_truncated = raw_intents.size > INTENT_LIMIT
+      commander_intents = intents_truncated ? raw_intents.first(INTENT_LIMIT) : raw_intents
+      Rails.logger.warn "[PlanningController] intent cap hit (#{INTENT_LIMIT})" if intents_truncated
+
+      raw_pace_plans       = PacePlan.order(updated_at: :desc).limit(PACE_PLAN_LIMIT + 1).to_a
+      pace_plans_truncated = raw_pace_plans.size > PACE_PLAN_LIMIT
+      pace_plans           = pace_plans_truncated ? raw_pace_plans.first(PACE_PLAN_LIMIT) : raw_pace_plans
+      Rails.logger.warn "[PlanningController] pace plan cap hit (#{PACE_PLAN_LIMIT})" if pace_plans_truncated
 
       # Fetch up to SALUTE_LIMIT per AO so one active AO cannot starve another.
       # areas is already loaded (small set); N small queries beats one global slice.

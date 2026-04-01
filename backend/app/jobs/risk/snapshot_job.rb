@@ -39,6 +39,8 @@ module Risk
         )
 
         snapped += 1
+      rescue StandardError => e
+        Rails.logger.error "[Risk::SnapshotJob] failed for site=#{site.id}: #{e.class}: #{e.message}"
       end
 
       pruned = SiteRiskSnapshot.prune_old!

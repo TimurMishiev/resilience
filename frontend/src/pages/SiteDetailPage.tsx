@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Button,
@@ -326,8 +326,8 @@ function RuleFiresTab({
             const txBtns   = RULE_FIRE_TRANSITIONS[status] ?? []
             const isChecked = selected.has(m.id)
             return (
-              <>
-                <tr key={m.id}>
+              <Fragment key={m.id}>
+                <tr>
                   <td>
                     <Checkbox
                       checked={isChecked}
@@ -397,7 +397,7 @@ function RuleFiresTab({
                     </td>
                   </tr>
                 )}
-              </>
+              </Fragment>
             )
           })}
         </tbody>

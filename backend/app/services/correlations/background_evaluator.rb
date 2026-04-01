@@ -25,11 +25,25 @@ module Correlations
               ActiveRecord::Base.connected_to(role: :writing) do
                 ActiveRecord::Base.connection_pool.with_connection do
                   window_start = (POLL_INTERVAL + 2).seconds.ago
-                  recent = ExternalSignal.where(ingested_at: window_start..Time.current)
+
+                  # Load only the fields needed for evaluation — raw_payload can
+                  # be multi-KB JSON and is not used by EvaluatorService or
+                  # GeofenceBreachService.
+                  recent = ExternalSignal
+                    .select(:id, :source, :signal_type, :external_id,
+                            :lat, :lng, :occurred_at, :ingested_at)
+                    .where(ingested_at: window_start..Time.current)
+
+                  # Pre-load active sites once per tick so GeofenceBreachService
+                  # does not issue a full Site.active query for every signal.
+                  active_sites = Site.active
+                    .where("geofence_radius_km > 0")
+                    .select(:id, :name, :latitude, :longitude, :geofence_radius_km)
+                    .to_a
 
                   recent.find_each do |signal|
                     Correlations::EvaluatorService.call(signal: signal)
-                    Sites::GeofenceBreachService.call(signal: signal)
+                    Sites::GeofenceBreachService.call(signal: signal, sites: active_sites)
                   end
                 end
               end

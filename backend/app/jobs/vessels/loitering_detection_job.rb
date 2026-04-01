@@ -16,15 +16,26 @@ module Vessels
       @window_start = @job_now - LOOKBACK_WINDOW
       changed = 0
 
-      Vessel
+      vessels = Vessel
         .where("last_seen_at >= ? OR loitering_since IS NOT NULL", @window_start)
-        .find_each do |vessel|
-          next_loitering_since = detect_loitering_since(vessel)
-          next if vessel.loitering_since == next_loitering_since
+        .to_a
 
-          vessel.update!(loitering_since: next_loitering_since)
-          changed += 1
-        end
+      # Batch-load all relevant tracks in one query instead of issuing a
+      # per-vessel query inside the loop (N+1).
+      tracks_by_vessel = VesselTrack
+        .where(vessel_id: vessels.map(&:id))
+        .where("occurred_at >= ?", @window_start)
+        .order(:occurred_at)
+        .group_by(&:vessel_id)
+
+      vessels.each do |vessel|
+        preloaded = tracks_by_vessel[vessel.id] || []
+        next_loitering_since = detect_loitering_since(vessel, preloaded)
+        next if vessel.loitering_since == next_loitering_since
+
+        vessel.update!(loitering_since: next_loitering_since)
+        changed += 1
+      end
 
       Rails.logger.info "[LoiteringDetection] evaluated vessel state, updated #{changed} records"
     end
@@ -33,8 +44,8 @@ module Vessels
 
     Point = Struct.new(:lat, :lng, :speed, :occurred_at, keyword_init: true)
 
-    def detect_loitering_since(vessel)
-      points = recent_points_for(vessel)
+    def detect_loitering_since(vessel, preloaded_tracks)
+      points = recent_points_for(vessel, preloaded_tracks)
       return nil if points.size < MIN_TRACK_POINTS
 
       if vessel.loitering_since.present?
@@ -55,19 +66,15 @@ module Vessels
       nil
     end
 
-    def recent_points_for(vessel)
-      points = vessel
-        .vessel_tracks
-        .where("occurred_at >= ?", @window_start)
-        .order(:occurred_at)
-        .map do |track|
-          Point.new(
-            lat: track.lat,
-            lng: track.lng,
-            speed: track.speed,
-            occurred_at: track.occurred_at,
-          )
-        end
+    def recent_points_for(vessel, preloaded_tracks)
+      points = preloaded_tracks.map do |track|
+        Point.new(
+          lat: track.lat,
+          lng: track.lng,
+          speed: track.speed,
+          occurred_at: track.occurred_at,
+        )
+      end
 
       if points.empty? || points.last.occurred_at != vessel.last_seen_at
         points << Point.new(

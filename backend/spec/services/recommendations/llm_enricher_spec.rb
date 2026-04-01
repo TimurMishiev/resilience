@@ -38,7 +38,7 @@ RSpec.describe Recommendations::LlmEnricher, type: :service do
     allow(ENV).to receive(:fetch).and_call_original
     allow(ENV).to receive(:[]).with("ANTHROPIC_API_KEY").and_return("test-key")
     allow(ENV).to receive(:fetch).with("ANTHROPIC_API_KEY").and_return("test-key")
-    allow(Anthropic::Client).to receive(:new).with(api_key: "test-key").and_return(client)
+    allow(Anthropic::Client).to receive(:new).with(api_key: "test-key", timeout: 30).and_return(client)
   end
 
   it "calls the Anthropic messages resource via create and returns parsed recommendations" do

@@ -33,6 +33,9 @@ jobs:
       - name: ESLint
         run: yarn lint
 
+      - name: Vitest unit tests
+        run: yarn test --run
+
       - name: Build
         run: yarn build
 

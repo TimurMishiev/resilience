@@ -7,5 +7,5 @@ Sentry.init do |config|
   config.release = ENV["SENTRY_RELEASE"].presence || ENV["SOURCE_VERSION"].presence
   config.send_default_pii = false
   config.breadcrumbs_logger = [:active_support_logger, :http_logger]
-  config.traces_sample_rate = ENV.fetch("SENTRY_TRACES_SAMPLE_RATE", "0").to_f
+  config.traces_sample_rate = ENV.fetch("SENTRY_TRACES_SAMPLE_RATE", "0.01").to_f
 end

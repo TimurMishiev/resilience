@@ -97,7 +97,10 @@ module Recommendations
     end
 
     def call_anthropic(prompt)
-      client = Anthropic::Client.new(api_key: ENV.fetch("ANTHROPIC_API_KEY"))
+      client = Anthropic::Client.new(
+        api_key: ENV.fetch("ANTHROPIC_API_KEY"),
+        timeout: 30,
+      )
       response = client.messages.create(
         model:      MODEL,
         max_tokens: MAX_TOKENS,

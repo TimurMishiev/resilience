@@ -376,10 +376,10 @@ export default function DashboardPage() {
   const { isCommander } = useRole()
   const [evidenceRec, setEvidenceRec] = useState<Recommendation | null>(null)
 
-  const { data: recData } = useRecommendations(undefined, { enabled: !isReplaying, refetchInterval: isReplaying ? false : 60_000 })
+  const { data: recData, error: recError } = useRecommendations(undefined, { enabled: !isReplaying, refetchInterval: isReplaying ? false : 60_000 })
   const topRecs = (recData?.data ?? []).slice(0, 3)
 
-  const { data: matchesRes } = useSignalRuleMatches({ per_page: 15 }, { enabled: !isReplaying, refetchInterval: isReplaying ? false : 10_000 })
+  const { data: matchesRes, error: matchesError } = useSignalRuleMatches({ per_page: 15 }, { enabled: !isReplaying, refetchInterval: isReplaying ? false : 10_000 })
   const recentMatches = matchesRes?.data ?? []
 
   const { data: riskData } = useRiskScores({ enabled: !isReplaying, refetchInterval: isReplaying ? false : 60_000 })
@@ -391,7 +391,7 @@ export default function DashboardPage() {
   const { data: readinessData, isPending: readinessPending, error: readinessError } = useReadiness(
     asOf ? { as_of: asOf } : undefined
   )
-  const { data: taskRes, isPending: tasksPending } = useTasks({
+  const { data: taskRes, isPending: tasksPending, error: tasksError } = useTasks({
     per_page: 500,
     ...(asOf ? { as_of: asOf } : {}),
   })
@@ -568,6 +568,7 @@ export default function DashboardPage() {
         {/* Task status breakdown */}
         <div className="dashboard-card">
           <h4 className="dashboard-card-title bp6-heading">Tasks by Status</h4>
+          {tasksError && <Callout intent="danger" compact>{tasksError.message}</Callout>}
           {loading ? (
             <div className={Classes.SKELETON} style={{ width: '100%', height: 180 }}>&nbsp;</div>
           ) : (
@@ -621,6 +622,7 @@ export default function DashboardPage() {
                 <h4 className="dashboard-card-title bp6-heading">Recent Alerts</h4>
                 <span className="bp6-text-muted" style={{ fontSize: 11 }}>auto-refreshes · click to open site</span>
               </div>
+              {matchesError && <Callout intent="danger" compact>{matchesError.message}</Callout>}
               <AlertsPanel matches={recentMatches} />
             </div>
 
@@ -635,6 +637,7 @@ export default function DashboardPage() {
                   View all →
                 </Button>
               </div>
+              {recError && <Callout intent="danger" compact>{recError.message}</Callout>}
               {topRecs.length === 0 ? (
                 <p className="bp6-text-muted" style={{ fontSize: 12, margin: 0 }}>
                   No active recommendations. System analyses operational state every 30 minutes.

@@ -11,10 +11,10 @@ module Api
     # Query params: source, signal_type, from, to, site_id (proximity filter), page, per_page
     def index
       if params[:from].present? && safe_parse_datetime(params[:from]).nil?
-        render json: { error: "Invalid 'from' datetime" }, status: :bad_request and return
+        render json: { errors: ["Invalid 'from' datetime"] }, status: :bad_request and return
       end
       if params[:to].present? && safe_parse_datetime(params[:to]).nil?
-        render json: { error: "Invalid 'to' datetime" }, status: :bad_request and return
+        render json: { errors: ["Invalid 'to' datetime"] }, status: :bad_request and return
       end
 
       signals = ExternalSignal.all.order(occurred_at: :desc)
@@ -48,7 +48,7 @@ module Api
     # Auth via ?token= query param using the same short-lived SSE token flow as telemetry.
     def stream
       if params[:since].present? && safe_parse_datetime(params[:since]).nil?
-        render json: { error: "Invalid 'since' datetime" }, status: :bad_request and return
+        render json: { errors: ["Invalid 'since' datetime"] }, status: :bad_request and return
       end
 
       lease = admit_sse_stream!(stream_name: "signals")

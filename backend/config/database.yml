@@ -19,11 +19,15 @@ production:
     <<: *default
     # DATABASE_URL takes full precedence when set (Fly.io / Heroku / Render).
     # Falls back to individual vars for local production-mode testing.
+    # sslmode: prefer — attempts TLS, falls back gracefully on Fly.io's
+    # WireGuard private network (which encrypts at transport layer anyway).
+    # Override to "require" in DATABASE_URL if your Postgres instance mandates it.
     url:      <%= ENV["DATABASE_URL"] %>
     database: resilience_production
     username: <%= ENV["DATABASE_USERNAME"] %>
     password: <%= ENV["DATABASE_PASSWORD"] %>
     host:     <%= ENV.fetch("DATABASE_HOST") { "localhost" } %>
+    sslmode:  prefer
   cache:
     <<: *primary_production
     # When DATABASE_URL is set all three databases share the same instance;

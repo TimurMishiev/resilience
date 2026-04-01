@@ -34,6 +34,11 @@
 threads_count = ENV.fetch("RAILS_MAX_THREADS", 32)
 threads threads_count, threads_count
 
+# worker_timeout applies in cluster mode (WEB_CONCURRENCY > 1). Set it high
+# enough to accommodate PDF export and Anthropic API calls, which can take
+# 20–60 s under load. Override via PUMA_WORKER_TIMEOUT env var.
+worker_timeout ENV.fetch("PUMA_WORKER_TIMEOUT", 300).to_i
+
 # Specifies the `port` that Puma will listen on to receive requests; default is 3000.
 port ENV.fetch("PORT", 3000)
 
