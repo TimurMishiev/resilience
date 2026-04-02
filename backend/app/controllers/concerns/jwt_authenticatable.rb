@@ -26,6 +26,15 @@ module JwtAuthenticatable
     payload = decode_payload(token)
     raise JwtAuthenticatable::AuthenticationError, "Token revoked" if revoked?(payload[:jti])
 
+    # Global revocation: reject tokens issued before the user's tokens_valid_after timestamp.
+    # This allows a single "log out all sessions" operation without enumerating JTIs.
+    if (sub = payload[:sub].presence)
+      valid_after = User.where(id: sub).pick(:tokens_valid_after)
+      if valid_after && payload[:iat].present? && payload[:iat].to_i < valid_after.to_i
+        raise JwtAuthenticatable::AuthenticationError, "Token revoked"
+      end
+    end
+
     payload
   end
 

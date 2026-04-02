@@ -783,6 +783,7 @@ CREATE TABLE public.users (
     role character varying DEFAULT 'operator'::character varying NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
+    tokens_valid_after timestamp(6) without time zone,
     CONSTRAINT users_role_check CHECK (((role)::text = ANY (ARRAY[('operator'::character varying)::text, ('commander'::character varying)::text])))
 );
 
@@ -2466,6 +2467,7 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260402020000'),
 ('20260402010000'),
 ('20260401030000'),
 ('20260401020000'),

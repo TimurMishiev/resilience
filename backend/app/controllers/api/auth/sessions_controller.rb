@@ -28,13 +28,32 @@ module Api
       end
 
       # DELETE /api/auth/logout — clears the session cookie
+      # Params:
+      #   all_sessions: true — also bumps tokens_valid_after on the user record,
+      #                        invalidating every outstanding token for this account.
       def destroy
         token = request.cookies["_resilience_session"]&.strip
         token ||= request.headers["Authorization"]&.delete_prefix("Bearer ")&.strip
         JwtAuthenticatable.revoke!(token) if token.present?
 
+        if ActiveModel::Type::Boolean.new.cast(params[:all_sessions])
+          user = current_user_from_token(token)
+          user&.update_columns(tokens_valid_after: Time.current)
+        end
+
         response.delete_cookie(:_resilience_session, path: "/")
         head :no_content
+      end
+
+      private
+
+      def current_user_from_token(token)
+        return nil if token.blank?
+
+        payload = JwtAuthenticatable.decode_payload(token)
+        User.find_by(id: payload[:sub])
+      rescue JwtAuthenticatable::AuthenticationError
+        nil
       end
     end
   end
