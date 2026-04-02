@@ -252,6 +252,7 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
 3. ~~**Globe heatmap parity**~~ — **SHIPPED (2026-03-30)**
 4. **Playback-grade multi-asset trails** — **NEXT (defined 2026-03-30)**
    - Intended scope: replay-aware historical trails for moving assets (not just selected vessels), available on both MapPage and GlobePage with bounded query windows and toggleable multi-entity rendering.
+   - An intervening platform-hardening detour was explicitly taken on 2026-04-02 to finish the partial Pundit auth rollout before resuming this product slice.
 
 #### Recently closed
 
@@ -288,6 +289,15 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
   - `/api/events`, `/api/signals/stream`, and `/api/telemetry/stream` now reject excess concurrent live streams with `429` before opening the long-lived SSE response.
   - `Rack::Attack` now throttles `POST /api/sse_token` and repeated SSE stream opens to blunt reconnect storms before they consume Puma threads.
   - Validation for this slice: focused SSE proof 37 RSpec, full backend 1058 RSpec, Brakeman 0 warnings, `git diff --check` passed.
+
+- **Pundit auth-layer finish + portable backend test config** (shipped 2026-04-02)
+  - Finished the in-progress API authorization migration so the previously skipped controllers now perform explicit Pundit authorization instead of bypassing `verify_authorized`.
+  - Added focused policies for AI, analytics, assets, audit-log access, chokepoints, commander intent, feed health, operational health, PACE, readiness, risk scores, SALUTE, signals, SSE token minting, telemetry, and vessels.
+  - Preserved the intentional audit-log split: entity-scoped audit history remains available to any authenticated user, while the global audit log stays commander-only.
+  - Live endpoints (`signals`, `telemetry`) now authorize before early validation returns, so invalid-request paths still satisfy `verify_authorized`.
+  - Added direct request proof for `POST /api/signals`, covering unauthenticated, operator-forbidden, commander-success, and ingest-failure paths.
+  - `backend/config/database.yml` no longer hardcodes a workstation-specific test port; it now respects `TEST_DATABASE_PORT` / `DATABASE_PORT`.
+  - Validation for this slice: focused auth request proof 143 RSpec, full backend 1102 RSpec, Brakeman 0 warnings, `git diff --check` passed.
 
 - **Chokepoint geographic overlays**
   - Shipped on both MapPage and GlobePage.
@@ -347,7 +357,8 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
   1. ~~Kill-chain / prosecution workflow~~ — SHIPPED
   2. ~~Cross-entity natural-language ontology query~~ — SHIPPED
   3. ~~Globe heatmap parity~~ — SHIPPED
-  4. Playback-grade multi-asset trails — NEXT
+  4. Intervening platform hardening detour: Pundit auth-layer finish — SHIPPED
+  5. Playback-grade multi-asset trails — NEXT
 
 #### Expected remaining canonical phases
 

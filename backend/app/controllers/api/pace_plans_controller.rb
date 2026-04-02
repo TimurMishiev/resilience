@@ -1,9 +1,9 @@
 module Api
   class PacePlansController < BaseController
-    skip_after_action :verify_authorized
     before_action :require_commander!
 
     def create
+      authorize PacePlan, :create?
       plan = PacePlan.new(pace_plan_params)
       plan.created_by = current_user
       plan.updated_by = current_user
@@ -31,6 +31,7 @@ module Api
 
     def update
       plan = PacePlan.find(params[:id])
+      authorize plan
       if area_of_operation_reassignment?(plan)
         render json: { errors: ["area_of_operation_id cannot be changed"] }, status: :unprocessable_content
         return

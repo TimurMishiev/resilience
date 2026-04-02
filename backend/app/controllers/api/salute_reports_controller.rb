@@ -1,9 +1,9 @@
 module Api
   class SaluteReportsController < BaseController
-    skip_after_action :verify_authorized
     before_action :require_commander!
 
     def create
+      authorize SaluteReport, :create?
       report = SaluteReport.new(salute_report_params)
       report.created_by = current_user
       correlation_id = SecureRandom.uuid

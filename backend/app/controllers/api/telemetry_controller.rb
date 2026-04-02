@@ -1,7 +1,6 @@
 module Api
   class TelemetryController < BaseController
     include ActionController::Live
-    skip_after_action :verify_authorized
 
     # Cap per-asset trail points so the response stays bounded. 30 min at 3s
     # tick = 600 raw; 200 keeps JSON tight while preserving smooth polylines.
@@ -14,6 +13,7 @@ module Api
     # timestamp. This gives replay mode a deterministic snapshot instead of
     # suppressing telemetry entirely.
     def index
+      authorize TelemetryReading
       upper_bound = as_of || Time.current
 
       readings = TelemetryReading
@@ -32,6 +32,7 @@ module Api
     # Returns windowed trail points for every asset within a replay time range.
     # Replay-only by intent — live mode uses the SSE stream for current positions.
     def trails
+      authorize TelemetryReading, :trails?
       upper_bound    = as_of || Time.current
       window_minutes = [
         [params.fetch(:window_minutes, TRAIL_WINDOW_MINUTES_DEFAULT).to_i, 1].max,
@@ -80,6 +81,7 @@ module Api
     # Server-Sent Events stream of asset telemetry readings.
     # Auth via ?token= query param (EventSource can't send custom headers).
     def stream
+      authorize TelemetryReading, :stream?
       lease = admit_sse_stream!(stream_name: "telemetry")
       return unless lease
 

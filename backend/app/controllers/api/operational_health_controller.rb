@@ -1,9 +1,9 @@
 module Api
   class OperationalHealthController < BaseController
-    skip_after_action :verify_authorized
     before_action :require_commander!
 
     def index
+      authorize :operational_health, :index?
       return if performed?
 
       render json: {

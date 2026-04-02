@@ -13,9 +13,8 @@ module Api
   # Replaying historical risk is non-trivial (would need historical signal/match counts)
   # and is deferred to a future iteration.
   class RiskScoresController < BaseController
-    skip_after_action :verify_authorized
-
     def index
+      authorize :risk_score, :index?
       sites       = Site.all.includes(:tasks).order(:name)
       computed_at = Time.current
 

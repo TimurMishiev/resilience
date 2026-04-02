@@ -1,9 +1,9 @@
 module Api
   class AiController < BaseController
-    skip_after_action :verify_authorized
     # Both AI endpoints are commander-only — they make real Anthropic API calls
     # and the per-IP rate limit alone is insufficient if operators share an IP.
     before_action :require_commander!
+    before_action :authorize_ai_action!
 
     # GET /api/ai/filter?q=...&entity_type=tasks|signals
     # entity_type defaults to 'tasks' for backward compatibility.
@@ -75,6 +75,10 @@ module Api
     end
 
     private
+
+    def authorize_ai_action!
+      authorize :ai, :"#{action_name}?"
+    end
 
     def safe_parse_datetime(value)
       return nil if value.blank?

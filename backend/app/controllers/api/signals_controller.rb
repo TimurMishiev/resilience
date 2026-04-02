@@ -1,7 +1,6 @@
 module Api
   class SignalsController < BaseController
     include ActionController::Live
-    skip_after_action :verify_authorized
 
     SIGNAL_STREAM_BASELINE_BATCH_SIZE = 200
     SIGNAL_STREAM_BASELINE_MAX_AGE = 24.hours
@@ -11,6 +10,7 @@ module Api
     # GET /api/signals
     # Query params: source, signal_type, from, to, site_id (proximity filter), page, per_page
     def index
+      authorize ExternalSignal
       if params[:from].present? && safe_parse_datetime(params[:from]).nil?
         render json: { errors: ["Invalid 'from' datetime"] }, status: :bad_request and return
       end
@@ -41,6 +41,7 @@ module Api
     # GET /api/signals/:id
     def show
       signal = ExternalSignal.find(params[:id])
+      authorize signal
       render json: Signals::PayloadSerializer.call(signal)
     end
 
@@ -48,6 +49,7 @@ module Api
     # Live-only Server-Sent Events stream of newly ingested signals.
     # Auth via ?token= query param using the same short-lived SSE token flow as telemetry.
     def stream
+      authorize ExternalSignal, :stream?
       if params[:since].present? && safe_parse_datetime(params[:since]).nil?
         render json: { errors: ["Invalid 'since' datetime"] }, status: :bad_request and return
       end
@@ -114,6 +116,7 @@ module Api
     # POST /api/signals
     # Manually inject a signal — triggers correlation engine immediately.
     def create
+      authorize ExternalSignal, :create?
       p = signal_params
 
       result = Signals::IngestService.call(

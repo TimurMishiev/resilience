@@ -419,4 +419,71 @@ RSpec.describe "Api::Signals", type: :request do
       ])
     end
   end
+
+  describe "POST /api/signals" do
+    let(:commander) { create(:user, :commander) }
+    let(:operator)  { create(:user, :operator) }
+    let(:payload) do
+      {
+        signal: {
+          signal_type: "gps_jamming",
+          lat: 25.2048,
+          lng: 55.2708,
+          magnitude: 0.73,
+          note: "Manual confirmation from watch floor",
+        },
+      }
+    end
+
+    before do
+      allow(Correlations::EvaluatorService).to receive(:call).and_return(ServiceResult.success(fired_count: 0, matches: []))
+      allow(Sites::GeofenceBreachService).to receive(:call).and_return(ServiceResult.success(breaches: [], count: 0))
+    end
+
+    it "requires authentication" do
+      post "/api/signals", params: payload
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "returns 403 for operators" do
+      post "/api/signals", params: payload, headers: auth_headers(operator)
+
+      expect(response).to have_http_status(:forbidden)
+      expect(JSON.parse(response.body).fetch("errors")).to eq(["Commander role required"])
+    end
+
+    it "creates a manual signal for commanders and triggers immediate evaluation" do
+      expect {
+        post "/api/signals", params: payload, headers: auth_headers(commander)
+      }.to change(ExternalSignal, :count).by(1)
+
+      expect(response).to have_http_status(:created)
+      body = JSON.parse(response.body)
+      signal = ExternalSignal.find(body.fetch("id"))
+
+      expect(body).to include(
+        "id" => signal.id,
+        "source" => "manual",
+        "signal_type" => "gps_jamming",
+      )
+      expect(body.dig("raw_payload", "injected_by")).to eq(commander.email)
+      expect(body.dig("raw_payload", "note")).to eq("Manual confirmation from watch floor")
+      expect(Correlations::EvaluatorService).to have_received(:call).with(signal: signal)
+      expect(Sites::GeofenceBreachService).to have_received(:call).with(signal: signal)
+    end
+
+    it "surfaces ingest failures and does not run downstream services" do
+      allow(Signals::IngestService).to receive(:call).and_return(
+        ServiceResult.failure(errors: ["Signal type is not included in the list"]),
+      )
+
+      post "/api/signals", params: payload, headers: auth_headers(commander)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(JSON.parse(response.body).fetch("errors")).to eq(["Signal type is not included in the list"])
+      expect(Correlations::EvaluatorService).not_to have_received(:call)
+      expect(Sites::GeofenceBreachService).not_to have_received(:call)
+    end
+  end
 end

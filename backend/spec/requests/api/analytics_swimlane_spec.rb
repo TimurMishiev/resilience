@@ -2,9 +2,25 @@ require "rails_helper"
 
 RSpec.describe "Api::Analytics#swimlane", type: :request do
   let(:current_user) { create(:user, :commander) }
+  let(:operator)     { create(:user, :operator) }
   let!(:alpha)       { create(:site, name: "Alpha", latitude: 26.5, longitude: 56.2) }
   let!(:bravo)       { create(:site, name: "Bravo", latitude: 25.0, longitude: 55.0) }
   let!(:charlie)     { create(:site, :inactive, name: "Charlie", latitude: 24.0, longitude: 54.0) }
+
+  describe "GET /api/analytics/throughput" do
+    it "requires authentication" do
+      get "/api/analytics/throughput"
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "returns throughput data for operators" do
+      get "/api/analytics/throughput", headers: auth_headers(operator)
+
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body)["data"]).to be_an(Array)
+    end
+  end
 
   describe "GET /api/analytics/swimlane" do
     it "returns lanes and meta for active sites with recent events" do
@@ -86,6 +102,13 @@ RSpec.describe "Api::Analytics#swimlane", type: :request do
     it "returns 401 without authentication" do
       get "/api/analytics/swimlane"
       expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "returns lanes for operators as well as commanders" do
+      get "/api/analytics/swimlane", headers: auth_headers(operator)
+
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body)).to include("data", "meta")
     end
   end
 end

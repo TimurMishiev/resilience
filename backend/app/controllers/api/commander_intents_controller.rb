@@ -1,9 +1,9 @@
 module Api
   class CommanderIntentsController < BaseController
-    skip_after_action :verify_authorized
     before_action :require_commander!
 
     def create
+      authorize CommanderIntent, :create?
       intent = CommanderIntent.new(commander_intent_params)
       intent.created_by = current_user
       intent.updated_by = current_user
@@ -31,6 +31,7 @@ module Api
 
     def update
       intent = CommanderIntent.find(params[:id])
+      authorize intent
       if area_of_operation_reassignment?(intent)
         render json: { errors: ["area_of_operation_id cannot be changed"] }, status: :unprocessable_content
         return

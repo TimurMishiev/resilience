@@ -1,9 +1,9 @@
 module Api
   class AssetsController < BaseController
-    skip_after_action :verify_authorized
     before_action :require_commander!, only: [:update]
 
     def index
+      authorize Asset
       assets = Asset.all.order(:name)
       assets = assets.where(home_site_id: params[:home_site_id]) if params[:home_site_id].present?
       assets = assets.where(status: params[:status]) if params[:status].present?
@@ -14,11 +14,13 @@ module Api
 
     def show
       asset = Asset.find(params[:id])
+      authorize asset
       render json: serialize_asset(asset)
     end
 
     def update
       asset = Asset.find(params[:id])
+      authorize asset
       new_status = params.require(:asset).permit(:status)[:status]
 
       result = Assets::StatusChangeService.new(

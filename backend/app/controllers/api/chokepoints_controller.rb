@@ -1,9 +1,9 @@
 module Api
   class ChokepointsController < BaseController
-    skip_after_action :verify_authorized
     before_action :require_commander!, only: %i[create update destroy]
 
     def index
+      authorize Chokepoint
       chokepoints = Chokepoint.includes(:area_of_operation).order(:name)
       chokepoints = chokepoints.where(area_of_operation_id: params[:area_of_operation_id]) if params[:area_of_operation_id].present?
       records, meta = paginate(chokepoints)
@@ -12,10 +12,12 @@ module Api
 
     def show
       chokepoint = Chokepoint.includes(:area_of_operation).find(params[:id])
+      authorize chokepoint
       render json: serialize_chokepoint(chokepoint)
     end
 
     def create
+      authorize Chokepoint, :create?
       chokepoint = Chokepoint.new(chokepoint_params)
       chokepoint.created_by = current_user
       chokepoint.updated_by = current_user
@@ -45,6 +47,7 @@ module Api
 
     def update
       chokepoint = Chokepoint.includes(:area_of_operation).find(params[:id])
+      authorize chokepoint
       if area_of_operation_reassignment?(chokepoint)
         render json: { errors: ["area_of_operation_id cannot be changed"] }, status: :unprocessable_content
         return
@@ -79,6 +82,7 @@ module Api
 
     def destroy
       chokepoint = Chokepoint.includes(:area_of_operation).find(params[:id])
+      authorize chokepoint
       before = chokepoint_snapshot(chokepoint)
       correlation_id = SecureRandom.uuid
 

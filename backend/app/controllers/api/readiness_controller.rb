@@ -1,8 +1,7 @@
 module Api
   class ReadinessController < BaseController
-    skip_after_action :verify_authorized
-
     def index
+      authorize :readiness, :index?
       sites = Site.all.includes(:tasks).order(:name)
       computed_at = Time.current
 

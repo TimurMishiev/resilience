@@ -2,6 +2,7 @@ require "rails_helper"
 
 RSpec.describe "Api::AuditEvents", type: :request do
   let(:current_user) { create(:user, :commander) }
+  let(:operator)     { create(:user, :operator) }
   let!(:site) { create(:site) }
   let!(:task) { create(:task, site: site) }
 
@@ -22,6 +23,12 @@ RSpec.describe "Api::AuditEvents", type: :request do
   end
 
   describe "GET /api/audit_events" do
+    it "requires authentication" do
+      get "/api/audit_events"
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+
     it "returns 200 with events in descending occurred_at order" do
       get "/api/audit_events", headers: auth_headers(current_user)
       expect(response).to have_http_status(:ok)
@@ -63,6 +70,21 @@ RSpec.describe "Api::AuditEvents", type: :request do
         "event_type", "action", "before_snapshot", "after_snapshot",
         "correlation_id", "occurred_at"
       )
+    end
+
+    it "allows operators to query entity-scoped audit history" do
+      get "/api/audit_events",
+          params: { entity_id: task.id, entity_type: "Task" },
+          headers: auth_headers(operator)
+
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body).map { |event| event["id"] }).to eq([event_a.id])
+    end
+
+    it "forbids operators from querying the global audit log" do
+      get "/api/audit_events", headers: auth_headers(operator)
+
+      expect(response).to have_http_status(:forbidden)
     end
   end
 end

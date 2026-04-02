@@ -4,6 +4,12 @@ RSpec.describe "Api::SseTokens", type: :request do
   let(:user) { create(:user) }
 
   describe "POST /api/sse_token" do
+    it "requires authentication" do
+      post "/api/sse_token"
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+
     it "issues a short-lived token for EventSource auth" do
       post "/api/sse_token", headers: auth_headers(user)
 

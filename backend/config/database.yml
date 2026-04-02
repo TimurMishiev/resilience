@@ -12,7 +12,7 @@ development:
 
 test:
   <<: *default
-  port: 5434
+  port: <%= ENV.fetch("TEST_DATABASE_PORT", ENV.fetch("DATABASE_PORT", 5432)) %>
   database: resilience_test
 
 production:
