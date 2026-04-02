@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Button, Callout, Spinner } from '@blueprintjs/core'
+import { Callout, Spinner } from '@blueprintjs/core'
 import { useSites } from '../hooks/useSites'
 import { useTasks } from '../hooks/useTasks'
 import { useAssets } from '../hooks/useAssets'
@@ -11,13 +11,15 @@ import { useVessels, useVesselTracks } from '../hooks/useVessels'
 import { useActiveBreachSiteIds } from '../hooks/useSignalRuleMatches'
 import { useChokepoints } from '../hooks/useChokepoints'
 import { useReplayParams } from '../hooks/useReplayParams'
-import { useGlobeEngine, type GlobeEngineReturn } from '../hooks/useGlobeEngine'
-import type { Asset, Site, Task, Signal } from '../api/types'
+import { useGlobeEngine } from '../hooks/useGlobeEngine'
+import { useGlobeE2EBridge } from '../hooks/useGlobeE2EBridge'
+import { useGlobeBenchmarkBridge } from '../hooks/useGlobeBenchmarkBridge'
+import type { Asset, Site, Signal, Task } from '../api/types'
 import type { Vessel } from '../api/vessels'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { assetDisplayPosition, getLiveTelemetryReading } from '../lib/assetPresentation'
 import { computeReadiness } from '../lib/formatters'
-import { buildCoverageCircles, haversineKm, type CoverageCircle } from '../lib/coverage'
+import { buildCoverageCircles, haversineKm } from '../lib/coverage'
 import {
   buildEntitySelectionPath,
   buildEntitySelectionSearch,
@@ -29,9 +31,11 @@ import {
   trackEntitySelectionSyncToken,
 } from '../lib/entitySelectionRoute'
 import { isPerfEnabled } from '../lib/perfInstrumentation'
-import { SIGNAL_COLORS, SIGNAL_LABELS } from '../lib/signalConfig'
-import type { TelemetryMap } from '../lib/telemetry'
+import { SIGNAL_LABELS } from '../lib/signalConfig'
 import { GlobeInspectorPanel } from '../components/GlobeInspectorPanel'
+import { GlobeToolbar } from '../components/globe/GlobeToolbar'
+import { GlobeLegend } from '../components/globe/GlobeLegend'
+import type { GlobeBenchmarkState, GlobeE2EBridgeState } from '../components/globe/types'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -55,154 +59,22 @@ function getInspectorTitle(
   return null
 }
 
-type GlobeBenchmarkTarget = {
-  siteId: string
-  siteName: string
-  focusedSignalCount: number
-  globalSignalCount: number
-}
-
-type GlobeBenchmarkState = {
-  viewerReady: boolean
-  siteCount: number
-  signalCount: number
-  selectedSiteId: string | null
-  selectedAssetId: string | null
-  selectedSignalId: string | null
-  isCloseView: boolean
-  showSignals: boolean
-  showHeatmap: boolean
-  showCoverage: boolean
-  benchmarkTarget: GlobeBenchmarkTarget | null
-}
-
-type GlobeBenchmarkApi = {
-  getState: () => GlobeBenchmarkState
-  getBenchmarkTarget: () => GlobeBenchmarkTarget | null
-  focusSite: (siteId: string) => boolean
-  focusBestSite: () => GlobeBenchmarkTarget | null
-  clearSelection: () => void
-  flyHome: () => void
-  clearPerf: () => void
-  getPerfEvents: () => unknown[]
-}
-
-type GlobeE2ETarget = {
-  id: string
-  name: string
-  latitude: number
-  longitude: number
-}
-
-type GlobeE2ECanvasPoint = {
-  x: number
-  y: number
-}
-
-type GlobeE2EPickResult = {
-  outcome: string
-  idString?: string
-}
-
-type GlobeE2EApi = {
-  getState: () => {
-    viewerReady: boolean
-    selectedSiteId: string | null
-    selectedAssetId: string | null
-    selectedSignalId: string | null
-    signalCount: number
-  }
-  getFirstSiteTarget: () => GlobeE2ETarget | null
-  getFirstSignalTarget: () => GlobeE2ETarget | null
-  getFirstGeofenceTarget: () => GlobeE2ETarget | null
-  getFirstCoverageTarget: () => GlobeE2ETarget | null
-  projectPosition: (lng: number, lat: number) => GlobeE2ECanvasPoint | null
-  projectRenderedPosition: (idString: string) => GlobeE2ECanvasPoint | null
-  flyToSite: (siteId: string) => boolean
-  flyToAsset: (assetId: string) => boolean
-  flyToSignal: (signalId: string) => boolean
-  inspectProjectedPosition: (lng: number, lat: number) => GlobeE2EPickResult | null
-  pickProjectedPosition: (lng: number, lat: number) => boolean
-  pickSiteThroughGeofenceOverlay: (siteId: string) => boolean
-  pickSite: (siteId: string) => boolean
-  pickAsset: (assetId: string) => boolean
-}
-
-type GlobeE2EBridgeState = {
-  viewerReady: boolean
-  selectedSiteId: string | null
-  selectedAssetId: string | null
-  selectedSignalId: string | null
-  sites: Site[]
-  assets: Asset[]
-  signals: Signal[]
-  coverageCircles: CoverageCircle[]
-  readings: TelemetryMap
-  isReplaying: boolean
-  focusPosition: GlobeEngineReturn['focusPosition']
-  projectPosition: GlobeEngineReturn['projectPosition']
-  projectRenderedPosition: GlobeEngineReturn['projectRenderedPosition']
-  inspectCanvasPosition: GlobeEngineReturn['inspectCanvasPosition']
-  dispatchSyntheticPick: GlobeEngineReturn['dispatchSyntheticPick']
-  pickCanvasPosition: GlobeEngineReturn['pickCanvasPosition']
-}
-
-const E2E_PICK_SEARCH_OFFSETS: Array<{ x: number; y: number }> = (() => {
-  const offsets = [{ x: 0, y: 0 }]
-  for (let radius = 2; radius <= 30; radius += 2) {
-    for (let y = -radius; y <= radius; y += 2) {
-      for (let x = -radius; x <= radius; x += 2) {
-        if (Math.max(Math.abs(x), Math.abs(y)) !== radius) continue
-        offsets.push({ x, y })
-      }
-    }
-  }
-  return offsets
-})()
-
-const E2E_SIGNAL_FOCUS_HEIGHT_M = 2_500_000
-
-declare global {
-  interface Window {
-    __resilienceGlobeBench?: GlobeBenchmarkApi
-    __resilienceGlobeE2E?: GlobeE2EApi
-  }
-}
-
-function pickBenchmarkTarget(sites: Site[], signals: Signal[]): GlobeBenchmarkTarget | null {
+function pickBenchmarkTarget(sites: Site[], signals: Signal[]) {
   if (sites.length === 0 || signals.length === 0) return null
 
-  let best: GlobeBenchmarkTarget | null = null
+  let best: { siteId: string; siteName: string; focusedSignalCount: number; globalSignalCount: number } | null = null
 
   for (const site of sites) {
-    const focusedSignalCount = signals.reduce((count, signal) => {
-      return count + (
-        haversineKm(Number(site.latitude), Number(site.longitude), Number(signal.lat), Number(signal.lng)) <= 2_000
-          ? 1
-          : 0
-      )
-    }, 0)
-
+    const focusedSignalCount = signals.reduce((count, signal) =>
+      count + (haversineKm(Number(site.latitude), Number(site.longitude), Number(signal.lat), Number(signal.lng)) <= 2_000 ? 1 : 0),
+    0)
     if (focusedSignalCount === 0) continue
-
     if (!best || focusedSignalCount < best.focusedSignalCount) {
-      best = {
-        siteId: site.id,
-        siteName: site.name,
-        focusedSignalCount,
-        globalSignalCount: signals.length,
-      }
+      best = { siteId: site.id, siteName: site.name, focusedSignalCount, globalSignalCount: signals.length }
     }
   }
 
-  if (best) return best
-
-  return {
-    siteId: sites[0].id,
-    siteName: sites[0].name,
-    focusedSignalCount: signals.length,
-    globalSignalCount: signals.length,
-  }
+  return best ?? { siteId: sites[0].id, siteName: sites[0].name, focusedSignalCount: signals.length, globalSignalCount: signals.length }
 }
 
 // ---------------------------------------------------------------------------
@@ -212,14 +84,12 @@ export default function GlobePage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { asOf, isReplaying, asOfParam, signalQueryParams } = useReplayParams()
-  const urlSelectionAppliedRef = useRef(false)
-  const replayResetReadyRef = useRef(false)
-  const nextRouteWriteTokenRef = useRef(0)
-  const pendingRouteWriteTokensRef = useRef<Set<number>>(new Set())
+  const urlSelectionAppliedRef      = useRef(false)
+  const replayResetReadyRef         = useRef(false)
+  const nextRouteWriteTokenRef      = useRef(0)
+  const pendingRouteWriteTokensRef  = useRef<Set<number>>(new Set())
 
-  // ---------------------------------------------------------------------------
-  // Selection state — owned here, driven by engine callbacks
-  // ---------------------------------------------------------------------------
+  // ── Selection state ─────────────────────────────────────────────────────────
   const [selectedSiteId,   setSelectedSiteId]   = useState<string | null>(null)
   const [selectedAssetId,  setSelectedAssetId]  = useState<string | null>(null)
   const [selectedSignalId, setSelectedSignalId] = useState<string | null>(null)
@@ -230,9 +100,7 @@ export default function GlobePage() {
   const [showTrails,       setShowTrails]       = useState(true)
   const [trailWindowMinutes, setTrailWindowMinutes] = useState(30)
 
-  // ---------------------------------------------------------------------------
-  // Data queries
-  // ---------------------------------------------------------------------------
+  // ── Data queries ─────────────────────────────────────────────────────────────
   const sitesQuery  = useSites({ per_page: 200, ...asOfParam })
   const tasksQuery  = useTasks({ per_page: 200, ...asOfParam })
   const assetsQuery = useAssets({ per_page: 200, ...asOfParam })
@@ -245,6 +113,7 @@ export default function GlobePage() {
     () => (isReplaying ? [] : (areasRes?.data ?? [])),
     [areasRes?.data, isReplaying],
   )
+
   const { data: activeBreachRes } = useActiveBreachSiteIds({
     enabled: !isReplaying,
     refetchInterval: isReplaying ? false : 10_000,
@@ -253,17 +122,14 @@ export default function GlobePage() {
     () => new Set<string>(isReplaying ? [] : (activeBreachRes?.site_ids ?? [])),
     [activeBreachRes?.site_ids, isReplaying],
   )
+
   const { signals, connected: signalsConnected, error: signalError } = useSignalsLive({
     enabled: true,
     asOf,
     replayParams: signalQueryParams,
   })
 
-  // ---------------------------------------------------------------------------
-  // SSE grace period — mirrors MapPage exactly.  Scoped to the React Router
-  // location.key so every distinct navigation attempt (including same-signal
-  // retries in a long-lived session) gets a fresh 1500 ms window.
-  // ---------------------------------------------------------------------------
+  // SSE grace period — same pattern as MapPage
   const [signalsSettledKey, setSignalsSettledKey] = useState<string | null>(null)
   const signalsSettledTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null)
   const signalsSettledTimerForRef  = useRef<string | null>(null)
@@ -278,29 +144,20 @@ export default function GlobePage() {
       }
       return
     }
-
     const routeSignalId = parseEntitySelectionRoute(location.search).signalId
     if (routeSignalId == null) return
-
-    // Cancel the running timer when the navigation key changes (new route attempt).
-    if (
-      signalsSettledTimerRef.current != null &&
-      signalsSettledTimerForRef.current !== location.key
-    ) {
+    if (signalsSettledTimerRef.current != null && signalsSettledTimerForRef.current !== location.key) {
       clearTimeout(signalsSettledTimerRef.current)
       signalsSettledTimerRef.current = null
       signalsSettledTimerForRef.current = null
     }
-
     if (signalsSettledTimerRef.current != null) return
-
     const thisKey = location.key
     signalsSettledTimerForRef.current = thisKey
     signalsSettledTimerRef.current = setTimeout(() => {
       setSignalsSettledKey(thisKey)
       signalsSettledTimerRef.current = null
     }, 1500)
-
     return () => {
       if (signalsSettledTimerRef.current != null) {
         clearTimeout(signalsSettledTimerRef.current)
@@ -322,11 +179,7 @@ export default function GlobePage() {
   }, [tasks])
 
   const coverageCircles = useMemo(() => buildCoverageCircles({
-    assets,
-    tasks,
-    sites,
-    readings,
-    allowHistoricalTelemetry: isReplaying,
+    assets, tasks, sites, readings, allowHistoricalTelemetry: isReplaying,
   }), [assets, isReplaying, readings, sites, tasks])
 
   const { data: chokepointsRes } = useChokepoints({ per_page: 200 }, { enabled: !isReplaying })
@@ -335,67 +188,41 @@ export default function GlobePage() {
     [chokepointsRes?.data, isReplaying],
   )
 
+  // ── Route management ─────────────────────────────────────────────────────────
   const updateSelectionRoute = useCallback((selection: {
-    siteId: string | null
-    assetId: string | null
-    signalId: string | null
+    siteId: string | null; assetId: string | null; signalId: string | null
   }) => {
     const nextSearch = buildEntitySelectionSearch(location.search, selection)
     if (nextSearch === location.search) return
-
     const token = nextRouteWriteTokenRef.current + 1
     nextRouteWriteTokenRef.current = token
     trackEntitySelectionSyncToken(pendingRouteWriteTokensRef.current, token)
     navigate(
-      {
-        pathname: location.pathname,
-        search: nextSearch,
-      },
-      {
-        replace: true,
-        state: buildEntitySelectionSyncLocationState(location.state, {
-          source: 'globe',
-          token,
-        }),
-      },
+      { pathname: location.pathname, search: nextSearch },
+      { replace: true, state: buildEntitySelectionSyncLocationState(location.state, { source: 'globe', token }) },
     )
   }, [location.pathname, location.search, location.state, navigate])
 
   const updateSelectionRouteRef = useRef(updateSelectionRoute)
-  useEffect(() => {
-    updateSelectionRouteRef.current = updateSelectionRoute
-  }, [updateSelectionRoute])
+  useEffect(() => { updateSelectionRouteRef.current = updateSelectionRoute }, [updateSelectionRoute])
 
-  // ---------------------------------------------------------------------------
-  // Reset selection on replay timestamp change
-  // ---------------------------------------------------------------------------
   useEffect(() => {
-    if (!replayResetReadyRef.current) {
-      replayResetReadyRef.current = true
-      return
-    }
+    if (!replayResetReadyRef.current) { replayResetReadyRef.current = true; return }
     setSelectedSiteId(null)
     setSelectedAssetId(null)
     setSelectedSignalId(null)
     updateSelectionRouteRef.current({ siteId: null, assetId: null, signalId: null })
   }, [asOf])
 
-  useEffect(() => {
-    urlSelectionAppliedRef.current = false
-  }, [location.search])
+  useEffect(() => { urlSelectionAppliedRef.current = false }, [location.search])
 
-  // ---------------------------------------------------------------------------
-  // Derived selection
-  // ---------------------------------------------------------------------------
+  // ── Derived selection ────────────────────────────────────────────────────────
   const selectedSite        = selectedSiteId   ? (sites.find(s => s.id === selectedSiteId)     ?? null) : null
   const selectedTasks       = selectedSiteId   ? (tasksBySite[selectedSiteId] ?? [])            : []
   const selectedAsset       = selectedAssetId  ? (assets.find(a => a.id === selectedAssetId)   ?? null) : null
   const selectedSignal      = selectedSignalId ? (signals.find(s => s.id === selectedSignalId) ?? null) : null
   const selectedLiveReading = getLiveTelemetryReading(selectedAssetId, readings, { allowHistorical: isReplaying })
 
-  // ---------------------------------------------------------------------------
-  // Clear signal selection when signals are hidden
-  // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!showSignals) {
       setSelectedSignalId(null)
@@ -403,9 +230,7 @@ export default function GlobePage() {
     }
   }, [selectedAssetId, selectedSiteId, showSignals, updateSelectionRoute])
 
-  // ---------------------------------------------------------------------------
-  // Vessel enrichment — only when a vessel_position signal is selected
-  // ---------------------------------------------------------------------------
+  // ── Vessel enrichment ─────────────────────────────────────────────────────────
   const selectedVesselMmsi = selectedSignal?.signal_type === 'vessel_position' ? selectedSignal.external_id : null
   const { data: vesselLookup } = useVessels(
     selectedVesselMmsi ? { mmsi: selectedVesselMmsi, per_page: 1 } : undefined,
@@ -418,13 +243,9 @@ export default function GlobePage() {
     ...(isReplaying && asOf ? { to: asOf } : {}),
   })
   const vesselTracks = useMemo(() => vesselTrackRes?.data ?? [], [vesselTrackRes?.data])
+  const assetTrails  = useAssetTrails(isReplaying ? asOf : null, trailWindowMinutes)
 
-  // Replay-only multi-asset trails
-  const assetTrails = useAssetTrails(isReplaying ? asOf : null, trailWindowMinutes)
-
-  // ---------------------------------------------------------------------------
-  // Engine refs
-  // ---------------------------------------------------------------------------
+  // ── Engine init ───────────────────────────────────────────────────────────────
   const containerRef = useRef<HTMLDivElement>(null)
   const creditsRef   = useRef<HTMLDivElement>(null)
 
@@ -435,493 +256,141 @@ export default function GlobePage() {
     return null
   }, [isReplaying, readings, selectedAsset, selectedSignal, selectedSite, sites])
 
-  const onSiteClick = useCallback((siteId: string | null) => {
-    setSelectedSiteId(siteId)
-    setSelectedAssetId(null)
-    setSelectedSignalId(null)
-    updateSelectionRoute({ siteId, assetId: null, signalId: null })
-  }, [updateSelectionRoute])
+  const onSiteClick  = useCallback((siteId:   string | null) => { setSelectedSiteId(siteId);   setSelectedAssetId(null); setSelectedSignalId(null); updateSelectionRoute({ siteId,   assetId: null,   signalId: null }) }, [updateSelectionRoute])
+  const onAssetClick = useCallback((assetId:  string | null) => { setSelectedSiteId(null); setSelectedAssetId(assetId);  setSelectedSignalId(null); updateSelectionRoute({ siteId: null, assetId,  signalId: null }) }, [updateSelectionRoute])
+  const onSignalClick= useCallback((signalId: string | null) => { setSelectedSiteId(null); setSelectedAssetId(null); setSelectedSignalId(signalId); updateSelectionRoute({ siteId: null, assetId: null, signalId }) }, [updateSelectionRoute])
 
-  const onAssetClick = useCallback((assetId: string | null) => {
-    setSelectedSiteId(null)
-    setSelectedAssetId(assetId)
-    setSelectedSignalId(null)
-    updateSelectionRoute({ siteId: null, assetId, signalId: null })
-  }, [updateSelectionRoute])
+  const benchmarkTarget = useMemo(() => pickBenchmarkTarget(sites, signals), [signals, sites])
 
-  const onSignalClick = useCallback((signalId: string | null) => {
-    setSelectedSiteId(null)
-    setSelectedAssetId(null)
-    setSelectedSignalId(signalId)
-    updateSelectionRoute({ siteId: null, assetId: null, signalId })
-  }, [updateSelectionRoute])
-
-  const benchmarkTarget = useMemo(
-    () => pickBenchmarkTarget(sites, signals),
-    [signals, sites],
-  )
-
-  // ---------------------------------------------------------------------------
-  // Engine init — hook owns signal culling using selectedCenter + camera regime
-  // ---------------------------------------------------------------------------
   const { viewerReady, isCloseView, focusPosition, flyToHome, projectPosition, projectRenderedPosition, inspectCanvasPosition, dispatchSyntheticPick, pickCanvasPosition } = useGlobeEngine({
-    containerRef,
-    creditsRef,
-    sites,
-    assets,
-    signals,
-    tasksBySite,
-    areaOfOperations,
-    breachedSiteIds,
-    coverageCircles,
-    chokepoints,
-    vesselTracks,
-    assetTrails,
-    readings,
-    showSignals,
-    showHeatmap,
-    showCoverage,
-    showChokepoints,
+    containerRef, creditsRef,
+    sites, assets, signals, tasksBySite, areaOfOperations, breachedSiteIds,
+    coverageCircles, chokepoints, vesselTracks, assetTrails, readings,
+    showSignals, showHeatmap, showCoverage, showChokepoints,
     showTrails: isReplaying && showTrails,
-    asOf: asOf ?? undefined,
-    isReplaying,
+    asOf: asOf ?? undefined, isReplaying,
     signalFocusCenter: selectedCenter,
-    selectedSiteId,
-    selectedAssetId,
-    selectedSignalId,
-    onSiteClick,
-    onAssetClick,
-    onSignalClick,
+    selectedSiteId, selectedAssetId, selectedSignalId,
+    onSiteClick, onAssetClick, onSignalClick,
   })
+
   const perfEnabled = isPerfEnabled()
-  const perfBenchStateRef = useRef<GlobeBenchmarkState>({
-    viewerReady: false,
-    siteCount: 0,
-    signalCount: 0,
-    selectedSiteId: null,
-    selectedAssetId: null,
-    selectedSignalId: null,
-    isCloseView: false,
-    showSignals: true,
-    showHeatmap: false,
-    showCoverage: true,
+
+  // ── Benchmark bridge refs ────────────────────────────────────────────────────
+  const benchStateRef = useRef<GlobeBenchmarkState>({
+    viewerReady: false, siteCount: 0, signalCount: 0,
+    selectedSiteId: null, selectedAssetId: null, selectedSignalId: null,
+    isCloseView: false, showSignals: true, showHeatmap: false, showCoverage: true,
     benchmarkTarget: null,
   })
-  const perfSitesRef = useRef(sites)
-  const flyToHomeRef = useRef(flyToHome)
+  const benchSitesRef   = useRef(sites)
+  const flyToHomeRef    = useRef(flyToHome)
 
   useEffect(() => {
-    perfBenchStateRef.current = {
-      viewerReady,
-      siteCount: sites.length,
-      signalCount: signals.length,
-      selectedSiteId,
-      selectedAssetId,
-      selectedSignalId,
-      isCloseView,
-      showSignals,
-      showHeatmap,
-      showCoverage,
-      benchmarkTarget,
+    benchStateRef.current = {
+      viewerReady, siteCount: sites.length, signalCount: signals.length,
+      selectedSiteId, selectedAssetId, selectedSignalId,
+      isCloseView, showSignals, showHeatmap, showCoverage, benchmarkTarget,
     }
-    perfSitesRef.current = sites
-    flyToHomeRef.current = flyToHome
-  }, [
-    benchmarkTarget,
-    flyToHome,
-    isCloseView,
-    selectedAssetId,
-    selectedSignalId,
-    selectedSiteId,
-    showCoverage,
-    showHeatmap,
-    showSignals,
-    signals.length,
-    sites,
-    viewerReady,
-  ])
+    benchSitesRef.current = sites
+    flyToHomeRef.current  = flyToHome
+  }, [benchmarkTarget, flyToHome, isCloseView, selectedAssetId, selectedSignalId, selectedSiteId, showCoverage, showHeatmap, showSignals, signals.length, sites, viewerReady])
 
+  useGlobeBenchmarkBridge({
+    perfEnabled, stateRef: benchStateRef, sitesRef: benchSitesRef, flyToHomeRef,
+    setSelectedSiteId, setSelectedAssetId, setSelectedSignalId,
+  })
+
+  // ── E2E bridge ────────────────────────────────────────────────────────────────
   const globeE2EBridgeStateRef = useRef<GlobeE2EBridgeState | null>(null)
   globeE2EBridgeStateRef.current = {
-    viewerReady,
-    selectedSiteId,
-    selectedAssetId,
-    selectedSignalId,
-    sites,
-    assets,
-    signals,
-    coverageCircles,
-    readings,
-    isReplaying,
-    focusPosition,
-    projectPosition,
-    projectRenderedPosition,
-    inspectCanvasPosition,
-    dispatchSyntheticPick,
-    pickCanvasPosition,
+    viewerReady, selectedSiteId, selectedAssetId, selectedSignalId,
+    sites, assets, signals, coverageCircles, readings, isReplaying,
+    focusPosition, projectPosition, projectRenderedPosition,
+    inspectCanvasPosition, dispatchSyntheticPick, pickCanvasPosition,
   }
+  useGlobeE2EBridge(globeE2EBridgeStateRef)
 
-  // ---------------------------------------------------------------------------
-  // URL deep-link selection — fires once per navigation after globe is ready
-  // ---------------------------------------------------------------------------
+  // ── URL deep-link selection ────────────────────────────────────────────────
   useEffect(() => {
     if (!viewerReady || urlSelectionAppliedRef.current) return
-
     if (consumeEntitySelectionSyncLocationState(location.state, 'globe', pendingRouteWriteTokensRef.current)) {
       urlSelectionAppliedRef.current = true
       return
     }
-
     const { siteId, assetId, signalId } = parseEntitySelectionRoute(location.search)
-
-    if (!siteId && !assetId && !signalId) {
-      setSelectedSiteId(null)
-      setSelectedAssetId(null)
-      setSelectedSignalId(null)
-      urlSelectionAppliedRef.current = true
-      return
-    }
-
+    if (!siteId && !assetId && !signalId) { setSelectedSiteId(null); setSelectedAssetId(null); setSelectedSignalId(null); urlSelectionAppliedRef.current = true; return }
     if (siteId) {
-      const site = sites.find(entry => entry.id === siteId)
+      const site = sites.find(e => e.id === siteId)
       if (!site) return
-      setSelectedSiteId(site.id)
-      setSelectedAssetId(null)
-      setSelectedSignalId(null)
-      urlSelectionAppliedRef.current = true
-      return
+      setSelectedSiteId(site.id); setSelectedAssetId(null); setSelectedSignalId(null)
+      urlSelectionAppliedRef.current = true; return
     }
-
     if (assetId) {
-      const asset = assets.find(entry => entry.id === assetId)
+      const asset = assets.find(e => e.id === assetId)
       if (!asset) return
-      setSelectedSiteId(null)
-      setSelectedAssetId(asset.id)
-      setSelectedSignalId(null)
-      urlSelectionAppliedRef.current = true
-      return
+      setSelectedSiteId(null); setSelectedAssetId(asset.id); setSelectedSignalId(null)
+      urlSelectionAppliedRef.current = true; return
     }
-
     if (signalId) {
-      const signal = signals.find(entry => entry.id === signalId)
+      const signal = signals.find(e => e.id === signalId)
       if (!signal) return
-      setSelectedSiteId(null)
-      setSelectedAssetId(null)
-      setSelectedSignalId(signal.id)
+      setSelectedSiteId(null); setSelectedAssetId(null); setSelectedSignalId(signal.id)
       urlSelectionAppliedRef.current = true
     }
   }, [assets, location.search, location.state, signals, sites, viewerReady])
 
   useEffect(() => {
     const routeSelection = parseEntitySelectionRoute(location.search)
-
     const availability = {
-      sitesLoaded: sitesQuery.isSuccess,
-      assetsLoaded: assetsQuery.isSuccess,
-      // Same guard as MapPage — defer "loaded" until SSE has had a chance to
-      // deliver post-baseline signals for deep-linked signal routes.
+      sitesLoaded:   sitesQuery.isSuccess,
+      assetsLoaded:  assetsQuery.isSuccess,
       signalsLoaded: signalsConnected && signalError == null && (
-        isReplaying ||
-        urlSelectionAppliedRef.current ||
-        routeSelection.signalId == null ||
-        signals.some(s => s.id === routeSelection.signalId) ||
+        isReplaying || urlSelectionAppliedRef.current ||
+        routeSelection.signalId == null || signals.some(s => s.id === routeSelection.signalId) ||
         signalsSettledKey === location.key
       ),
-      siteIds: sites.map(site => site.id),
-      assetIds: assets.map(asset => asset.id),
-      signalIds: signals.map(signal => signal.id),
+      siteIds:   sites.map(s => s.id),
+      assetIds:  assets.map(a => a.id),
+      signalIds: signals.map(s => s.id),
     }
-
-    const stateSelection = {
-      siteId: selectedSiteId,
-      assetId: selectedAssetId,
-      signalId: selectedSignalId,
-    }
+    const stateSelection = { siteId: selectedSiteId, assetId: selectedAssetId, signalId: selectedSignalId }
     const routeAuthoritative = isEntitySelectionRouteAuthoritative(location.state, 'globe')
-
-    if (!shouldClearEntitySelectionAfterLoad(routeSelection, stateSelection, availability, routeAuthoritative)) {
-      return
-    }
-
-    setSelectedSiteId(null)
-    setSelectedAssetId(null)
-    setSelectedSignalId(null)
+    if (!shouldClearEntitySelectionAfterLoad(routeSelection, stateSelection, availability, routeAuthoritative)) return
+    setSelectedSiteId(null); setSelectedAssetId(null); setSelectedSignalId(null)
     updateSelectionRouteRef.current({ siteId: null, assetId: null, signalId: null })
-  }, [
-    assets,
-    assetsQuery.isSuccess,
-    isReplaying,
-    location.key,
-    location.search,
-    location.state,
-    selectedAssetId,
-    selectedSignalId,
-    selectedSiteId,
-    signalError,
-    signals,
-    signalsConnected,
-    signalsSettledKey,
-    sites,
-    sitesQuery.isSuccess,
-  ])
+  }, [assets, assetsQuery.isSuccess, isReplaying, location.key, location.search, location.state, selectedAssetId, selectedSignalId, selectedSiteId, signalError, signals, signalsConnected, signalsSettledKey, sites, sitesQuery.isSuccess])
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (!perfEnabled) {
-      delete window.__resilienceGlobeBench
-      return
-    }
+  // ── Focus camera on entity click ───────────────────────────────────────────
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only fire on id change
+  useEffect(() => { if (selectedSite) focusPosition(Number(selectedSite.longitude), Number(selectedSite.latitude), 1_200_000, -70) }, [selectedSiteId])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only fire on id change
+  useEffect(() => { if (selectedAsset) { const coords = assetDisplayPosition(selectedAsset, sites, readings, { lat: 0, lng: 0 }, { allowHistorical: isReplaying }); focusPosition(coords.lng, coords.lat, 850_000) } }, [selectedAssetId, isReplaying])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only fire on id change
+  useEffect(() => { if (selectedSignal) focusPosition(Number(selectedSignal.lng), Number(selectedSignal.lat), 900_000) }, [selectedSignalId])
 
-    const benchApi: GlobeBenchmarkApi = {
-      getState: () => ({
-        ...perfBenchStateRef.current,
-      }),
-      getBenchmarkTarget: () => perfBenchStateRef.current.benchmarkTarget,
-      focusSite: (siteId: string) => {
-        if (!perfSitesRef.current.some(site => site.id === siteId)) return false
-        setSelectedSiteId(siteId)
-        setSelectedAssetId(null)
-        setSelectedSignalId(null)
-        return true
-      },
-      focusBestSite: () => {
-        const currentTarget = perfBenchStateRef.current.benchmarkTarget
-        if (!currentTarget) return null
-        setSelectedSiteId(currentTarget.siteId)
-        setSelectedAssetId(null)
-        setSelectedSignalId(null)
-        return currentTarget
-      },
-      clearSelection: () => {
-        setSelectedSiteId(null)
-        setSelectedAssetId(null)
-        setSelectedSignalId(null)
-      },
-      flyHome: () => {
-        flyToHomeRef.current()
-      },
-      clearPerf: () => {
-        window.__resiliencePerf?.clear()
-      },
-      getPerfEvents: () => window.__resiliencePerf?.events ?? [],
-    }
-    window.__resilienceGlobeBench = benchApi
-
-    return () => {
-      if (window.__resilienceGlobeBench === benchApi) {
-        delete window.__resilienceGlobeBench
-      }
-    }
-  }, [perfEnabled])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-
-    if (window.localStorage.getItem('resilience.e2e') !== '1') {
-      delete window.__resilienceGlobeE2E
-      return
-    }
-
-    const getBridgeState = () => globeE2EBridgeStateRef.current
-
-    const pickRenderedEntity = (expectedIdString: string) => {
-      const state = getBridgeState()
-      if (!state) return false
-
-      const point = state.projectRenderedPosition(expectedIdString)
-      if (!point) return false
-
-      for (const offset of E2E_PICK_SEARCH_OFFSETS) {
-        const x = point.x + offset.x
-        const y = point.y + offset.y
-        const result = state.inspectCanvasPosition(x, y)
-        if (result.idString !== expectedIdString) continue
-        return state.pickCanvasPosition(x, y)
-      }
-
-      return false
-    }
-
-    window.__resilienceGlobeE2E = {
-      getState: () => ({
-        viewerReady: getBridgeState()?.viewerReady ?? false,
-        selectedSiteId: getBridgeState()?.selectedSiteId ?? null,
-        selectedAssetId: getBridgeState()?.selectedAssetId ?? null,
-        selectedSignalId: getBridgeState()?.selectedSignalId ?? null,
-        signalCount: getBridgeState()?.signals.length ?? 0,
-      }),
-      getFirstSiteTarget: () => {
-        const site = getBridgeState()?.sites[0]
-        return site
-          ? {
-              id: site.id,
-              name: site.name,
-              latitude: Number(site.latitude),
-              longitude: Number(site.longitude),
-            }
-          : null
-      },
-      getFirstSignalTarget: () => {
-        const signal = getBridgeState()?.signals[0]
-        return signal
-          ? {
-              id: signal.id,
-              name: SIGNAL_LABELS[signal.signal_type] ?? signal.signal_type,
-              latitude: Number(signal.lat),
-              longitude: Number(signal.lng),
-            }
-          : null
-      },
-      getFirstGeofenceTarget: () => {
-        const geofenceSite = getBridgeState()?.sites.find(site => site.geofence_radius_km > 0) ?? null
-        return geofenceSite
-        ? {
-            id: geofenceSite.id,
-            name: geofenceSite.name,
-            latitude: Number(geofenceSite.latitude),
-            longitude: Number(geofenceSite.longitude),
-          }
-        : null
-      },
-      getFirstCoverageTarget: () => {
-        const state = getBridgeState()
-        if (!state) return null
-
-        const coverageAssetId = state.coverageCircles[0]?.assetId ?? null
-        const coverageAsset = coverageAssetId ? (state.assets.find(asset => asset.id === coverageAssetId) ?? null) : null
-        const coverageAssetCoords = coverageAsset
-          ? assetDisplayPosition(coverageAsset, state.sites, state.readings, { lat: 0, lng: 0 }, { allowHistorical: state.isReplaying })
-          : null
-
-        return coverageAsset
-        ? {
-            id: coverageAsset.id,
-            name: coverageAsset.name,
-            latitude: coverageAssetCoords?.lat ?? 0,
-            longitude: coverageAssetCoords?.lng ?? 0,
-          }
-        : null
-      },
-      projectPosition: (lng: number, lat: number) => getBridgeState()?.projectPosition(lng, lat) ?? null,
-      projectRenderedPosition: (idString: string) => getBridgeState()?.projectRenderedPosition(idString) ?? null,
-      flyToSite: (siteId: string) => {
-        const state = getBridgeState()
-        if (!state) return false
-
-        const site = state.sites.find(entry => entry.id === siteId)
-        if (!site) return false
-        state.focusPosition(Number(site.longitude), Number(site.latitude), 1_200_000, -70)
-        return true
-      },
-      flyToAsset: (assetId: string) => {
-        const state = getBridgeState()
-        if (!state) return false
-
-        const asset = state.assets.find(entry => entry.id === assetId)
-        if (!asset) return false
-        const coords = assetDisplayPosition(asset, state.sites, state.readings, { lat: 0, lng: 0 }, { allowHistorical: state.isReplaying })
-        state.focusPosition(coords.lng, coords.lat, 850_000)
-        return true
-      },
-      flyToSignal: (signalId: string) => {
-        const state = getBridgeState()
-        if (!state) return false
-
-        const signal = state.signals.find(entry => entry.id === signalId)
-        if (!signal) return false
-        state.focusPosition(Number(signal.lng), Number(signal.lat), E2E_SIGNAL_FOCUS_HEIGHT_M, -68)
-        return true
-      },
-      inspectProjectedPosition: (lng: number, lat: number) => {
-        const state = getBridgeState()
-        if (!state) return null
-
-        const point = state.projectPosition(lng, lat)
-        if (!point) return null
-        return state.inspectCanvasPosition(point.x, point.y)
-      },
-      pickProjectedPosition: (lng: number, lat: number) => {
-        const state = getBridgeState()
-        if (!state) return false
-
-        const point = state.projectPosition(lng, lat)
-        if (!point) return false
-        return state.pickCanvasPosition(point.x, point.y)
-      },
-      pickSiteThroughGeofenceOverlay: (siteId: string) => {
-        const state = getBridgeState()
-        if (!state) return false
-
-        const site = state.sites.find(entry => entry.id === siteId)
-        if (!site || site.geofence_radius_km <= 0) return false
-        return state.dispatchSyntheticPick([`geofence-${site.id}`, `site-${site.id}`])
-      },
-      pickSite: (siteId: string) => {
-        const site = getBridgeState()?.sites.find(entry => entry.id === siteId)
-        if (!site) return false
-        return pickRenderedEntity(`site-${site.id}`)
-      },
-      pickAsset: (assetId: string) => {
-        const asset = getBridgeState()?.assets.find(entry => entry.id === assetId)
-        if (!asset) return false
-        return pickRenderedEntity(`asset-${asset.id}`)
-      },
-    }
-
-    return () => {
-      delete window.__resilienceGlobeE2E
-    }
-  }, [])
-
-  // ---------------------------------------------------------------------------
-  // Focus camera on entity click — called after selection state is set
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    if (!selectedSite) return
-    focusPosition(Number(selectedSite.longitude), Number(selectedSite.latitude), 1_200_000, -70)
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- only fire on siteId change, not on every selectedSite rerender
-  }, [selectedSiteId])
-
-  useEffect(() => {
-    if (!selectedAsset) return
-    const coords = assetDisplayPosition(selectedAsset, sites, readings, { lat: 0, lng: 0 }, { allowHistorical: isReplaying })
-    focusPosition(coords.lng, coords.lat, 850_000)
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- only fire on assetId change
-  }, [selectedAssetId, isReplaying])
-
-  useEffect(() => {
-    if (!selectedSignal) return
-    focusPosition(Number(selectedSignal.lng), Number(selectedSignal.lat), 900_000)
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- only fire on signalId change
-  }, [selectedSignalId])
-
-  // ---------------------------------------------------------------------------
-  // Inspector-panel derived values
-  // ---------------------------------------------------------------------------
+  // ── Inspector-panel derived values ─────────────────────────────────────────
   const readiness = computeReadiness(selectedTasks)
   const selectedAreaOfOperation = selectedSite?.area_of_operation_id
     ? (areaOfOperations.find(ao => ao.id === selectedSite.area_of_operation_id) ?? null)
     : null
-
   const nearestSignals = useMemo(() => {
     if (!selectedSite) return []
-    const lat = Number(selectedSite.latitude)
-    const lng = Number(selectedSite.longitude)
+    const lat = Number(selectedSite.latitude), lng = Number(selectedSite.longitude)
     return signals
       .map(signal => ({ signal, distanceKm: haversineKm(lat, lng, Number(signal.lat), Number(signal.lng)) }))
       .sort((a, b) => a.distanceKm - b.distanceKm)
       .slice(0, 5)
   }, [selectedSite, signals])
-
-  const geofenceHits = useMemo(() => {
-    if (!selectedSite?.geofence_radius_km) return 0
-    return nearestSignals.filter(item => item.distanceKm <= selectedSite.geofence_radius_km).length
-  }, [nearestSignals, selectedSite])
-
+  const geofenceHits = useMemo(() =>
+    selectedSite?.geofence_radius_km
+      ? nearestSignals.filter(item => item.distanceKm <= selectedSite.geofence_radius_km).length
+      : 0,
+    [nearestSignals, selectedSite],
+  )
   const nearestResponseAssets = useMemo(() => {
     if (!selectedSite) return []
-    const lat = Number(selectedSite.latitude)
-    const lng = Number(selectedSite.longitude)
+    const lat = Number(selectedSite.latitude), lng = Number(selectedSite.longitude)
     return assets
       .map(asset => {
         const freshReading = getLiveTelemetryReading(asset.id, readings, { allowHistorical: isReplaying })
@@ -936,108 +405,45 @@ export default function GlobePage() {
   }, [assets, isReplaying, readings, selectedSite, sites])
 
   const tacticalMapHref = buildEntitySelectionPath('/map', location.search, {
-    siteId: selectedSite?.id ?? null,
-    assetId: selectedAsset?.id ?? null,
-    signalId: selectedSignal?.id ?? null,
+    siteId: selectedSite?.id ?? null, assetId: selectedAsset?.id ?? null, signalId: selectedSignal?.id ?? null,
   })
   const inspectorTitle = getInspectorTitle(selectedSite, selectedAsset, selectedSignal, selectedVessel)
 
-  // ---------------------------------------------------------------------------
-  // Render
-  // ---------------------------------------------------------------------------
+  function clearSelection() {
+    setSelectedSiteId(null)
+    setSelectedAssetId(null)
+    setSelectedSignalId(null)
+    updateSelectionRoute({ siteId: null, assetId: null, signalId: null })
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="globe-page">
       <div ref={containerRef} className="globe-container" />
       <div ref={creditsRef}   className="globe-credits" />
 
-      {loading && (
-        <div className="globe-loading"><Spinner /></div>
-      )}
+      {loading && <div className="globe-loading"><Spinner /></div>}
 
-      {/* ── Toolbar ── */}
-      <div className="globe-toolbar bp6-dark">
-        <span className="globe-toolbar-title">3D GLOBE</span>
-        <Button
-          small minimal icon="home"
-          title="Reset view"
-          onClick={() => {
-            flyToHome()
-            setSelectedSiteId(null)
-            setSelectedAssetId(null)
-            setSelectedSignalId(null)
-            updateSelectionRoute({ siteId: null, assetId: null, signalId: null })
-          }}
-        />
-        <div
-          className={`globe-signal-toggle${showSignals ? ' globe-signal-toggle--active' : ''}`}
-          onClick={() => setShowSignals(v => !v)}
-          role="button"
-        >
-          SIGNALS {showSignals ? 'ON' : 'OFF'}
-        </div>
-        <div
-          className={`globe-signal-toggle${showHeatmap ? ' globe-signal-toggle--active' : ''}`}
-          onClick={() => setShowHeatmap(v => !v)}
-          role="button"
-        >
-          HEATMAP {showHeatmap ? 'ON' : 'OFF'}
-        </div>
-        <div
-          className={`globe-signal-toggle${showCoverage ? ' globe-signal-toggle--active' : ''}`}
-          onClick={() => setShowCoverage(v => !v)}
-          role="button"
-        >
-          COVERAGE {showCoverage ? 'ON' : 'OFF'}
-        </div>
-        {!isReplaying && (
-          <div
-            className={`globe-signal-toggle${showChokepoints ? ' globe-signal-toggle--active' : ''}`}
-            onClick={() => setShowChokepoints(v => !v)}
-            role="button"
-          >
-            CHOKEPOINTS {showChokepoints ? 'ON' : 'OFF'}
-          </div>
-        )}
-        {isReplaying && (
-          <>
-            <div
-              className={`globe-signal-toggle${showTrails ? ' globe-signal-toggle--active' : ''}`}
-              onClick={() => setShowTrails(v => !v)}
-              role="button"
-              aria-label="Toggle asset trails"
-            >
-              TRAILS {showTrails ? 'ON' : 'OFF'}
-            </div>
-            {showTrails && (
-              <select
-                className="globe-trail-window-select"
-                value={trailWindowMinutes}
-                onChange={e => setTrailWindowMinutes(Number(e.target.value))}
-                aria-label="Trail window"
-                title="Trail history window"
-              >
-                <option value={30}>30 min</option>
-                <option value={60}>60 min</option>
-                <option value={120}>120 min</option>
-              </select>
-            )}
-          </>
-        )}
-        <span className="globe-toolbar-hint bp6-text-muted">
-          {signalError && !isReplaying
-            ? 'Live signal baseline sync is incomplete. Signals may be temporarily missing while the client retries.'
-            : isReplaying
-            ? 'Replay mode hides live-only AO posture, chokepoint overlays, breach overlays, and live vessel enrichment data. Historical vessel trails remain visible up to the replay timestamp.'
-            : isCloseView
-            ? 'Signal overlays hidden at close range. Use the 2D map for tactical inspection.'
-            : 'Click any site, asset, or signal to inspect it'}
-        </span>
-        {isCloseView && (
-          <Button small icon="map" onClick={() => navigate(tacticalMapHref)}>
-            Open Tactical Map
-          </Button>
-        )}
-      </div>
+      <GlobeToolbar
+        showSignals={showSignals}
+        showHeatmap={showHeatmap}
+        showCoverage={showCoverage}
+        showChokepoints={showChokepoints}
+        showTrails={showTrails}
+        trailWindowMinutes={trailWindowMinutes}
+        isReplaying={isReplaying}
+        isCloseView={isCloseView}
+        signalError={signalError}
+        tacticalMapHref={tacticalMapHref}
+        onHome={clearSelection}
+        onToggleSignals={() => setShowSignals(v => !v)}
+        onToggleHeatmap={() => setShowHeatmap(v => !v)}
+        onToggleCoverage={() => setShowCoverage(v => !v)}
+        onToggleChokepoints={() => setShowChokepoints(v => !v)}
+        onToggleTrails={() => setShowTrails(v => !v)}
+        onTrailWindowChange={setTrailWindowMinutes}
+        onTacticalMap={() => navigate(tacticalMapHref)}
+      />
 
       {!isReplaying && signalError && showSignals && (
         <div className="globe-loading" style={{ top: 64, left: 16, right: 'auto', bottom: 'auto', width: 420, height: 'auto', background: 'transparent', pointerEvents: 'none' }}>
@@ -1047,7 +453,6 @@ export default function GlobePage() {
         </div>
       )}
 
-      {/* ── Entity detail panel ── */}
       {inspectorTitle && (
         <GlobeInspectorPanel
           inspectorTitle={inspectorTitle}
@@ -1065,84 +470,18 @@ export default function GlobePage() {
           isReplaying={isReplaying}
           telemetryConnected={telemetryConnected}
           tacticalMapHref={tacticalMapHref}
-          onClose={() => {
-            setSelectedSiteId(null)
-            setSelectedAssetId(null)
-            setSelectedSignalId(null)
-            updateSelectionRoute({ siteId: null, assetId: null, signalId: null })
-          }}
+          onClose={clearSelection}
           navigate={navigate}
         />
       )}
 
-      {/* ── Legend ── */}
-      <div className="globe-legend bp6-dark">
-        <div className="globe-legend-section-title">SITES</div>
-        <div className="globe-legend-item">
-          <span className="globe-legend-dot" style={{ background: '#ff4444' }} />Blocked
-        </div>
-        <div className="globe-legend-item">
-          <span className="globe-legend-dot" style={{ background: '#32cd32' }} />Resolved
-        </div>
-        <div className="globe-legend-item">
-          <span className="globe-legend-dot" style={{ background: '#1e90ff' }} />In progress
-        </div>
-        <div className="globe-legend-item">
-          <span className="globe-legend-dot" style={{ background: '#00ffff' }} />Asset (live)
-        </div>
-        {!isReplaying && showChokepoints && (
-          <>
-            <div className="globe-legend-section-title" style={{ marginTop: 10 }}>CHOKEPOINTS</div>
-            <div className="globe-legend-item">
-              <span className="globe-legend-dot" style={{ background: '#ffd43b' }} />Monitor
-            </div>
-            <div className="globe-legend-item">
-              <span className="globe-legend-dot" style={{ background: '#ff922b' }} />Constrained
-            </div>
-            <div className="globe-legend-item">
-              <span className="globe-legend-dot" style={{ background: '#fa5252' }} />Contested
-            </div>
-            <div className="globe-legend-item">
-              <span className="globe-legend-dot" style={{ background: '#868e96' }} />Closed
-            </div>
-          </>
-        )}
-        {showCoverage && (
-          <>
-            <div className="globe-legend-section-title" style={{ marginTop: 10 }}>COVERAGE</div>
-            <div className="globe-legend-item">
-              <span className="globe-legend-dot" style={{ background: '#3ddc84' }} />Available radius
-            </div>
-            <div className="globe-legend-item">
-              <span className="globe-legend-dot" style={{ background: '#5282ff' }} />Assigned radius
-            </div>
-            <div className="globe-legend-item">
-              <span className="globe-legend-dot" style={{ background: '#ffb366' }} />Degraded radius
-            </div>
-          </>
-        )}
-        {showSignals && (
-          <>
-            <div className="globe-legend-section-title" style={{ marginTop: 10 }}>SIGNALS</div>
-            {Object.entries(SIGNAL_LABELS).map(([type, label]) => (
-              <div key={type} className="globe-legend-item">
-                <span className="globe-legend-dot" style={{ background: SIGNAL_COLORS[type] ?? '#ffffff' }} />
-                {label}
-              </div>
-            ))}
-          </>
-        )}
-        {showSignals && showHeatmap && (
-          <>
-            <div className="globe-legend-section-title" style={{ marginTop: 10 }}>HEATMAP</div>
-            <div className="globe-heatmap-legend-bar" />
-            <div className="globe-heatmap-legend-labels">
-              <span>LOW DENSITY</span>
-              <span>HIGH DENSITY</span>
-            </div>
-          </>
-        )}
-      </div>
+      <GlobeLegend
+        showSignals={showSignals}
+        showHeatmap={showHeatmap}
+        showCoverage={showCoverage}
+        showChokepoints={showChokepoints}
+        isReplaying={isReplaying}
+      />
     </div>
   )
 }
