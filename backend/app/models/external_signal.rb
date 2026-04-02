@@ -14,12 +14,25 @@ class ExternalSignal < ApplicationRecord
   scope :recent,      ->(minutes = 60) { where(occurred_at: minutes.minutes.ago..Time.current) }
   scope :by_source,   ->(src)          { where(source: src) }
   scope :by_type,     ->(type)         { where(signal_type: type) }
-  scope :near_point,  ->(lat, lng, km) {
-    # Rough bounding-box pre-filter (exact Haversine applied in Ruby callers).
-    # Latitude degrees are uniform (~111 km/deg). Longitude degrees narrow toward
-    # the poles, so we divide by cos(lat) to avoid an over-wide box at high latitudes.
-    deg_lat = km / 111.0
-    deg_lng = km / (111.0 * [Math.cos(lat.to_f * Math::PI / 180.0).abs, 0.01].max)
-    where(lat: (lat.to_f - deg_lat)..(lat.to_f + deg_lat), lng: (lng.to_f - deg_lng)..(lng.to_f + deg_lng))
+  # near_point: finds signals within km of (lat, lng).
+  #
+  # When the PostGIS geography column `location` is present, uses ST_DWithin
+  # for an exact, index-backed query. Falls back to a bounding-box approximation
+  # (Haversine applied in Ruby callers) when PostGIS is not available — e.g.
+  # during tests on a plain PostgreSQL instance or before migration runs.
+  scope :near_point, ->(lat, lng, km) {
+    if column_names.include?("location")
+      # ST_DWithin(geography, geography, meters) — exact great-circle distance,
+      # uses the GIST spatial index for O(log n) performance.
+      point = "ST_SetSRID(ST_MakePoint(#{lng.to_f}, #{lat.to_f}), 4326)::geography"
+      where("ST_DWithin(location, #{point}, ?)", km.to_f * 1000)
+    else
+      # Bounding-box pre-filter — kept as a fallback so all callers continue to
+      # work on Postgres instances without PostGIS. Exact Haversine is still
+      # applied in Ruby callers for correctness.
+      deg_lat = km / 111.0
+      deg_lng = km / (111.0 * [Math.cos(lat.to_f * Math::PI / 180.0).abs, 0.01].max)
+      where(lat: (lat.to_f - deg_lat)..(lat.to_f + deg_lat), lng: (lng.to_f - deg_lng)..(lng.to_f + deg_lng))
+    end
   }
 end
