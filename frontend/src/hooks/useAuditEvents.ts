@@ -5,6 +5,7 @@ interface Params {
   entity_type?: string
   entity_id?: string
   limit?: number
+  as_of?: string
 }
 
 export function useAuditEvents(params: Params) {

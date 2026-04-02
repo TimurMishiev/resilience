@@ -56,19 +56,52 @@ module Api
     # Returns [records, meta] where meta includes total, page, per_page, total_pages.
     # Defaults: page=1, per_page=50. Cap: per_page=200.
     def paginate(collection)
-      page     = [params.fetch(:page, 1).to_i, 1].max
-      per_page = [[params.fetch(:per_page, 50).to_i, 1].max, 200].min
+      page, per_page = pagination_params
       total    = collection.count
 
       records = collection.offset((page - 1) * per_page).limit(per_page)
-      meta    = {
-        total:       total,
-        page:        page,
-        per_page:    per_page,
-        total_pages: (total.to_f / per_page).ceil
-      }
+      meta    = build_pagination_meta(total: total, page: page, per_page: per_page)
 
       [records, meta]
+    end
+
+    def paginate_array(collection)
+      page, per_page = pagination_params
+      total    = collection.size
+      offset   = (page - 1) * per_page
+
+      records = collection.slice(offset, per_page) || []
+      meta    = build_pagination_meta(total: total, page: page, per_page: per_page)
+
+      [records, meta]
+    end
+
+    # Incrementally paginates a transformed relation without materializing the
+    # full record set in memory first. The block receives each ordered batch and
+    # should return an array of already-filtered/serialized rows for that batch.
+    def paginate_transformed_relation(relation, batch_size: nil)
+      page, per_page = pagination_params
+      offset         = 0
+      total          = 0
+      page_offset    = (page - 1) * per_page
+      page_records   = []
+      effective_batch_size = [[batch_size || (per_page * 2), per_page].max, 500].min
+
+      loop do
+        batch = relation.limit(effective_batch_size).offset(offset).to_a
+        break if batch.empty?
+
+        transformed = Array(yield(batch))
+        transformed.each do |record|
+          page_records << record if total >= page_offset && page_records.length < per_page
+          total += 1
+        end
+
+        offset += batch.length
+        break if batch.length < effective_batch_size
+      end
+
+      [page_records, build_pagination_meta(total: total, page: page, per_page: per_page)]
     end
 
     def scoped_relation(scope, includes: nil, lock: false)
@@ -80,6 +113,37 @@ module Api
 
     def scoped_record(scope, id, includes: nil, lock: false)
       scoped_relation(scope, includes: includes, lock: lock).find(id)
+    end
+
+    def latest_audit_snapshots(entity_type:, entity_ids:, as_of:)
+      return {} if entity_ids.empty?
+
+      AuditEvent
+        .where(entity_type: entity_type, entity_id: entity_ids)
+        .where("occurred_at <= ?", as_of)
+        .order(:occurred_at)
+        .each_with_object({}) do |event, snapshots|
+          snapshots[event.entity_id] = event.after_snapshot || {}
+        end
+    end
+
+    def snapshot_value(snapshot, key)
+      snapshot[key] || snapshot[key.to_sym]
+    end
+
+    def pagination_params
+      page     = [params.fetch(:page, 1).to_i, 1].max
+      per_page = [[params.fetch(:per_page, 50).to_i, 1].max, 200].min
+      [page, per_page]
+    end
+
+    def build_pagination_meta(total:, page:, per_page:)
+      {
+        total:       total,
+        page:        page,
+        per_page:    per_page,
+        total_pages: (total.to_f / per_page).ceil
+      }
     end
   end
 end

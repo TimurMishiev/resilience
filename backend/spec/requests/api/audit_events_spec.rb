@@ -62,6 +62,15 @@ RSpec.describe "Api::AuditEvents", type: :request do
       expect(response).to have_http_status(:ok)
     end
 
+    it "filters by as_of" do
+      get "/api/audit_events",
+          params: { as_of: 150.minutes.ago.iso8601 },
+          headers: auth_headers(current_user)
+
+      ids = JSON.parse(response.body).map { |event| event["id"] }
+      expect(ids).to contain_exactly(event_b.id)
+    end
+
     it "returns expected fields" do
       get "/api/audit_events", headers: auth_headers(current_user)
       event = JSON.parse(response.body).first

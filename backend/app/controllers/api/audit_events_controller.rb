@@ -19,6 +19,7 @@ module Api
       authorize access, :index?
 
       events = AuditEvent.all.order(occurred_at: :desc)
+      events = events.up_to(as_of) if as_of.present?
       if access.entity_type.present? && access.entity_id.present?
         authorize_audit_entity!(access.entity_type, access.entity_id) unless current_user.commander?
         events = events.where(entity_type: access.entity_type, entity_id: access.entity_id)

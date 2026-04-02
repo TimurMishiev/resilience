@@ -8,7 +8,10 @@ const mockState = vi.hoisted(() => {
   const fetchNextPage = vi.fn()
   return {
     isReplaying: false,
+    asOf: null as string | null,
+    role: 'commander' as 'commander' | 'operator' | 'viewer',
     fetchNextPage,
+    infiniteParams: null as unknown,
     infiniteOptions: null as { enabled?: boolean; refetchInterval?: number | false } | null,
     data: {
       pages: [
@@ -102,11 +105,22 @@ vi.mock('@tanstack/react-virtual', () => ({
 vi.mock('../context/ReplayContext', () => ({
   useReplay: () => ({
     isReplaying: mockState.isReplaying,
+    asOf: mockState.asOf,
+  }),
+}))
+
+vi.mock('../hooks/useRole', () => ({
+  useRole: () => ({
+    role: mockState.role,
+    isCommander: mockState.role === 'commander',
+    isOperator: mockState.role === 'operator',
+    isViewer: mockState.role === 'viewer',
   }),
 }))
 
 vi.mock('../hooks/useSignalRuleMatches', () => ({
   useSignalRuleMatchesInfinite: (_params?: unknown, options?: { enabled?: boolean; refetchInterval?: number | false }) => {
+    mockState.infiniteParams = _params ?? null
     mockState.infiniteOptions = options ?? null
     return {
       data: options?.enabled === false ? mockState.disabledData : mockState.data,
@@ -153,7 +167,10 @@ function renderAlertTriagePage() {
 describe('AlertTriagePage', () => {
   beforeEach(() => {
     mockState.isReplaying = false
+    mockState.asOf = null
+    mockState.role = 'commander'
     mockState.fetchNextPage.mockReset()
+    mockState.infiniteParams = null
     mockState.infiniteOptions = null
   })
 
@@ -178,9 +195,22 @@ describe('AlertTriagePage', () => {
 
   it('shows replay info banner and disables refetch during replay', async () => {
     mockState.isReplaying = true
+    mockState.asOf = '2026-03-29T10:00:00Z'
     renderAlertTriagePage()
 
     expect(await screen.findByText(/Showing alerts that fired before the replay timestamp/)).toBeInTheDocument()
     expect(mockState.infiniteOptions).toMatchObject({ refetchInterval: false })
+    expect(mockState.infiniteParams).toMatchObject({ as_of: '2026-03-29T10:00:00Z' })
+  })
+
+  it('hides triage controls for viewer role', async () => {
+    mockState.role = 'viewer'
+    renderAlertTriagePage()
+
+    expect(await screen.findByText('Rule Alpha')).toBeInTheDocument()
+    expect(screen.queryByTitle('Select / deselect all loaded alerts')).not.toBeInTheDocument()
+    expect(screen.queryByText(/select to bulk-triage/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(document.querySelector('.alert-row-transitions')).not.toBeInTheDocument()
   })
 })

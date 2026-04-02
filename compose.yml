@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:16
+    image: postgis/postgis:16-3.4
     environment:
       POSTGRES_USER: resilience
       POSTGRES_PASSWORD: resilience

@@ -6,6 +6,7 @@ interface AuditEventsParams {
   entity_type?: string
   entity_id?: string
   limit?: number
+  as_of?: string
 }
 
 export function getAuditEvents(params?: AuditEventsParams): Promise<AuditEvent[]> {

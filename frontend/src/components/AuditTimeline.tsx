@@ -6,6 +6,7 @@ import { humanize } from '../utils/humanize'
 interface Props {
   entityType: string
   entityId: string
+  asOf?: string | null
 }
 
 function formatTime(iso: string): string {
@@ -35,11 +36,12 @@ function eventLabel(event: AuditEvent): string {
   return humanize(event.event_type)
 }
 
-export default function AuditTimeline({ entityType, entityId }: Props) {
+export default function AuditTimeline({ entityType, entityId, asOf }: Props) {
   const { data: events, error, isPending } = useAuditEvents({
     entity_type: entityType,
     entity_id: entityId,
     limit: 50,
+    ...(asOf ? { as_of: asOf } : {}),
   })
 
   if (isPending) return <Spinner size={16} />
@@ -49,7 +51,7 @@ export default function AuditTimeline({ entityType, entityId }: Props) {
   }
 
   if (!events || events.length === 0) {
-    return <p className="bp6-text-muted timeline-empty">No audit events recorded.</p>
+    return <p className="bp6-text-muted timeline-empty">{asOf ? 'No audit events recorded up to the replay timestamp.' : 'No audit events recorded.'}</p>
   }
 
   return (

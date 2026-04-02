@@ -13,7 +13,7 @@ module Api
 
       matches = matches.for_rule(params[:rule_id])        if params[:rule_id].present?
       matches = matches.for_site(params[:site_id])        if params[:site_id].present?
-      matches = matches.by_status(params[:workflow_status]) if params[:workflow_status].present?
+      matches = matches.by_status(params[:workflow_status]) if params[:workflow_status].present? && as_of.blank?
       matches = matches.where("fired_at >= ?", safe_parse_datetime(params[:from])) if params[:from].present?
       upper   = [safe_parse_datetime(params[:to]), as_of].compact.min
       matches = matches.where("fired_at <= ?", upper)                              if upper.present?
@@ -26,8 +26,20 @@ module Api
         end
       end
 
-      records, meta = paginate(matches)
-      render json: { data: records.map { |m| serialize_match(m) }, meta: meta }
+      if as_of
+        records, meta = paginate_transformed_relation(matches) do |batch|
+          serialized = serialize_replay_matches(batch, as_of: as_of)
+          if params[:workflow_status].present?
+            serialized.select { |match| match[:workflow_status] == params[:workflow_status] }
+          else
+            serialized
+          end
+        end
+        render json: { data: records, meta: meta }
+      else
+        records, meta = paginate(matches)
+        render json: { data: records.map { |m| serialize_match(m) }, meta: meta }
+      end
     end
 
     # GET /api/signal_rule_matches/:id
@@ -128,18 +140,18 @@ module Api
       params.require(:transition).permit(:to_status, :notes)
     end
 
-    def serialize_match(match)
+    def serialize_match(match, replay_state: nil)
       {
         id:              match.id,
         fired_at:        match.fired_at,
         confidence:      match.confidence,
-        workflow_status: match.workflow_status,
-        acknowledged_at: match.acknowledged_at,
-        notes:           match.notes,
-        acknowledged_by: match.acknowledged_by ? {
+        workflow_status: replay_state ? replay_state[:workflow_status] : match.workflow_status,
+        acknowledged_at: replay_state ? replay_state[:acknowledged_at] : match.acknowledged_at,
+        notes:           replay_state ? replay_state[:notes] : match.notes,
+        acknowledged_by: replay_state ? replay_state[:acknowledged_by] : (match.acknowledged_by ? {
           id:    match.acknowledged_by.id,
           email: match.acknowledged_by.email
-        } : nil,
+        } : nil),
         metadata:        match.metadata,
         signal: match.signal ? {
           id:          match.signal.id,
@@ -164,6 +176,33 @@ module Api
           priority:        match.task.priority
         } : nil
       }
+    end
+
+    def serialize_replay_matches(records, as_of:)
+      replay_states = replay_states_for_matches(records, as_of: as_of)
+      records.map { |record| serialize_match(record, replay_state: replay_states.fetch(record.id)) }
+    end
+
+    def replay_states_for_matches(records, as_of:)
+      ids = records.map(&:id)
+      latest_snapshots = latest_audit_snapshots(entity_type: "SignalRuleMatch", entity_ids: ids, as_of: as_of)
+      acknowledged_by_ids = latest_snapshots.values.filter_map { |snapshot| snapshot_value(snapshot, "acknowledged_by_id") }.uniq
+      emails_by_id = User.where(id: acknowledged_by_ids).pluck(:id, :email).to_h
+
+      records.each_with_object({}) do |record, states|
+        snapshot = latest_snapshots[record.id] || {}
+        acknowledged_by_id = snapshot_value(snapshot, "acknowledged_by_id")
+
+        states[record.id] = {
+          workflow_status: snapshot_value(snapshot, "workflow_status") || "unacknowledged",
+          acknowledged_at: snapshot_value(snapshot, "acknowledged_at"),
+          notes:           snapshot_value(snapshot, "notes"),
+          acknowledged_by: acknowledged_by_id.present? ? {
+            id: acknowledged_by_id,
+            email: emails_by_id[acknowledged_by_id]
+          }.compact : nil,
+        }
+      end
     end
   end
 end

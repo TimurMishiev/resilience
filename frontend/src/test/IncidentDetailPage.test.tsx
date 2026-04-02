@@ -14,7 +14,7 @@ const mockState = vi.hoisted(() => ({
 }))
 
 vi.mock('../context/ReplayContext', () => ({
-  useReplay: () => ({ isReplaying: mockState.isReplaying, asOf: null }),
+  useReplay: () => ({ isReplaying: mockState.isReplaying, asOf: mockState.isReplaying ? '2026-03-20T11:00:00Z' : null }),
 }))
 
 vi.mock('../context/AuthContext', () => ({
@@ -92,6 +92,7 @@ async function renderPage(id = 'inc-1') {
 
 beforeEach(() => {
   mockState.isReplaying = false
+  mockState.currentUser = { id: 'user-1', email: 'op@test.com', role: 'commander' }
   mockState.incident = { ...BASE_INCIDENT }
   mockState.isPending = false
   mockState.error = null
@@ -138,12 +139,26 @@ describe('IncidentDetailPage', () => {
     mockState.isReplaying = true
     await renderPage()
     await waitFor(() => {
-      expect(screen.getByText(/viewing live incident state/i)).toBeTruthy()
+      expect(screen.getByText(/viewing incident state as it existed at the replay timestamp/i)).toBeTruthy()
     })
     // Incident data should still load during replay
     await waitFor(() => {
       expect(screen.getByText('Port Alpha')).toBeTruthy()
     })
+  })
+
+  it('hides mutation controls for viewer role', async () => {
+    mockState.currentUser = { id: 'viewer-1', email: 'viewer@test.com', role: 'viewer' }
+
+    await renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Port Alpha')).toBeTruthy()
+    })
+
+    expect(screen.queryByRole('button', { name: /take/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /drop/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /acknowledged/i })).not.toBeInTheDocument()
   })
 
   it('renders site name and severity', async () => {

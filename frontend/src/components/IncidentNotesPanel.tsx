@@ -10,6 +10,8 @@ import { useIncidentNotes, useAddIncidentNote } from '../hooks/useIncidents'
 
 interface Props {
   incidentId: string
+  asOf?: string | null
+  isReadOnly?: boolean
 }
 
 function fmt(iso: string) {
@@ -19,10 +21,10 @@ function fmt(iso: string) {
   })
 }
 
-export default function IncidentNotesPanel({ incidentId }: Props) {
+export default function IncidentNotesPanel({ incidentId, asOf, isReadOnly = false }: Props) {
   const [body, setBody]     = useState('')
   const bottomRef           = useRef<HTMLDivElement>(null)
-  const { data: notes = [], isPending, error } = useIncidentNotes(incidentId)
+  const { data: notes = [], isPending, error } = useIncidentNotes(incidentId, { as_of: asOf })
   const addNote             = useAddIncidentNote()
 
   // Scroll to bottom when new notes arrive
@@ -57,7 +59,7 @@ export default function IncidentNotesPanel({ incidentId }: Props) {
           <NonIdealState
             icon="annotation"
             title="No notes yet"
-            description="Add the first operational note below."
+            description={isReadOnly ? 'No notes existed at the replay timestamp.' : 'Add the first operational note below.'}
             className="tab-empty-state"
           />
         )}
@@ -91,32 +93,34 @@ export default function IncidentNotesPanel({ incidentId }: Props) {
       </div>
 
       {/* ── add note form ── */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <TextArea
-          value={body}
-          onChange={e => setBody(e.target.value)}
-          placeholder="Add an operational note… (Ctrl+Enter to submit)"
-          rows={3}
-          style={{ resize: 'vertical', fontSize: 13 }}
-          onKeyDown={e => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-              e.preventDefault()
-              handleSubmit()
-            }
-          }}
-        />
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <Button
-            intent="primary"
-            small
-            loading={addNote.isPending}
-            disabled={!body.trim()}
-            onClick={handleSubmit}
-          >
-            Add Note
-          </Button>
+      {!isReadOnly && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <TextArea
+            value={body}
+            onChange={e => setBody(e.target.value)}
+            placeholder="Add an operational note… (Ctrl+Enter to submit)"
+            rows={3}
+            style={{ resize: 'vertical', fontSize: 13 }}
+            onKeyDown={e => {
+              if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault()
+                handleSubmit()
+              }
+            }}
+          />
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <Button
+              intent="primary"
+              small
+              loading={addNote.isPending}
+              disabled={!body.trim()}
+              onClick={handleSubmit}
+            >
+              Add Note
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

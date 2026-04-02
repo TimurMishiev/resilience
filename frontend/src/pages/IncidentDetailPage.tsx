@@ -14,6 +14,7 @@ import { AssetPicker } from '../components/AssetPicker'
 import { PostureBadge } from '../components/PostureBadge'
 import { useAuth } from '../context/AuthContext'
 import { useReplay } from '../context/ReplayContext'
+import { useRole } from '../hooks/useRole'
 import { useAssets } from '../hooks/useAssets'
 import { useTasks, useUpdateTask } from '../hooks/useTasks'
 import AuditTimeline from '../components/AuditTimeline'
@@ -125,9 +126,20 @@ function AlertsTab({ alerts }: { alerts: IncidentAlert[] }) {
   )
 }
 
-function TasksTab({ tasks, posture }: { tasks: IncidentTask[]; posture?: Posture }) {
-  const { data: assetRes } = useAssets({ per_page: 200 })
-  const { data: taskRes } = useTasks({ per_page: 200 })
+function TasksTab({
+  tasks,
+  posture,
+  isReadOnly = false,
+  asOf,
+}: {
+  tasks: IncidentTask[]
+  posture?: Posture
+  isReadOnly?: boolean
+  asOf?: string | null
+}) {
+  const replayParams = asOf ? { as_of: asOf } : {}
+  const { data: assetRes } = useAssets({ per_page: 200, ...replayParams })
+  const { data: taskRes } = useTasks({ per_page: 200, ...replayParams })
   const updateTask = useUpdateTask()
   const assets = assetRes?.data ?? []
   const allTasks = taskRes?.data ?? []
@@ -171,6 +183,7 @@ function TasksTab({ tasks, posture }: { tasks: IncidentTask[]; posture?: Posture
                 posture={posture}
                 assignedTasks={allTasks}
                 minimal
+                disabled={isReadOnly}
               />
             </td>
             <td>
@@ -196,14 +209,17 @@ export default function IncidentDetailPage() {
   const { id }    = useParams<{ id: string }>()
   const navigate  = useNavigate()
   const { currentUser } = useAuth()
-  const { isReplaying } = useReplay()
+  const { isCommander, isOperator } = useRole()
+  const { isReplaying, asOf } = useReplay()
+  const replayParams = isReplaying && asOf ? { as_of: asOf } : undefined
+  const canMutateIncident = isCommander || isOperator
 
   const [tab,          setTab]          = useState('alerts')
   const [editingTitle, setEditingTitle] = useState(false)
   const [editingSev,   setEditingSev]   = useState(false)
 
-  const { data: incident, isPending, error } = useIncident(id, { refetchInterval: isReplaying ? false : 15_000 })
-  const { data: txData } = useIncidentAllowedTransitions(id, { enabled: !isReplaying, refetchInterval: isReplaying ? false : 15_000 })
+  const { data: incident, isPending, error } = useIncident(id, replayParams, { refetchInterval: isReplaying ? false : 15_000 })
+  const { data: txData } = useIncidentAllowedTransitions(id, { enabled: !isReplaying && canMutateIncident, refetchInterval: isReplaying ? false : 15_000 })
   const transition = useTransitionIncident()
   const updateMut  = useUpdateIncident()
   const assign     = useAssignIncident()
@@ -247,7 +263,7 @@ export default function IncidentDetailPage() {
 
       {isReplaying && (
         <Callout intent="primary" icon="info-sign" style={{ marginBottom: 12 }}>
-          Viewing live incident state. Write actions are disabled during replay.
+          Viewing incident state as it existed at the replay timestamp. Write actions are disabled.
         </Callout>
       )}
 
@@ -262,7 +278,7 @@ export default function IncidentDetailPage() {
       {/* ── header ── */}
       <div className="site-detail-header">
         {/* Severity — click to edit */}
-        {editingSev ? (
+        {editingSev && canMutateIncident && !isReplaying ? (
           <HTMLSelect
             minimal
             value={incident.severity}
@@ -282,16 +298,16 @@ export default function IncidentDetailPage() {
           <Tag
             minimal
             intent={SEVERITY_INTENT[incident.severity]}
-            style={{ fontWeight: 700, fontSize: 12, marginRight: 8, cursor: 'pointer' }}
-            onClick={() => setEditingSev(true)}
-            title="Click to change severity"
+            style={{ fontWeight: 700, fontSize: 12, marginRight: 8, cursor: canMutateIncident && !isReplaying ? 'pointer' : 'default' }}
+            onClick={() => { if (canMutateIncident && !isReplaying) setEditingSev(true) }}
+            title={canMutateIncident && !isReplaying ? 'Click to change severity' : undefined}
           >
             {incident.severity}
           </Tag>
         )}
 
         {/* Title */}
-        {editingTitle ? (
+        {editingTitle && canMutateIncident && !isReplaying ? (
           <EditableText
             defaultValue={incident.title}
             isEditing
@@ -302,9 +318,9 @@ export default function IncidentDetailPage() {
         ) : (
           <h2
             className="bp6-heading"
-            style={{ margin: 0, cursor: 'pointer', display: 'inline' }}
-            onClick={() => setEditingTitle(true)}
-            title="Click to edit title"
+            style={{ margin: 0, cursor: canMutateIncident && !isReplaying ? 'pointer' : 'default', display: 'inline' }}
+            onClick={() => { if (canMutateIncident && !isReplaying) setEditingTitle(true) }}
+            title={canMutateIncident && !isReplaying ? 'Click to edit title' : undefined}
           >
             {incident.title}
           </h2>
@@ -344,7 +360,7 @@ export default function IncidentDetailPage() {
               <span className="bp6-text-muted">Unassigned</span>
             )}
             {/* Take / Drop */}
-            {!isTerminal && !isReplaying && currentUser && (
+            {!isTerminal && !isReplaying && currentUser && canMutateIncident && (
               isAssignedToMe ? (
                 <Button
                   small minimal intent="none"
@@ -407,7 +423,7 @@ export default function IncidentDetailPage() {
       </div>
 
       {/* ── status transition buttons ── */}
-      {allowedTransitions.length > 0 && !isReplaying && (
+      {allowedTransitions.length > 0 && canMutateIncident && !isReplaying && (
         <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
           {allowedTransitions.map((to) => (
             <Button
@@ -449,22 +465,22 @@ export default function IncidentDetailPage() {
         <Tab
           id="tasks"
           title={`Tasks (${tasks.length})`}
-          panel={<TasksTab tasks={tasks} posture={incident.area_of_operation?.posture} />}
+          panel={<TasksTab tasks={tasks} posture={incident.area_of_operation?.posture} isReadOnly={isReplaying || !canMutateIncident} asOf={asOf} />}
         />
         <Tab
           id="recommendations"
           title="Recommendations"
-          panel={<IncidentRecommendationsPanel incidentId={incident.id} />}
+          panel={<IncidentRecommendationsPanel incidentId={incident.id} asOf={asOf} isReadOnly={isReplaying} />}
         />
         <Tab
           id="notes"
           title="Notes"
-          panel={<IncidentNotesPanel incidentId={incident.id} />}
+          panel={<IncidentNotesPanel incidentId={incident.id} asOf={asOf} isReadOnly={isReplaying || !canMutateIncident} />}
         />
         <Tab
           id="chain"
           title="Chain"
-          panel={<IntelChainPanel incidentId={incident.id} />}
+          panel={<IntelChainPanel incidentId={incident.id} asOf={asOf} />}
         />
         <Tab
           id="history"
@@ -473,6 +489,7 @@ export default function IncidentDetailPage() {
             <AuditTimeline
               entityType="Incident"
               entityId={incident.id}
+              asOf={asOf}
             />
           }
         />
@@ -492,7 +509,7 @@ export default function IncidentDetailPage() {
               )}
             </span>
           }
-          panel={<ProsecutionPanel incident={incident} />}
+          panel={<ProsecutionPanel incident={incident} asOf={asOf} />}
         />
       </Tabs>
     </div>

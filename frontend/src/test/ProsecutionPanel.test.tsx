@@ -92,12 +92,41 @@ describe('ProsecutionPanel', () => {
     mockHooks.addStepMutate.mockReset()
   })
 
-  it('shows replay callout and nothing else when in replay mode', () => {
+  it('shows a replay callout and historical empty state when not yet prosecuted', () => {
     mockReplay.isReplaying = true
     renderPanel(makeIncident())
 
-    expect(screen.getByText(/unavailable during replay/i)).toBeInTheDocument()
-    expect(screen.queryByText(/not being prosecuted/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/historical review is read-only/i)).toBeInTheDocument()
+    expect(screen.getByText(/had not entered prosecution by the replay timestamp/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /initiate prosecution/i })).not.toBeInTheDocument()
+  })
+
+  it('shows historical prosecution log during replay', () => {
+    mockReplay.isReplaying = true
+    mockHooks.steps = [
+      {
+        id:            'step-1',
+        incident_id:   'inc-1',
+        actor:         { id: 'u-1', email: 'cmd@test.com' },
+        phase:         'assessing',
+        action_type:   'phase_transition',
+        notes:         'Started formal prosecution',
+        evidence_refs: {},
+        occurred_at:   '2026-03-29T10:05:00Z',
+        created_at:    '2026-03-29T10:05:00Z',
+      },
+    ]
+
+    renderPanel(makeIncident({
+      prosecution_phase: 'assessing',
+      prosecution_initiated_at: '2026-03-29T10:05:00Z',
+      prosecuted_by: { id: 'u-1', email: 'cmd@test.com' },
+    }))
+
+    expect(screen.getByText(/historical review is read-only/i)).toBeInTheDocument()
+    expect(screen.getByText('Started formal prosecution')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /advance/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /add step/i })).not.toBeInTheDocument()
   })
 
   it('shows NonIdealState with initiate button for commanders when not prosecuted', () => {

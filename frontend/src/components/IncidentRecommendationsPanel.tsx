@@ -17,9 +17,11 @@ import type { Recommendation } from '../api/recommendations'
 
 interface Props {
   incidentId: string
+  asOf?: string | null
+  isReadOnly?: boolean
 }
 
-export default function IncidentRecommendationsPanel({ incidentId }: Props) {
+export default function IncidentRecommendationsPanel({ incidentId, asOf, isReadOnly = false }: Props) {
   const [evidenceRec, setEvidenceRec] = useState<Recommendation | null>(null)
   const { isCommander } = useRole()
   const { isReplaying } = useReplay()
@@ -27,8 +29,9 @@ export default function IncidentRecommendationsPanel({ incidentId }: Props) {
   const { data, isPending, error } = useRecommendations({
     affected_entity_type: 'Incident',
     affected_entity_id:   incidentId,
+    ...(asOf ? { as_of: asOf } : {}),
   } as Parameters<typeof useRecommendations>[0], {
-    enabled: !isReplaying,
+    enabled: true,
     refetchInterval: isReplaying ? false : 60_000,
   })
 
@@ -37,34 +40,33 @@ export default function IncidentRecommendationsPanel({ incidentId }: Props) {
   return (
     <div>
       {isReplaying && (
-        <Callout intent="warning" compact>
-          Incident recommendations are unavailable during replay because recommendation state is live-only.
+        <Callout intent="primary" compact>
+          Showing incident recommendations as they existed at the replay timestamp. Review actions are disabled.
         </Callout>
       )}
-      {!isReplaying && isPending && <Spinner size={20} style={{ marginTop: 16 }} />}
-      {!isReplaying && error    && <Callout intent="danger" compact>{error.message}</Callout>}
+      {isPending && <Spinner size={20} style={{ marginTop: 16 }} />}
+      {error    && <Callout intent="danger" compact>{error.message}</Callout>}
 
-      {!isReplaying && !isPending && recs.length === 0 && (
+      {!isPending && recs.length === 0 && (
         <NonIdealState
           icon="lightbulb"
           title="No recommendations"
-          description="No active recommendations target this incident."
+          description={isReplaying ? 'No recommendations targeted this incident at the replay timestamp.' : 'No active recommendations target this incident.'}
           className="tab-empty-state"
         />
       )}
 
-      {!isReplaying && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {recs.map(rec => (
-            <RecommendationCard
-              key={rec.id}
-              rec={rec}
-              onViewEvidence={() => setEvidenceRec(rec)}
-              isCommander={isCommander}
-            />
-          ))}
-        </div>
-      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {recs.map(rec => (
+          <RecommendationCard
+            key={rec.id}
+            rec={rec}
+            onViewEvidence={() => setEvidenceRec(rec)}
+            isCommander={isCommander}
+            isReadOnly={isReadOnly}
+          />
+        ))}
+      </div>
 
       <EvidenceDrawer rec={evidenceRec} onClose={() => setEvidenceRec(null)} />
     </div>

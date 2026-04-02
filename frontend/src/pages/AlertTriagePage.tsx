@@ -19,6 +19,7 @@ import { Icon } from '@blueprintjs/core'
 import type { AlertStatus, SignalRuleMatch } from '../api/types'
 import { humanize } from '../utils/humanize'
 import { useReplay } from '../context/ReplayContext'
+import { useRole } from '../hooks/useRole'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -94,6 +95,7 @@ const ALERT_LIST_MAX_HEIGHT = 640
 
 interface AlertRowProps {
   match:        SignalRuleMatch
+  canTriage:    boolean
   isChecked:    boolean
   someSelected: boolean
   onCheck:      (id: string, idx: number, shiftKey: boolean) => void
@@ -102,7 +104,7 @@ interface AlertRowProps {
   isReadOnly?:  boolean
 }
 
-function AlertRow({ match: m, isChecked, someSelected, onCheck, rowIndex, onChainClick, isReadOnly = false }: AlertRowProps) {
+function AlertRow({ match: m, canTriage, isChecked, someSelected, onCheck, rowIndex, onChainClick, isReadOnly = false }: AlertRowProps) {
   const navigate   = useNavigate()
   const transition = useTransitionAlert()
   const actions    = (m.metadata?.actions_taken as string[] | undefined) ?? []
@@ -121,12 +123,14 @@ function AlertRow({ match: m, isChecked, someSelected, onCheck, rowIndex, onChai
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
       >
         {/* Checkbox */}
-        <div
-          onClick={e => { e.stopPropagation(); onCheck(m.id, rowIndex, e.shiftKey) }}
-          style={{ paddingRight: 6 }}
-        >
-          <Checkbox checked={isChecked} readOnly style={{ margin: 0, pointerEvents: 'none' }} />
-        </div>
+        {canTriage && (
+          <div
+            onClick={e => { e.stopPropagation(); onCheck(m.id, rowIndex, e.shiftKey) }}
+            style={{ paddingRight: 6 }}
+          >
+            <Checkbox checked={isChecked} readOnly style={{ margin: 0, pointerEvents: 'none' }} />
+          </div>
+        )}
 
         {/* Main body — click navigates to site */}
         <div
@@ -198,7 +202,7 @@ function AlertRow({ match: m, isChecked, someSelected, onCheck, rowIndex, onChai
       </div>
 
       {/* Per-row transition buttons — hidden when bulk selection is active or in replay */}
-      {txBtns.length > 0 && !someSelected && !isReadOnly && (
+      {txBtns.length > 0 && canTriage && !someSelected && !isReadOnly && (
         <div
           className="alert-row-transitions"
           onClick={e => e.stopPropagation()}
@@ -226,6 +230,8 @@ function AlertRow({ match: m, isChecked, someSelected, onCheck, rowIndex, onChai
 
 export default function AlertTriagePage() {
   const { isReplaying, asOf } = useReplay()
+  const { isCommander, isOperator } = useRole()
+  const canTriageAlerts = isCommander || isOperator
   const [statusFilter,  setStatusFilter]  = useState('unacknowledged')
   const [selectedIds,   setSelectedIds]   = useState<Set<string>>(new Set())
   // Bulk close confirmation dialog state
@@ -386,7 +392,7 @@ export default function AlertTriagePage() {
       )}
 
       {/* ── Bulk action toolbar — hidden in replay ── */}
-      {!isReplaying && <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, minHeight: 30 }}>
+      {!isReplaying && canTriageAlerts && <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, minHeight: 30 }}>
         <Checkbox
           checked={allSelected}
           indeterminate={someSelected && !allSelected}
@@ -474,6 +480,7 @@ export default function AlertTriagePage() {
                   >
                     <AlertRow
                       match={match}
+                      canTriage={canTriageAlerts}
                       isChecked={selectedIds.has(match.id)}
                       someSelected={someSelected}
                       rowIndex={vItem.index}

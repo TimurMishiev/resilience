@@ -23,10 +23,10 @@ export function useIncidents(params?: IncidentParams, options?: IncidentQueryOpt
   })
 }
 
-export function useIncident(id: string | undefined, options?: IncidentQueryOptions) {
+export function useIncident(id: string | undefined, params?: { as_of?: string | null }, options?: IncidentQueryOptions) {
   return useQuery({
-    queryKey: ['incidents', id],
-    queryFn:  () => getIncident(id!),
+    queryKey: ['incidents', id, params],
+    queryFn:  () => getIncident(id!, params),
     enabled:  Boolean(id) && (options?.enabled ?? true),
     refetchInterval: options?.refetchInterval ?? 15_000,
   })
@@ -84,10 +84,10 @@ export function useAssignIncident(callbacks?: MutationCallbacks<{ id: string; as
   })
 }
 
-export function useIncidentNotes(id: string | undefined, options?: IncidentQueryOptions) {
+export function useIncidentNotes(id: string | undefined, params?: { as_of?: string | null }, options?: IncidentQueryOptions) {
   return useQuery({
-    queryKey: ['incident-notes', id],
-    queryFn:  () => getIncidentNotes(id!),
+    queryKey: ['incident-notes', id, params],
+    queryFn:  () => getIncidentNotes(id!, params),
     enabled:  Boolean(id) && (options?.enabled ?? true),
     refetchInterval: options?.refetchInterval ?? 30_000,
   })
@@ -104,10 +104,10 @@ export function useAddIncidentNote() {
   })
 }
 
-export function useIncidentChain(id: string | undefined, options?: IncidentQueryOptions) {
+export function useIncidentChain(id: string | undefined, params?: { as_of?: string | null }, options?: IncidentQueryOptions) {
   return useQuery({
-    queryKey: ['incident-chain', id],
-    queryFn:  () => getIncidentChain(id!),
+    queryKey: ['incident-chain', id, params],
+    queryFn:  () => getIncidentChain(id!, params),
     enabled:  Boolean(id) && (options?.enabled ?? true),
     refetchInterval: options?.refetchInterval ?? 30_000,
   })
@@ -115,10 +115,10 @@ export function useIncidentChain(id: string | undefined, options?: IncidentQuery
 
 // ── Prosecution hooks ─────────────────────────────────────────────────────
 
-export function useProsecutionSteps(id: string | undefined, options?: IncidentQueryOptions) {
+export function useProsecutionSteps(id: string | undefined, params?: { as_of?: string | null }, options?: IncidentQueryOptions) {
   return useQuery({
-    queryKey: ['prosecution-steps', id],
-    queryFn:  () => getProsecutionSteps(id!),
+    queryKey: ['prosecution-steps', id, params],
+    queryFn:  () => getProsecutionSteps(id!, params),
     enabled:  Boolean(id) && (options?.enabled ?? true),
     refetchInterval: options?.refetchInterval ?? false,
   })

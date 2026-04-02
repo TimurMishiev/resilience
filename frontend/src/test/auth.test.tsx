@@ -178,8 +178,14 @@ describe('Role gating via AuthContext', () => {
     expect(screen.queryByText('Commander Action')).not.toBeInTheDocument()
   })
 
-  it('treats missing user as operator (most restrictive default)', () => {
-    // No user — defaults to hiding commander controls
+  it('hides commander controls for viewer role', () => {
+    mockRestoreUser.mockReturnValue({ id: '3', email: 'viewer@test.mil', role: 'viewer' })
+    renderWithAuth(<RoleDisplay />)
+    expect(screen.getByText('Operator view')).toBeInTheDocument()
+    expect(screen.queryByText('Commander Action')).not.toBeInTheDocument()
+  })
+
+  it('treats missing user as viewer (most restrictive default)', () => {
     mockRestoreUser.mockReturnValue(null)
     renderWithAuth(<RoleDisplay />)
     expect(screen.getByText('Operator view')).toBeInTheDocument()

@@ -1,6 +1,8 @@
 require "rails_helper"
 
 RSpec.describe "Api::Recommendations", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
   let(:commander) { create(:user, :commander) }
   let(:operator)  { create(:user, :operator) }
 
@@ -27,6 +29,30 @@ RSpec.describe "Api::Recommendations", type: :request do
     it "requires authentication" do
       get "/api/recommendations"
       expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "reconstructs recommendation status at as_of for replay queries" do
+      replay_target = create(:recommendation, status: "pending", expires_at: 4.hours.from_now)
+      replay_target.update_columns(created_at: 2.hours.ago, updated_at: 2.hours.ago)
+
+      travel_to 30.minutes.ago do
+        replay_target.accept!(user: commander, reason: "Accepted then")
+      end
+      replay_target.update!(status: "executed", executed_at: 5.minutes.ago)
+
+      get "/api/recommendations",
+          params: {
+            as_of: 20.minutes.ago.iso8601,
+            affected_entity_id: replay_target.affected_entity_id,
+            status: "accepted",
+          },
+          headers: auth_headers(operator)
+
+      expect(response).to have_http_status(:ok)
+      body = json
+      expect(body["data"].map { |rec| rec["id"] }).to contain_exactly(replay_target.id)
+      expect(body["data"].first["status"]).to eq("accepted")
+      expect(body["data"].first["executed_at"]).to be_nil
     end
   end
 

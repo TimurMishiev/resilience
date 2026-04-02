@@ -113,6 +113,7 @@ export interface IncidentParams extends PaginationParams {
   severity?:        IncidentSeverity
   site_id?:         string
   assigned_to_id?:  string
+  as_of?:           string
 }
 
 // ── API functions ─────────────────────────────────────────────────────────
@@ -121,8 +122,8 @@ export function getIncidents(params?: IncidentParams): Promise<PaginatedResponse
   return api.get('/api/incidents', params as QueryParams)
 }
 
-export function getIncident(id: string): Promise<Incident> {
-  return api.get(`/api/incidents/${id}`)
+export function getIncident(id: string, params?: { as_of?: string | null }): Promise<Incident> {
+  return api.get(`/api/incidents/${id}`, params as QueryParams)
 }
 
 export function updateIncident(id: string, body: Partial<Pick<Incident, 'title' | 'description' | 'severity'>>): Promise<Incident> {
@@ -141,8 +142,8 @@ export function assignIncident(id: string, assignee_id: string | null): Promise<
   return api.patch(`/api/incidents/${id}/assign`, { assignee_id })
 }
 
-export function getIncidentNotes(id: string): Promise<IncidentNote[]> {
-  return api.get(`/api/incidents/${id}/notes`)
+export function getIncidentNotes(id: string, params?: { as_of?: string | null }): Promise<IncidentNote[]> {
+  return api.get(`/api/incidents/${id}/notes`, params as QueryParams)
 }
 
 export function addIncidentNote(id: string, body: string): Promise<IncidentNote> {
@@ -185,8 +186,8 @@ export interface IncidentChainResponse {
   edges: ChainEdge[]
 }
 
-export function getIncidentChain(id: string): Promise<IncidentChainResponse> {
-  return api.get(`/api/incidents/${id}/chain`)
+export function getIncidentChain(id: string, params?: { as_of?: string | null }): Promise<IncidentChainResponse> {
+  return api.get(`/api/incidents/${id}/chain`, params as QueryParams)
 }
 
 // ── Prosecution API ────────────────────────────────────────────────────────
@@ -195,8 +196,8 @@ export function initiateProsecution(id: string, notes?: string | null): Promise<
   return api.post(`/api/incidents/${id}/prosecute`, { notes: notes ?? null })
 }
 
-export function getProsecutionSteps(id: string): Promise<ProsecutionStep[]> {
-  return api.get(`/api/incidents/${id}/prosecution_steps`)
+export function getProsecutionSteps(id: string, params?: { as_of?: string | null }): Promise<ProsecutionStep[]> {
+  return api.get(`/api/incidents/${id}/prosecution_steps`, params as QueryParams)
 }
 
 export function addProsecutionStep(id: string, body: AddProsecutionStepBody): Promise<ProsecutionStep> {

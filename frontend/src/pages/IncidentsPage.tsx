@@ -8,6 +8,7 @@ import {
 import { useIncidents, useTransitionIncident, useAssignIncident } from '../hooks/useIncidents'
 import { useAuth } from '../context/AuthContext'
 import { useReplay } from '../context/ReplayContext'
+import { useRole } from '../hooks/useRole'
 import type { IncidentStatus, IncidentSeverity, Incident } from '../api/incidents'
 
 // ── constants ─────────────────────────────────────────────────────────────
@@ -67,7 +68,9 @@ function reltime(iso: string) {
 export default function IncidentsPage() {
   const navigate = useNavigate()
   const { currentUser } = useAuth()
-  const { isReplaying } = useReplay()
+  const { isCommander, isOperator } = useRole()
+  const { isReplaying, asOf } = useReplay()
+  const canMutateIncidents = isCommander || isOperator
 
   const [statusFilter,   setStatusFilter]   = useState<IncidentStatus | ''>('')
   const [severityFilter, setSeverityFilter] = useState<IncidentSeverity | ''>('')
@@ -78,13 +81,14 @@ export default function IncidentsPage() {
     ...(statusFilter   ? { status:   statusFilter }   : {}),
     ...(severityFilter ? { severity: severityFilter } : {}),
     ...(mineOnly && currentUser ? { assigned_to_id: currentUser.id } : {}),
+    ...(isReplaying && asOf ? { as_of: asOf } : {}),
   }
 
   const [pendingTx,     setPendingTx]     = useState<string | null>(null)
   const [pendingAssign, setPendingAssign] = useState<string | null>(null)
 
   const { data, isPending, error } = useIncidents(queryParams, {
-    enabled: !isReplaying,
+    enabled: true,
     refetchInterval: isReplaying ? false : 15_000,
   })
   const transition = useTransitionIncident({
@@ -103,20 +107,10 @@ export default function IncidentsPage() {
   return (
     <div className="page-content">
       {isReplaying && (
-        <>
-          <Callout intent="warning" icon="history" style={{ marginBottom: 16 }}>
-            Incidents are unavailable during replay because incident workflow and assignment state are live-only.
-          </Callout>
-          <NonIdealState
-            icon="history"
-            title="Incidents unavailable in replay"
-            description="Return to live mode to review and manage active incidents."
-          />
-        </>
+        <Callout intent="primary" icon="history" style={{ marginBottom: 16 }}>
+          Showing incidents as they existed at the replay timestamp. Workflow and assignment actions are disabled.
+        </Callout>
       )}
-
-      {!isReplaying && (
-        <>
       <div className="page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <h1 className="bp6-heading" style={{ margin: 0 }}>Incidents</h1>
@@ -126,7 +120,7 @@ export default function IncidentsPage() {
             </Tag>
           )}
           <span className="bp6-text-muted" style={{ fontSize: 13 }}>
-            {data?.meta?.total ?? '—'} total
+            {data?.meta?.total ?? '—'} {isReplaying ? 'visible' : 'total'}
           </span>
         </div>
       </div>
@@ -186,7 +180,9 @@ export default function IncidentsPage() {
           icon="shield"
           title="No incidents"
           description={
-            hasFilters
+            isReplaying
+              ? 'No incidents existed at the selected replay timestamp.'
+              : hasFilters
               ? 'No incidents match the current filters.'
               : 'Incidents are auto-generated when correlation rules fire.'
           }
@@ -277,12 +273,13 @@ export default function IncidentsPage() {
 
                   <td onClick={e => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
                     {/* Quick status transition */}
-                    {quickTx && (
+                    {quickTx && canMutateIncidents && (
                       <Button
                         small
                         minimal
                         intent={TX_INTENT[quickTx.to]}
                         loading={pendingTx === incident.id}
+                        disabled={isReplaying}
                         onClick={() => transition.mutate({ id: incident.id, to_status: quickTx.to })}
                         style={{ fontSize: 11, marginRight: 4 }}
                       >
@@ -291,7 +288,7 @@ export default function IncidentsPage() {
                     )}
 
                     {/* Take / Drop ownership */}
-                    {!isTerminal && currentUser && (
+                    {!isTerminal && currentUser && canMutateIncidents && !isReplaying && (
                       isAssignedToMe ? (
                         <Button
                           small
@@ -331,8 +328,6 @@ export default function IncidentsPage() {
             })}
           </tbody>
         </HTMLTable>
-      )}
-        </>
       )}
     </div>
   )

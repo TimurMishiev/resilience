@@ -31,6 +31,8 @@ interface AssetPickerProps {
   label?: string
   /** If true, renders inline without the drawer-specific wrapper */
   minimal?: boolean
+  /** If true, disable all user interaction regardless of posture */
+  disabled?: boolean
 }
 
 export function AssetPicker({
@@ -44,6 +46,7 @@ export function AssetPicker({
   assignedTasks = [],
   label = 'Asset',
   minimal = false,
+  disabled = false,
 }: AssetPickerProps) {
   const selectable   = filterByPosture(assets, posture)
   const isRestricted = posture === 'observe'
@@ -70,7 +73,7 @@ export function AssetPicker({
   const picker = (
     <HTMLSelect
       value={pickedId}
-      disabled={isRestricted || isPending}
+      disabled={disabled || isRestricted || isPending}
       onChange={e => onPendingChange(e.currentTarget.value || null)}
       options={[
         { label: '— Unassigned —', value: '' },
@@ -135,7 +138,7 @@ export function AssetPicker({
         </span>
       )}
 
-      {pendingAsset !== undefined && pendingAsset !== currentAssetId && !isRestricted && (
+      {pendingAsset !== undefined && pendingAsset !== currentAssetId && !isRestricted && !disabled && (
         <Button small intent="primary" loading={isPending} onClick={() => onConfirm(pendingAsset)}>
           Assign
         </Button>

@@ -1,6 +1,8 @@
 require 'rails_helper'
 
 RSpec.describe "Api::Incidents", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
   let(:operator)   { create(:user) }
   let(:commander)  { create(:user, :commander) }
   let!(:site)      { create(:site) }
@@ -12,7 +14,9 @@ RSpec.describe "Api::Incidents", type: :request do
       severity:  "high",
       confidence: 0.75,
       opened_at: 2.hours.ago
-    )
+    ).tap do |record|
+      record.update_columns(created_at: 2.hours.ago, updated_at: 2.hours.ago)
+    end
   end
 
   describe "GET /api/incidents" do
@@ -58,6 +62,24 @@ RSpec.describe "Api::Incidents", type: :request do
       expect(row).to have_key("alert_count")
       expect(row).to have_key("task_count")
     end
+
+    it "replays status and assignment as_of" do
+      travel_to 30.minutes.ago do
+        Incidents::TransitionService.call(incident: incident, to_status: "acknowledged", actor: commander)
+      end
+      travel_to 20.minutes.ago do
+        Incidents::AssignService.call(incident: incident, assignee: commander, actor: commander)
+      end
+
+      get "/api/incidents",
+          params: { as_of: 45.minutes.ago.iso8601 },
+          headers: auth_headers(operator)
+
+      expect(response).to have_http_status(:ok)
+      row = JSON.parse(response.body).fetch("data").first
+      expect(row.fetch("status")).to eq("open")
+      expect(row.fetch("assigned_to")).to be_nil
+    end
   end
 
   describe "GET /api/incidents/:id" do
@@ -88,6 +110,43 @@ RSpec.describe "Api::Incidents", type: :request do
     it "returns 404 for unknown id" do
       get "/api/incidents/#{SecureRandom.uuid}", headers: auth_headers(operator)
       expect(response).to have_http_status(:not_found)
+    end
+
+    it "replays alert workflow state and excludes future tasks as_of" do
+      task = create(:task, site: site, title: "Future task")
+      match = create(:signal_rule_match, incident: incident, site: site, task: task, fired_at: 2.hours.ago)
+
+      travel_to 30.minutes.ago do
+        Alerts::TransitionService.call(
+          match: match,
+          to_status: "acknowledged",
+          actor: commander,
+          notes: "Handled later",
+        )
+      end
+
+      AuditEvent.create!(
+        actor: "system",
+        entity_type: "Task",
+        entity_id: task.id,
+        event_type: "task.created",
+        action: "create",
+        before_snapshot: nil,
+        after_snapshot: task.attributes.except("updated_at"),
+        occurred_at: 15.minutes.ago,
+        correlation_id: SecureRandom.uuid,
+      )
+
+      get "/api/incidents/#{incident.id}",
+          params: { as_of: 45.minutes.ago.iso8601 },
+          headers: auth_headers(operator)
+
+      expect(response).to have_http_status(:ok)
+      body = JSON.parse(response.body)
+      expect(body.fetch("alert_count")).to eq(1)
+      expect(body.fetch("task_count")).to eq(0)
+      expect(body.fetch("alerts").first.fetch("workflow_status")).to eq("unacknowledged")
+      expect(body.fetch("tasks")).to eq([])
     end
   end
 
@@ -318,6 +377,42 @@ RSpec.describe "Api::Incidents", type: :request do
           headers: auth_headers(operator)
       expect(response).to have_http_status(:not_found)
     end
+
+    it "clips chain nodes to the replay timestamp" do
+      task = create(:task, site: site, title: "Future task")
+      match = create(:signal_rule_match, incident: incident, site: site, task: task, fired_at: 2.hours.ago)
+
+      travel_to 30.minutes.ago do
+        Alerts::TransitionService.call(
+          match: match,
+          to_status: "acknowledged",
+          actor: commander,
+          notes: "Handled later",
+        )
+      end
+
+      AuditEvent.create!(
+        actor: "system",
+        entity_type: "Task",
+        entity_id: task.id,
+        event_type: "task.created",
+        action: "create",
+        before_snapshot: nil,
+        after_snapshot: task.attributes.except("updated_at"),
+        occurred_at: 15.minutes.ago,
+        correlation_id: SecureRandom.uuid,
+      )
+
+      get "/api/incidents/#{incident.id}/chain",
+          params: { as_of: 45.minutes.ago.iso8601 },
+          headers: auth_headers(operator)
+
+      expect(response).to have_http_status(:ok)
+      body = JSON.parse(response.body)
+      expect(body.fetch("nodes").map { |node| node.fetch("type") }).not_to include("task")
+      alert_node = body.fetch("nodes").find { |node| node.fetch("type") == "alert" }
+      expect(alert_node.dig("data", "status")).to eq("unacknowledged")
+    end
   end
 
   describe "GET /api/incidents/:id/notes" do
@@ -409,6 +504,24 @@ RSpec.describe "Api::Incidents", type: :request do
       expect(response).to have_http_status(:ok)
       body = JSON.parse(response.body)
       expect(body.map { |step| step["id"] }).to eq([older.id, newer.id])
+    end
+
+    it "clips prosecution steps to the replay timestamp" do
+      incident.update!(
+        prosecution_phase: "assessing",
+        prosecuted_by: commander,
+        prosecution_initiated_at: 15.minutes.ago
+      )
+      older = create(:prosecution_step, incident: incident, actor: commander, occurred_at: 10.minutes.ago, created_at: 10.minutes.ago)
+      create(:prosecution_step, incident: incident, actor: commander, occurred_at: 5.minutes.ago, created_at: 5.minutes.ago)
+
+      get "/api/incidents/#{incident.id}/prosecution_steps",
+          params: { as_of: 7.minutes.ago.iso8601 },
+          headers: auth_headers(operator)
+
+      expect(response).to have_http_status(:ok)
+      body = JSON.parse(response.body)
+      expect(body.map { |step| step["id"] }).to eq([older.id])
     end
   end
 

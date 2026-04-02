@@ -12,24 +12,24 @@ module Api
       authorize Recommendation
       recs = policy_scope(Recommendation).includes(:reviewer).recent
 
-      recs = recs.where(status: params[:status])                          if params[:status].present?
       recs = recs.by_tier(params[:tier])                                  if params[:tier].present?
       recs = recs.where(recommendation_type: params[:type])               if params[:type].present?
       recs = recs.where(affected_entity_type: params[:affected_entity_type]) if params[:affected_entity_type].present?
       recs = recs.where(affected_entity_id:   params[:affected_entity_id])   if params[:affected_entity_id].present?
 
       if as_of
-        # Replay mode: show recommendations that had been created by as_of
-        # and had not yet expired at as_of (or have no expiry).
         recs = recs.where("created_at <= ?", as_of)
-                   .where("expires_at IS NULL OR expires_at > ?", as_of)
-      elsif params[:status].blank?
-        # Default (live mode): only show active (pending + not expired)
-        recs = recs.active
-      end
+        records, meta = paginate_transformed_relation(recs) do |batch|
+          serialize_replay_recommendations(batch, as_of: as_of)
+        end
+        render json: { data: records, meta: meta }
+      else
+        recs = recs.where(status: params[:status]) if params[:status].present?
+        recs = recs.active if params[:status].blank?
 
-      records, meta = paginate(recs)
-      render json: { data: records.map { |r| serialize(r) }, meta: meta }
+        records, meta = paginate(recs)
+        render json: { data: records.map { |r| serialize(r) }, meta: meta }
+      end
     end
 
     # POST /api/recommendations/generate
@@ -153,12 +153,12 @@ module Api
 
     private
 
-    def serialize(rec)
+    def serialize(rec, replay_state: nil)
       {
         id:                    rec.id,
         recommendation_type:   rec.recommendation_type,
         tier:                  rec.tier,
-        status:                rec.status,
+        status:                replay_state ? replay_state[:status] : rec.status,
         confidence:            rec.confidence,
         rationale:             rec.rationale,
         evidence:              rec.evidence,
@@ -166,12 +166,44 @@ module Api
         affected_entity_type:  rec.affected_entity_type,
         affected_entity_id:    rec.affected_entity_id,
         expires_at:            rec.expires_at,
-        reviewed_by:           rec.reviewer ? { id: rec.reviewer.id, email: rec.reviewer.email } : nil,
-        reviewed_at:           rec.reviewed_at,
-        review_reason:         rec.review_reason,
-        executed_at:           rec.executed_at,
+        reviewed_by:           replay_state ? replay_state[:reviewed_by] : (rec.reviewer ? { id: rec.reviewer.id, email: rec.reviewer.email } : nil),
+        reviewed_at:           replay_state ? replay_state[:reviewed_at] : rec.reviewed_at,
+        review_reason:         replay_state ? replay_state[:review_reason] : rec.review_reason,
+        executed_at:           replay_state ? replay_state[:executed_at] : rec.executed_at,
         created_at:            rec.created_at,
       }
+    end
+
+    def serialize_replay_recommendations(records, as_of:)
+      replay_states = replay_states_for_recommendations(records, as_of: as_of)
+      serialized = records.map { |record| serialize(record, replay_state: replay_states.fetch(record.id)) }
+
+      return serialized unless params[:status].present?
+
+      serialized.select { |record| record[:status] == params[:status] }
+    end
+
+    def replay_states_for_recommendations(records, as_of:)
+      ids = records.map(&:id)
+      latest_snapshots = latest_audit_snapshots(entity_type: "Recommendation", entity_ids: ids, as_of: as_of)
+
+      records.each_with_object({}) do |record, states|
+        snapshot      = latest_snapshots[record.id] || {}
+        replay_status = snapshot_value(snapshot, "status") || "pending"
+        replay_status = "expired" if replay_status == "pending" && record.expires_at.present? && record.expires_at <= as_of
+
+        reviewed_status = %w[accepted rejected deferred executed].include?(replay_status)
+        states[record.id] = {
+          status: replay_status,
+          reviewed_by: reviewed_status && record.reviewer ? {
+            id: record.reviewer.id,
+            email: record.reviewer.email,
+          } : nil,
+          reviewed_at: reviewed_status && record.reviewed_at.present? && record.reviewed_at <= as_of ? record.reviewed_at : nil,
+          review_reason: reviewed_status ? snapshot_value(snapshot, "review_reason") || record.review_reason : nil,
+          executed_at: replay_status == "executed" && record.executed_at.present? && record.executed_at <= as_of ? record.executed_at : nil,
+        }
+      end
     end
   end
 end

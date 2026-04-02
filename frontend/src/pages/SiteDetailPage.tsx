@@ -208,30 +208,23 @@ const SITE_BULK_ACTIONS = [
 function RuleFiresTab({
   siteId,
   isReplaying,
+  asOf,
   onChain,
 }: {
   siteId: string
   isReplaying: boolean
+  asOf?: string | null
   onChain: (m: SignalRuleMatch) => void
 }) {
+  const { isCommander, isOperator } = useRole()
+  const canTriageAlerts = isCommander || isOperator
   const { data, isPending, error } = useSignalRuleMatches(
-    { site_id: siteId, per_page: 50 },
-    { enabled: !isReplaying, refetchInterval: isReplaying ? false : 10_000 },
+    { site_id: siteId, per_page: 50, ...(asOf ? { as_of: asOf } : {}) },
+    { enabled: true, refetchInterval: isReplaying ? false : 10_000 },
   )
   const transition   = useTransitionAlert()
   const bulkTransition = useBulkTransitionAlerts()
   const [selected, setSelected] = useState<Set<string>>(new Set())
-
-  if (isReplaying) {
-    return (
-      <NonIdealState
-        icon="history"
-        title="Rule fires unavailable in replay"
-        description="Alert workflow state and geofence-breach triage are live-only and are hidden during replay."
-        className="tab-empty-state"
-      />
-    )
-  }
 
   if (isPending) return <Spinner size={20} style={{ marginTop: 24 }} />
   if (error) return <Callout intent="danger" compact>{error.message}</Callout>
@@ -279,7 +272,12 @@ function RuleFiresTab({
 
   return (
     <div>
-      {bulkActive && (
+      {isReplaying && (
+        <Callout intent="primary" compact style={{ marginBottom: 8 }}>
+          Showing rule fires that had fired by the replay timestamp. Triage actions are disabled.
+        </Callout>
+      )}
+      {bulkActive && canTriageAlerts && !isReplaying && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', marginBottom: 4, background: 'var(--bp6-dark-gray3, #383e47)', borderRadius: 4 }}>
           <span style={{ fontSize: 12, opacity: 0.7, marginRight: 4 }}>{selected.size} selected</span>
           {SITE_BULK_ACTIONS.map((a) => (
@@ -301,14 +299,16 @@ function RuleFiresTab({
       <HTMLTable className="data-table" striped>
         <thead>
           <tr>
-            <th style={{ width: 32 }}>
-              <Checkbox
-                checked={allChecked}
-                indeterminate={someChecked}
-                onChange={toggleAll}
-                style={{ margin: 0 }}
-              />
-            </th>
+            {canTriageAlerts && !isReplaying && (
+              <th style={{ width: 32 }}>
+                <Checkbox
+                  checked={allChecked}
+                  indeterminate={someChecked}
+                  onChange={toggleAll}
+                  style={{ margin: 0 }}
+                />
+              </th>
+            )}
             <th>Rule</th>
             <th>Signal</th>
             <th>Status</th>
@@ -328,13 +328,15 @@ function RuleFiresTab({
             return (
               <Fragment key={m.id}>
                 <tr>
-                  <td>
-                    <Checkbox
-                      checked={isChecked}
-                      onChange={() => toggleOne(m.id)}
-                      style={{ margin: 0 }}
-                    />
-                  </td>
+                  {canTriageAlerts && !isReplaying && (
+                    <td>
+                      <Checkbox
+                        checked={isChecked}
+                        onChange={() => toggleOne(m.id)}
+                        style={{ margin: 0 }}
+                      />
+                    </td>
+                  )}
                   <td>
                     {m.correlation_rule
                       ? m.correlation_rule.name
@@ -376,7 +378,7 @@ function RuleFiresTab({
                     />
                   </td>
                 </tr>
-                {txBtns.length > 0 && !bulkActive && (
+                {txBtns.length > 0 && !bulkActive && canTriageAlerts && !isReplaying && (
                   <tr key={`${m.id}-tx`} style={{ background: 'transparent' }}>
                     <td colSpan={8} style={{ paddingTop: 2, paddingBottom: 6, border: 'none' }}>
                       <div style={{ display: 'flex', gap: 4 }} onClick={(e) => e.stopPropagation()}>
@@ -568,7 +570,8 @@ export default function SiteDetailPage() {
     return taskQueryParam ? { type: 'task', id: taskQueryParam, title: 'Task' } : null
   })
 
-  const { isCommander } = useRole()
+  const { isCommander, isOperator } = useRole()
+  const canOperate = isCommander || isOperator
 
   const { data: liveSite, isPending: liveSitePending, error: liveSiteError } = useSite(!isReplaying ? id : undefined)
   const replaySitesQuery = useSites({ per_page: 200, ...(asOf ? { as_of: asOf } : {}) }, isReplaying)
@@ -590,7 +593,7 @@ export default function SiteDetailPage() {
     { enabled: !isReplaying, refetchInterval: isReplaying ? false : 10_000 },
   )
   const activeBreachCount = isReplaying ? 0 : (breachMatchesRes?.meta?.total ?? 0)
-  const visibleCreateTaskOpen = !isReplaying && createTaskOpen
+  const visibleCreateTaskOpen = canOperate && !isReplaying && createTaskOpen
   const visibleEditingGeofence = !isReplaying && editingGeofence
   const visibleChainMatch = !isReplaying ? chainMatch : null
   const selectedTab = isReplaying && tab === 'timeline' ? 'tasks' : tab
@@ -638,7 +641,7 @@ export default function SiteDetailPage() {
 
   return (
     <div className="page-content site-detail">
-      {!isReplaying && (
+      {canOperate && !isReplaying && (
         <CreateTaskDialog
           siteId={site.id}
           isOpen={visibleCreateTaskOpen}
@@ -725,7 +728,7 @@ export default function SiteDetailPage() {
 
       {isReplaying && (
         <Callout intent="warning" icon="history" compact style={{ marginBottom: 12 }}>
-          Risk trends, geofence-breach workflow, rule-fire triage, audit trail, and site mutations are hidden during replay because those features are only available as live state.
+          Risk trends and site mutations remain live-only. Historical tasks, signals, rule fires, and audit history are clipped to the replay timestamp.
         </Callout>
       )}
 
@@ -828,7 +831,7 @@ export default function SiteDetailPage() {
         <Tab id="tasks" title={
           <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             Tasks
-            {!isReplaying && <Button
+            {canOperate && !isReplaying && <Button
               icon="plus"
               minimal
               small
@@ -839,7 +842,7 @@ export default function SiteDetailPage() {
           </span>
         } panel={<TasksTab siteId={site.id} asOf={asOf} onSelect={(t) => setEntityCard({ type: 'task', id: t.id, title: t.title })} />} />
         <Tab id="signals" title="Signals" panel={<SignalsTab siteId={site.id} asOf={asOf} />} />
-        <Tab id="rule_fires" title="Rule Fires" panel={<RuleFiresTab siteId={site.id} isReplaying={isReplaying} onChain={setChainMatch} />} />
+        <Tab id="rule_fires" title="Rule Fires" panel={<RuleFiresTab siteId={site.id} isReplaying={isReplaying} asOf={asOf} onChain={setChainMatch} />} />
         <Tab id="assets" title="Assets" panel={<AssetsTab siteId={site.id} asOf={asOf} onSelect={(a) => setEntityCard({ type: 'asset', id: a.id, title: a.name })} />} />
         {!isReplaying && <Tab id="timeline" title={
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -851,18 +854,9 @@ export default function SiteDetailPage() {
           </span>
         } panel={<SiteTimeline siteId={site.id} />} />}
         <Tab id="audit" title="Audit Trail" panel={
-          isReplaying ? (
-            <NonIdealState
-              icon="history"
-              title="Audit trail unavailable in replay"
-              description="Site audit events are currently live-only and are hidden during replay to avoid mixing present-time changes into a historical snapshot."
-              className="tab-empty-state"
-            />
-          ) : (
-            <div style={{ paddingTop: 12 }}>
-              <AuditTimeline entityType="Site" entityId={site.id} />
-            </div>
-          )
+          <div style={{ paddingTop: 12 }}>
+            <AuditTimeline entityType="Site" entityId={site.id} asOf={asOf} />
+          </div>
         } />
       </Tabs>
     </div>

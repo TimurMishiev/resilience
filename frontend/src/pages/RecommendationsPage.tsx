@@ -32,6 +32,9 @@ export default function RecommendationsPage() {
   const { isReplaying, asOf } = useReplay()
   const [statusFilter, setStatusFilter] = useState('')
   const [evidenceRec, setEvidenceRec]   = useState<Recommendation | null>(null)
+  const statusOptions = isReplaying
+    ? [{ ...STATUS_OPTIONS[0], label: 'All statuses' }, ...STATUS_OPTIONS.slice(1)]
+    : STATUS_OPTIONS
 
   const replayParams = isReplaying && asOf ? { as_of: asOf } : {}
   const { data, isPending, error } = useRecommendations(
@@ -48,7 +51,7 @@ export default function RecommendationsPage() {
       <div className="page-header">
         <h1 className="bp6-heading" style={{ margin: 0 }}>Recommendations</h1>
         <span className="bp6-text-muted" style={{ fontSize: 13, marginLeft: 8 }}>
-          {data?.meta.total ?? '—'} active
+          {data?.meta.total ?? '—'} {isReplaying ? 'visible' : 'active'}
         </span>
         {isCommander && !isReplaying && (
           <Button
@@ -67,7 +70,7 @@ export default function RecommendationsPage() {
 
       {isReplaying && (
         <Callout intent="primary" icon="info-sign" style={{ marginBottom: 12 }}>
-          Showing recommendations that existed at the replay timestamp. Write actions are disabled.
+          Showing recommendations as they existed at the replay timestamp. Review actions are disabled.
         </Callout>
       )}
 
@@ -92,21 +95,21 @@ export default function RecommendationsPage() {
       )}
 
       {/* ── filter bar ── */}
-      {!isReplaying && <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
         <HTMLSelect
           value={statusFilter}
           onChange={e => setStatusFilter(e.target.value)}
           minimal
           style={{ fontSize: 13 }}
         >
-          {STATUS_OPTIONS.map(o => (
+          {statusOptions.map(o => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </HTMLSelect>
         {statusFilter && (
           <Button minimal small onClick={() => setStatusFilter('')}>Clear</Button>
         )}
-      </div>}
+      </div>
 
       {isPending && <Spinner size={24} style={{ marginTop: 24 }} />}
       {error && <Callout intent="danger" compact>{error.message}</Callout>}
@@ -177,7 +180,7 @@ export default function RecommendationsPage() {
         </Tabs>
       )}
 
-      {!isReplaying && <EvidenceDrawer rec={evidenceRec} onClose={() => setEvidenceRec(null)} />}
+      <EvidenceDrawer rec={evidenceRec} onClose={() => setEvidenceRec(null)} />
     </div>
   )
 }

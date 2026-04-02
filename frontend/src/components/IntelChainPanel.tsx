@@ -11,7 +11,7 @@ import {
   BackgroundVariant,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Tag, Spinner, NonIdealState } from '@blueprintjs/core'
+import { Tag, Spinner, NonIdealState, Callout } from '@blueprintjs/core'
 import { useIncidentChain } from '../hooks/useIncidents'
 import type { ChainNodeType, ChainNodeData } from '../api/incidents'
 import { humanize } from '../utils/humanize'
@@ -152,10 +152,14 @@ function layoutNodes(
 // ---------------------------------------------------------------------------
 interface IntelChainPanelProps {
   incidentId: string
+  asOf?: string | null
 }
 
-export default function IntelChainPanel({ incidentId }: IntelChainPanelProps) {
-  const { data, isLoading, error } = useIncidentChain(incidentId)
+export default function IntelChainPanel({ incidentId, asOf }: IntelChainPanelProps) {
+  const chainParams = asOf ? { as_of: asOf } : undefined
+  const { data, isLoading, error } = useIncidentChain(incidentId, chainParams, {
+    refetchInterval: asOf ? false : undefined,
+  })
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const rfNodes: Node[] = useMemo(() => {
@@ -208,6 +212,11 @@ export default function IntelChainPanel({ incidentId }: IntelChainPanelProps) {
     <div style={{ display: 'flex', height: 520, gap: 0 }}>
       {/* DAG canvas */}
       <div style={{ flex: 1, position: 'relative', background: '#0a0f1a', borderRadius: 6 }}>
+        {asOf && (
+          <Callout intent="primary" compact style={{ position: 'absolute', top: 12, left: 12, zIndex: 5 }}>
+            Showing the incident chain as it existed at the replay timestamp.
+          </Callout>
+        )}
         <ReactFlow
           nodes={rfNodes}
           edges={rfEdges}

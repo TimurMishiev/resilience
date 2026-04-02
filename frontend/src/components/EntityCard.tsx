@@ -71,10 +71,12 @@ const THREAT_INTENT: Record<string, Intent> = {
 // ---------------------------------------------------------------------------
 
 function TaskOverview({ taskId }: { taskId: string }) {
+  const { isCommander, isOperator } = useRole()
   const { isReplaying } = useReplay()
+  const canMutateTask = isCommander || isOperator
   const { data: task, isPending } = useTask(taskId)
   const { data: taskRes } = useTasks({ per_page: 200 })
-  const { data: transitionsData } = useAllowedTransitions(!isReplaying ? taskId : null)
+  const { data: transitionsData } = useAllowedTransitions(!isReplaying && canMutateTask ? taskId : null)
   const { data: assetRes } = useAssets({ per_page: 200 })
   const transitionMutation = useTransitionTask()
   const updateMutation     = useUpdateTask()
@@ -132,7 +134,7 @@ function TaskOverview({ taskId }: { taskId: string }) {
         </Callout>
       )}
 
-      {!isReplaying && allowed.length > 0 && (
+      {!isReplaying && canMutateTask && allowed.length > 0 && (
         <div className="drawer-transitions">
           <span className="drawer-section-label bp6-text-muted">Move to</span>
           <div className="transition-buttons">
@@ -184,7 +186,7 @@ function TaskOverview({ taskId }: { taskId: string }) {
         </div>
       )}
 
-      {!isReplaying && (
+      {!isReplaying && canMutateTask && (
         <AssetPicker
           currentAssetId={task.asset_id}
           assets={assets}

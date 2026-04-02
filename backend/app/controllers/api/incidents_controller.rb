@@ -12,13 +12,24 @@ module Api
         .by_severity
         .recent
 
-      incidents = incidents.by_status(params[:status])           if params[:status].present?
-      incidents = incidents.where(severity: params[:severity])   if params[:severity].present?
       incidents = incidents.for_site(params[:site_id])           if params[:site_id].present?
-      incidents = incidents.where(assigned_to_id: params[:assigned_to_id]) if params[:assigned_to_id].present?
 
-      records, meta = paginate(incidents)
-      render json: { data: records.map { |i| serialize_incident(i) }, meta: meta }
+      if as_of
+        incidents = incidents.where("created_at <= ?", as_of)
+        records, meta = paginate_transformed_relation(incidents) do |batch|
+          serialize_replay_incidents(batch, detailed: false, as_of: as_of).select do |record|
+            replay_incident_matches_filters?(record)
+          end
+        end
+        render json: { data: records, meta: meta }
+      else
+        incidents = incidents.by_status(params[:status]) if params[:status].present?
+        incidents = incidents.where(severity: params[:severity]) if params[:severity].present?
+        incidents = incidents.where(assigned_to_id: params[:assigned_to_id]) if params[:assigned_to_id].present?
+
+        records, meta = paginate(incidents)
+        render json: { data: records.map { |i| serialize_incident(i) }, meta: meta }
+      end
     end
 
     # GET /api/incidents/:id
@@ -35,7 +46,14 @@ module Api
         ]
       )
       authorize incident
-      render json: serialize_incident(incident, detailed: true)
+
+      if as_of
+        return render json: { errors: ["Incident not found"] }, status: :not_found if incident.created_at > as_of
+
+        render json: serialize_replay_incidents([incident], detailed: true, as_of: as_of).first
+      else
+        render json: serialize_incident(incident, detailed: true)
+      end
     end
 
     # PATCH /api/incidents/:id
@@ -131,6 +149,18 @@ module Api
       incident = scoped_record(Incident, params[:id])
       authorize incident, :chain?
       matches  = incident.signal_rule_matches.includes(:signal, :correlation_rule, :task)
+      incident_state = nil
+      replay_match_states = {}
+      task_snapshots = {}
+
+      if as_of
+        return render json: { errors: ["Incident not found"] }, status: :not_found if incident.created_at > as_of
+
+        incident_state = replay_states_for_incidents([incident], as_of: as_of).fetch(incident.id)
+        matches = matches.select { |match| match.fired_at <= as_of }
+        replay_match_states = replay_states_for_matches(matches, as_of: as_of)
+        task_snapshots = load_replay_task_snapshots(matches.filter_map(&:task_id).uniq, as_of: as_of)
+      end
 
       nodes = []
       edges = []
@@ -140,7 +170,11 @@ module Api
       nodes << {
         id:   incident.id,
         type: "incident",
-        data: { label: incident.title, status: incident.status, severity: incident.severity }
+        data: {
+          label: incident_state ? incident_state[:title] : incident.title,
+          status: incident_state ? incident_state[:status] : incident.status,
+          severity: incident_state ? incident_state[:severity] : incident.severity,
+        }
       }
       seen.add(incident.id)
 
@@ -153,7 +187,7 @@ module Api
             type: "alert",
             data: {
               label:      match.correlation_rule&.name || "Geofence Breach",
-              status:     match.workflow_status,
+              status:     replay_match_states[match.id]&.dig(:workflow_status) || match.workflow_status,
               fired_at:   match.fired_at,
               confidence: match.confidence.round(2)
             }
@@ -213,15 +247,18 @@ module Api
 
         # Task node + edge (one per match at most)
         if match.task
+          snapshot = task_snapshots[match.task.id]
+          next if as_of && snapshot.blank?
+
           unless seen.include?("task-#{match.task.id}")
             seen.add("task-#{match.task.id}")
             nodes << {
               id:   "task-#{match.task.id}",
               type: "task",
               data: {
-                label:    match.task.title,
-                status:   match.task.workflow_status,
-                priority: match.task.priority
+                label:    snapshot ? snapshot_value(snapshot, "title") : match.task.title,
+                status:   snapshot ? snapshot_value(snapshot, "workflow_status") : match.task.workflow_status,
+                priority: snapshot ? snapshot_value(snapshot, "priority") : match.task.priority
               }
             }
           end
@@ -263,6 +300,7 @@ module Api
       incident = scoped_record(Incident, params[:id])
       authorize incident, :list_prosecution_steps?
       steps    = ProsecutionStep.for_incident(incident.id).includes(:actor)
+      steps    = steps.where("occurred_at <= ?", as_of) if as_of.present?
       render json: steps.map { |s| serialize_prosecution_step(s) }
     end
 
@@ -293,6 +331,7 @@ module Api
       incident = scoped_record(Incident, params[:id])
       authorize incident, :list_notes?
       notes    = incident.incident_notes.includes(:author)
+      notes    = notes.where("created_at <= ?", as_of) if as_of.present?
       render json: notes.map { |n| serialize_note(n) }
     end
 
@@ -349,26 +388,34 @@ module Api
       )
     end
 
-    def serialize_incident(incident, detailed: false)
+    def serialize_incident(
+      incident,
+      detailed: false,
+      replay_state: nil,
+      alert_count: nil,
+      task_count: nil,
+      alerts: nil,
+      tasks: nil
+    )
       base = {
         id:               incident.id,
-        title:            incident.title,
-        description:      incident.description,
-        status:           incident.status,
-        severity:         incident.severity,
-        confidence:       incident.confidence,
+        title:            replay_state ? replay_state[:title] : incident.title,
+        description:      replay_state ? replay_state[:description] : incident.description,
+        status:           replay_state ? replay_state[:status] : incident.status,
+        severity:         replay_state ? replay_state[:severity] : incident.severity,
+        confidence:       replay_state ? replay_state[:confidence] : incident.confidence,
         opened_at:        incident.opened_at,
-        acknowledged_at:  incident.acknowledged_at,
-        closed_at:        incident.closed_at,
-        fusion_rationale: incident.fusion_rationale,
-        alert_count:      incident.signal_rule_matches.size,
-        task_count:       incident.signal_rule_matches.filter_map(&:task_id).uniq.size,
-        assigned_to:      incident.assigned_to ? {
+        acknowledged_at:  replay_state ? replay_state[:acknowledged_at] : incident.acknowledged_at,
+        closed_at:        replay_state ? replay_state[:closed_at] : incident.closed_at,
+        fusion_rationale: replay_state ? replay_state[:fusion_rationale] : incident.fusion_rationale,
+        alert_count:      alert_count.nil? ? incident.signal_rule_matches.size : alert_count,
+        task_count:       task_count.nil? ? incident.signal_rule_matches.filter_map(&:task_id).uniq.size : task_count,
+        assigned_to:      replay_state ? replay_state[:assigned_to] : (incident.assigned_to ? {
           id:    incident.assigned_to.id,
           email: incident.assigned_to.email,
           role:  incident.assigned_to.role,
-        } : nil,
-        assigned_at:       incident.assigned_at,
+        } : nil),
+        assigned_at:       replay_state ? replay_state[:assigned_at] : incident.assigned_at,
         site:              incident.site ? { id: incident.site.id, name: incident.site.name } : nil,
         area_of_operation: incident.area_of_operation ? {
           id:      incident.area_of_operation.id,
@@ -376,12 +423,12 @@ module Api
           posture: incident.area_of_operation.posture
         } : nil,
         # Prosecution fields — present on all responses, null when not prosecuted
-        prosecution_phase:          incident.prosecution_phase,
-        prosecution_initiated_at:   incident.prosecution_initiated_at,
-        prosecuted_by:              incident.prosecuted_by ? {
+        prosecution_phase:          replay_state ? replay_state[:prosecution_phase] : incident.prosecution_phase,
+        prosecution_initiated_at:   replay_state ? replay_state[:prosecution_initiated_at] : incident.prosecution_initiated_at,
+        prosecuted_by:              replay_state ? replay_state[:prosecuted_by] : (incident.prosecuted_by ? {
           id:    incident.prosecuted_by.id,
           email: incident.prosecuted_by.email,
-        } : nil,
+        } : nil),
         created_at:  incident.created_at,
         updated_at:  incident.updated_at,
       }
@@ -389,9 +436,158 @@ module Api
       return base unless detailed
 
       base.merge(
-        alerts: incident.signal_rule_matches.map { |m| serialize_alert(m) },
-        tasks:  serialize_incident_tasks(incident)
+        alerts: alerts || incident.signal_rule_matches.map { |m| serialize_alert(m) },
+        tasks:  tasks || serialize_incident_tasks(incident)
       )
+    end
+
+    def serialize_replay_incidents(records, detailed:, as_of:)
+      return [] if records.empty?
+
+      replay_states = replay_states_for_incidents(records, as_of: as_of)
+      matches_by_incident = records.each_with_object({}) do |record, grouped|
+        grouped[record.id] = record.signal_rule_matches.select { |match| match.fired_at <= as_of }.sort_by(&:fired_at).reverse
+      end
+      replay_match_states = replay_states_for_matches(matches_by_incident.values.flatten, as_of: as_of)
+      task_snapshots = load_replay_task_snapshots(
+        matches_by_incident.values.flatten.filter_map(&:task_id).uniq,
+        as_of: as_of
+      )
+
+      records.map do |record|
+        matches = matches_by_incident.fetch(record.id)
+        task_ids = matches.filter_map(&:task_id).uniq.select { |task_id| task_snapshots.key?(task_id) }
+        serialize_incident(
+          record,
+          detailed: detailed,
+          replay_state: replay_states.fetch(record.id),
+          alert_count: matches.size,
+          task_count: task_ids.size,
+          alerts: detailed ? matches.map { |match| serialize_alert(match, replay_state: replay_match_states[match.id]) } : nil,
+          tasks: detailed ? task_ids.filter_map { |task_id| serialize_task_snapshot(task_snapshots[task_id]) } : nil
+        )
+      end
+    end
+
+    def replay_incident_matches_filters?(record)
+      return false if params[:status].present? && record[:status] != params[:status]
+      return false if params[:severity].present? && record[:severity] != params[:severity]
+      return false if params[:assigned_to_id].present? && record.dig(:assigned_to, :id) != params[:assigned_to_id]
+
+      true
+    end
+
+    def replay_states_for_incidents(records, as_of:)
+      incident_ids = records.map(&:id)
+      future_events = AuditEvent
+        .where(entity_type: "Incident", entity_id: incident_ids)
+        .where("occurred_at > ?", as_of)
+        .order(occurred_at: :desc)
+      prosecution_starts = AuditEvent
+        .where(entity_type: "Incident", entity_id: incident_ids, event_type: "prosecution_started")
+        .where("occurred_at <= ?", as_of)
+        .order(:occurred_at)
+        .group_by(&:entity_id)
+      future_events_by_incident = future_events.group_by(&:entity_id)
+
+      assigned_user_ids = records.filter_map(&:assigned_to_id)
+      future_events_by_incident.each_value do |events|
+        events.each do |event|
+          assigned_user_ids << snapshot_value(event.before_snapshot || {}, "assigned_to_id")
+        end
+      end
+      assigned_users = User.where(id: assigned_user_ids.compact.uniq).index_by(&:id)
+      users_by_email = User.where(email: prosecution_starts.values.filter_map { |events| events.last&.actor }).index_by(&:email)
+
+      records.each_with_object({}) do |record, states|
+        state = {
+          title: record.title,
+          description: record.description,
+          severity: record.severity,
+          confidence: record.confidence,
+          status: record.status,
+          acknowledged_at: record.acknowledged_at,
+          closed_at: record.closed_at,
+          assigned_to_id: record.assigned_to_id,
+          assigned_at: record.assigned_at,
+          prosecution_phase: record.prosecution_phase,
+          # The row stores the latest fused narrative, but the audit trail does
+          # not yet carry historical snapshots of that text.
+          fusion_rationale: nil,
+        }
+
+        future_events_by_incident.fetch(record.id, []).each do |event|
+          snapshot = event.before_snapshot || {}
+
+          %w[title description severity confidence status acknowledged_at closed_at assigned_to_id assigned_at prosecution_phase].each do |key|
+            value = snapshot_value(snapshot, key)
+            # A present key with nil means the historical value was explicitly
+            # cleared; a missing key means this event did not touch that field.
+            state[key.to_sym] = value unless value.nil? && !snapshot.key?(key) && !snapshot.key?(key.to_sym)
+          end
+        end
+
+        assigned_user = assigned_users[state[:assigned_to_id]]
+        prosecution_start = prosecution_starts[record.id]&.last
+        prosecuted_by = users_by_email[prosecution_start&.actor]
+
+        states[record.id] = {
+          title: state[:title],
+          description: state[:description],
+          severity: state[:severity],
+          confidence: state[:confidence],
+          status: state[:status],
+          acknowledged_at: state[:acknowledged_at],
+          closed_at: state[:closed_at],
+          fusion_rationale: state[:fusion_rationale],
+          assigned_at: state[:assigned_at],
+          assigned_to: assigned_user ? {
+            id: assigned_user.id,
+            email: assigned_user.email,
+            role: assigned_user.role,
+          } : nil,
+          prosecution_phase: state[:prosecution_phase],
+          prosecution_initiated_at: prosecution_start&.occurred_at,
+          prosecuted_by: prosecuted_by ? {
+            id: prosecuted_by.id,
+            email: prosecuted_by.email,
+          } : nil,
+        }
+      end
+    end
+
+    def replay_states_for_matches(matches, as_of:)
+      ids = matches.map(&:id)
+      latest_snapshots = latest_audit_snapshots(entity_type: "SignalRuleMatch", entity_ids: ids, as_of: as_of)
+      acknowledged_by_ids = latest_snapshots.values.filter_map { |snapshot| snapshot_value(snapshot, "acknowledged_by_id") }.uniq
+      emails_by_id = User.where(id: acknowledged_by_ids).pluck(:id, :email).to_h
+
+      matches.each_with_object({}) do |match, states|
+        snapshot = latest_snapshots[match.id] || {}
+        acknowledged_by_id = snapshot_value(snapshot, "acknowledged_by_id")
+
+        states[match.id] = {
+          workflow_status: snapshot_value(snapshot, "workflow_status") || "unacknowledged",
+          acknowledged_at: snapshot_value(snapshot, "acknowledged_at"),
+          notes:           snapshot_value(snapshot, "notes"),
+          acknowledged_by: acknowledged_by_id.present? ? {
+            id: acknowledged_by_id,
+            email: emails_by_id[acknowledged_by_id]
+          }.compact : nil,
+        }
+      end
+    end
+
+    def load_replay_task_snapshots(task_ids, as_of:)
+      return {} if task_ids.empty?
+
+      Replay::ProjectionService.call(
+        entity_type: "Task",
+        entity_ids: task_ids,
+        as_of: as_of
+      ).payload[:snapshots].each_with_object({}) do |snapshot, states|
+        states[snapshot_value(snapshot, "id")] = snapshot
+      end
     end
 
     def serialize_incident_tasks(incident)
@@ -403,11 +599,11 @@ module Api
         .map { |task| serialize_task(task) }
     end
 
-    def serialize_alert(m)
+    def serialize_alert(m, replay_state: nil)
       {
         id:               m.id,
         fired_at:         m.fired_at,
-        workflow_status:  m.workflow_status,
+        workflow_status:  replay_state ? replay_state[:workflow_status] : m.workflow_status,
         confidence:       m.confidence,
         geofence_breach:  m.metadata["geofence_breach"] == true,
         correlation_rule: m.correlation_rule ? {
@@ -428,6 +624,16 @@ module Api
         workflow_status: t.workflow_status,
         priority:        t.priority,
         asset_id:        t.asset_id,
+      }
+    end
+
+    def serialize_task_snapshot(snapshot)
+      {
+        id:              snapshot_value(snapshot, "id"),
+        title:           snapshot_value(snapshot, "title"),
+        workflow_status: snapshot_value(snapshot, "workflow_status"),
+        priority:        snapshot_value(snapshot, "priority"),
+        asset_id:        snapshot_value(snapshot, "asset_id"),
       }
     end
 

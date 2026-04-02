@@ -120,19 +120,22 @@ function PhaseTrack({ phase }: { phase: ProsecutionPhase | null }) {
 
 interface Props {
   incident: Incident
+  asOf?: string | null
 }
 
-export default function ProsecutionPanel({ incident }: Props) {
+export default function ProsecutionPanel({ incident, asOf }: Props) {
   const { isCommander } = useRole()
   const { isReplaying } = useReplay()
+  const replayParams = asOf ? { as_of: asOf } : undefined
 
   const [notes,      setNotes]      = useState('')
   const [actionType, setActionType] = useState<ProsecutionActionType>('note_added')
   const [evidenceRaw, setEvidenceRaw] = useState('')
   const [showForm,   setShowForm]   = useState(false)
 
-  const { data: steps = [], isPending, error } = useProsecutionSteps(incident.id, {
-    enabled: !isReplaying,
+  const { data: steps = [], isPending, error } = useProsecutionSteps(incident.id, replayParams, {
+    enabled: true,
+    refetchInterval: isReplaying ? false : undefined,
   })
   const initiate  = useInitiateProsecution()
   const addStep   = useAddProsecutionStep()
@@ -188,25 +191,26 @@ export default function ProsecutionPanel({ incident }: Props) {
     })
   }
 
-  if (isReplaying) {
-    return (
-      <Callout intent="warning" compact>
-        Prosecution is unavailable during replay — prosecution state is live-only.
-      </Callout>
-    )
-  }
-
   // Not yet prosecuted — show initiate prompt
   if (!phase) {
     return (
       <div>
+        {isReplaying && (
+          <Callout intent="primary" compact style={{ marginBottom: 12 }}>
+            Showing prosecution state at the replay timestamp. Historical review is read-only.
+          </Callout>
+        )}
         <NonIdealState
           icon="shield"
           title="Not being prosecuted"
-          description="Initiate prosecution to begin a structured kill-chain response for this incident."
+          description={
+            isReplaying
+              ? 'This incident had not entered prosecution by the replay timestamp.'
+              : 'Initiate prosecution to begin a structured kill-chain response for this incident.'
+          }
           className="tab-empty-state"
           action={
-            isCommander ? (
+            isCommander && !isReplaying ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: 300 }}>
                 <TextArea
                   value={notes}
@@ -239,6 +243,11 @@ export default function ProsecutionPanel({ incident }: Props) {
   // Active prosecution
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {isReplaying && (
+        <Callout intent="primary" compact>
+          Showing prosecution state at the replay timestamp. Historical review is read-only.
+        </Callout>
+      )}
 
       {/* ── phase track ── */}
       <div style={{
@@ -265,7 +274,7 @@ export default function ProsecutionPanel({ incident }: Props) {
       </div>
 
       {/* ── commander actions ── */}
-      {isCommander && phase !== 'concluded' && (
+      {isCommander && phase !== 'concluded' && !isReplaying && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <Button
             small
@@ -289,7 +298,7 @@ export default function ProsecutionPanel({ incident }: Props) {
       )}
 
       {/* ── add step form ── */}
-      {isCommander && showForm && (
+      {isCommander && showForm && !isReplaying && (
         <div style={{
           background: 'rgba(255,255,255,0.04)',
           border: '1px solid rgba(255,255,255,0.1)',

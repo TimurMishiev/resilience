@@ -3,6 +3,8 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
+const mockRole = vi.hoisted(() => ({ role: 'commander' as 'commander' | 'operator' | 'viewer' }))
+
 vi.mock('../hooks/useSite', () => ({
   useSite: () => ({
     data: {
@@ -95,7 +97,12 @@ vi.mock('../hooks/useSites', () => ({
 }))
 
 vi.mock('../hooks/useRole', () => ({
-  useRole: () => ({ isCommander: true }),
+  useRole: () => ({
+    role: mockRole.role,
+    isCommander: mockRole.role === 'commander',
+    isOperator: mockRole.role === 'operator',
+    isViewer: mockRole.role === 'viewer',
+  }),
 }))
 
 vi.mock('../context/ReplayContext', () => ({
@@ -144,6 +151,7 @@ function SiteDetailHarness() {
 
 describe('SiteDetailPage task deep links', () => {
   it('updates the selected task drawer when the same site route changes task query params', async () => {
+    mockRole.role = 'commander'
     const user = userEvent.setup()
 
     render(

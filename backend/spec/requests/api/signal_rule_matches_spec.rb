@@ -1,6 +1,8 @@
 require "rails_helper"
 
 RSpec.describe "Api::SignalRuleMatches", type: :request do
+  include ActiveSupport::Testing::TimeHelpers
+
   let(:user) { create(:user) }
 
   let(:site_a)   { create(:site) }
@@ -95,6 +97,32 @@ RSpec.describe "Api::SignalRuleMatches", type: :request do
     it "requires authentication" do
       get "/api/signal_rule_matches"
       expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "reconstructs workflow_status at as_of for replay queries" do
+      replay_match = create(:signal_rule_match,
+                            site: site_a, correlation_rule: rule_b,
+                            fired_at: 40.minutes.ago)
+
+      travel_to 20.minutes.ago do
+        Alerts::TransitionService.call(
+          match: replay_match,
+          to_status: "acknowledged",
+          actor: user,
+        )
+      end
+
+      get "/api/signal_rule_matches",
+          params: { as_of: 30.minutes.ago.iso8601, workflow_status: "unacknowledged" },
+          headers: auth_headers(user)
+
+      body = JSON.parse(response.body)
+      ids = body["data"].map { |m| m["id"] }
+      expect(ids).to include(replay_match.id)
+
+      replay_payload = body["data"].find { |m| m["id"] == replay_match.id }
+      expect(replay_payload["workflow_status"]).to eq("unacknowledged")
+      expect(replay_payload["acknowledged_at"]).to be_nil
     end
 
     context "geofence_breach filter" do

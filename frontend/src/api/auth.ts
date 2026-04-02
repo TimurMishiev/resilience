@@ -1,6 +1,6 @@
 import { api } from './client'
 
-export type UserRole = 'operator' | 'commander'
+export type UserRole = 'viewer' | 'operator' | 'commander'
 
 export interface CurrentUser {
   id: string
