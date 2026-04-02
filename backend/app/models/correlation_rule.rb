@@ -69,34 +69,45 @@ class CorrelationRule < ApplicationRecord
   end
 
   def validate_compound_conditions
-    op = conditions["operator"]
-    unless VALID_OPERATORS.include?(op)
-      errors.add(:conditions, "operator must be one of: #{VALID_OPERATORS.join(', ')}")
+    validate_group(conditions, "")
+  end
+
+  # Recursively validates a condition group { "operator" => ..., "conditions" => [...] }.
+  # prefix is used in error messages to indicate the JSON path.
+  def validate_group(group, prefix, depth = 0)
+    if depth > 5
+      errors.add(:conditions, "#{prefix}nesting depth exceeds maximum of 5 levels")
       return
     end
 
-    conds = conditions["conditions"]
+    op = group["operator"]
+    unless VALID_OPERATORS.include?(op)
+      errors.add(:conditions, "#{prefix}operator must be one of: #{VALID_OPERATORS.join(', ')}")
+      return
+    end
+
+    conds = group["conditions"]
     unless conds.is_a?(Array) && conds.length >= 2
-      errors.add(:conditions, "compound conditions must contain at least 2 condition objects")
+      errors.add(:conditions, "#{prefix}compound conditions must contain at least 2 condition objects")
       return
     end
 
     conds.each_with_index do |cond, i|
       unless cond.is_a?(Hash)
-        errors.add(:conditions, "conditions[#{i}] must be a hash")
+        errors.add(:conditions, "#{prefix}conditions[#{i}] must be a hash")
         next
       end
-      validate_single_condition(cond, "conditions[#{i}].")
+      if cond["operator"].present? || cond.key?("conditions")
+        validate_group(cond, "#{prefix}conditions[#{i}].", depth + 1)
+      else
+        validate_single_condition(cond, "#{prefix}conditions[#{i}].")
+      end
     end
   end
 
   # Validates a single flat condition hash.
   # prefix is used in error messages to indicate path in compound rules.
   def validate_single_condition(cond, prefix)
-    if nested_compound_condition?(cond)
-      errors.add(:conditions, "#{prefix}nested compound conditions are not supported")
-      return
-    end
 
     if (st = cond["signal_type"]).present?
       unless VALID_SIGNAL_TYPES.include?(st)
@@ -129,20 +140,25 @@ class CorrelationRule < ApplicationRecord
     end
   end
 
-  def nested_compound_condition?(cond)
+  # Returns true if group is a condition group (has operator + conditions keys).
+  def condition_group?(cond)
     cond.is_a?(Hash) && (cond["operator"].present? || cond.key?("conditions"))
   end
 
-  def normalized_conditions_supported?(group)
+  # Recursively checks that the entire condition tree is structurally valid.
+  def normalized_conditions_supported?(group, depth = 0)
+    return false if depth > 5
     return false unless group.is_a?(Hash)
 
     operator = group["operator"]
-    conds = group["conditions"]
+    conds    = group["conditions"]
 
     return false unless VALID_OPERATORS.include?(operator)
     return false unless conds.is_a?(Array) && conds.any?
 
-    conds.all? { |cond| cond.is_a?(Hash) && !nested_compound_condition?(cond) }
+    conds.all? do |cond|
+      cond.is_a?(Hash) && (condition_group?(cond) ? normalized_conditions_supported?(cond, depth + 1) : true)
+    end
   end
 
   def actions_schema

@@ -136,7 +136,7 @@ RSpec.describe CorrelationRule, type: :model do
       expect(rule.errors[:conditions].first).to include("conditions[1].proximity_km")
     end
 
-    it "rejects nested compound conditions, including empty inner groups" do
+    it "rejects nested compound groups that have fewer than 2 conditions" do
       rule = build(:correlation_rule, conditions: {
         "operator" => "AND",
         "conditions" => [
@@ -146,7 +146,33 @@ RSpec.describe CorrelationRule, type: :model do
       })
 
       expect(rule).not_to be_valid
-      expect(rule.errors[:conditions].first).to include("conditions[1].nested compound conditions are not supported")
+      expect(rule.errors[:conditions].first).to include("conditions[1].compound conditions must contain at least 2 condition objects")
+    end
+
+    it "accepts valid nested compound conditions (AND of flat + OR of two leaves)" do
+      rule = build(:correlation_rule, conditions: {
+        "operator" => "AND",
+        "conditions" => [
+          { "signal_type" => "ais_gap", "proximity_km" => 100 },
+          {
+            "operator" => "OR",
+            "conditions" => [
+              { "signal_type" => "gps_jamming", "proximity_km" => 50 },
+              { "signal_type" => "seismic_event", "proximity_km" => 200 }
+            ]
+          }
+        ]
+      })
+
+      expect(rule).to be_valid
+    end
+
+    it "rejects nested conditions that exceed max nesting depth" do
+      deep = { "signal_type" => "gps_jamming", "proximity_km" => 10 }
+      7.times { deep = { "operator" => "AND", "conditions" => [deep, { "signal_type" => "ais_gap", "proximity_km" => 50 }] } }
+      rule = build(:correlation_rule, conditions: deep)
+
+      expect(rule).not_to be_valid
     end
   end
 end

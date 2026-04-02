@@ -413,6 +413,49 @@ RSpec.describe Correlations::EvaluatorService do
         expect(result.payload[:fired_count]).to eq(0)
       end
     end
+
+    context "nested compound rule (AND of flat condition + OR sub-group)" do
+      # Rule: seismic_event near site AND (ais_gap OR gps_jamming near site)
+      # Tests that the recursive evaluator resolves nested groups correctly.
+      let!(:site) { create(:site, latitude: 51.5, longitude: 0.0) }
+
+      let!(:nested_rule) do
+        create(:correlation_rule,
+               conditions: {
+                 "operator"   => "AND",
+                 "conditions" => [
+                   { "signal_type" => "seismic_event", "proximity_km" => 100 },
+                   {
+                     "operator"   => "OR",
+                     "conditions" => [
+                       { "signal_type" => "ais_gap",     "proximity_km" => 100 },
+                       { "signal_type" => "gps_jamming", "proximity_km" => 100 }
+                     ]
+                   }
+                 ]
+               })
+      end
+
+      it "fires when the top-level AND is satisfied (seismic + corroborating ais_gap)" do
+        seismic_signal = create(:external_signal, signal_type: "seismic_event",
+                                lat: 51.5, lng: 0.1)
+        # Corroborating AIS gap within radius
+        create(:external_signal, signal_type: "ais_gap", source: "derived",
+               lat: 51.5, lng: 0.05, occurred_at: 10.minutes.ago)
+
+        result = described_class.call(signal: seismic_signal)
+        expect(result.payload[:fired_count]).to eq(1)
+      end
+
+      it "does not fire when the OR sub-group is not satisfied (no corroboration)" do
+        seismic_signal = create(:external_signal, signal_type: "seismic_event",
+                                lat: 51.5, lng: 0.1)
+        # No AIS gap or GPS jamming signals exist
+
+        result = described_class.call(signal: seismic_signal)
+        expect(result.payload[:fired_count]).to eq(0)
+      end
+    end
   end
 
   describe "candidate query shaping" do

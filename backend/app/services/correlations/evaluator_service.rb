@@ -91,15 +91,29 @@ module Correlations
         return false
       end
 
-      norm     = rule.normalized_conditions
-      operator = norm["operator"]
-      conds    = norm["conditions"]
-      results  = conds.map { |cond| evaluate_single_condition(cond, site) }
-
-      operator == "OR" ? results.any? : results.all?
+      evaluate_group(rule.normalized_conditions, site)
     end
 
     private
+
+    # ── Recursive group + condition evaluation ────────────────────────────────
+
+    # Evaluates a condition group { "operator" => "AND"|"OR", "conditions" => [...] }.
+    # Each element of conditions is either a flat leaf condition or a nested group.
+    # Supports arbitrarily nested AND/OR trees up to the model's depth cap (5).
+    def evaluate_group(group, site)
+      operator = group["operator"]
+      conds    = group["conditions"]
+      results  = conds.map { |cond| evaluate_condition_node(cond, site) }
+      operator == "OR" ? results.any? : results.all?
+    end
+
+    # Dispatches to evaluate_group for nested groups, evaluate_single_condition for leaves.
+    def evaluate_condition_node(cond, site)
+      return evaluate_group(cond, site) if cond["operator"].present? || cond.key?("conditions")
+
+      evaluate_single_condition(cond, site)
+    end
 
     # ── Per-condition evaluation ───────────────────────────────────────────────
 
