@@ -445,6 +445,7 @@ function defaultInput(
     showHeatmap:      false,
     showCoverage:     true,
     showChokepoints:  true,
+    showTrails:       false,
     asOf:             undefined,
     isReplaying:      false,
     signalFocusCenter: null,

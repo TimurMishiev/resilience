@@ -187,6 +187,7 @@ function defaultInput(
     showCoverage: true,
     showHeatmap: false,
     showChokepoints: true,
+    showTrails: false,
     mapStyle: 'tactical',
     isReplaying: false,
     selectedSiteId: null,
