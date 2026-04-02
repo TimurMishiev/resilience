@@ -16,6 +16,94 @@ RSpec.describe "Api::Ai", type: :request do
       get "/api/ai/filter", params: { q: "test" }, headers: auth_headers(operator)
       expect(response).to have_http_status(:forbidden)
     end
+
+    it "returns task filter data for commanders" do
+      allow(Ai::FilterService).to receive(:call).and_return(
+        ServiceResult.success(
+          original_query: "show high priority tasks",
+          filters: {
+            site_id: nil,
+            workflow_status: "triaged",
+            priority: "high",
+            created_after: nil,
+            created_before: nil,
+          },
+        ),
+      )
+
+      get "/api/ai/filter", params: { q: "show high priority tasks" }, headers: auth_headers(commander)
+
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body)).to eq(
+        "data" => {
+          "original_query" => "show high priority tasks",
+          "filters" => {
+            "site_id" => nil,
+            "workflow_status" => "triaged",
+            "priority" => "high",
+            "created_after" => nil,
+            "created_before" => nil,
+          },
+        },
+      )
+    end
+
+    it "surfaces task filter validation failures" do
+      allow(Ai::FilterService).to receive(:call).and_return(
+        ServiceResult.failure(errors: ["Task filter query timed out"]),
+      )
+
+      get "/api/ai/filter", params: { q: "show high priority tasks" }, headers: auth_headers(commander)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(JSON.parse(response.body)).to eq("errors" => ["Task filter query timed out"])
+    end
+
+    it "returns signal filter data for commanders" do
+      allow(Ai::SignalFilterService).to receive(:call).and_return(
+        ServiceResult.success(
+          original_query: "show gps jamming signals near alpha",
+          filters: {
+            signal_type: "gps_jamming",
+            source: "gpsjam",
+            site_id: "site-1",
+            from: nil,
+            to: "2026-04-01T10:00:00Z",
+          },
+        ),
+      )
+
+      get "/api/ai/filter",
+          params: { q: "show gps jamming signals near alpha", entity_type: "signals" },
+          headers: auth_headers(commander)
+
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body)).to eq(
+        "data" => {
+          "original_query" => "show gps jamming signals near alpha",
+          "filters" => {
+            "signal_type" => "gps_jamming",
+            "source" => "gpsjam",
+            "site_id" => "site-1",
+            "from" => nil,
+            "to" => "2026-04-01T10:00:00Z",
+          },
+        },
+      )
+    end
+
+    it "surfaces signal filter validation failures" do
+      allow(Ai::SignalFilterService).to receive(:call).and_return(
+        ServiceResult.failure(errors: ["Signal filter query timed out"]),
+      )
+
+      get "/api/ai/filter",
+          params: { q: "show gps jamming signals near alpha", entity_type: "signals" },
+          headers: auth_headers(commander)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(JSON.parse(response.body)).to eq("errors" => ["Signal filter query timed out"])
+    end
   end
 
   # ── /api/ai/ontology_query ──────────────────────────────────────────────────

@@ -42,6 +42,83 @@ RSpec.describe Ai::SummaryService, type: :service do
     end
   end
 
+  describe "service hardening" do
+    let!(:audit) do
+      create(:audit_event,
+             entity_type: "Site", entity_id: site.id,
+             event_type: "site_status_changed", occurred_at: 1.hour.ago)
+    end
+
+    it "initializes the Anthropic client with a bounded timeout and no retries" do
+      expect(Anthropic::Client).to receive(:new).with(
+        hash_including(
+          api_key: "test_key_for_specs",
+          timeout: described_class::ANTHROPIC_TIMEOUT_SECONDS,
+          max_retries: described_class::ANTHROPIC_MAX_RETRIES,
+        ),
+      ).and_return(fake_client)
+
+      result = described_class.call(summary_type: "site_activity", site_id: site.id)
+
+      expect(result.success).to be(true)
+    end
+
+    it "allows the summary model to be overridden via environment" do
+      stub_const("ENV", ENV.to_h.merge(
+        "ANTHROPIC_API_KEY" => "test_key_for_specs",
+        "SUMMARY_MODEL" => "claude-sonnet-4-5-20250929",
+      ))
+
+      expect(fake_messages).to receive(:create).with(
+        hash_including(model: "claude-sonnet-4-5-20250929"),
+      ).and_return(fake_response)
+
+      result = described_class.call(summary_type: "site_activity", site_id: site.id)
+
+      expect(result.success).to be(true)
+    end
+
+    it "returns a timeout failure and captures observability" do
+      timeout_error = Anthropic::Errors::APITimeoutError.new(url: URI("https://api.anthropic.com/v1/messages"))
+      allow(fake_messages).to receive(:create).and_raise(timeout_error)
+
+      expect(Rails.logger).to receive(:error).with(a_string_including("Summary generation timed out", "APITimeoutError"))
+      expect(Observability).to receive(:capture_exception).with(
+        timeout_error,
+        hash_including(
+          tags: include(service: "summary", failure: "timeout"),
+          extra: include(summary_type: "site_activity", site_id: site.id),
+          throttle_key: a_string_including("summary:timeout"),
+        ),
+      )
+
+      result = described_class.call(summary_type: "site_activity", site_id: site.id)
+
+      expect(result.success).to be(false)
+      expect(result.errors).to eq(["Summary generation timed out"])
+    end
+
+    it "logs and captures unexpected failures" do
+      error = StandardError.new("summary exploded")
+      allow(fake_messages).to receive(:create).and_raise(error)
+
+      expect(Rails.logger).to receive(:error).with(a_string_including("AI service error: summary exploded", "StandardError"))
+      expect(Observability).to receive(:capture_exception).with(
+        error,
+        hash_including(
+          tags: include(service: "summary", failure: "error"),
+          extra: include(summary_type: "site_activity", site_id: site.id),
+          throttle_key: a_string_including("summary:error"),
+        ),
+      )
+
+      result = described_class.call(summary_type: "site_activity", site_id: site.id)
+
+      expect(result.success).to be(false)
+      expect(result.errors).to eq(["AI service error: summary exploded"])
+    end
+  end
+
   # ── no data guard ─────────────────────────────────────────────────────────
 
   describe "empty data guard" do
@@ -224,6 +301,44 @@ RSpec.describe Ai::SummaryService, type: :service do
 
         described_class.call(summary_type: "leadership_briefing")
         expect(content_sent).to include("INTELLIGENCE SIGNALS: (none detected in area)")
+      end
+    end
+
+    context "when exact in-radius matches appear after recent bounding-box misses" do
+      let!(:recent_bbox_only_signals) do
+        Array.new(described_class::MAX_SIGNALS) do |index|
+          create(:external_signal,
+                 lat: site.latitude + 1.5,
+                 lng: site.longitude + 1.5,
+                 signal_type: "gps_jamming",
+                 source: "gpsjam",
+                 occurred_at: (index + 1).minutes.ago)
+        end
+      end
+      let!(:older_exact_signal) do
+        create(:external_signal,
+               lat: site.latitude + 0.5,
+               lng: site.longitude,
+               signal_type: "manual",
+               source: "manual",
+               occurred_at: 2.hours.ago)
+      end
+
+      it "keeps scanning until it finds exact-radius matches" do
+        allow(ExternalSignal.connection).to receive(:extension_enabled?).and_call_original
+        allow(ExternalSignal.connection).to receive(:extension_enabled?).with("postgis").and_return(false)
+
+        service = described_class.new(summary_type: "site_activity", site_id: site.id)
+        service.instance_variable_set(:@site, site)
+
+        signals = service.send(:fetch_signals)
+
+        expect(signals.size).to eq(1)
+        expect(signals.first).to include(
+          signal_type: "manual",
+          source: "manual",
+          occurred_at: older_exact_signal.occurred_at.iso8601,
+        )
       end
     end
   end

@@ -12,6 +12,11 @@ module Ai
     ALLOWED_WORKFLOW_STATUSES = %w[new triaged in_progress blocked resolved].freeze
     ALLOWED_PRIORITIES        = %w[low normal high critical].freeze
     TOOL_NAME                 = "apply_task_filters"
+    DEFAULT_MODEL             = "claude-haiku-4-5-20251001"
+    ANTHROPIC_TIMEOUT_SECONDS = 30
+    ANTHROPIC_MAX_RETRIES     = 0
+    CATALOG_CACHE_KEY         = "ai/filter/sites/v1"
+    CATALOG_CACHE_TTL         = 60.seconds
 
     def initialize(query:)
       @query = query.to_s.strip
@@ -20,11 +25,15 @@ module Ai
     def call
       return ServiceResult.failure(errors: ["Query cannot be blank"]) if @query.blank?
 
-      sites  = Site.all.map { |s| { id: s.id, name: s.name } }
-      client = Anthropic::Client.new(api_key: ENV.fetch("ANTHROPIC_API_KEY"))
+      sites  = site_catalog
+      client = Anthropic::Client.new(
+        api_key: ENV.fetch("ANTHROPIC_API_KEY"),
+        timeout: ANTHROPIC_TIMEOUT_SECONDS,
+        max_retries: ANTHROPIC_MAX_RETRIES,
+      )
 
       response = client.messages.create(
-        model:      "claude-haiku-4-5-20251001",
+        model:      filter_model,
         max_tokens: 256,
         system:     SYSTEM_PROMPT,
         tools:      [ build_tool(sites) ],
@@ -35,12 +44,16 @@ module Ai
       tool_block = response.content.find { |b| b.type == "tool_use" && b.name == TOOL_NAME }
       return ServiceResult.failure(errors: ["AI did not return a filter tool call"]) unless tool_block
 
-      filters = validate_filters(tool_block.input, sites)
+      filters = validate_filters(tool_block.input || {}, sites)
       ServiceResult.success({ original_query: @query, filters: filters })
 
     rescue KeyError
       ServiceResult.failure(errors: ["ANTHROPIC_API_KEY is not set"])
+    rescue Anthropic::Errors::APITimeoutError => e
+      report_exception(e, message: "Task filter query timed out", failure: "timeout")
+      ServiceResult.failure(errors: ["Task filter query timed out"])
     rescue => e
+      report_exception(e, message: "AI service error: #{e.message}", failure: "error")
       ServiceResult.failure(errors: ["AI service error: #{e.message}"])
     end
 
@@ -110,9 +123,36 @@ module Ai
 
     def safe_parse_datetime(value)
       return nil if value.blank?
-      Time.zone.parse(value.to_s).iso8601
+      parsed = Time.zone.parse(value.to_s)
+      parsed&.iso8601
     rescue ArgumentError, TypeError
       nil
+    end
+
+    def site_catalog
+      Rails.cache.fetch(CATALOG_CACHE_KEY, expires_in: CATALOG_CACHE_TTL) do
+        build_site_catalog
+      end
+    end
+
+    def build_site_catalog
+      Site.order(:name).pluck(:id, :name).map do |id, name|
+        { id: id, name: name }
+      end
+    end
+
+    def filter_model
+      ENV.fetch("FILTER_MODEL", DEFAULT_MODEL)
+    end
+
+    def report_exception(exception, message:, failure:)
+      Rails.logger.error("[FilterService] #{message}: #{exception.class} - #{exception.message}")
+      Observability.capture_exception(
+        exception,
+        tags: { service: "task_filter", failure: failure },
+        extra: { query: @query },
+        throttle_key: "task_filter:#{failure}:#{exception.class.name}",
+      )
     end
   end
 end

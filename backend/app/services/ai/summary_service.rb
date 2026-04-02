@@ -26,6 +26,9 @@ module Ai
     MAX_RULE_FIRES    = 10
     SIGNAL_RADIUS_KM  = 200.0
     CONTEXT_WINDOW_HOURS = 72
+    DEFAULT_MODEL             = "claude-haiku-4-5-20251001"
+    ANTHROPIC_TIMEOUT_SECONDS = 30
+    ANTHROPIC_MAX_RETRIES     = 0
 
     def initialize(summary_type:, site_id: nil, from: nil, to: nil)
       @summary_type = summary_type.to_s
@@ -48,10 +51,14 @@ module Ai
         return ServiceResult.failure(errors: ["No operational data found for the specified parameters"])
       end
 
-      client = Anthropic::Client.new(api_key: ENV.fetch("ANTHROPIC_API_KEY"))
+      client = Anthropic::Client.new(
+        api_key: ENV.fetch("ANTHROPIC_API_KEY"),
+        timeout: ANTHROPIC_TIMEOUT_SECONDS,
+        max_retries: ANTHROPIC_MAX_RETRIES,
+      )
 
       response = client.messages.create(
-        model:      "claude-haiku-4-5-20251001",
+        model:      summary_model,
         max_tokens: 1024,
         system:     build_system_prompt,
         messages:   [ { role: "user", content: build_user_content(events, signals, matches) } ]
@@ -81,7 +88,11 @@ module Ai
       ServiceResult.failure(errors: ["ANTHROPIC_API_KEY is not set"])
     rescue ActiveRecord::RecordNotFound
       ServiceResult.failure(errors: ["Site not found"])
+    rescue Anthropic::Errors::APITimeoutError => e
+      report_exception(e, message: "Summary generation timed out", failure: "timeout")
+      ServiceResult.failure(errors: ["Summary generation timed out"])
     rescue => e
+      report_exception(e, message: "AI service error: #{e.message}", failure: "error")
       ServiceResult.failure(errors: ["AI service error: #{e.message}"])
     end
 
@@ -132,21 +143,20 @@ module Ai
     def fetch_signals
       return [] unless @site.present?
 
-      cutoff     = CONTEXT_WINDOW_HOURS.hours.ago
-      candidates = ExternalSignal
+      cutoff = CONTEXT_WINDOW_HOURS.hours.ago
+      scope  = ExternalSignal
         .near_point(@site.latitude, @site.longitude, SIGNAL_RADIUS_KM)
         .where("occurred_at > ?", cutoff)
         .order(occurred_at: :desc)
-        .limit(MAX_SIGNALS * 2) # over-fetch for Haversine filtering
 
-      candidates
-        .filter_map do |sig|
-          dist = Correlations::EvaluatorService.haversine_km(
-            sig.lat.to_f, sig.lng.to_f,
-            @site.latitude.to_f, @site.longitude.to_f
-          )
-          next if dist > SIGNAL_RADIUS_KM
+      exact_signals =
+        if ExternalSignal.connection.extension_enabled?("postgis")
+          scope.limit(MAX_SIGNALS).map { |signal| [signal, signal_distance_km(signal)] }
+        else
+          exhaustive_exact_signals(scope, limit: MAX_SIGNALS)
+        end
 
+      exact_signals.map do |sig, dist|
           {
             signal_type:  sig.signal_type,
             source:       sig.source,
@@ -155,8 +165,7 @@ module Ai
             occurred_at:  sig.occurred_at.iso8601,
             raw_payload:  sig.raw_payload
           }
-        end
-        .first(MAX_SIGNALS)
+      end
     end
 
     # Returns recent SignalRuleMatch records.
@@ -290,6 +299,50 @@ module Ai
 
       scope_label = @site ? "for site #{@site.name}" : "across all sites"
       "Generate a #{@summary_type.humanize.downcase} #{scope_label}:\n\n#{parts.join("\n\n")}"
+    end
+
+    def exhaustive_exact_signals(scope, limit:)
+      results    = []
+      offset     = 0
+      batch_size = limit
+
+      while results.length < limit
+        batch = scope.limit(batch_size).offset(offset).to_a
+        break if batch.empty?
+
+        batch.each do |signal|
+          distance = signal_distance_km(signal)
+          next if distance > SIGNAL_RADIUS_KM
+
+          results << [signal, distance]
+          break if results.length >= limit
+        end
+
+        offset += batch.length
+      end
+
+      results
+    end
+
+    def signal_distance_km(signal)
+      Correlations::EvaluatorService.haversine_km(
+        signal.lat.to_f, signal.lng.to_f,
+        @site.latitude.to_f, @site.longitude.to_f
+      )
+    end
+
+    def summary_model
+      ENV.fetch("SUMMARY_MODEL", DEFAULT_MODEL)
+    end
+
+    def report_exception(exception, message:, failure:)
+      Rails.logger.error("[SummaryService] #{message}: #{exception.class} - #{exception.message}")
+      Observability.capture_exception(
+        exception,
+        tags: { service: "summary", failure: failure },
+        extra: { summary_type: @summary_type, site_id: @site_id },
+        throttle_key: "summary:#{failure}:#{exception.class.name}",
+      )
     end
   end
 end

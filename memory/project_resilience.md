@@ -253,6 +253,7 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
 4. **Playback-grade multi-asset trails** — **NEXT (defined 2026-03-30)**
    - Intended scope: replay-aware historical trails for moving assets (not just selected vessels), available on both MapPage and GlobePage with bounded query windows and toggleable multi-entity rendering.
    - An intervening platform-hardening detour was explicitly taken on 2026-04-02 to finish the partial Pundit auth rollout before resuming this product slice.
+   - A second hardening detour was explicitly taken on 2026-04-02 to normalize the older AI services (`FilterService`, `SignalFilterService`, `SummaryService`) to the hardened ontology-query standard before resuming this product slice.
 
 #### Recently closed
 
@@ -298,6 +299,13 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
   - Added direct request proof for `POST /api/signals`, covering unauthenticated, operator-forbidden, commander-success, and ingest-failure paths.
   - `backend/config/database.yml` no longer hardcodes a workstation-specific test port; it now respects `TEST_DATABASE_PORT` / `DATABASE_PORT`.
   - Validation for this slice: focused auth request proof 143 RSpec, full backend 1102 RSpec, Brakeman 0 warnings, `git diff --check` passed.
+
+- **AI service hardening parity** (shipped 2026-04-02)
+  - `Ai::FilterService` and `Ai::SignalFilterService` now match the hardened ontology-query service bar with explicit Anthropic timeout, zero retries, env-overridable models, 60s cached site catalogs, and failure logging + observability capture.
+  - `Ai::SummaryService` now has explicit Anthropic timeout, zero retries, env-overridable model selection, and failure logging + observability capture.
+  - Summary signal retrieval no longer relies on a bounded `limit * 2` heuristic under the non-PostGIS fallback; it now scans ordered bounding-box candidates until it finds the exact-radius matches needed to satisfy the response limit or exhausts the candidate set.
+  - Added direct service proof for both filter services, extended summary proof for timeout handling, model override, observability capture, and exhaustive exact-radius retrieval, and added commander success/failure request proof for `GET /api/ai/filter` in both task and signal modes.
+  - Validation for this slice: focused AI proof 61 RSpec, full backend 1125 RSpec, Brakeman 0 warnings, `git diff --check` passed.
 
 - **Chokepoint geographic overlays**
   - Shipped on both MapPage and GlobePage.
@@ -358,7 +366,8 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
   2. ~~Cross-entity natural-language ontology query~~ — SHIPPED
   3. ~~Globe heatmap parity~~ — SHIPPED
   4. Intervening platform hardening detour: Pundit auth-layer finish — SHIPPED
-  5. Playback-grade multi-asset trails — NEXT
+  5. Intervening platform hardening detour: AI service hardening parity — SHIPPED
+  6. Playback-grade multi-asset trails — NEXT
 
 #### Expected remaining canonical phases
 
