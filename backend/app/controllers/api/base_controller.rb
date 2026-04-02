@@ -70,5 +70,16 @@ module Api
 
       [records, meta]
     end
+
+    def scoped_relation(scope, includes: nil, lock: false)
+      relation = policy_scope(scope)
+      relation = relation.includes(*Array(includes)) if includes.present?
+      relation = relation.lock if lock
+      relation
+    end
+
+    def scoped_record(scope, id, includes: nil, lock: false)
+      scoped_relation(scope, includes: includes, lock: lock).find(id)
+    end
   end
 end

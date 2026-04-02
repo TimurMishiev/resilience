@@ -27,7 +27,7 @@ module Api
       signals = signals.where("occurred_at <= ?", upper_bound) if upper_bound.present?
 
       if params[:site_id].present?
-        site = Site.find_by(id: params[:site_id])
+        site = policy_scope(Site).find_by(id: params[:site_id])
         if site
           # Pre-filter with bounding box, exact Haversine done in application layer
           signals = signals.near_point(site.latitude, site.longitude, 200)

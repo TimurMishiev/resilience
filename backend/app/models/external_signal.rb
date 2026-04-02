@@ -18,8 +18,9 @@ class ExternalSignal < ApplicationRecord
   #
   # When the PostGIS geography column `location` is present, uses ST_DWithin
   # for an exact, index-backed query. Falls back to a bounding-box approximation
-  # (Haversine applied in Ruby callers) when PostGIS is not available — e.g.
-  # during tests on a plain PostgreSQL instance or before migration runs.
+  # (Haversine applied in Ruby callers) only for legacy plain-Postgres instances
+  # that were migrated without PostGIS; the checked-in schema and CI baseline are
+  # now PostGIS-backed.
   scope :near_point, ->(lat, lng, km) {
     if connection.extension_enabled?("postgis")
       # ST_DWithin(geography, geography, meters) — exact great-circle distance,

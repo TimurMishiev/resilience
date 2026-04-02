@@ -2,6 +2,7 @@ module Api
   class SitesController < BaseController
     before_action :require_commander!, only: %i[toggle_status unflag update_geofence]
     after_action :verify_authorized
+    after_action :verify_policy_scoped, only: :index
 
     TIMELINE_VALID_KINDS = %w[
       signal_detected rule_fired task_created task_transitioned site_event
@@ -9,20 +10,20 @@ module Api
 
     def index
       authorize Site
-      sites = Site.all.order(:name)
+      sites = policy_scope(Site).order(:name)
       sites = sites.where(status: params[:status]) if params[:status].present?
       records, meta = paginate(sites)
       render json: { data: records.map { |s| serialize_site(s) }, meta: meta }
     end
 
     def show
-      site = Site.find(params[:id])
+      site = scoped_record(Site, params[:id])
       authorize site
       render json: serialize_site(site)
     end
 
     def risk_history
-      site = Site.find(params[:id])
+      site = scoped_record(Site, params[:id])
       authorize site, :risk_history?
       days = (params[:days] || 7).to_i.clamp(1, 30)
 
@@ -39,7 +40,7 @@ module Api
     end
 
     def timeline
-      site = Site.find(params[:id])
+      site = scoped_record(Site, params[:id])
       authorize site, :timeline?
       days = (params[:days] || 7).to_i.clamp(1, 90)
 
@@ -57,7 +58,7 @@ module Api
     end
 
     def toggle_status
-      site   = Site.find(params[:id])
+      site   = scoped_record(Site, params[:id])
       authorize site, :toggle_status?
       before = site.as_json(only: %i[status])
       new_status = site.status == "active" ? "inactive" : "active"
@@ -82,7 +83,7 @@ module Api
     end
 
     def update_geofence
-      site   = Site.find(params[:id])
+      site   = scoped_record(Site, params[:id])
       authorize site, :update_geofence?
       radius = params[:geofence_radius_km].to_f
 
@@ -113,7 +114,7 @@ module Api
     end
 
     def unflag
-      site = Site.find(params[:id])
+      site = scoped_record(Site, params[:id])
       authorize site, :unflag?
 
       unless site.flagged_at

@@ -3,6 +3,8 @@ class AuditEventAccessPolicy < ApplicationPolicy
   # operator-facing detail pages can render inline history. Global audit access
   # remains commander-only because it exposes cross-entity actor + snapshot data.
   def index?
-    commander? || record.entity_id.present?
+    return commander? if record.entity_type.blank? || record.entity_id.blank?
+
+    true
   end
 end

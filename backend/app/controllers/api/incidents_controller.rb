@@ -1,12 +1,13 @@
 module Api
   class IncidentsController < BaseController
     after_action :verify_authorized
+    after_action :verify_policy_scoped, only: :index
 
     # GET /api/incidents
     # Query params: status, severity, site_id, assigned_to_id, page, per_page
     def index
       authorize Incident
-      incidents = Incident
+      incidents = policy_scope(Incident)
         .includes(:site, :area_of_operation, :signal_rule_matches, :assigned_to, :prosecuted_by)
         .by_severity
         .recent
@@ -22,18 +23,24 @@ module Api
 
     # GET /api/incidents/:id
     def show
-      incident = Incident
-        .includes(:site, :area_of_operation, :assigned_to,
-                  :tasks,
-                  signal_rule_matches: [:signal, :correlation_rule])
-        .find(params[:id])
+      incident = scoped_record(
+        Incident,
+        params[:id],
+        includes: [
+          :site,
+          :area_of_operation,
+          :assigned_to,
+          :tasks,
+          { signal_rule_matches: [:signal, :correlation_rule] },
+        ]
+      )
       authorize incident
       render json: serialize_incident(incident, detailed: true)
     end
 
     # PATCH /api/incidents/:id
     def update
-      incident = Incident.find(params[:id])
+      incident = scoped_record(Incident, params[:id])
       authorize incident
       result   = Incidents::UpdateService.call(
         incident: incident,
@@ -50,7 +57,7 @@ module Api
     # POST /api/incidents/:id/transition
     # Body: { to_status: "acknowledged" }
     def transition
-      incident  = Incident.find(params[:id])
+      incident  = scoped_record(Incident, params[:id])
       authorize incident, :transition?
       to_status = params[:to_status].to_s.strip
 
@@ -69,7 +76,7 @@ module Api
 
     # GET /api/incidents/:id/allowed_transitions
     def allowed_transitions
-      incident = Incident.find(params[:id])
+      incident = scoped_record(Incident, params[:id])
       authorize incident, :allowed_transitions?
       render json: { allowed: incident.allowed_transitions }
     end
@@ -82,7 +89,7 @@ module Api
     #   Operators   — may only self-assign, or release their own assignment;
     #                 any attempt to assign to a different user returns 403
     def assign
-      incident = Incident.find(params[:id])
+      incident = scoped_record(Incident, params[:id])
       authorize incident, :assign?
       assignee = if params[:assignee_id].present?
         user = User.find_by(id: params[:assignee_id])
@@ -121,7 +128,7 @@ module Api
     # Nodes are deduplicated — a rule or signal shared across multiple alerts
     # appears only once.  The frontend assigns layout positions.
     def chain
-      incident = Incident.find(params[:id])
+      incident = scoped_record(Incident, params[:id])
       authorize incident, :chain?
       matches  = incident.signal_rule_matches.includes(:signal, :correlation_rule, :task)
 
@@ -235,7 +242,7 @@ module Api
     # Initiates kill-chain prosecution on an incident (commander-only).
     # Body: { notes: "..." }  (optional)
     def initiate_prosecution
-      incident = Incident.find(params[:id])
+      incident = scoped_record(Incident, params[:id])
       authorize incident, :initiate_prosecution?
       result   = Incidents::ProsecutionService.call(
         operation: :initiate,
@@ -253,7 +260,7 @@ module Api
 
     # GET /api/incidents/:id/prosecution_steps
     def list_prosecution_steps
-      incident = Incident.find(params[:id])
+      incident = scoped_record(Incident, params[:id])
       authorize incident, :list_prosecution_steps?
       steps    = ProsecutionStep.for_incident(incident.id).includes(:actor)
       render json: steps.map { |s| serialize_prosecution_step(s) }
@@ -262,7 +269,7 @@ module Api
     # POST /api/incidents/:id/prosecution_steps
     # Body: { phase:, action_type:, notes:, evidence_refs: { signal_ids: [], ... } }
     def add_prosecution_step
-      incident = Incident.find(params[:id])
+      incident = scoped_record(Incident, params[:id])
       authorize incident, :add_prosecution_step?
       result   = Incidents::ProsecutionService.call(
         operation:     :add_step,
@@ -283,7 +290,7 @@ module Api
 
     # GET /api/incidents/:id/notes
     def list_notes
-      incident = Incident.find(params[:id])
+      incident = scoped_record(Incident, params[:id])
       authorize incident, :list_notes?
       notes    = incident.incident_notes.includes(:author)
       render json: notes.map { |n| serialize_note(n) }
@@ -292,7 +299,7 @@ module Api
     # POST /api/incidents/:id/notes
     # Body: { body: "..." }
     def add_note
-      incident = Incident.find(params[:id])
+      incident = scoped_record(Incident, params[:id])
       authorize incident, :add_note?
       result   = Incidents::NoteService.call(
         incident: incident,

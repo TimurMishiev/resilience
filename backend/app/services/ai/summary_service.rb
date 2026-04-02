@@ -144,7 +144,8 @@ module Ai
     end
 
     # Returns ExternalSignal records near the site within the context window.
-    # Applies bounding-box pre-filter + exact Haversine (same as TimelineService).
+    # Uses the PostGIS-backed near_point path on the supported baseline and
+    # retains exact-Haversine fallback logic only for legacy non-PostGIS setups.
     # Returns [] when no site is specified — can't run proximity search without a center.
     def fetch_signals
       return [] unless @site.present?

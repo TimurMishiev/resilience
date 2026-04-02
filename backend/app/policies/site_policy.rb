@@ -1,9 +1,9 @@
 class SitePolicy < ApplicationPolicy
   # All authenticated users may view sites and their derived data.
   def index?        = true
-  def show?         = true
-  def risk_history? = true
-  def timeline?     = true
+  def show?         = site_accessible?(record)
+  def risk_history? = show?
+  def timeline?     = show?
 
   # Mutations are commander-only.
   def toggle_status?   = commander?
@@ -12,8 +12,7 @@ class SitePolicy < ApplicationPolicy
 
   class Scope < ApplicationPolicy::Scope
     def resolve
-      # Apply org isolation first, then AO narrowing within that org.
-      org_filter(ao_filter(scope))
+      site_scope(scope)
     end
   end
 end

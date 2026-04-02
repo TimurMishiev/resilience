@@ -1,15 +1,13 @@
 class AssetPolicy < ApplicationPolicy
   def index? = true
-  def show?  = true
-  def update? = commander?
+  def show?  = site_accessible?(record.home_site)
+  def update? = commander? && show?
 
   class Scope < ApplicationPolicy::Scope
     def resolve
-      return scope unless user.area_of_operation_id.present?
+      return scope unless scope_restricted?
 
-      # Assets are homed to a site; scope to assets whose home site is in the user's AO.
-      scoped_site_ids = Site.where(area_of_operation_id: user.area_of_operation_id).select(:id)
-      scope.where(home_site_id: scoped_site_ids)
+      scope.where(home_site_id: site_scope.select(:id))
     end
   end
 end

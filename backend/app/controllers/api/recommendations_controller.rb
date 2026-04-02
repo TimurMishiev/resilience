@@ -2,6 +2,7 @@ module Api
   class RecommendationsController < BaseController
     before_action :require_commander!, only: %i[generate]
     after_action :verify_authorized
+    after_action :verify_policy_scoped, only: :index
 
     # GET /api/recommendations
     # Query params: status, tier, type, affected_entity_type, affected_entity_id, as_of
@@ -9,7 +10,7 @@ module Api
     #         (created_at <= as_of and not yet expired at as_of).
     def index
       authorize Recommendation
-      recs = Recommendation.includes(:reviewer).recent
+      recs = policy_scope(Recommendation).includes(:reviewer).recent
 
       recs = recs.where(status: params[:status])                          if params[:status].present?
       recs = recs.by_tier(params[:tier])                                  if params[:tier].present?
@@ -45,7 +46,7 @@ module Api
 
     # POST /api/recommendations/:id/accept
     def accept
-      rec = Recommendation.find(params[:id])
+      rec = scoped_record(Recommendation, params[:id])
       authorize rec, :accept?
       unless rec.pending?
         render json: { errors: ["Recommendation is already #{rec.status}"] }, status: :unprocessable_content
@@ -57,7 +58,7 @@ module Api
 
     # POST /api/recommendations/:id/reject
     def reject
-      rec = Recommendation.find(params[:id])
+      rec = scoped_record(Recommendation, params[:id])
       authorize rec, :reject?
       unless rec.pending?
         render json: { errors: ["Recommendation is already #{rec.status}"] }, status: :unprocessable_content
@@ -69,7 +70,7 @@ module Api
 
     # POST /api/recommendations/:id/defer
     def defer
-      rec = Recommendation.find(params[:id])
+      rec = scoped_record(Recommendation, params[:id])
       authorize rec, :defer?
       unless rec.pending?
         render json: { errors: ["Recommendation is already #{rec.status}"] }, status: :unprocessable_content
@@ -88,7 +89,7 @@ module Api
     # If ExecutorService fails we raise ActiveRecord::Rollback so the accept!
     # write is rolled back and the recommendation stays in its original status.
     def execute
-      rec    = Recommendation.find(params[:id])
+      rec    = scoped_record(Recommendation, params[:id])
       authorize rec, :execute?
       result = nil
 
@@ -115,8 +116,9 @@ module Api
     def metrics
       authorize Recommendation, :metrics?
       # Single grouped query replaces 7 individual per-status counts.
-      by_status  = Recommendation.group(:status).count
-      by_tier    = Recommendation.group(:tier).count
+      scoped_recommendations = policy_scope(Recommendation)
+      by_status  = scoped_recommendations.group(:status).count
+      by_tier    = scoped_recommendations.group(:tier).count
 
       accepted = by_status["accepted"].to_i
       rejected = by_status["rejected"].to_i
@@ -124,7 +126,7 @@ module Api
       executed = by_status["executed"].to_i
       expired  = by_status["expired"].to_i
       # active = pending + not yet expired; requires the scope's WHERE clause
-      pending  = Recommendation.active.count
+      pending  = scoped_recommendations.active.count
 
       # `executed` recommendations were accepted-and-run in a single step, so
       # they count in both the numerator and denominator of accept_rate.
@@ -145,7 +147,7 @@ module Api
           rule: by_tier["rule"].to_i,
           llm:  by_tier["llm"].to_i,
         },
-        by_type: Recommendation.group(:recommendation_type).count,
+        by_type: scoped_recommendations.group(:recommendation_type).count,
       }
     end
 

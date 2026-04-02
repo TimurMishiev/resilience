@@ -1,6 +1,7 @@
 module Api
   class TasksController < BaseController
     after_action :verify_authorized
+    after_action :verify_policy_scoped, only: :index
 
     def index
       authorize Task
@@ -14,19 +15,20 @@ module Api
     end
 
     def show
-      authorize Task, :show?
+      task = scoped_record(Task, params[:id], includes: [:asset, { site: :area_of_operation }])
+      authorize task, :show?
       if as_of
-        snapshot = replay_single_task(params[:id])
+        snapshot = replay_single_task(task.id)
         return render json: { errors: ["Task not found"] }, status: :not_found unless snapshot
         render json: snapshot
       else
-        task = Task.includes(:asset, site: :area_of_operation).find(params[:id])
         render json: serialize_task(task)
       end
     end
 
     def create
-      authorize Task, :create?
+      task = Task.new(task_create_params)
+      authorize task, :create?
       result = Tasks::CreationService.call(params: task_create_params, actor: actor)
       if result.success
         task = result.payload[:task]
@@ -38,7 +40,7 @@ module Api
     end
 
     def update
-      task = Task.find(params[:id])
+      task = scoped_record(Task, params[:id])
       authorize task
       result = Tasks::UpdateService.call(task: task, params: task_update_params, actor: actor, actor_role: current_user.role)
       if result.success
@@ -51,7 +53,7 @@ module Api
     end
 
     def transition
-      task = Task.find(params[:id])
+      task = scoped_record(Task, params[:id])
       authorize task, :transition?
       result = Tasks::TransitionService.call(
         task:           task,
@@ -70,7 +72,7 @@ module Api
     end
 
     def allowed_transitions
-      task = Task.find(params[:id])
+      task = scoped_record(Task, params[:id])
       authorize task, :allowed_transitions?
       allowed = Tasks::TransitionService.allowed_transitions_for(
         task.workflow_status,
@@ -88,7 +90,7 @@ module Api
     private
 
     def scoped_tasks
-      tasks = Task.includes(:asset, site: :area_of_operation)
+      tasks = policy_scope(Task).includes(:asset, site: :area_of_operation)
       tasks = tasks.where(site_id: params[:site_id]) if params[:site_id].present?
       tasks = tasks.where(workflow_status: params[:workflow_status]) if params[:workflow_status].present?
       tasks = tasks.where(priority: params[:priority]) if params[:priority].present?

@@ -24,28 +24,17 @@ If this roadmap disagrees with code, prefer code and then update memory.
 - SSE/thread scaling hardening
 - Pundit auth-layer finish
 - AI service hardening parity
+- Historical briefing + historical swimlane replay tranche
+- Telemetry simulator safety gate
+- Recommendation LLM hardening
+- Exact AO polygon containment for AIS gap confidence
+- Relay liveness visibility
+- Shared AI circuit breaker
+- JWT logout revocation
+- Scoped API authorization enforcement across collections, member lookups, aggregate endpoints, and entity-scoped audit history
+- Viewer-role schema parity plus scoped request-matrix proof
 
-## Current Local Hardening Tranche
-
-These changes exist in the current working tree and are intended to land together:
-
-1. Replay parity tranche:
-   - historical briefing generation
-   - historical swimlane windows
-2. Telemetry simulator safety:
-   - explicit `TELEMETRY_SIMULATOR_ENABLED` boot gate
-3. Recommendation LLM hardening:
-   - timeout, zero retries, env-overridable model, observability
-4. AIS gap confidence correctness:
-   - exact AO polygon containment instead of bounding-box scoring
-5. Relay liveness visibility:
-   - relay heartbeat/error status in `OperationalStatus`
-6. Shared AI resilience layer:
-   - Anthropic circuit breaker across planner/enricher services
-7. Session revocation:
-   - JWT `jti` denylisting on logout
-
-## Next Major Tracks After This Tranche
+## Current Major Tracks
 
 These are the real remaining programs. They are not “small hardening patches.”
 
@@ -55,16 +44,17 @@ These are the real remaining programs. They are not “small hardening patches.�
    - Incident detail
    - Alert triage
 2. Security/identity maturity
-   - richer RBAC than `operator` / `commander`
+   - richer role modeling beyond `viewer` / `operator` / `commander`
    - session lifecycle beyond single-token logout revocation
 3. Tenant/workspace isolation
    - domain-wide data scoping
    - policy/query isolation
 4. Frontend decomposition
    - split the largest engine/page files into smaller maintained units
+5. Spatial baseline/documentation cleanup
+   - keep PostGIS-backed schema reality, local test setup, and comments/docs aligned
 
-## Explicit Non-Goals For The Current Tranche
+## Explicit Non-Goals For The Current Tracks
 
 - Do not pretend tenant isolation is a quick patch.
-- Do not add a “viewer” role without a full permission model.
 - Do not mark replay-complete pages as historically accurate unless the backend state reconstruction exists.

@@ -2,6 +2,7 @@ module Api
   class CorrelationRulesController < BaseController
     before_action :require_commander!, only: %i[create update destroy dry_run]
     after_action :verify_authorized
+    after_action :verify_policy_scoped, only: :index
 
     # GET /api/correlation_rules/effectiveness
     # Returns per-rule analytics for all rules (batch — avoids N+1).
@@ -9,13 +10,15 @@ module Api
     def effectiveness
       authorize CorrelationRule, :effectiveness?
       result = Rules::EffectivenessService.call
-      render json: result.payload[:stats].index_by { |s| s[:rule_id] }
+      visible_rule_ids = policy_scope(CorrelationRule).pluck(:id)
+      visible_stats = result.payload[:stats].select { |stats| visible_rule_ids.include?(stats[:rule_id]) }
+      render json: visible_stats.index_by { |s| s[:rule_id] }
     end
 
     # GET /api/correlation_rules
     def index
       authorize CorrelationRule
-      rules = CorrelationRule.order(created_at: :desc)
+      rules = policy_scope(CorrelationRule).order(created_at: :desc)
       rules = rules.active if params[:active_only] == "true"
       records, meta = paginate(rules)
       render json: { data: records.map { |r| serialize_rule(r) }, meta: meta }
@@ -23,15 +26,15 @@ module Api
 
     # GET /api/correlation_rules/:id
     def show
-      rule = CorrelationRule.find(params[:id])
+      rule = scoped_record(CorrelationRule, params[:id])
       authorize rule
       render json: serialize_rule(rule)
     end
 
     # POST /api/correlation_rules
     def create
-      authorize CorrelationRule, :create?
       rule = CorrelationRule.new(rule_params)
+      authorize rule, :create?
       rule.created_by = current_user
       correlation_id = SecureRandom.uuid
 
@@ -55,7 +58,7 @@ module Api
 
     # PATCH /api/correlation_rules/:id
     def update
-      rule = CorrelationRule.find(params[:id])
+      rule = scoped_record(CorrelationRule, params[:id])
       authorize rule
       before = correlation_rule_snapshot(rule)
       correlation_id = SecureRandom.uuid
@@ -80,7 +83,7 @@ module Api
 
     # DELETE /api/correlation_rules/:id
     def destroy
-      rule = CorrelationRule.find(params[:id])
+      rule = scoped_record(CorrelationRule, params[:id])
       authorize rule
       before = correlation_rule_snapshot(rule)
       correlation_id = SecureRandom.uuid
@@ -105,7 +108,7 @@ module Api
     # Evaluates this rule against the last N hours of signals WITHOUT firing any actions.
     # Returns a list of signals that would have triggered the rule and which sites.
     def dry_run
-      rule       = CorrelationRule.find(params[:id])
+      rule       = scoped_record(CorrelationRule, params[:id])
       authorize rule, :dry_run?
       hours      = (params[:hours] || 24).to_i.clamp(1, 168) # max 1 week
       since_time = hours.hours.ago

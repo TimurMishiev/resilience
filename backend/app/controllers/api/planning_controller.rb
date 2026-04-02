@@ -25,7 +25,7 @@ module Api
     def index
       authorize :planning, :index?
       # Tasks — eager-load site + AO in two queries (no N+1)
-      raw_tasks = Task
+      raw_tasks = policy_scope(Task)
         .includes(:asset, site: :area_of_operation)
         .where.not(workflow_status: "resolved")
         .order(
@@ -38,27 +38,27 @@ module Api
       truncated    = raw_tasks.size > TASK_LIMIT
       task_records = truncated ? raw_tasks.first(TASK_LIMIT) : raw_tasks
 
-      raw_assets       = Asset.order(:name).limit(ASSET_LIMIT + 1).to_a
+      raw_assets       = policy_scope(Asset).order(:name).limit(ASSET_LIMIT + 1).to_a
       assets_truncated = raw_assets.size > ASSET_LIMIT
       assets           = assets_truncated ? raw_assets.first(ASSET_LIMIT) : raw_assets
       Rails.logger.warn "[PlanningController] asset cap hit (#{ASSET_LIMIT})" if assets_truncated
 
-      raw_areas       = AreaOfOperation.order(:name).limit(AO_LIMIT + 1).to_a
+      raw_areas       = policy_scope(AreaOfOperation).order(:name).limit(AO_LIMIT + 1).to_a
       areas_truncated = raw_areas.size > AO_LIMIT
       areas           = areas_truncated ? raw_areas.first(AO_LIMIT) : raw_areas
       Rails.logger.warn "[PlanningController] AO cap hit (#{AO_LIMIT})" if areas_truncated
 
-      raw_chokepoints       = Chokepoint.includes(:area_of_operation).order(:name).limit(CHOKEPOINT_LIMIT + 1).to_a
+      raw_chokepoints       = policy_scope(Chokepoint).includes(:area_of_operation).order(:name).limit(CHOKEPOINT_LIMIT + 1).to_a
       chokepoints_truncated = raw_chokepoints.size > CHOKEPOINT_LIMIT
       chokepoints           = chokepoints_truncated ? raw_chokepoints.first(CHOKEPOINT_LIMIT) : raw_chokepoints
       Rails.logger.warn "[PlanningController] chokepoint cap hit (#{CHOKEPOINT_LIMIT})" if chokepoints_truncated
 
-      raw_intents       = CommanderIntent.order(updated_at: :desc).limit(INTENT_LIMIT + 1).to_a
+      raw_intents       = policy_scope(CommanderIntent).order(updated_at: :desc).limit(INTENT_LIMIT + 1).to_a
       intents_truncated = raw_intents.size > INTENT_LIMIT
       commander_intents = intents_truncated ? raw_intents.first(INTENT_LIMIT) : raw_intents
       Rails.logger.warn "[PlanningController] intent cap hit (#{INTENT_LIMIT})" if intents_truncated
 
-      raw_pace_plans       = PacePlan.order(updated_at: :desc).limit(PACE_PLAN_LIMIT + 1).to_a
+      raw_pace_plans       = policy_scope(PacePlan).order(updated_at: :desc).limit(PACE_PLAN_LIMIT + 1).to_a
       pace_plans_truncated = raw_pace_plans.size > PACE_PLAN_LIMIT
       pace_plans           = pace_plans_truncated ? raw_pace_plans.first(PACE_PLAN_LIMIT) : raw_pace_plans
       Rails.logger.warn "[PlanningController] pace plan cap hit (#{PACE_PLAN_LIMIT})" if pace_plans_truncated
@@ -68,7 +68,7 @@ module Api
       salute_reports_truncated = false
       salute_report_meta_by_ao = {}
       salute_reports = areas.flat_map do |ao|
-        rows = SaluteReport
+        rows = policy_scope(SaluteReport)
           .includes(:site, :created_by)
           .where(area_of_operation_id: ao.id)
           .recent_first
@@ -84,7 +84,7 @@ module Api
         visible_rows.map { |report| [report, ao.name] }
       end
 
-      raw_incidents = Incident
+      raw_incidents = policy_scope(Incident)
         .includes(:assigned_to)
         .where.not(status: "closed")
         .by_severity

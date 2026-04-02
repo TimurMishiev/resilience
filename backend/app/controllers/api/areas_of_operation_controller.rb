@@ -2,11 +2,12 @@ module Api
   class AreasOfOperationController < BaseController
     before_action :require_commander!, only: %i[create update destroy update_posture]
     after_action :verify_authorized
+    after_action :verify_policy_scoped, only: :index
 
     # GET /api/areas_of_operation
     def index
       authorize AreaOfOperation
-      areas = AreaOfOperation.order(:name)
+      areas = policy_scope(AreaOfOperation).order(:name)
       areas = areas.by_threat(params[:threat_level]) if params[:threat_level].present?
       records, meta = paginate(areas)
       render json: { data: records.map { |a| serialize_area(a) }, meta: meta }
@@ -14,7 +15,7 @@ module Api
 
     # GET /api/areas_of_operation/:id
     def show
-      area = AreaOfOperation.find(params[:id])
+      area = scoped_record(AreaOfOperation, params[:id])
       authorize area
       render json: serialize_area(area)
     end
@@ -46,7 +47,7 @@ module Api
 
     # PATCH /api/areas_of_operation/:id
     def update
-      area = AreaOfOperation.find(params[:id])
+      area = scoped_record(AreaOfOperation, params[:id])
       authorize area
       before = audit_snapshot(area)
 
@@ -74,7 +75,7 @@ module Api
       ApplicationRecord.transaction do
         # Lock the row so concurrent doctrine-create requests cannot sneak a
         # chokepoint/intent/plan in between our attachment check and the destroy.
-        area = AreaOfOperation.lock.find(params[:id])
+        area = scoped_record(AreaOfOperation, params[:id], lock: true)
         authorize area
 
         attached = {
@@ -111,7 +112,7 @@ module Api
 
     # PATCH /api/areas_of_operation/:id/posture
     def update_posture
-      area    = AreaOfOperation.find(params[:id])
+      area    = scoped_record(AreaOfOperation, params[:id])
       authorize area, :update_posture?
       posture = params.require(:posture)
 

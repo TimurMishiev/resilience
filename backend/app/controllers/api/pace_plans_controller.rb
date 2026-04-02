@@ -3,8 +3,8 @@ module Api
     before_action :require_commander!
 
     def create
-      authorize PacePlan, :create?
       plan = PacePlan.new(pace_plan_params)
+      authorize plan, :create?
       plan.created_by = current_user
       plan.updated_by = current_user
       correlation_id = SecureRandom.uuid
@@ -30,7 +30,7 @@ module Api
     end
 
     def update
-      plan = PacePlan.find(params[:id])
+      plan = scoped_record(PacePlan, params[:id])
       authorize plan
       if area_of_operation_reassignment?(plan)
         render json: { errors: ["area_of_operation_id cannot be changed"] }, status: :unprocessable_content

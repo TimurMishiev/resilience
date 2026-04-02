@@ -229,12 +229,10 @@ module Correlations
     def threshold_met?(scope, site, proximity_km, threshold)
       return scope.limit(threshold).pluck(:id).size >= threshold unless proximity_km.positive?
 
-      # On PostGIS instances, near_point uses ST_DWithin which already guarantees
-      # exact great-circle distance — the Haversine check below always passes for
-      # every row in scope. On plain-Postgres instances (bounding-box fallback),
-      # the Haversine check is the correctness filter that removes false positives
-      # from the rectangular bounding box. Both paths are correct; the PostGIS
-      # path carries minor redundant CPU overhead that is negligible in practice.
+      # On the supported PostGIS baseline, near_point uses ST_DWithin which
+      # already guarantees exact great-circle distance, so the Haversine check
+      # below always passes for every row in scope. The extra check remains only
+      # as correctness protection for legacy plain-Postgres fallback instances.
       matching_count = 0
 
       scope

@@ -1,10 +1,11 @@
 module Api
   class AssetsController < BaseController
     before_action :require_commander!, only: [:update]
+    after_action :verify_policy_scoped, only: :index
 
     def index
       authorize Asset
-      assets = Asset.all.order(:name)
+      assets = policy_scope(Asset).order(:name)
       assets = assets.where(home_site_id: params[:home_site_id]) if params[:home_site_id].present?
       assets = assets.where(status: params[:status]) if params[:status].present?
       assets = assets.where(asset_type: params[:asset_type]) if params[:asset_type].present?
@@ -13,13 +14,13 @@ module Api
     end
 
     def show
-      asset = Asset.find(params[:id])
+      asset = scoped_record(Asset, params[:id])
       authorize asset
       render json: serialize_asset(asset)
     end
 
     def update
-      asset = Asset.find(params[:id])
+      asset = scoped_record(Asset, params[:id])
       authorize asset
       new_status = params.require(:asset).permit(:status)[:status]
 

@@ -4,15 +4,17 @@ class TaskPolicy < ApplicationPolicy
   # update, and transition them as part of their workflow.
   # Viewers may read but not write.
   def index?              = true
-  def show?               = true
-  def create?             = operator_or_above?
-  def update?             = operator_or_above?
-  def transition?         = operator_or_above?
-  def allowed_transitions? = true
+  def show?               = site_accessible?(record.site)
+  def create?             = operator_or_above? && site_accessible?(record.site)
+  def update?             = operator_or_above? && show?
+  def transition?         = operator_or_above? && show?
+  def allowed_transitions? = show?
 
   class Scope < ApplicationPolicy::Scope
     def resolve
-      ao_filter_via_site(scope)
+      return scope unless scope_restricted?
+
+      scope.where(site_id: site_scope.select(:id))
     end
   end
 end

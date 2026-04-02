@@ -2,7 +2,7 @@ module Api
   class ReadinessController < BaseController
     def index
       authorize :readiness, :index?
-      sites = Site.all.includes(:tasks).order(:name)
+      sites = policy_scope(Site).includes(:tasks).order(:name)
       computed_at = Time.current
 
       result = sites.map do |site|

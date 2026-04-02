@@ -1,14 +1,15 @@
 module Api
   class SignalRuleMatchesController < BaseController
     after_action :verify_authorized
+    after_action :verify_policy_scoped, only: %i[index active_breach_sites]
 
     # GET /api/signal_rule_matches
     # Query params: rule_id, site_id, workflow_status, geofence_breach, from, to, as_of, page, per_page
     # as_of: ISO8601 timestamp — limits fired_at to matches that existed at that point in time
     def index
       authorize SignalRuleMatch
-      matches = SignalRuleMatch.order(fired_at: :desc)
-                               .includes(:signal, :correlation_rule, :site, :task, :acknowledged_by)
+      matches = policy_scope(SignalRuleMatch).order(fired_at: :desc)
+                                             .includes(:signal, :correlation_rule, :site, :task, :acknowledged_by)
 
       matches = matches.for_rule(params[:rule_id])        if params[:rule_id].present?
       matches = matches.for_site(params[:site_id])        if params[:site_id].present?
@@ -31,8 +32,11 @@ module Api
 
     # GET /api/signal_rule_matches/:id
     def show
-      match = SignalRuleMatch.includes(:signal, :correlation_rule, :site, :task, :acknowledged_by)
-                             .find(params[:id])
+      match = scoped_record(
+        SignalRuleMatch,
+        params[:id],
+        includes: [:signal, :correlation_rule, :site, :task, :acknowledged_by]
+      )
       authorize match
       render json: serialize_match(match)
     end
@@ -43,7 +47,7 @@ module Api
     # any risk of a page cap silently omitting an active breach site.
     def active_breach_sites
       authorize SignalRuleMatch, :active_breach_sites?
-      site_ids = SignalRuleMatch
+      site_ids = policy_scope(SignalRuleMatch)
                    .where("(metadata->>'geofence_breach')::boolean = true")
                    .where(workflow_status: :unacknowledged)
                    .where.not(site_id: nil)
@@ -73,7 +77,7 @@ module Api
       succeeded = []
       failed    = []
 
-      SignalRuleMatch.where(id: ids).each do |match|
+      policy_scope(SignalRuleMatch).where(id: ids).each do |match|
         result = Alerts::TransitionService.call(
           match:     match,
           to_status: to_status,
@@ -95,7 +99,7 @@ module Api
     # Body: { transition: { to_status: "acknowledged", notes: "..." } }
     # Available to operators and commanders — alert triage is not command-restricted.
     def transition
-      match  = SignalRuleMatch.find(params[:id])
+      match  = scoped_record(SignalRuleMatch, params[:id])
       authorize match, :transition?
       result = Alerts::TransitionService.call(
         match:     match,
@@ -113,7 +117,7 @@ module Api
 
     # GET /api/signal_rule_matches/:id/allowed_transitions
     def allowed_transitions
-      match = SignalRuleMatch.find(params[:id])
+      match = scoped_record(SignalRuleMatch, params[:id])
       authorize match, :allowed_transitions?
       render json: { allowed: Alerts::TransitionService.allowed_transitions_for(match.workflow_status) }
     end

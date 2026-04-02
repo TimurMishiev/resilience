@@ -3,8 +3,8 @@ module Api
     before_action :require_commander!
 
     def create
-      authorize SaluteReport, :create?
       report = SaluteReport.new(salute_report_params)
+      authorize report, :create?
       report.created_by = current_user
       correlation_id = SecureRandom.uuid
 

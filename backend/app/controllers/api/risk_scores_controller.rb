@@ -15,8 +15,9 @@ module Api
   class RiskScoresController < BaseController
     def index
       authorize :risk_score, :index?
-      sites       = Site.all.includes(:tasks).order(:name)
+      sites       = policy_scope(Site).includes(:tasks).order(:name)
       computed_at = Time.current
+      return render json: [] if sites.empty?
 
       # Preload alert matches and nearby signals in two bulk queries instead of
       # two queries per site (N×2 → 2 total).
@@ -24,6 +25,7 @@ module Api
       signal_window = Risk::ScoringService::SIGNAL_WINDOW_HOURS.hours.ago
 
       all_matches = SignalRuleMatch
+        .where(site_id: sites.map(&:id))
         .where.not(workflow_status: "closed")
         .where(fired_at: alert_window..computed_at)
         .pluck(:site_id, :confidence)
