@@ -12,6 +12,7 @@ development:
 
 test:
   <<: *default
+  port: 5434
   database: resilience_test
 
 production:

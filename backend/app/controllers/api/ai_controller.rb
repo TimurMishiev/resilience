@@ -1,5 +1,6 @@
 module Api
   class AiController < BaseController
+    skip_after_action :verify_authorized
     # Both AI endpoints are commander-only — they make real Anthropic API calls
     # and the per-IP rate limit alone is insufficient if operators share an IP.
     before_action :require_commander!

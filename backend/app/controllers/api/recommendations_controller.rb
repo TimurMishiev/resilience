@@ -1,10 +1,12 @@
 module Api
   class RecommendationsController < BaseController
-    before_action :require_commander!, only: %i[generate accept reject defer execute]
+    before_action :require_commander!, only: %i[generate]
+    after_action :verify_authorized
 
     # GET /api/recommendations
     # Query params: status, tier, type, affected_entity_type, affected_entity_id
     def index
+      authorize Recommendation
       recs = Recommendation.includes(:reviewer).recent
 
       recs = recs.where(status: params[:status])                          if params[:status].present?
@@ -23,6 +25,7 @@ module Api
     # POST /api/recommendations/generate
     # Triggers an on-demand generation run (commander only)
     def generate
+      authorize Recommendation, :generate?
       result = Recommendations::GeneratorService.call
       if result.success?
         render json: { created: result.created, invalid_count: result.invalid_count }, status: :ok
@@ -33,24 +36,36 @@ module Api
 
     # POST /api/recommendations/:id/accept
     def accept
-      rec = find_pending_rec
-      return if rec.nil?
+      rec = Recommendation.find(params[:id])
+      authorize rec, :accept?
+      unless rec.pending?
+        render json: { errors: ["Recommendation is already #{rec.status}"] }, status: :unprocessable_content
+        return
+      end
       rec.accept!(user: current_user, reason: params[:reason])
       render json: serialize(rec)
     end
 
     # POST /api/recommendations/:id/reject
     def reject
-      rec = find_pending_rec
-      return if rec.nil?
+      rec = Recommendation.find(params[:id])
+      authorize rec, :reject?
+      unless rec.pending?
+        render json: { errors: ["Recommendation is already #{rec.status}"] }, status: :unprocessable_content
+        return
+      end
       rec.reject!(user: current_user, reason: params[:reason])
       render json: serialize(rec)
     end
 
     # POST /api/recommendations/:id/defer
     def defer
-      rec = find_pending_rec
-      return if rec.nil?
+      rec = Recommendation.find(params[:id])
+      authorize rec, :defer?
+      unless rec.pending?
+        render json: { errors: ["Recommendation is already #{rec.status}"] }, status: :unprocessable_content
+        return
+      end
       rec.defer!(user: current_user, reason: params[:reason])
       render json: serialize(rec)
     end
@@ -65,6 +80,7 @@ module Api
     # write is rolled back and the recommendation stays in its original status.
     def execute
       rec    = Recommendation.find(params[:id])
+      authorize rec, :execute?
       result = nil
 
       rec.with_lock do
@@ -88,6 +104,7 @@ module Api
 
     # GET /api/recommendations/metrics
     def metrics
+      authorize Recommendation, :metrics?
       # Single grouped query replaces 7 individual per-status counts.
       by_status  = Recommendation.group(:status).count
       by_tier    = Recommendation.group(:tier).count
@@ -124,15 +141,6 @@ module Api
     end
 
     private
-
-    def find_pending_rec
-      rec = Recommendation.find(params[:id])
-      unless rec.pending?
-        render json: { errors: ["Recommendation is already #{rec.status}"] }, status: :unprocessable_content
-        return nil
-      end
-      rec
-    end
 
     def serialize(rec)
       {

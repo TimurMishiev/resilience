@@ -1,9 +1,11 @@
 module Api
   class AreasOfOperationController < BaseController
     before_action :require_commander!, only: %i[create update destroy update_posture]
+    after_action :verify_authorized
 
     # GET /api/areas_of_operation
     def index
+      authorize AreaOfOperation
       areas = AreaOfOperation.order(:name)
       areas = areas.by_threat(params[:threat_level]) if params[:threat_level].present?
       records, meta = paginate(areas)
@@ -13,11 +15,13 @@ module Api
     # GET /api/areas_of_operation/:id
     def show
       area = AreaOfOperation.find(params[:id])
+      authorize area
       render json: serialize_area(area)
     end
 
     # POST /api/areas_of_operation
     def create
+      authorize AreaOfOperation, :create?
       area = AreaOfOperation.new(area_params)
       area.created_by = current_user
 
@@ -43,6 +47,7 @@ module Api
     # PATCH /api/areas_of_operation/:id
     def update
       area = AreaOfOperation.find(params[:id])
+      authorize area
       before = audit_snapshot(area)
 
       ApplicationRecord.transaction do
@@ -70,6 +75,7 @@ module Api
         # Lock the row so concurrent doctrine-create requests cannot sneak a
         # chokepoint/intent/plan in between our attachment check and the destroy.
         area = AreaOfOperation.lock.find(params[:id])
+        authorize area
 
         attached = {
           chokepoints:      area.chokepoints.count,
@@ -106,6 +112,7 @@ module Api
     # PATCH /api/areas_of_operation/:id/posture
     def update_posture
       area    = AreaOfOperation.find(params[:id])
+      authorize area, :update_posture?
       posture = params.require(:posture)
 
       unless AreaOfOperation::POSTURES.include?(posture)

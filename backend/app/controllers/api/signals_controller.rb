@@ -1,6 +1,7 @@
 module Api
   class SignalsController < BaseController
     include ActionController::Live
+    skip_after_action :verify_authorized
 
     SIGNAL_STREAM_BASELINE_BATCH_SIZE = 200
     SIGNAL_STREAM_BASELINE_MAX_AGE = 24.hours

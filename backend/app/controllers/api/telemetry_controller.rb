@@ -1,6 +1,7 @@
 module Api
   class TelemetryController < BaseController
     include ActionController::Live
+    skip_after_action :verify_authorized
 
     # Cap per-asset trail points so the response stays bounded. 30 min at 3s
     # tick = 600 raw; 200 keeps JSON tight while preserving smooth polylines.

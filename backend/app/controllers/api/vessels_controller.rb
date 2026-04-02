@@ -1,5 +1,7 @@
 module Api
   class VesselsController < BaseController
+    skip_after_action :verify_authorized
+
     # GET /api/vessels?mmsi=N&loitering=true&dark_hours=N&per_page=N&page=N
     def index
       vessels = Vessel.all.order(last_seen_at: :desc)

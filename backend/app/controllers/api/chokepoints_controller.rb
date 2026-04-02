@@ -1,5 +1,6 @@
 module Api
   class ChokepointsController < BaseController
+    skip_after_action :verify_authorized
     before_action :require_commander!, only: %i[create update destroy]
 
     def index

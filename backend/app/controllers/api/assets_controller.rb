@@ -1,5 +1,6 @@
 module Api
   class AssetsController < BaseController
+    skip_after_action :verify_authorized
     before_action :require_commander!, only: [:update]
 
     def index

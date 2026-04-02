@@ -1,5 +1,7 @@
 module Api
   class AuditEventsController < BaseController
+    skip_after_action :verify_authorized
+
     def index
       # Entity-scoped queries (entity_id present) are available to all authenticated users —
       # operator-facing detail pages (incidents, sites) need them for inline history panels.

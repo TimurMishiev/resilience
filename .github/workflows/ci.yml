@@ -72,7 +72,9 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16
+        # postgis/postgis:17-3.5 matches the production Postgres 17 version and
+        # provides PostGIS so the ST_DWithin path in near_point is exercised in CI.
+        image: postgis/postgis:17-3.5
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres

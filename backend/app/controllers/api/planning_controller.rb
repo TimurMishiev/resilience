@@ -1,6 +1,7 @@
 module Api
   class PlanningController < BaseController
     before_action :require_commander!
+    after_action :verify_authorized
 
     TASK_LIMIT      = 500
     INCIDENT_LIMIT  = 200
@@ -22,6 +23,7 @@ module Api
     # Intentionally bypasses BaseController#paginate — the planning surface is a
     # command tool, not a log viewer, and needs the full cross-site picture at once.
     def index
+      authorize :planning, :index?
       # Tasks — eager-load site + AO in two queries (no N+1)
       raw_tasks = Task
         .includes(:asset, site: :area_of_operation)

@@ -33,8 +33,17 @@ primary_region = "iad"
   RAILS_SERVE_STATIC_FILES = "true"
   # Run Solid Queue supervisor inside the Puma process (single-machine deploy)
   SOLID_QUEUE_IN_PUMA      = "true"
-  # Conservative thread count for 1 GB machine; raise if you upgrade the VM
-  RAILS_MAX_THREADS        = "10"
+  # Thread count for 1 GB machine. With jemalloc each thread costs ~20–30 MB
+  # in steady state. 20 threads leaves headroom for Solid Queue + OS overhead.
+  # DB pool inherits this value from database.yml (pool: ENV["RAILS_MAX_THREADS"]).
+  RAILS_MAX_THREADS        = "20"
+  # SSE thread budget: 3 stream types × N concurrent users must fit inside
+  # RAILS_MAX_THREADS while leaving headroom for regular API requests.
+  # SSE_MAX_STREAMS_PER_USER=4  → up to 2 browser tabs per user (2 × 3 streams)
+  # SSE_MAX_STREAMS_PER_IP=12   → up to 4 users from the same network
+  # At full SSE occupancy (12 streams) 8 threads remain for API calls.
+  SSE_MAX_STREAMS_PER_USER = "4"
+  SSE_MAX_STREAMS_PER_IP   = "12"
   # Thruster listens on this port (non-root can't bind <1024 on Fly machines)
   THRUSTER_HTTP_PORT       = "8080"
 
@@ -50,9 +59,12 @@ primary_region = "iad"
   min_machines_running = 1
 
   [http_service.concurrency]
+    # Fly routes up to hard_limit connections to this machine before spinning
+    # a second one. With RAILS_MAX_THREADS=20 and 12 max SSE streams, 30
+    # connections gives 18 API slots + 12 SSE slots with buffer to spare.
     type       = "connections"
-    hard_limit = 50
-    soft_limit = 40
+    hard_limit = 30
+    soft_limit = 25
 
 [[vm]]
   size   = "shared-cpu-1x"

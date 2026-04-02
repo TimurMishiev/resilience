@@ -1,8 +1,11 @@
 module Api
   class SignalRuleMatchesController < BaseController
+    after_action :verify_authorized
+
     # GET /api/signal_rule_matches
     # Query params: rule_id, site_id, workflow_status, geofence_breach, from, to, page, per_page
     def index
+      authorize SignalRuleMatch
       matches = SignalRuleMatch.order(fired_at: :desc)
                                .includes(:signal, :correlation_rule, :site, :task, :acknowledged_by)
 
@@ -28,6 +31,7 @@ module Api
     def show
       match = SignalRuleMatch.includes(:signal, :correlation_rule, :site, :task, :acknowledged_by)
                              .find(params[:id])
+      authorize match
       render json: serialize_match(match)
     end
 
@@ -36,6 +40,7 @@ module Api
     # Unpaginated by design — used by the map to render breach rings without
     # any risk of a page cap silently omitting an active breach site.
     def active_breach_sites
+      authorize SignalRuleMatch, :active_breach_sites?
       site_ids = SignalRuleMatch
                    .where("(metadata->>'geofence_breach')::boolean = true")
                    .where(workflow_status: :unacknowledged)
@@ -53,6 +58,7 @@ module Api
     MAX_BULK = 100
 
     def bulk_transition
+      authorize SignalRuleMatch, :bulk_transition?
       ids       = Array(params[:ids]).first(MAX_BULK)
       to_status = params[:to_status].to_s.strip
       notes     = params[:notes].presence
@@ -88,6 +94,7 @@ module Api
     # Available to operators and commanders — alert triage is not command-restricted.
     def transition
       match  = SignalRuleMatch.find(params[:id])
+      authorize match, :transition?
       result = Alerts::TransitionService.call(
         match:     match,
         to_status: transition_params[:to_status],
@@ -105,6 +112,7 @@ module Api
     # GET /api/signal_rule_matches/:id/allowed_transitions
     def allowed_transitions
       match = SignalRuleMatch.find(params[:id])
+      authorize match, :allowed_transitions?
       render json: { allowed: Alerts::TransitionService.allowed_transitions_for(match.workflow_status) }
     end
 

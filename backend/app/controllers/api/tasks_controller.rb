@@ -1,6 +1,9 @@
 module Api
   class TasksController < BaseController
+    after_action :verify_authorized
+
     def index
+      authorize Task
       if as_of
         # Replay returns a bounded snapshot set — pagination is not applied.
         render json: { data: replayed_tasks, meta: nil }
@@ -11,6 +14,7 @@ module Api
     end
 
     def show
+      authorize Task, :show?
       if as_of
         snapshot = replay_single_task(params[:id])
         return render json: { errors: ["Task not found"] }, status: :not_found unless snapshot
@@ -22,6 +26,7 @@ module Api
     end
 
     def create
+      authorize Task, :create?
       result = Tasks::CreationService.call(params: task_create_params, actor: actor)
       if result.success
         task = result.payload[:task]
@@ -34,6 +39,7 @@ module Api
 
     def update
       task = Task.find(params[:id])
+      authorize task
       result = Tasks::UpdateService.call(task: task, params: task_update_params, actor: actor, actor_role: current_user.role)
       if result.success
         task = result.payload[:task]
@@ -46,6 +52,7 @@ module Api
 
     def transition
       task = Task.find(params[:id])
+      authorize task, :transition?
       result = Tasks::TransitionService.call(
         task:           task,
         to_status:      transition_params[:to_status],
@@ -64,6 +71,7 @@ module Api
 
     def allowed_transitions
       task = Task.find(params[:id])
+      authorize task, :allowed_transitions?
       allowed = Tasks::TransitionService.allowed_transitions_for(
         task.workflow_status,
         role: current_user.role

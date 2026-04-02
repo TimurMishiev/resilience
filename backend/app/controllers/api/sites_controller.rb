@@ -1,12 +1,14 @@
 module Api
   class SitesController < BaseController
     before_action :require_commander!, only: %i[toggle_status unflag update_geofence]
+    after_action :verify_authorized
 
     TIMELINE_VALID_KINDS = %w[
       signal_detected rule_fired task_created task_transitioned site_event
     ].freeze
 
     def index
+      authorize Site
       sites = Site.all.order(:name)
       sites = sites.where(status: params[:status]) if params[:status].present?
       records, meta = paginate(sites)
@@ -15,11 +17,13 @@ module Api
 
     def show
       site = Site.find(params[:id])
+      authorize site
       render json: serialize_site(site)
     end
 
     def risk_history
       site = Site.find(params[:id])
+      authorize site, :risk_history?
       days = (params[:days] || 7).to_i.clamp(1, 30)
 
       snapshots = SiteRiskSnapshot
@@ -36,6 +40,7 @@ module Api
 
     def timeline
       site = Site.find(params[:id])
+      authorize site, :timeline?
       days = (params[:days] || 7).to_i.clamp(1, 90)
 
       events = Sites::TimelineService.call(site: site, days: days)
@@ -54,6 +59,7 @@ module Api
 
     def toggle_status
       site   = Site.find(params[:id])
+      authorize site, :toggle_status?
       before = site.as_json(only: %i[status])
       new_status = site.status == "active" ? "inactive" : "active"
 
@@ -78,6 +84,7 @@ module Api
 
     def update_geofence
       site   = Site.find(params[:id])
+      authorize site, :update_geofence?
       radius = params[:geofence_radius_km].to_f
 
       if radius <= 0
@@ -108,6 +115,7 @@ module Api
 
     def unflag
       site = Site.find(params[:id])
+      authorize site, :unflag?
 
       unless site.flagged_at
         render json: { errors: ["Site is not flagged"] }, status: :unprocessable_content

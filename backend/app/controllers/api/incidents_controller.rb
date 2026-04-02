@@ -1,8 +1,11 @@
 module Api
   class IncidentsController < BaseController
+    after_action :verify_authorized
+
     # GET /api/incidents
     # Query params: status, severity, site_id, assigned_to_id, page, per_page
     def index
+      authorize Incident
       incidents = Incident
         .includes(:site, :area_of_operation, :signal_rule_matches, :assigned_to, :prosecuted_by)
         .by_severity
@@ -24,12 +27,14 @@ module Api
                   :tasks,
                   signal_rule_matches: [:signal, :correlation_rule])
         .find(params[:id])
+      authorize incident
       render json: serialize_incident(incident, detailed: true)
     end
 
     # PATCH /api/incidents/:id
     def update
       incident = Incident.find(params[:id])
+      authorize incident
       result   = Incidents::UpdateService.call(
         incident: incident,
         params:   incident_params.to_h,
@@ -46,6 +51,7 @@ module Api
     # Body: { to_status: "acknowledged" }
     def transition
       incident  = Incident.find(params[:id])
+      authorize incident, :transition?
       to_status = params[:to_status].to_s.strip
 
       result = Incidents::TransitionService.call(
@@ -64,6 +70,7 @@ module Api
     # GET /api/incidents/:id/allowed_transitions
     def allowed_transitions
       incident = Incident.find(params[:id])
+      authorize incident, :allowed_transitions?
       render json: { allowed: incident.allowed_transitions }
     end
 
@@ -76,6 +83,7 @@ module Api
     #                 any attempt to assign to a different user returns 403
     def assign
       incident = Incident.find(params[:id])
+      authorize incident, :assign?
       assignee = if params[:assignee_id].present?
         user = User.find_by(id: params[:assignee_id])
         return render json: { errors: ["User not found"] }, status: :not_found unless user
@@ -114,6 +122,7 @@ module Api
     # appears only once.  The frontend assigns layout positions.
     def chain
       incident = Incident.find(params[:id])
+      authorize incident, :chain?
       matches  = incident.signal_rule_matches.includes(:signal, :correlation_rule, :task)
 
       nodes = []
@@ -226,9 +235,8 @@ module Api
     # Initiates kill-chain prosecution on an incident (commander-only).
     # Body: { notes: "..." }  (optional)
     def initiate_prosecution
-      require_commander!
-      return if performed?
       incident = Incident.find(params[:id])
+      authorize incident, :initiate_prosecution?
       result   = Incidents::ProsecutionService.call(
         operation: :initiate,
         incident:  incident,
@@ -246,6 +254,7 @@ module Api
     # GET /api/incidents/:id/prosecution_steps
     def list_prosecution_steps
       incident = Incident.find(params[:id])
+      authorize incident, :list_prosecution_steps?
       steps    = ProsecutionStep.for_incident(incident.id).includes(:actor)
       render json: steps.map { |s| serialize_prosecution_step(s) }
     end
@@ -253,9 +262,8 @@ module Api
     # POST /api/incidents/:id/prosecution_steps
     # Body: { phase:, action_type:, notes:, evidence_refs: { signal_ids: [], ... } }
     def add_prosecution_step
-      require_commander!
-      return if performed?
       incident = Incident.find(params[:id])
+      authorize incident, :add_prosecution_step?
       result   = Incidents::ProsecutionService.call(
         operation:     :add_step,
         incident:      incident,
@@ -276,6 +284,7 @@ module Api
     # GET /api/incidents/:id/notes
     def list_notes
       incident = Incident.find(params[:id])
+      authorize incident, :list_notes?
       notes    = incident.incident_notes.includes(:author)
       render json: notes.map { |n| serialize_note(n) }
     end
@@ -284,6 +293,7 @@ module Api
     # Body: { body: "..." }
     def add_note
       incident = Incident.find(params[:id])
+      authorize incident, :add_note?
       result   = Incidents::NoteService.call(
         incident: incident,
         author:   current_user,
@@ -439,15 +449,14 @@ module Api
 
     # Permit and sanitise evidence_refs from the request.
     # Accepts { signal_ids: [], match_ids: [], task_ids: [], recommendation_ids: [] }.
-    # Unknown keys are dropped to prevent polluting the JSONB column.
+    # Unknown keys are dropped by permit() — they never reach the JSONB column.
     def prosecution_step_evidence_refs
       raw = params[:evidence_refs]
-      return {} unless raw.is_a?(ActionController::Parameters) || raw.is_a?(Hash)
+      return {} unless raw.is_a?(ActionController::Parameters)
 
-      allowed_keys = %w[signal_ids match_ids task_ids recommendation_ids]
-      raw.to_unsafe_h.slice(*allowed_keys).transform_values do |v|
-        Array(v).map(&:to_s).reject(&:empty?)
-      end
+      raw.permit(signal_ids: [], match_ids: [], task_ids: [], recommendation_ids: [])
+         .to_h
+         .transform_values { |v| Array(v).map(&:to_s).reject(&:empty?) }
     end
   end
 end

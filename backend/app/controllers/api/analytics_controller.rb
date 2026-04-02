@@ -1,5 +1,7 @@
 module Api
   class AnalyticsController < BaseController
+    skip_after_action :verify_authorized
+
     # GET /api/analytics/throughput
     # Returns daily count of tasks resolved over the last 30 days.
     def throughput

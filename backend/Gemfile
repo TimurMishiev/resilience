@@ -39,6 +39,9 @@ gem "rack-cors"
 # Rate limiting — protect API and AI endpoints from abuse
 gem "rack-attack"
 
+# Authorization policy objects — one policy class per resource, enforced in controllers
+gem "pundit", "~> 2.4"
+
 # Structured request logging — one JSON line per request instead of multi-line Rails default
 gem "lograge"
 

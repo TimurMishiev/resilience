@@ -1,6 +1,8 @@
 module Api
   class BaseController < ApplicationController
     include JwtAuthenticatable
+    include Pundit::Authorization
+    after_action :verify_authorized
 
     # Append authenticated user_id to lograge's structured log line.
     def append_info_to_payload(payload)
@@ -13,6 +15,10 @@ module Api
       unless current_user&.role == "commander"
         render json: { errors: ["Commander role required"] }, status: :forbidden
       end
+    end
+
+    rescue_from Pundit::NotAuthorizedError do |e|
+      render json: { errors: ["Not authorized"] }, status: :forbidden
     end
 
     rescue_from ActiveRecord::RecordNotFound do |e|
