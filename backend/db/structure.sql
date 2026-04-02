@@ -1,6 +1,7 @@
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -21,6 +22,20 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
 --
 
 COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
+
+
+--
+-- Name: postgis; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public;
+
+
+--
+-- Name: EXTENSION postgis; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON EXTENSION postgis IS 'PostGIS geometry and geography spatial types and functions';
 
 
 --
@@ -45,6 +60,42 @@ CREATE FUNCTION public.prevent_incident_note_update() RETURNS trigger
     AS $$
 BEGIN
   RAISE EXCEPTION 'incident_notes are immutable — updates are not permitted';
+END;
+$$;
+
+
+--
+-- Name: sync_external_signal_location(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.sync_external_signal_location() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF NEW.lat IS NOT NULL AND NEW.lng IS NOT NULL THEN
+    NEW.location := ST_SetSRID(
+      ST_MakePoint(NEW.lng::double precision, NEW.lat::double precision), 4326
+    );
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+
+--
+-- Name: sync_site_location(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.sync_site_location() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF NEW.latitude IS NOT NULL AND NEW.longitude IS NOT NULL THEN
+    NEW.location := ST_SetSRID(
+      ST_MakePoint(NEW.longitude::double precision, NEW.latitude::double precision), 4326
+    );
+  END IF;
+  RETURN NEW;
 END;
 $$;
 
@@ -200,6 +251,7 @@ CREATE TABLE public.external_signals (
     raw_payload jsonb DEFAULT '{}'::jsonb NOT NULL,
     occurred_at timestamp(6) without time zone NOT NULL,
     ingested_at timestamp(6) without time zone DEFAULT now() NOT NULL,
+    location public.geography(Point,4326),
     CONSTRAINT signals_signal_type_check CHECK ((signal_type = ANY (ARRAY['aircraft_position'::text, 'vessel_position'::text, 'seismic_event'::text, 'gps_jamming'::text, 'wildfire'::text, 'manual'::text, 'ais_gap'::text, 'conflict_event'::text, 'disaster_alert'::text]))),
     CONSTRAINT signals_source_check CHECK ((source = ANY (ARRAY['opensky'::text, 'ais'::text, 'usgs_seismic'::text, 'gpsjam'::text, 'firms_wildfire'::text, 'manual'::text, 'derived'::text, 'acled'::text, 'gdacs'::text])))
 );
@@ -438,7 +490,8 @@ CREATE TABLE public.sites (
     area_of_operation_id uuid,
     flagged_at timestamp(6) without time zone,
     flag_reason text,
-    geofence_radius_km double precision DEFAULT 50.0 NOT NULL
+    geofence_radius_km double precision DEFAULT 50.0 NOT NULL,
+    location public.geography(Point,4326)
 );
 
 
@@ -730,7 +783,7 @@ CREATE TABLE public.users (
     role character varying DEFAULT 'operator'::character varying NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    CONSTRAINT users_role_check CHECK (((role)::text = ANY ((ARRAY['operator'::character varying, 'commander'::character varying])::text[])))
+    CONSTRAINT users_role_check CHECK (((role)::text = ANY (ARRAY[('operator'::character varying)::text, ('commander'::character varying)::text])))
 );
 
 
@@ -1073,6 +1126,13 @@ ALTER TABLE ONLY public.vessels
 
 
 --
+-- Name: idx_external_signals_location_gist; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_external_signals_location_gist ON public.external_signals USING gist (location);
+
+
+--
 -- Name: idx_geofence_breach_signal_site_unique; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1126,6 +1186,13 @@ CREATE INDEX idx_recommendations_entity ON public.recommendations USING btree (a
 --
 
 CREATE UNIQUE INDEX idx_recommendations_pending_dedup ON public.recommendations USING btree (recommendation_type, affected_entity_type, affected_entity_id) WHERE ((status)::text = 'pending'::text);
+
+
+--
+-- Name: idx_sites_location_gist; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sites_location_gist ON public.sites USING gist (location);
 
 
 --
@@ -1349,7 +1416,7 @@ CREATE INDEX index_incident_notes_on_incident_id ON public.incident_notes USING 
 -- Name: index_incidents_fusion_lookup; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_incidents_fusion_lookup ON public.incidents USING btree (site_id, status, updated_at) WHERE ((status)::text = ANY ((ARRAY['open'::character varying, 'acknowledged'::character varying])::text[]));
+CREATE INDEX index_incidents_fusion_lookup ON public.incidents USING btree (site_id, status, updated_at) WHERE ((status)::text = ANY (ARRAY[('open'::character varying)::text, ('acknowledged'::character varying)::text]));
 
 
 --
@@ -2064,6 +2131,20 @@ CREATE TRIGGER incident_notes_immutable BEFORE UPDATE ON public.incident_notes F
 --
 
 CREATE TRIGGER incident_notes_no_delete BEFORE DELETE ON public.incident_notes FOR EACH ROW EXECUTE FUNCTION public.prevent_incident_note_delete();
+
+
+--
+-- Name: external_signals trg_sync_external_signal_location; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER trg_sync_external_signal_location BEFORE INSERT OR UPDATE OF lat, lng ON public.external_signals FOR EACH ROW EXECUTE FUNCTION public.sync_external_signal_location();
+
+
+--
+-- Name: sites trg_sync_site_location; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER trg_sync_site_location BEFORE INSERT OR UPDATE OF latitude, longitude ON public.sites FOR EACH ROW EXECUTE FUNCTION public.sync_site_location();
 
 
 --
