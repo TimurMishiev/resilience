@@ -134,11 +134,15 @@ describe('IncidentDetailPage', () => {
     })
   })
 
-  it('shows replay unavailable callout when replaying', async () => {
+  it('shows replay info banner and still loads incident data when replaying', async () => {
     mockState.isReplaying = true
     await renderPage()
     await waitFor(() => {
-      expect(screen.getByText(/incident detail is unavailable during replay/i)).toBeTruthy()
+      expect(screen.getByText(/viewing live incident state/i)).toBeTruthy()
+    })
+    // Incident data should still load during replay
+    await waitFor(() => {
+      expect(screen.getByText('Port Alpha')).toBeTruthy()
     })
   })
 

@@ -27,9 +27,10 @@ interface RecommendationCardProps {
   rec:           Recommendation
   onViewEvidence: (rec: Recommendation) => void
   isCommander:   boolean
+  isReadOnly?:   boolean
 }
 
-export default function RecommendationCard({ rec, onViewEvidence, isCommander }: RecommendationCardProps) {
+export default function RecommendationCard({ rec, onViewEvidence, isCommander, isReadOnly = false }: RecommendationCardProps) {
   const accept  = useAcceptRecommendation()
   const reject  = useRejectRecommendation()
   const defer   = useDeferRecommendation()
@@ -104,7 +105,7 @@ export default function RecommendationCard({ rec, onViewEvidence, isCommander }:
         )}
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-          {isPending && isCommander && (
+          {isPending && isCommander && !isReadOnly && (
             <>
               <Button
                 small

@@ -3,7 +3,8 @@ module Api
     after_action :verify_authorized
 
     # GET /api/signal_rule_matches
-    # Query params: rule_id, site_id, workflow_status, geofence_breach, from, to, page, per_page
+    # Query params: rule_id, site_id, workflow_status, geofence_breach, from, to, as_of, page, per_page
+    # as_of: ISO8601 timestamp — limits fired_at to matches that existed at that point in time
     def index
       authorize SignalRuleMatch
       matches = SignalRuleMatch.order(fired_at: :desc)
@@ -13,7 +14,8 @@ module Api
       matches = matches.for_site(params[:site_id])        if params[:site_id].present?
       matches = matches.by_status(params[:workflow_status]) if params[:workflow_status].present?
       matches = matches.where("fired_at >= ?", safe_parse_datetime(params[:from])) if params[:from].present?
-      matches = matches.where("fired_at <= ?", safe_parse_datetime(params[:to]))   if params[:to].present?
+      upper   = [safe_parse_datetime(params[:to]), as_of].compact.min
+      matches = matches.where("fired_at <= ?", upper)                              if upper.present?
       # geofence_breach=true → only geofence-triggered matches (metadata flag, not pagination-driven)
       if params[:geofence_breach].present?
         if ActiveModel::Type::Boolean.new.cast(params[:geofence_breach])

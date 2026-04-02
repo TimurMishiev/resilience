@@ -29,13 +29,14 @@ const STATUS_OPTIONS = [
 
 export default function RecommendationsPage() {
   const { isCommander } = useRole()
-  const { isReplaying } = useReplay()
+  const { isReplaying, asOf } = useReplay()
   const [statusFilter, setStatusFilter] = useState('')
   const [evidenceRec, setEvidenceRec]   = useState<Recommendation | null>(null)
 
+  const replayParams = isReplaying && asOf ? { as_of: asOf } : {}
   const { data, isPending, error } = useRecommendations(
-    statusFilter ? { status: statusFilter } : undefined,
-    { enabled: !isReplaying, refetchInterval: isReplaying ? false : 60_000 },
+    { ...(statusFilter ? { status: statusFilter } : {}), ...replayParams },
+    { refetchInterval: isReplaying ? false : 60_000 },
   )
   const { data: metrics } = useRecommendationMetrics({ enabled: !isReplaying, refetchInterval: isReplaying ? false : 120_000 })
   const generate = useGenerateRecommendations()
@@ -65,16 +66,9 @@ export default function RecommendationsPage() {
       </div>
 
       {isReplaying && (
-        <>
-          <Callout intent="warning" icon="history" style={{ marginBottom: 16 }}>
-            Recommendations are hidden during replay because they are generated from live operational state and do not yet support historical playback.
-          </Callout>
-          <NonIdealState
-            icon="history"
-            title="Recommendations unavailable in replay"
-            description="Return to live mode to review current recommendations and recommendation metrics."
-          />
-        </>
+        <Callout intent="primary" icon="info-sign" style={{ marginBottom: 12 }}>
+          Showing recommendations that existed at the replay timestamp. Write actions are disabled.
+        </Callout>
       )}
 
       {/* ── metrics bar ── */}
@@ -114,24 +108,26 @@ export default function RecommendationsPage() {
         )}
       </div>}
 
-      {!isReplaying && isPending && <Spinner size={24} style={{ marginTop: 24 }} />}
-      {!isReplaying && error && <Callout intent="danger" compact>{error.message}</Callout>}
+      {isPending && <Spinner size={24} style={{ marginTop: 24 }} />}
+      {error && <Callout intent="danger" compact>{error.message}</Callout>}
 
-      {!isReplaying && !isPending && !error && recs.length === 0 && (
+      {!isPending && !error && recs.length === 0 && (
         <NonIdealState
           icon="lightbulb"
           title="No recommendations"
           description={
-            statusFilter
-              ? `No ${statusFilter} recommendations.`
-              : isCommander
-                ? 'No active recommendations. Click "Generate Now" to run a fresh analysis.'
-                : 'No active recommendations at this time. The system analyses your operational state every 30 minutes.'
+            isReplaying
+              ? 'No recommendations existed at the selected replay timestamp.'
+              : statusFilter
+                ? `No ${statusFilter} recommendations.`
+                : isCommander
+                  ? 'No active recommendations. Click "Generate Now" to run a fresh analysis.'
+                  : 'No active recommendations at this time. The system analyses your operational state every 30 minutes.'
           }
         />
       )}
 
-      {!isReplaying && !isPending && recs.length > 0 && (
+      {!isPending && recs.length > 0 && (
         <Tabs id="rec-tier-tabs" defaultSelectedTabId="rule">
           <Tab
             id="rule"
@@ -144,6 +140,7 @@ export default function RecommendationsPage() {
                     rec={rec}
                     onViewEvidence={setEvidenceRec}
                     isCommander={isCommander}
+                    isReadOnly={isReplaying}
                   />
                 ))}
                 {recs.filter(r => r.tier === 'rule').length === 0 && (
@@ -171,6 +168,7 @@ export default function RecommendationsPage() {
                     rec={rec}
                     onViewEvidence={setEvidenceRec}
                     isCommander={isCommander}
+                    isReadOnly={isReplaying}
                   />
                 ))}
               </div>

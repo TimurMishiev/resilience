@@ -27,13 +27,14 @@ describe('OntologyQueryPanel', () => {
     postAiOntologyQuery.mockReset()
   })
 
-  it('shows a replay warning instead of query controls during replay', () => {
+  it('shows a live-data warning banner during replay but keeps query controls accessible', () => {
     replayState.isReplaying = true
 
     render(<OntologyQueryPanel />)
 
-    expect(screen.getByText(/Ontology query is unavailable during replay/i)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Run ontology query/i })).not.toBeInTheDocument()
+    expect(screen.getByText(/queries run against live operational state/i)).toBeInTheDocument()
+    // Query controls should still be visible (not hard-gated)
+    expect(screen.getByRole('button', { name: /Run ontology query/i })).toBeInTheDocument()
   })
 
   it('submits the natural-language query and renders the graph response', async () => {

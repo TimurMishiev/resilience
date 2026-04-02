@@ -4,7 +4,9 @@ module Api
     after_action :verify_authorized
 
     # GET /api/recommendations
-    # Query params: status, tier, type, affected_entity_type, affected_entity_id
+    # Query params: status, tier, type, affected_entity_type, affected_entity_id, as_of
+    # as_of: ISO8601 — returns recommendations that existed at that point in time
+    #         (created_at <= as_of and not yet expired at as_of).
     def index
       authorize Recommendation
       recs = Recommendation.includes(:reviewer).recent
@@ -15,8 +17,15 @@ module Api
       recs = recs.where(affected_entity_type: params[:affected_entity_type]) if params[:affected_entity_type].present?
       recs = recs.where(affected_entity_id:   params[:affected_entity_id])   if params[:affected_entity_id].present?
 
-      # Default: only show active (pending + not expired)
-      recs = recs.active if params[:status].blank?
+      if as_of
+        # Replay mode: show recommendations that had been created by as_of
+        # and had not yet expired at as_of (or have no expiry).
+        recs = recs.where("created_at <= ?", as_of)
+                   .where("expires_at IS NULL OR expires_at > ?", as_of)
+      elsif params[:status].blank?
+        # Default (live mode): only show active (pending + not expired)
+        recs = recs.active
+      end
 
       records, meta = paginate(recs)
       render json: { data: records.map { |r| serialize(r) }, meta: meta }

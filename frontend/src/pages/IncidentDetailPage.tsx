@@ -202,26 +202,11 @@ export default function IncidentDetailPage() {
   const [editingTitle, setEditingTitle] = useState(false)
   const [editingSev,   setEditingSev]   = useState(false)
 
-  const { data: incident, isPending, error } = useIncident(id, { enabled: !isReplaying, refetchInterval: isReplaying ? false : 15_000 })
+  const { data: incident, isPending, error } = useIncident(id, { refetchInterval: isReplaying ? false : 15_000 })
   const { data: txData } = useIncidentAllowedTransitions(id, { enabled: !isReplaying, refetchInterval: isReplaying ? false : 15_000 })
   const transition = useTransitionIncident()
   const updateMut  = useUpdateIncident()
   const assign     = useAssignIncident()
-
-  if (isReplaying) {
-    return (
-      <div className="page-content">
-        <Callout intent="warning" icon="history" style={{ marginBottom: 16 }}>
-          Incident detail is unavailable during replay because incident status, assignment, notes, recommendations, and intelligence chain state are live-only.
-        </Callout>
-        <NonIdealState
-          icon="history"
-          title="Incident detail unavailable in replay"
-          description="Return to live mode to review and manage incidents."
-        />
-      </div>
-    )
-  }
 
   if (isPending) {
     return (
@@ -259,6 +244,12 @@ export default function IncidentDetailPage() {
 
   return (
     <div className="page-content site-detail">
+
+      {isReplaying && (
+        <Callout intent="primary" icon="info-sign" style={{ marginBottom: 12 }}>
+          Viewing live incident state. Write actions are disabled during replay.
+        </Callout>
+      )}
 
       {/* ── breadcrumb ── */}
       <div style={{ marginBottom: 8 }}>
@@ -353,7 +344,7 @@ export default function IncidentDetailPage() {
               <span className="bp6-text-muted">Unassigned</span>
             )}
             {/* Take / Drop */}
-            {!isTerminal && currentUser && (
+            {!isTerminal && !isReplaying && currentUser && (
               isAssignedToMe ? (
                 <Button
                   small minimal intent="none"
@@ -416,7 +407,7 @@ export default function IncidentDetailPage() {
       </div>
 
       {/* ── status transition buttons ── */}
-      {allowedTransitions.length > 0 && (
+      {allowedTransitions.length > 0 && !isReplaying && (
         <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
           {allowedTransitions.map((to) => (
             <Button

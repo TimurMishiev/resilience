@@ -597,6 +597,7 @@ export interface SignalRuleMatchesParams extends PaginationParams {
   geofence_breach?: boolean
   from?: string
   to?: string
+  as_of?: string
 }
 
 // ---------------------------------------------------------------------------

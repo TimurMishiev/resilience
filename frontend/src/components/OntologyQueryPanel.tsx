@@ -70,15 +70,11 @@ export default function OntologyQueryPanel() {
     return () => { mountedRef.current = false }
   }, [])
 
-  if (isReplaying) {
-    return (
-      <div className="ontology-panel">
-        <Callout intent="warning" icon="history">
-          Ontology query is unavailable during replay because the graph is currently resolved against live operational state, not replay-scoped snapshots.
-        </Callout>
-      </div>
-    )
-  }
+  const replayBanner = isReplaying && (
+    <Callout intent="primary" icon="info-sign" style={{ marginBottom: 12 }}>
+      Ontology queries run against live operational state. Results are not scoped to the replay timestamp.
+    </Callout>
+  )
 
   const nodesByType = result ? groupNodes(result.nodes) : {}
   const nodesById = result
@@ -112,6 +108,7 @@ export default function OntologyQueryPanel() {
 
   return (
     <div className="ontology-panel">
+      {replayBanner}
       <Card className="ontology-query-card">
         <div className="ontology-query-header">
           <div>

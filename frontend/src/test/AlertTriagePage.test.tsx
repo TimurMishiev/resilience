@@ -176,11 +176,11 @@ describe('AlertTriagePage', () => {
     expect(mockState.fetchNextPage).toHaveBeenCalledTimes(1)
   })
 
-  it('fails closed during replay and disables the infinite alert query', async () => {
+  it('shows replay info banner and disables refetch during replay', async () => {
     mockState.isReplaying = true
     renderAlertTriagePage()
 
-    expect(await screen.findByText('Alert triage unavailable in replay')).toBeInTheDocument()
-    expect(mockState.infiniteOptions).toMatchObject({ enabled: false, refetchInterval: false })
+    expect(await screen.findByText(/Showing alerts that fired before the replay timestamp/)).toBeInTheDocument()
+    expect(mockState.infiniteOptions).toMatchObject({ refetchInterval: false })
   })
 })

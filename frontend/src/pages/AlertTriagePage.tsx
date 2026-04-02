@@ -99,9 +99,10 @@ interface AlertRowProps {
   onCheck:      (id: string, idx: number, shiftKey: boolean) => void
   rowIndex:     number
   onChainClick: (m: SignalRuleMatch) => void
+  isReadOnly?:  boolean
 }
 
-function AlertRow({ match: m, isChecked, someSelected, onCheck, rowIndex, onChainClick }: AlertRowProps) {
+function AlertRow({ match: m, isChecked, someSelected, onCheck, rowIndex, onChainClick, isReadOnly = false }: AlertRowProps) {
   const navigate   = useNavigate()
   const transition = useTransitionAlert()
   const actions    = (m.metadata?.actions_taken as string[] | undefined) ?? []
@@ -196,8 +197,8 @@ function AlertRow({ match: m, isChecked, someSelected, onCheck, rowIndex, onChai
         </div>
       </div>
 
-      {/* Per-row transition buttons — hidden when bulk selection is active */}
-      {txBtns.length > 0 && !someSelected && (
+      {/* Per-row transition buttons — hidden when bulk selection is active or in replay */}
+      {txBtns.length > 0 && !someSelected && !isReadOnly && (
         <div
           className="alert-row-transitions"
           onClick={e => e.stopPropagation()}
@@ -224,7 +225,7 @@ function AlertRow({ match: m, isChecked, someSelected, onCheck, rowIndex, onChai
 // ── AlertTriagePage ───────────────────────────────────────────────────────────
 
 export default function AlertTriagePage() {
-  const { isReplaying } = useReplay()
+  const { isReplaying, asOf } = useReplay()
   const [statusFilter,  setStatusFilter]  = useState('unacknowledged')
   const [selectedIds,   setSelectedIds]   = useState<Set<string>>(new Set())
   // Bulk close confirmation dialog state
@@ -236,6 +237,7 @@ export default function AlertTriagePage() {
   const lastClickedIdxRef = useRef<number | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
+  const replayParams = isReplaying && asOf ? { as_of: asOf } : {}
   const {
     data,
     isLoading,
@@ -245,8 +247,8 @@ export default function AlertTriagePage() {
     isFetchingNextPage,
   } = useSignalRuleMatchesInfinite({
     workflow_status: (statusFilter || undefined) as AlertStatus | undefined,
+    ...replayParams,
   }, {
-    enabled: !isReplaying,
     refetchInterval: isReplaying ? false : 15_000,
   })
 
@@ -341,19 +343,12 @@ export default function AlertTriagePage() {
   return (
     <div className="page-content">
       {isReplaying && (
-        <>
-          <Callout intent="warning" icon="history" style={{ marginBottom: 16 }}>
-            Alert triage is unavailable during replay because alert workflow state is live-only and not replay-scoped.
-          </Callout>
-          <NonIdealState
-            icon="history"
-            title="Alert triage unavailable in replay"
-            description="Return to live mode to review and transition active alerts."
-          />
-        </>
+        <Callout intent="primary" icon="info-sign" style={{ marginBottom: 12 }}>
+          Showing alerts that fired before the replay timestamp. Transition actions are disabled.
+        </Callout>
       )}
 
-      {!isReplaying && (
+      {(
         <>
       {/* ── Header ── */}
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -390,8 +385,8 @@ export default function AlertTriagePage() {
         </div>
       )}
 
-      {/* ── Bulk action toolbar ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, minHeight: 30 }}>
+      {/* ── Bulk action toolbar — hidden in replay ── */}
+      {!isReplaying && <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, minHeight: 30 }}>
         <Checkbox
           checked={allSelected}
           indeterminate={someSelected && !allSelected}
@@ -429,7 +424,7 @@ export default function AlertTriagePage() {
             {isLoading ? '' : `${matches.length} loaded alert${matches.length !== 1 ? 's' : ''} — select to bulk-triage`}
           </span>
         )}
-      </div>
+      </div>}
 
       {/* ── Content ── */}
       {isLoading && (
@@ -484,6 +479,7 @@ export default function AlertTriagePage() {
                       rowIndex={vItem.index}
                       onCheck={handleRowCheck}
                       onChainClick={setChainMatch}
+                      isReadOnly={isReplaying}
                     />
                   </div>
                 )

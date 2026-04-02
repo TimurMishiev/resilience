@@ -176,8 +176,8 @@ export default function PlanningPage() {
   const { isCommander } = useRole()
   const { isReplaying } = useReplay()
   const navigate = useNavigate()
-  const { data, isLoading, isError } = usePlanning(isCommander && !isReplaying)
-  const sitesQuery = useSites({ per_page: 200 }, isCommander && !isReplaying)
+  const { data, isLoading, isError } = usePlanning(isCommander)
+  const sitesQuery = useSites({ per_page: 200 }, isCommander)
   const updateTask = useUpdateTask()
   const createCommanderIntent = useCreateCommanderIntent()
   const updateCommanderIntent = useUpdateCommanderIntent()
@@ -187,7 +187,7 @@ export default function PlanningPage() {
   const createChokepoint = useCreateChokepoint()
   const updateChokepoint = useUpdateChokepoint()
   const deleteChokepoint = useDeleteChokepoint()
-  const { readings } = useTelemetry(isCommander && !isReplaying)
+  const { readings } = useTelemetry(isCommander)
 
   // Per-row pending asset selection — keyed by task id
   const [pendingAssets, setPendingAssets] = useState<Record<string, string | null | undefined>>({})
@@ -533,21 +533,6 @@ export default function PlanningPage() {
     )
   }
 
-  if (isReplaying) {
-    return (
-      <div style={{ padding: '20px 24px', maxWidth: 960 }}>
-        <Callout intent="warning" icon="history" style={{ marginBottom: 16 }}>
-          Operational planning is unavailable during replay because the planning dataset, AO posture state, and task-allocation workflow are live-only.
-        </Callout>
-        <NonIdealState
-          icon="timeline-events"
-          title="Planning unavailable in replay"
-          description="Replay mode does not yet support historical planning snapshots or safe task-allocation actions."
-        />
-      </div>
-    )
-  }
-
   if (isLoading || sitesQuery.isLoading) return <NonIdealState icon={<Spinner />} title="Loading planning data…" />
   if (isError || sitesQuery.isError || !data) return <NonIdealState icon="error" title="Failed to load planning data" />
 
@@ -714,6 +699,11 @@ export default function PlanningPage() {
 
   return (
     <div style={{ padding: '20px 24px', maxWidth: 1400 }}>
+      {isReplaying && (
+        <Callout intent="primary" icon="info-sign" style={{ marginBottom: 16 }}>
+          Viewing current planning state. Write actions are disabled during replay.
+        </Callout>
+      )}
       <div style={{ marginBottom: 24 }}>
         <h2 className="bp6-heading" style={{ margin: 0 }}>Operational Planning Surface</h2>
         <span className="bp6-text-muted" style={{ fontSize: 13 }}>
@@ -796,6 +786,7 @@ export default function PlanningPage() {
                   </span>
                   <Button
                     intent="primary"
+                    disabled={isReplaying}
                     loading={createCommanderIntent.isPending || updateCommanderIntent.isPending}
                     onClick={handleIntentSave}
                   >
@@ -856,6 +847,7 @@ export default function PlanningPage() {
                   </span>
                   <Button
                     intent="primary"
+                    disabled={isReplaying}
                     loading={createPacePlan.isPending || updatePacePlan.isPending}
                     onClick={handlePaceSave}
                   >
@@ -953,6 +945,7 @@ export default function PlanningPage() {
                 </span>
                 <Button
                   intent="primary"
+                  disabled={isReplaying}
                   loading={createSaluteReport.isPending}
                   onClick={handleSaluteSubmit}
                 >
@@ -1133,6 +1126,7 @@ export default function PlanningPage() {
                   )}
                   <Button
                     intent="primary"
+                    disabled={isReplaying}
                     loading={createChokepoint.isPending || updateChokepoint.isPending}
                     onClick={handleChokepointSave}
                   >
@@ -1502,7 +1496,7 @@ export default function PlanningPage() {
                         isPending={isMutating}
                         posture={task.ao_posture as Posture | undefined ?? undefined}
                       />
-                      {pending !== undefined && pending !== task.asset_id && !isMutating && (
+                      {pending !== undefined && pending !== task.asset_id && !isMutating && !isReplaying && (
                         <button
                           className="bp6-button bp6-small bp6-intent-primary"
                           style={{ marginLeft: 6 }}

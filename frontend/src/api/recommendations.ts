@@ -63,6 +63,7 @@ export interface RecommendationParams {
   status?: string
   tier?:   string
   type?:   string
+  as_of?:  string
   [key: string]: string | undefined
 }
 
