@@ -21,9 +21,12 @@ class ExternalSignal < ApplicationRecord
   # (Haversine applied in Ruby callers) when PostGIS is not available — e.g.
   # during tests on a plain PostgreSQL instance or before migration runs.
   scope :near_point, ->(lat, lng, km) {
-    if column_names.include?("location")
+    if connection.extension_enabled?("postgis")
       # ST_DWithin(geography, geography, meters) — exact great-circle distance,
       # uses the GIST spatial index for O(log n) performance.
+      # Uses connection.extension_enabled? (live DB query) rather than column_names
+      # (cached at class load time) so long-running processes pick up the column
+      # after it is added without requiring a restart.
       point = "ST_SetSRID(ST_MakePoint(#{lng.to_f}, #{lat.to_f}), 4326)::geography"
       where("ST_DWithin(location, #{point}, ?)", km.to_f * 1000)
     else

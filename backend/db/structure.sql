@@ -1,6 +1,15 @@
+--
+-- PostgreSQL database dump
+--
+
+
+-- Dumped from database version 17.7 (Ubuntu 17.7-3.pgdg24.04+1)
+-- Dumped by pg_dump version 17.9 (Debian 17.9-0+deb13u1)
+
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -21,6 +30,20 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
 --
 
 COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
+
+
+--
+-- Name: postgis; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public;
+
+
+--
+-- Name: EXTENSION postgis; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON EXTENSION postgis IS 'PostGIS geometry and geography spatial types and functions';
 
 
 --
@@ -47,6 +70,31 @@ BEGIN
   RAISE EXCEPTION 'incident_notes are immutable — updates are not permitted';
 END;
 $$;
+
+
+--
+-- Name: sync_external_signal_location(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.sync_external_signal_location() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF NEW.lat IS NOT NULL AND NEW.lng IS NOT NULL THEN
+    NEW.location := ST_SetSRID(ST_MakePoint(NEW.lng::double precision, NEW.lat::double precision), 4326);
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+
+--
+-- Name: sync_site_location(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.sync_site_location() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$ BEGIN IF NEW.latitude IS NOT NULL AND NEW.longitude IS NOT NULL THEN NEW.location := ST_SetSRID(ST_MakePoint(NEW.longitude::double precision, NEW.latitude::double precision), 4326); END IF; RETURN NEW; END; $$;
 
 
 SET default_tablespace = '';
@@ -123,45 +171,6 @@ CREATE TABLE public.audit_events (
 
 
 --
--- Name: chokepoints; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.chokepoints (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    area_of_operation_id uuid NOT NULL,
-    created_by_id uuid NOT NULL,
-    updated_by_id uuid NOT NULL,
-    name character varying NOT NULL,
-    category character varying NOT NULL,
-    status character varying NOT NULL,
-    latitude numeric(10,6) NOT NULL,
-    longitude numeric(10,6) NOT NULL,
-    watch_radius_km numeric(6,2) NOT NULL,
-    notes text,
-    created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL
-);
-
-
---
--- Name: commander_intents; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.commander_intents (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    area_of_operation_id uuid NOT NULL,
-    created_by_id uuid NOT NULL,
-    updated_by_id uuid NOT NULL,
-    title character varying NOT NULL,
-    objective text NOT NULL,
-    end_state text NOT NULL,
-    constraints text,
-    created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL
-);
-
-
---
 -- Name: correlation_rules; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -200,6 +209,7 @@ CREATE TABLE public.external_signals (
     raw_payload jsonb DEFAULT '{}'::jsonb NOT NULL,
     occurred_at timestamp(6) without time zone NOT NULL,
     ingested_at timestamp(6) without time zone DEFAULT now() NOT NULL,
+    location public.geography(Point,4326),
     CONSTRAINT signals_signal_type_check CHECK ((signal_type = ANY (ARRAY['aircraft_position'::text, 'vessel_position'::text, 'seismic_event'::text, 'gps_jamming'::text, 'wildfire'::text, 'manual'::text, 'ais_gap'::text, 'conflict_event'::text, 'disaster_alert'::text]))),
     CONSTRAINT signals_source_check CHECK ((source = ANY (ARRAY['opensky'::text, 'ais'::text, 'usgs_seismic'::text, 'gpsjam'::text, 'firms_wildfire'::text, 'manual'::text, 'derived'::text, 'acled'::text, 'gdacs'::text])))
 );
@@ -240,79 +250,7 @@ CREATE TABLE public.incidents (
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
     assigned_to_id uuid,
-    assigned_at timestamp(6) without time zone,
-    prosecution_phase character varying,
-    prosecuted_by_id uuid,
-    prosecution_initiated_at timestamp(6) without time zone
-);
-
-
---
--- Name: operational_statuses; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.operational_statuses (
-    id bigint NOT NULL,
-    category character varying NOT NULL,
-    key character varying NOT NULL,
-    payload jsonb DEFAULT '{}'::jsonb NOT NULL,
-    created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL
-);
-
-
---
--- Name: operational_statuses_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.operational_statuses_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: operational_statuses_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.operational_statuses_id_seq OWNED BY public.operational_statuses.id;
-
-
---
--- Name: pace_plans; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.pace_plans (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    area_of_operation_id uuid NOT NULL,
-    created_by_id uuid NOT NULL,
-    updated_by_id uuid NOT NULL,
-    primary_plan text NOT NULL,
-    alternate_plan text NOT NULL,
-    contingency_plan text NOT NULL,
-    emergency_plan text NOT NULL,
-    notes text,
-    created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL
-);
-
-
---
--- Name: prosecution_steps; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.prosecution_steps (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    incident_id uuid NOT NULL,
-    actor_id uuid NOT NULL,
-    phase character varying NOT NULL,
-    action_type character varying NOT NULL,
-    notes text,
-    evidence_refs jsonb DEFAULT '{}'::jsonb NOT NULL,
-    occurred_at timestamp(6) without time zone DEFAULT now() NOT NULL,
-    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
+    assigned_at timestamp(6) without time zone
 );
 
 
@@ -336,27 +274,6 @@ CREATE TABLE public.recommendations (
     review_reason text,
     executed_at timestamp without time zone,
     expires_at timestamp without time zone NOT NULL,
-    created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL
-);
-
-
---
--- Name: salute_reports; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.salute_reports (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    area_of_operation_id uuid NOT NULL,
-    site_id uuid,
-    created_by_id uuid NOT NULL,
-    size character varying,
-    activity text NOT NULL,
-    location text NOT NULL,
-    unit character varying,
-    observed_at timestamp(6) without time zone NOT NULL,
-    equipment text,
-    remarks text,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL
 );
@@ -425,24 +342,411 @@ CREATE TABLE public.sites (
     area_of_operation_id uuid,
     flagged_at timestamp(6) without time zone,
     flag_reason text,
-    geofence_radius_km double precision DEFAULT 50.0 NOT NULL
+    geofence_radius_km double precision DEFAULT 50.0 NOT NULL,
+    location public.geography(Point,4326)
 );
 
 
 --
--- Name: sse_stream_leases; Type: TABLE; Schema: public; Owner: -
+-- Name: solid_cache_entries; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.sse_stream_leases (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    user_id uuid NOT NULL,
-    stream_name character varying NOT NULL,
-    remote_ip character varying NOT NULL,
-    lease_key character varying NOT NULL,
+CREATE TABLE public.solid_cache_entries (
+    id bigint NOT NULL,
+    key bytea NOT NULL,
+    value bytea NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    key_hash bigint NOT NULL,
+    byte_size integer NOT NULL
+);
+
+
+--
+-- Name: solid_cache_entries_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.solid_cache_entries_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: solid_cache_entries_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.solid_cache_entries_id_seq OWNED BY public.solid_cache_entries.id;
+
+
+--
+-- Name: solid_queue_blocked_executions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.solid_queue_blocked_executions (
+    id bigint NOT NULL,
+    job_id bigint NOT NULL,
+    queue_name character varying NOT NULL,
+    priority integer DEFAULT 0 NOT NULL,
+    concurrency_key character varying NOT NULL,
+    expires_at timestamp(6) without time zone NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: solid_queue_blocked_executions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.solid_queue_blocked_executions_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: solid_queue_blocked_executions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.solid_queue_blocked_executions_id_seq OWNED BY public.solid_queue_blocked_executions.id;
+
+
+--
+-- Name: solid_queue_claimed_executions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.solid_queue_claimed_executions (
+    id bigint NOT NULL,
+    job_id bigint NOT NULL,
+    process_id bigint,
+    created_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: solid_queue_claimed_executions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.solid_queue_claimed_executions_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: solid_queue_claimed_executions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.solid_queue_claimed_executions_id_seq OWNED BY public.solid_queue_claimed_executions.id;
+
+
+--
+-- Name: solid_queue_failed_executions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.solid_queue_failed_executions (
+    id bigint NOT NULL,
+    job_id bigint NOT NULL,
+    error text,
+    created_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: solid_queue_failed_executions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.solid_queue_failed_executions_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: solid_queue_failed_executions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.solid_queue_failed_executions_id_seq OWNED BY public.solid_queue_failed_executions.id;
+
+
+--
+-- Name: solid_queue_jobs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.solid_queue_jobs (
+    id bigint NOT NULL,
+    queue_name character varying NOT NULL,
+    class_name character varying NOT NULL,
+    arguments text,
+    priority integer DEFAULT 0 NOT NULL,
+    active_job_id character varying,
+    scheduled_at timestamp(6) without time zone,
+    finished_at timestamp(6) without time zone,
+    concurrency_key character varying,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: solid_queue_jobs_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.solid_queue_jobs_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: solid_queue_jobs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.solid_queue_jobs_id_seq OWNED BY public.solid_queue_jobs.id;
+
+
+--
+-- Name: solid_queue_pauses; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.solid_queue_pauses (
+    id bigint NOT NULL,
+    queue_name character varying NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: solid_queue_pauses_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.solid_queue_pauses_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: solid_queue_pauses_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.solid_queue_pauses_id_seq OWNED BY public.solid_queue_pauses.id;
+
+
+--
+-- Name: solid_queue_processes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.solid_queue_processes (
+    id bigint NOT NULL,
+    kind character varying NOT NULL,
+    last_heartbeat_at timestamp(6) without time zone NOT NULL,
+    supervisor_id bigint,
+    pid integer NOT NULL,
+    hostname character varying,
+    metadata text,
+    created_at timestamp(6) without time zone NOT NULL,
+    name character varying NOT NULL
+);
+
+
+--
+-- Name: solid_queue_processes_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.solid_queue_processes_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: solid_queue_processes_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.solid_queue_processes_id_seq OWNED BY public.solid_queue_processes.id;
+
+
+--
+-- Name: solid_queue_ready_executions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.solid_queue_ready_executions (
+    id bigint NOT NULL,
+    job_id bigint NOT NULL,
+    queue_name character varying NOT NULL,
+    priority integer DEFAULT 0 NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: solid_queue_ready_executions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.solid_queue_ready_executions_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: solid_queue_ready_executions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.solid_queue_ready_executions_id_seq OWNED BY public.solid_queue_ready_executions.id;
+
+
+--
+-- Name: solid_queue_recurring_executions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.solid_queue_recurring_executions (
+    id bigint NOT NULL,
+    job_id bigint NOT NULL,
+    task_key character varying NOT NULL,
+    run_at timestamp(6) without time zone NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: solid_queue_recurring_executions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.solid_queue_recurring_executions_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: solid_queue_recurring_executions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.solid_queue_recurring_executions_id_seq OWNED BY public.solid_queue_recurring_executions.id;
+
+
+--
+-- Name: solid_queue_recurring_tasks; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.solid_queue_recurring_tasks (
+    id bigint NOT NULL,
+    key character varying NOT NULL,
+    schedule character varying NOT NULL,
+    command character varying(2048),
+    class_name character varying,
+    arguments text,
+    queue_name character varying,
+    priority integer DEFAULT 0,
+    static boolean DEFAULT true NOT NULL,
+    description text,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: solid_queue_recurring_tasks_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.solid_queue_recurring_tasks_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: solid_queue_recurring_tasks_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.solid_queue_recurring_tasks_id_seq OWNED BY public.solid_queue_recurring_tasks.id;
+
+
+--
+-- Name: solid_queue_scheduled_executions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.solid_queue_scheduled_executions (
+    id bigint NOT NULL,
+    job_id bigint NOT NULL,
+    queue_name character varying NOT NULL,
+    priority integer DEFAULT 0 NOT NULL,
+    scheduled_at timestamp(6) without time zone NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: solid_queue_scheduled_executions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.solid_queue_scheduled_executions_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: solid_queue_scheduled_executions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.solid_queue_scheduled_executions_id_seq OWNED BY public.solid_queue_scheduled_executions.id;
+
+
+--
+-- Name: solid_queue_semaphores; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.solid_queue_semaphores (
+    id bigint NOT NULL,
+    key character varying NOT NULL,
+    value integer DEFAULT 1 NOT NULL,
     expires_at timestamp(6) without time zone NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL
 );
+
+
+--
+-- Name: solid_queue_semaphores_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.solid_queue_semaphores_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: solid_queue_semaphores_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.solid_queue_semaphores_id_seq OWNED BY public.solid_queue_semaphores.id;
 
 
 --
@@ -468,245 +772,6 @@ CREATE TABLE public.tasks (
 
 
 --
--- Name: telemetry_readings; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.telemetry_readings (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    asset_id uuid NOT NULL,
-    lat double precision NOT NULL,
-    lng double precision NOT NULL,
-    speed double precision,
-    heading double precision,
-    battery double precision,
-    occurred_at timestamp(6) without time zone NOT NULL,
-    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
-)
-PARTITION BY RANGE (occurred_at);
-
-
---
--- Name: telemetry_readings_p20260323; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.telemetry_readings_p20260323 (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    asset_id uuid NOT NULL,
-    lat double precision NOT NULL,
-    lng double precision NOT NULL,
-    speed double precision,
-    heading double precision,
-    battery double precision,
-    occurred_at timestamp(6) without time zone NOT NULL,
-    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: telemetry_readings_p20260324; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.telemetry_readings_p20260324 (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    asset_id uuid NOT NULL,
-    lat double precision NOT NULL,
-    lng double precision NOT NULL,
-    speed double precision,
-    heading double precision,
-    battery double precision,
-    occurred_at timestamp(6) without time zone NOT NULL,
-    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: telemetry_readings_p20260325; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.telemetry_readings_p20260325 (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    asset_id uuid NOT NULL,
-    lat double precision NOT NULL,
-    lng double precision NOT NULL,
-    speed double precision,
-    heading double precision,
-    battery double precision,
-    occurred_at timestamp(6) without time zone NOT NULL,
-    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: telemetry_readings_p20260326; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.telemetry_readings_p20260326 (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    asset_id uuid NOT NULL,
-    lat double precision NOT NULL,
-    lng double precision NOT NULL,
-    speed double precision,
-    heading double precision,
-    battery double precision,
-    occurred_at timestamp(6) without time zone NOT NULL,
-    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: telemetry_readings_p20260327; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.telemetry_readings_p20260327 (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    asset_id uuid NOT NULL,
-    lat double precision NOT NULL,
-    lng double precision NOT NULL,
-    speed double precision,
-    heading double precision,
-    battery double precision,
-    occurred_at timestamp(6) without time zone NOT NULL,
-    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: telemetry_readings_p20260328; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.telemetry_readings_p20260328 (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    asset_id uuid NOT NULL,
-    lat double precision NOT NULL,
-    lng double precision NOT NULL,
-    speed double precision,
-    heading double precision,
-    battery double precision,
-    occurred_at timestamp(6) without time zone NOT NULL,
-    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: telemetry_readings_p20260329; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.telemetry_readings_p20260329 (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    asset_id uuid NOT NULL,
-    lat double precision NOT NULL,
-    lng double precision NOT NULL,
-    speed double precision,
-    heading double precision,
-    battery double precision,
-    occurred_at timestamp(6) without time zone NOT NULL,
-    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: telemetry_readings_p20260330; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.telemetry_readings_p20260330 (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    asset_id uuid NOT NULL,
-    lat double precision NOT NULL,
-    lng double precision NOT NULL,
-    speed double precision,
-    heading double precision,
-    battery double precision,
-    occurred_at timestamp(6) without time zone NOT NULL,
-    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: telemetry_readings_p20260331; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.telemetry_readings_p20260331 (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    asset_id uuid NOT NULL,
-    lat double precision NOT NULL,
-    lng double precision NOT NULL,
-    speed double precision,
-    heading double precision,
-    battery double precision,
-    occurred_at timestamp(6) without time zone NOT NULL,
-    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: telemetry_readings_p20260401; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.telemetry_readings_p20260401 (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    asset_id uuid NOT NULL,
-    lat double precision NOT NULL,
-    lng double precision NOT NULL,
-    speed double precision,
-    heading double precision,
-    battery double precision,
-    occurred_at timestamp(6) without time zone NOT NULL,
-    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: telemetry_readings_p20260402; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.telemetry_readings_p20260402 (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    asset_id uuid NOT NULL,
-    lat double precision NOT NULL,
-    lng double precision NOT NULL,
-    speed double precision,
-    heading double precision,
-    battery double precision,
-    occurred_at timestamp(6) without time zone NOT NULL,
-    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: telemetry_readings_p20260403; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.telemetry_readings_p20260403 (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    asset_id uuid NOT NULL,
-    lat double precision NOT NULL,
-    lng double precision NOT NULL,
-    speed double precision,
-    heading double precision,
-    battery double precision,
-    occurred_at timestamp(6) without time zone NOT NULL,
-    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: telemetry_readings_p20260404; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.telemetry_readings_p20260404 (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    asset_id uuid NOT NULL,
-    lat double precision NOT NULL,
-    lng double precision NOT NULL,
-    speed double precision,
-    heading double precision,
-    battery double precision,
-    occurred_at timestamp(6) without time zone NOT NULL,
-    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
-);
-
-
---
 -- Name: users; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -717,7 +782,7 @@ CREATE TABLE public.users (
     role character varying DEFAULT 'operator'::character varying NOT NULL,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    CONSTRAINT users_role_check CHECK (((role)::text = ANY ((ARRAY['operator'::character varying, 'commander'::character varying])::text[])))
+    CONSTRAINT users_role_check CHECK (((role)::text = ANY (ARRAY[('operator'::character varying)::text, ('commander'::character varying)::text])))
 );
 
 
@@ -762,101 +827,87 @@ CREATE TABLE public.vessels (
 
 
 --
--- Name: telemetry_readings_p20260323; Type: TABLE ATTACH; Schema: public; Owner: -
+-- Name: solid_cache_entries id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260323 FOR VALUES FROM ('2026-03-23 00:00:00') TO ('2026-03-24 00:00:00');
-
-
---
--- Name: telemetry_readings_p20260324; Type: TABLE ATTACH; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260324 FOR VALUES FROM ('2026-03-24 00:00:00') TO ('2026-03-25 00:00:00');
+ALTER TABLE ONLY public.solid_cache_entries ALTER COLUMN id SET DEFAULT nextval('public.solid_cache_entries_id_seq'::regclass);
 
 
 --
--- Name: telemetry_readings_p20260325; Type: TABLE ATTACH; Schema: public; Owner: -
+-- Name: solid_queue_blocked_executions id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260325 FOR VALUES FROM ('2026-03-25 00:00:00') TO ('2026-03-26 00:00:00');
-
-
---
--- Name: telemetry_readings_p20260326; Type: TABLE ATTACH; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260326 FOR VALUES FROM ('2026-03-26 00:00:00') TO ('2026-03-27 00:00:00');
+ALTER TABLE ONLY public.solid_queue_blocked_executions ALTER COLUMN id SET DEFAULT nextval('public.solid_queue_blocked_executions_id_seq'::regclass);
 
 
 --
--- Name: telemetry_readings_p20260327; Type: TABLE ATTACH; Schema: public; Owner: -
+-- Name: solid_queue_claimed_executions id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260327 FOR VALUES FROM ('2026-03-27 00:00:00') TO ('2026-03-28 00:00:00');
-
-
---
--- Name: telemetry_readings_p20260328; Type: TABLE ATTACH; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260328 FOR VALUES FROM ('2026-03-28 00:00:00') TO ('2026-03-29 00:00:00');
+ALTER TABLE ONLY public.solid_queue_claimed_executions ALTER COLUMN id SET DEFAULT nextval('public.solid_queue_claimed_executions_id_seq'::regclass);
 
 
 --
--- Name: telemetry_readings_p20260329; Type: TABLE ATTACH; Schema: public; Owner: -
+-- Name: solid_queue_failed_executions id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260329 FOR VALUES FROM ('2026-03-29 00:00:00') TO ('2026-03-30 00:00:00');
-
-
---
--- Name: telemetry_readings_p20260330; Type: TABLE ATTACH; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260330 FOR VALUES FROM ('2026-03-30 00:00:00') TO ('2026-03-31 00:00:00');
+ALTER TABLE ONLY public.solid_queue_failed_executions ALTER COLUMN id SET DEFAULT nextval('public.solid_queue_failed_executions_id_seq'::regclass);
 
 
 --
--- Name: telemetry_readings_p20260331; Type: TABLE ATTACH; Schema: public; Owner: -
+-- Name: solid_queue_jobs id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260331 FOR VALUES FROM ('2026-03-31 00:00:00') TO ('2026-04-01 00:00:00');
-
-
---
--- Name: telemetry_readings_p20260401; Type: TABLE ATTACH; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260401 FOR VALUES FROM ('2026-04-01 00:00:00') TO ('2026-04-02 00:00:00');
+ALTER TABLE ONLY public.solid_queue_jobs ALTER COLUMN id SET DEFAULT nextval('public.solid_queue_jobs_id_seq'::regclass);
 
 
 --
--- Name: telemetry_readings_p20260402; Type: TABLE ATTACH; Schema: public; Owner: -
+-- Name: solid_queue_pauses id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260402 FOR VALUES FROM ('2026-04-02 00:00:00') TO ('2026-04-03 00:00:00');
-
-
---
--- Name: telemetry_readings_p20260403; Type: TABLE ATTACH; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260403 FOR VALUES FROM ('2026-04-03 00:00:00') TO ('2026-04-04 00:00:00');
+ALTER TABLE ONLY public.solid_queue_pauses ALTER COLUMN id SET DEFAULT nextval('public.solid_queue_pauses_id_seq'::regclass);
 
 
 --
--- Name: telemetry_readings_p20260404; Type: TABLE ATTACH; Schema: public; Owner: -
+-- Name: solid_queue_processes id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260404 FOR VALUES FROM ('2026-04-04 00:00:00') TO ('2026-04-05 00:00:00');
+ALTER TABLE ONLY public.solid_queue_processes ALTER COLUMN id SET DEFAULT nextval('public.solid_queue_processes_id_seq'::regclass);
 
 
 --
--- Name: operational_statuses id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: solid_queue_ready_executions id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.operational_statuses ALTER COLUMN id SET DEFAULT nextval('public.operational_statuses_id_seq'::regclass);
+ALTER TABLE ONLY public.solid_queue_ready_executions ALTER COLUMN id SET DEFAULT nextval('public.solid_queue_ready_executions_id_seq'::regclass);
+
+
+--
+-- Name: solid_queue_recurring_executions id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.solid_queue_recurring_executions ALTER COLUMN id SET DEFAULT nextval('public.solid_queue_recurring_executions_id_seq'::regclass);
+
+
+--
+-- Name: solid_queue_recurring_tasks id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.solid_queue_recurring_tasks ALTER COLUMN id SET DEFAULT nextval('public.solid_queue_recurring_tasks_id_seq'::regclass);
+
+
+--
+-- Name: solid_queue_scheduled_executions id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.solid_queue_scheduled_executions ALTER COLUMN id SET DEFAULT nextval('public.solid_queue_scheduled_executions_id_seq'::regclass);
+
+
+--
+-- Name: solid_queue_semaphores id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.solid_queue_semaphores ALTER COLUMN id SET DEFAULT nextval('public.solid_queue_semaphores_id_seq'::regclass);
 
 
 --
@@ -892,22 +943,6 @@ ALTER TABLE ONLY public.audit_events
 
 
 --
--- Name: chokepoints chokepoints_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.chokepoints
-    ADD CONSTRAINT chokepoints_pkey PRIMARY KEY (id);
-
-
---
--- Name: commander_intents commander_intents_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.commander_intents
-    ADD CONSTRAINT commander_intents_pkey PRIMARY KEY (id);
-
-
---
 -- Name: correlation_rules correlation_rules_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -940,43 +975,11 @@ ALTER TABLE ONLY public.incidents
 
 
 --
--- Name: operational_statuses operational_statuses_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.operational_statuses
-    ADD CONSTRAINT operational_statuses_pkey PRIMARY KEY (id);
-
-
---
--- Name: pace_plans pace_plans_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.pace_plans
-    ADD CONSTRAINT pace_plans_pkey PRIMARY KEY (id);
-
-
---
--- Name: prosecution_steps prosecution_steps_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.prosecution_steps
-    ADD CONSTRAINT prosecution_steps_pkey PRIMARY KEY (id);
-
-
---
 -- Name: recommendations recommendations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.recommendations
     ADD CONSTRAINT recommendations_pkey PRIMARY KEY (id);
-
-
---
--- Name: salute_reports salute_reports_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.salute_reports
-    ADD CONSTRAINT salute_reports_pkey PRIMARY KEY (id);
 
 
 --
@@ -1012,11 +1015,99 @@ ALTER TABLE ONLY public.sites
 
 
 --
--- Name: sse_stream_leases sse_stream_leases_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: solid_cache_entries solid_cache_entries_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.sse_stream_leases
-    ADD CONSTRAINT sse_stream_leases_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.solid_cache_entries
+    ADD CONSTRAINT solid_cache_entries_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: solid_queue_blocked_executions solid_queue_blocked_executions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.solid_queue_blocked_executions
+    ADD CONSTRAINT solid_queue_blocked_executions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: solid_queue_claimed_executions solid_queue_claimed_executions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.solid_queue_claimed_executions
+    ADD CONSTRAINT solid_queue_claimed_executions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: solid_queue_failed_executions solid_queue_failed_executions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.solid_queue_failed_executions
+    ADD CONSTRAINT solid_queue_failed_executions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: solid_queue_jobs solid_queue_jobs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.solid_queue_jobs
+    ADD CONSTRAINT solid_queue_jobs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: solid_queue_pauses solid_queue_pauses_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.solid_queue_pauses
+    ADD CONSTRAINT solid_queue_pauses_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: solid_queue_processes solid_queue_processes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.solid_queue_processes
+    ADD CONSTRAINT solid_queue_processes_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: solid_queue_ready_executions solid_queue_ready_executions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.solid_queue_ready_executions
+    ADD CONSTRAINT solid_queue_ready_executions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: solid_queue_recurring_executions solid_queue_recurring_executions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.solid_queue_recurring_executions
+    ADD CONSTRAINT solid_queue_recurring_executions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: solid_queue_recurring_tasks solid_queue_recurring_tasks_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.solid_queue_recurring_tasks
+    ADD CONSTRAINT solid_queue_recurring_tasks_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: solid_queue_scheduled_executions solid_queue_scheduled_executions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.solid_queue_scheduled_executions
+    ADD CONSTRAINT solid_queue_scheduled_executions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: solid_queue_semaphores solid_queue_semaphores_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.solid_queue_semaphores
+    ADD CONSTRAINT solid_queue_semaphores_pkey PRIMARY KEY (id);
 
 
 --
@@ -1052,6 +1143,13 @@ ALTER TABLE ONLY public.vessels
 
 
 --
+-- Name: idx_external_signals_location_gist; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_external_signals_location_gist ON public.external_signals USING gist (location);
+
+
+--
 -- Name: idx_geofence_breach_signal_site_unique; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1059,38 +1157,10 @@ CREATE UNIQUE INDEX idx_geofence_breach_signal_site_unique ON public.signal_rule
 
 
 --
--- Name: idx_incidents_active_prosecution; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_incidents_active_prosecution ON public.incidents USING btree (prosecution_phase) WHERE (prosecution_phase IS NOT NULL);
-
-
---
 -- Name: idx_on_entity_type_entity_id_occurred_at_dfd7f189aa; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_on_entity_type_entity_id_occurred_at_dfd7f189aa ON public.audit_events USING btree (entity_type, entity_id, occurred_at);
-
-
---
--- Name: idx_operational_statuses_category_key; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX idx_operational_statuses_category_key ON public.operational_statuses USING btree (category, key);
-
-
---
--- Name: idx_prosecution_steps_incident_phase; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_prosecution_steps_incident_phase ON public.prosecution_steps USING btree (incident_id, phase);
-
-
---
--- Name: idx_prosecution_steps_incident_time; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_prosecution_steps_incident_time ON public.prosecution_steps USING btree (incident_id, occurred_at);
 
 
 --
@@ -1108,31 +1178,10 @@ CREATE UNIQUE INDEX idx_recommendations_pending_dedup ON public.recommendations 
 
 
 --
--- Name: idx_sse_stream_leases_ip_expiry; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_sites_location_gist; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_sse_stream_leases_ip_expiry ON public.sse_stream_leases USING btree (remote_ip, expires_at);
-
-
---
--- Name: idx_sse_stream_leases_lease_key; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX idx_sse_stream_leases_lease_key ON public.sse_stream_leases USING btree (lease_key);
-
-
---
--- Name: idx_sse_stream_leases_stream_expiry; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_sse_stream_leases_stream_expiry ON public.sse_stream_leases USING btree (stream_name, expires_at);
-
-
---
--- Name: idx_sse_stream_leases_user_expiry; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_sse_stream_leases_user_expiry ON public.sse_stream_leases USING btree (user_id, expires_at);
+CREATE INDEX idx_sites_location_gist ON public.sites USING gist (location);
 
 
 --
@@ -1192,62 +1241,6 @@ CREATE INDEX index_audit_events_on_occurred_at ON public.audit_events USING btre
 
 
 --
--- Name: index_chokepoints_on_ao_id_and_lower_name; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX index_chokepoints_on_ao_id_and_lower_name ON public.chokepoints USING btree (area_of_operation_id, lower((name)::text));
-
-
---
--- Name: index_chokepoints_on_area_of_operation_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_chokepoints_on_area_of_operation_id ON public.chokepoints USING btree (area_of_operation_id);
-
-
---
--- Name: index_chokepoints_on_area_of_operation_id_and_status; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_chokepoints_on_area_of_operation_id_and_status ON public.chokepoints USING btree (area_of_operation_id, status);
-
-
---
--- Name: index_chokepoints_on_created_by_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_chokepoints_on_created_by_id ON public.chokepoints USING btree (created_by_id);
-
-
---
--- Name: index_chokepoints_on_updated_by_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_chokepoints_on_updated_by_id ON public.chokepoints USING btree (updated_by_id);
-
-
---
--- Name: index_commander_intents_on_area_of_operation_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX index_commander_intents_on_area_of_operation_id ON public.commander_intents USING btree (area_of_operation_id);
-
-
---
--- Name: index_commander_intents_on_created_by_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_commander_intents_on_created_by_id ON public.commander_intents USING btree (created_by_id);
-
-
---
--- Name: index_commander_intents_on_updated_by_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_commander_intents_on_updated_by_id ON public.commander_intents USING btree (updated_by_id);
-
-
---
 -- Name: index_correlation_rules_on_area_of_operation_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1269,13 +1262,6 @@ CREATE INDEX index_correlation_rules_on_is_active ON public.correlation_rules US
 
 
 --
--- Name: index_external_signals_on_ingested_at_and_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_external_signals_on_ingested_at_and_id ON public.external_signals USING btree (ingested_at, id);
-
-
---
 -- Name: index_external_signals_on_lat_and_lng; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1287,13 +1273,6 @@ CREATE INDEX index_external_signals_on_lat_and_lng ON public.external_signals US
 --
 
 CREATE INDEX index_external_signals_on_occurred_at ON public.external_signals USING btree (occurred_at);
-
-
---
--- Name: index_external_signals_on_signal_type_and_occurred_at; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_external_signals_on_signal_type_and_occurred_at ON public.external_signals USING btree (signal_type, occurred_at);
 
 
 --
@@ -1322,13 +1301,6 @@ CREATE INDEX index_incident_notes_on_created_at ON public.incident_notes USING b
 --
 
 CREATE INDEX index_incident_notes_on_incident_id ON public.incident_notes USING btree (incident_id);
-
-
---
--- Name: index_incidents_fusion_lookup; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_incidents_fusion_lookup ON public.incidents USING btree (site_id, status, updated_at) WHERE ((status)::text = ANY ((ARRAY['open'::character varying, 'acknowledged'::character varying])::text[]));
 
 
 --
@@ -1367,41 +1339,6 @@ CREATE INDEX index_incidents_on_status ON public.incidents USING btree (status);
 
 
 --
--- Name: index_pace_plans_on_area_of_operation_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX index_pace_plans_on_area_of_operation_id ON public.pace_plans USING btree (area_of_operation_id);
-
-
---
--- Name: index_pace_plans_on_created_by_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_pace_plans_on_created_by_id ON public.pace_plans USING btree (created_by_id);
-
-
---
--- Name: index_pace_plans_on_updated_by_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_pace_plans_on_updated_by_id ON public.pace_plans USING btree (updated_by_id);
-
-
---
--- Name: index_prosecution_steps_on_actor_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_prosecution_steps_on_actor_id ON public.prosecution_steps USING btree (actor_id);
-
-
---
--- Name: index_prosecution_steps_on_incident_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_prosecution_steps_on_incident_id ON public.prosecution_steps USING btree (incident_id);
-
-
---
 -- Name: index_recommendations_on_expires_at; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1423,34 +1360,6 @@ CREATE INDEX index_recommendations_on_status ON public.recommendations USING btr
 
 
 --
--- Name: index_salute_reports_on_area_of_operation_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_salute_reports_on_area_of_operation_id ON public.salute_reports USING btree (area_of_operation_id);
-
-
---
--- Name: index_salute_reports_on_area_of_operation_id_and_observed_at; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_salute_reports_on_area_of_operation_id_and_observed_at ON public.salute_reports USING btree (area_of_operation_id, observed_at);
-
-
---
--- Name: index_salute_reports_on_created_by_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_salute_reports_on_created_by_id ON public.salute_reports USING btree (created_by_id);
-
-
---
--- Name: index_salute_reports_on_site_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_salute_reports_on_site_id ON public.salute_reports USING btree (site_id);
-
-
---
 -- Name: index_signal_rule_matches_on_acknowledged_by_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1469,13 +1378,6 @@ CREATE INDEX index_signal_rule_matches_on_confidence ON public.signal_rule_match
 --
 
 CREATE INDEX index_signal_rule_matches_on_correlation_rule_id ON public.signal_rule_matches USING btree (correlation_rule_id);
-
-
---
--- Name: index_signal_rule_matches_on_correlation_rule_id_and_fired_at; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_signal_rule_matches_on_correlation_rule_id_and_fired_at ON public.signal_rule_matches USING btree (correlation_rule_id, fired_at);
 
 
 --
@@ -1549,17 +1451,213 @@ CREATE INDEX index_sites_on_area_of_operation_id ON public.sites USING btree (ar
 
 
 --
--- Name: index_sites_on_status; Type: INDEX; Schema: public; Owner: -
+-- Name: index_solid_cache_entries_on_byte_size; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_sites_on_status ON public.sites USING btree (status);
+CREATE INDEX index_solid_cache_entries_on_byte_size ON public.solid_cache_entries USING btree (byte_size);
 
 
 --
--- Name: index_sse_stream_leases_on_user_id; Type: INDEX; Schema: public; Owner: -
+-- Name: index_solid_cache_entries_on_key_hash; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX index_sse_stream_leases_on_user_id ON public.sse_stream_leases USING btree (user_id);
+CREATE UNIQUE INDEX index_solid_cache_entries_on_key_hash ON public.solid_cache_entries USING btree (key_hash);
+
+
+--
+-- Name: index_solid_cache_entries_on_key_hash_and_byte_size; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_solid_cache_entries_on_key_hash_and_byte_size ON public.solid_cache_entries USING btree (key_hash, byte_size);
+
+
+--
+-- Name: index_solid_queue_blocked_executions_for_maintenance; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_solid_queue_blocked_executions_for_maintenance ON public.solid_queue_blocked_executions USING btree (expires_at, concurrency_key);
+
+
+--
+-- Name: index_solid_queue_blocked_executions_for_release; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_solid_queue_blocked_executions_for_release ON public.solid_queue_blocked_executions USING btree (concurrency_key, priority, job_id);
+
+
+--
+-- Name: index_solid_queue_blocked_executions_on_job_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_solid_queue_blocked_executions_on_job_id ON public.solid_queue_blocked_executions USING btree (job_id);
+
+
+--
+-- Name: index_solid_queue_claimed_executions_on_job_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_solid_queue_claimed_executions_on_job_id ON public.solid_queue_claimed_executions USING btree (job_id);
+
+
+--
+-- Name: index_solid_queue_claimed_executions_on_process_id_and_job_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_solid_queue_claimed_executions_on_process_id_and_job_id ON public.solid_queue_claimed_executions USING btree (process_id, job_id);
+
+
+--
+-- Name: index_solid_queue_dispatch_all; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_solid_queue_dispatch_all ON public.solid_queue_scheduled_executions USING btree (scheduled_at, priority, job_id);
+
+
+--
+-- Name: index_solid_queue_failed_executions_on_job_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_solid_queue_failed_executions_on_job_id ON public.solid_queue_failed_executions USING btree (job_id);
+
+
+--
+-- Name: index_solid_queue_jobs_for_alerting; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_solid_queue_jobs_for_alerting ON public.solid_queue_jobs USING btree (scheduled_at, finished_at);
+
+
+--
+-- Name: index_solid_queue_jobs_for_filtering; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_solid_queue_jobs_for_filtering ON public.solid_queue_jobs USING btree (queue_name, finished_at);
+
+
+--
+-- Name: index_solid_queue_jobs_on_active_job_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_solid_queue_jobs_on_active_job_id ON public.solid_queue_jobs USING btree (active_job_id);
+
+
+--
+-- Name: index_solid_queue_jobs_on_class_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_solid_queue_jobs_on_class_name ON public.solid_queue_jobs USING btree (class_name);
+
+
+--
+-- Name: index_solid_queue_jobs_on_finished_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_solid_queue_jobs_on_finished_at ON public.solid_queue_jobs USING btree (finished_at);
+
+
+--
+-- Name: index_solid_queue_pauses_on_queue_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_solid_queue_pauses_on_queue_name ON public.solid_queue_pauses USING btree (queue_name);
+
+
+--
+-- Name: index_solid_queue_poll_all; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_solid_queue_poll_all ON public.solid_queue_ready_executions USING btree (priority, job_id);
+
+
+--
+-- Name: index_solid_queue_poll_by_queue; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_solid_queue_poll_by_queue ON public.solid_queue_ready_executions USING btree (queue_name, priority, job_id);
+
+
+--
+-- Name: index_solid_queue_processes_on_last_heartbeat_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_solid_queue_processes_on_last_heartbeat_at ON public.solid_queue_processes USING btree (last_heartbeat_at);
+
+
+--
+-- Name: index_solid_queue_processes_on_name_and_supervisor_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_solid_queue_processes_on_name_and_supervisor_id ON public.solid_queue_processes USING btree (name, supervisor_id);
+
+
+--
+-- Name: index_solid_queue_processes_on_supervisor_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_solid_queue_processes_on_supervisor_id ON public.solid_queue_processes USING btree (supervisor_id);
+
+
+--
+-- Name: index_solid_queue_ready_executions_on_job_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_solid_queue_ready_executions_on_job_id ON public.solid_queue_ready_executions USING btree (job_id);
+
+
+--
+-- Name: index_solid_queue_recurring_executions_on_job_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_solid_queue_recurring_executions_on_job_id ON public.solid_queue_recurring_executions USING btree (job_id);
+
+
+--
+-- Name: index_solid_queue_recurring_executions_on_task_key_and_run_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_solid_queue_recurring_executions_on_task_key_and_run_at ON public.solid_queue_recurring_executions USING btree (task_key, run_at);
+
+
+--
+-- Name: index_solid_queue_recurring_tasks_on_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_solid_queue_recurring_tasks_on_key ON public.solid_queue_recurring_tasks USING btree (key);
+
+
+--
+-- Name: index_solid_queue_recurring_tasks_on_static; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_solid_queue_recurring_tasks_on_static ON public.solid_queue_recurring_tasks USING btree (static);
+
+
+--
+-- Name: index_solid_queue_scheduled_executions_on_job_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_solid_queue_scheduled_executions_on_job_id ON public.solid_queue_scheduled_executions USING btree (job_id);
+
+
+--
+-- Name: index_solid_queue_semaphores_on_expires_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_solid_queue_semaphores_on_expires_at ON public.solid_queue_semaphores USING btree (expires_at);
+
+
+--
+-- Name: index_solid_queue_semaphores_on_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_solid_queue_semaphores_on_key ON public.solid_queue_semaphores USING btree (key);
+
+
+--
+-- Name: index_solid_queue_semaphores_on_key_and_value; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_solid_queue_semaphores_on_key_and_value ON public.solid_queue_semaphores USING btree (key, value);
 
 
 --
@@ -1581,20 +1679,6 @@ CREATE INDEX index_tasks_on_site_id ON public.tasks USING btree (site_id);
 --
 
 CREATE INDEX index_tasks_on_workflow_status ON public.tasks USING btree (workflow_status);
-
-
---
--- Name: index_telemetry_readings_on_asset_id_and_occurred_at; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_telemetry_readings_on_asset_id_and_occurred_at ON ONLY public.telemetry_readings USING btree (asset_id, occurred_at DESC);
-
-
---
--- Name: index_telemetry_readings_on_occurred_at; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_telemetry_readings_on_occurred_at ON ONLY public.telemetry_readings USING brin (occurred_at);
 
 
 --
@@ -1654,370 +1738,6 @@ CREATE UNIQUE INDEX index_vessels_on_mmsi ON public.vessels USING btree (mmsi);
 
 
 --
--- Name: telemetry_readings_p20260323_asset_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX telemetry_readings_p20260323_asset_id_occurred_at_idx ON public.telemetry_readings_p20260323 USING btree (asset_id, occurred_at DESC);
-
-
---
--- Name: telemetry_readings_p20260323_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX telemetry_readings_p20260323_occurred_at_idx ON public.telemetry_readings_p20260323 USING brin (occurred_at);
-
-
---
--- Name: telemetry_readings_p20260324_asset_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX telemetry_readings_p20260324_asset_id_occurred_at_idx ON public.telemetry_readings_p20260324 USING btree (asset_id, occurred_at DESC);
-
-
---
--- Name: telemetry_readings_p20260324_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX telemetry_readings_p20260324_occurred_at_idx ON public.telemetry_readings_p20260324 USING brin (occurred_at);
-
-
---
--- Name: telemetry_readings_p20260325_asset_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX telemetry_readings_p20260325_asset_id_occurred_at_idx ON public.telemetry_readings_p20260325 USING btree (asset_id, occurred_at DESC);
-
-
---
--- Name: telemetry_readings_p20260325_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX telemetry_readings_p20260325_occurred_at_idx ON public.telemetry_readings_p20260325 USING brin (occurred_at);
-
-
---
--- Name: telemetry_readings_p20260326_asset_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX telemetry_readings_p20260326_asset_id_occurred_at_idx ON public.telemetry_readings_p20260326 USING btree (asset_id, occurred_at DESC);
-
-
---
--- Name: telemetry_readings_p20260326_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX telemetry_readings_p20260326_occurred_at_idx ON public.telemetry_readings_p20260326 USING brin (occurred_at);
-
-
---
--- Name: telemetry_readings_p20260327_asset_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX telemetry_readings_p20260327_asset_id_occurred_at_idx ON public.telemetry_readings_p20260327 USING btree (asset_id, occurred_at DESC);
-
-
---
--- Name: telemetry_readings_p20260327_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX telemetry_readings_p20260327_occurred_at_idx ON public.telemetry_readings_p20260327 USING brin (occurred_at);
-
-
---
--- Name: telemetry_readings_p20260328_asset_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX telemetry_readings_p20260328_asset_id_occurred_at_idx ON public.telemetry_readings_p20260328 USING btree (asset_id, occurred_at DESC);
-
-
---
--- Name: telemetry_readings_p20260328_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX telemetry_readings_p20260328_occurred_at_idx ON public.telemetry_readings_p20260328 USING brin (occurred_at);
-
-
---
--- Name: telemetry_readings_p20260329_asset_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX telemetry_readings_p20260329_asset_id_occurred_at_idx ON public.telemetry_readings_p20260329 USING btree (asset_id, occurred_at DESC);
-
-
---
--- Name: telemetry_readings_p20260329_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX telemetry_readings_p20260329_occurred_at_idx ON public.telemetry_readings_p20260329 USING brin (occurred_at);
-
-
---
--- Name: telemetry_readings_p20260330_asset_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX telemetry_readings_p20260330_asset_id_occurred_at_idx ON public.telemetry_readings_p20260330 USING btree (asset_id, occurred_at DESC);
-
-
---
--- Name: telemetry_readings_p20260330_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX telemetry_readings_p20260330_occurred_at_idx ON public.telemetry_readings_p20260330 USING brin (occurred_at);
-
-
---
--- Name: telemetry_readings_p20260331_asset_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX telemetry_readings_p20260331_asset_id_occurred_at_idx ON public.telemetry_readings_p20260331 USING btree (asset_id, occurred_at DESC);
-
-
---
--- Name: telemetry_readings_p20260331_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX telemetry_readings_p20260331_occurred_at_idx ON public.telemetry_readings_p20260331 USING brin (occurred_at);
-
-
---
--- Name: telemetry_readings_p20260401_asset_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX telemetry_readings_p20260401_asset_id_occurred_at_idx ON public.telemetry_readings_p20260401 USING btree (asset_id, occurred_at DESC);
-
-
---
--- Name: telemetry_readings_p20260401_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX telemetry_readings_p20260401_occurred_at_idx ON public.telemetry_readings_p20260401 USING brin (occurred_at);
-
-
---
--- Name: telemetry_readings_p20260402_asset_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX telemetry_readings_p20260402_asset_id_occurred_at_idx ON public.telemetry_readings_p20260402 USING btree (asset_id, occurred_at DESC);
-
-
---
--- Name: telemetry_readings_p20260402_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX telemetry_readings_p20260402_occurred_at_idx ON public.telemetry_readings_p20260402 USING brin (occurred_at);
-
-
---
--- Name: telemetry_readings_p20260403_asset_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX telemetry_readings_p20260403_asset_id_occurred_at_idx ON public.telemetry_readings_p20260403 USING btree (asset_id, occurred_at DESC);
-
-
---
--- Name: telemetry_readings_p20260403_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX telemetry_readings_p20260403_occurred_at_idx ON public.telemetry_readings_p20260403 USING brin (occurred_at);
-
-
---
--- Name: telemetry_readings_p20260404_asset_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX telemetry_readings_p20260404_asset_id_occurred_at_idx ON public.telemetry_readings_p20260404 USING btree (asset_id, occurred_at DESC);
-
-
---
--- Name: telemetry_readings_p20260404_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX telemetry_readings_p20260404_occurred_at_idx ON public.telemetry_readings_p20260404 USING brin (occurred_at);
-
-
---
--- Name: telemetry_readings_p20260323_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH PARTITION public.telemetry_readings_p20260323_asset_id_occurred_at_idx;
-
-
---
--- Name: telemetry_readings_p20260323_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260323_occurred_at_idx;
-
-
---
--- Name: telemetry_readings_p20260324_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH PARTITION public.telemetry_readings_p20260324_asset_id_occurred_at_idx;
-
-
---
--- Name: telemetry_readings_p20260324_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260324_occurred_at_idx;
-
-
---
--- Name: telemetry_readings_p20260325_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH PARTITION public.telemetry_readings_p20260325_asset_id_occurred_at_idx;
-
-
---
--- Name: telemetry_readings_p20260325_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260325_occurred_at_idx;
-
-
---
--- Name: telemetry_readings_p20260326_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH PARTITION public.telemetry_readings_p20260326_asset_id_occurred_at_idx;
-
-
---
--- Name: telemetry_readings_p20260326_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260326_occurred_at_idx;
-
-
---
--- Name: telemetry_readings_p20260327_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH PARTITION public.telemetry_readings_p20260327_asset_id_occurred_at_idx;
-
-
---
--- Name: telemetry_readings_p20260327_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260327_occurred_at_idx;
-
-
---
--- Name: telemetry_readings_p20260328_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH PARTITION public.telemetry_readings_p20260328_asset_id_occurred_at_idx;
-
-
---
--- Name: telemetry_readings_p20260328_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260328_occurred_at_idx;
-
-
---
--- Name: telemetry_readings_p20260329_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH PARTITION public.telemetry_readings_p20260329_asset_id_occurred_at_idx;
-
-
---
--- Name: telemetry_readings_p20260329_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260329_occurred_at_idx;
-
-
---
--- Name: telemetry_readings_p20260330_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH PARTITION public.telemetry_readings_p20260330_asset_id_occurred_at_idx;
-
-
---
--- Name: telemetry_readings_p20260330_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260330_occurred_at_idx;
-
-
---
--- Name: telemetry_readings_p20260331_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH PARTITION public.telemetry_readings_p20260331_asset_id_occurred_at_idx;
-
-
---
--- Name: telemetry_readings_p20260331_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260331_occurred_at_idx;
-
-
---
--- Name: telemetry_readings_p20260401_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH PARTITION public.telemetry_readings_p20260401_asset_id_occurred_at_idx;
-
-
---
--- Name: telemetry_readings_p20260401_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260401_occurred_at_idx;
-
-
---
--- Name: telemetry_readings_p20260402_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH PARTITION public.telemetry_readings_p20260402_asset_id_occurred_at_idx;
-
-
---
--- Name: telemetry_readings_p20260402_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260402_occurred_at_idx;
-
-
---
--- Name: telemetry_readings_p20260403_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH PARTITION public.telemetry_readings_p20260403_asset_id_occurred_at_idx;
-
-
---
--- Name: telemetry_readings_p20260403_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260403_occurred_at_idx;
-
-
---
--- Name: telemetry_readings_p20260404_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH PARTITION public.telemetry_readings_p20260404_asset_id_occurred_at_idx;
-
-
---
--- Name: telemetry_readings_p20260404_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
---
-
-ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260404_occurred_at_idx;
-
-
---
 -- Name: incident_notes incident_notes_immutable; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -2032,19 +1752,17 @@ CREATE TRIGGER incident_notes_no_delete BEFORE DELETE ON public.incident_notes F
 
 
 --
--- Name: chokepoints fk_rails_05fec8fd98; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: external_signals trg_sync_external_signal_location; Type: TRIGGER; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.chokepoints
-    ADD CONSTRAINT fk_rails_05fec8fd98 FOREIGN KEY (updated_by_id) REFERENCES public.users(id);
+CREATE TRIGGER trg_sync_external_signal_location BEFORE INSERT OR UPDATE OF lat, lng ON public.external_signals FOR EACH ROW EXECUTE FUNCTION public.sync_external_signal_location();
 
 
 --
--- Name: salute_reports fk_rails_0aaaed891e; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: sites trg_sync_site_location; Type: TRIGGER; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.salute_reports
-    ADD CONSTRAINT fk_rails_0aaaed891e FOREIGN KEY (site_id) REFERENCES public.sites(id);
+CREATE TRIGGER trg_sync_site_location BEFORE INSERT OR UPDATE OF latitude, longitude ON public.sites FOR EACH ROW EXECUTE FUNCTION public.sync_site_location();
 
 
 --
@@ -2072,27 +1790,11 @@ ALTER TABLE ONLY public.incidents
 
 
 --
--- Name: commander_intents fk_rails_19d7c98de8; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.commander_intents
-    ADD CONSTRAINT fk_rails_19d7c98de8 FOREIGN KEY (created_by_id) REFERENCES public.users(id);
-
-
---
 -- Name: incident_notes fk_rails_1f12c8a379; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.incident_notes
     ADD CONSTRAINT fk_rails_1f12c8a379 FOREIGN KEY (author_id) REFERENCES public.users(id);
-
-
---
--- Name: sse_stream_leases fk_rails_20ad4565e9; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.sse_stream_leases
-    ADD CONSTRAINT fk_rails_20ad4565e9 FOREIGN KEY (user_id) REFERENCES public.users(id);
 
 
 --
@@ -2120,19 +1822,27 @@ ALTER TABLE ONLY public.vessel_tracks
 
 
 --
--- Name: pace_plans fk_rails_3ff56ca6ef; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: solid_queue_recurring_executions fk_rails_318a5533ed; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.pace_plans
-    ADD CONSTRAINT fk_rails_3ff56ca6ef FOREIGN KEY (updated_by_id) REFERENCES public.users(id);
+ALTER TABLE ONLY public.solid_queue_recurring_executions
+    ADD CONSTRAINT fk_rails_318a5533ed FOREIGN KEY (job_id) REFERENCES public.solid_queue_jobs(id) ON DELETE CASCADE;
 
 
 --
--- Name: prosecution_steps fk_rails_49c61f9f4e; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: solid_queue_failed_executions fk_rails_39bbc7a631; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.prosecution_steps
-    ADD CONSTRAINT fk_rails_49c61f9f4e FOREIGN KEY (incident_id) REFERENCES public.incidents(id);
+ALTER TABLE ONLY public.solid_queue_failed_executions
+    ADD CONSTRAINT fk_rails_39bbc7a631 FOREIGN KEY (job_id) REFERENCES public.solid_queue_jobs(id) ON DELETE CASCADE;
+
+
+--
+-- Name: solid_queue_blocked_executions fk_rails_4cd34e2228; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.solid_queue_blocked_executions
+    ADD CONSTRAINT fk_rails_4cd34e2228 FOREIGN KEY (job_id) REFERENCES public.solid_queue_jobs(id) ON DELETE CASCADE;
 
 
 --
@@ -2152,43 +1862,19 @@ ALTER TABLE ONLY public.signal_rule_matches
 
 
 --
--- Name: salute_reports fk_rails_6c5cdccf86; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.salute_reports
-    ADD CONSTRAINT fk_rails_6c5cdccf86 FOREIGN KEY (area_of_operation_id) REFERENCES public.areas_of_operation(id);
-
-
---
--- Name: pace_plans fk_rails_6ddc9c0711; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.pace_plans
-    ADD CONSTRAINT fk_rails_6ddc9c0711 FOREIGN KEY (created_by_id) REFERENCES public.users(id);
-
-
---
--- Name: prosecution_steps fk_rails_70213e48a7; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.prosecution_steps
-    ADD CONSTRAINT fk_rails_70213e48a7 FOREIGN KEY (actor_id) REFERENCES public.users(id);
-
-
---
--- Name: commander_intents fk_rails_75058a68bc; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.commander_intents
-    ADD CONSTRAINT fk_rails_75058a68bc FOREIGN KEY (area_of_operation_id) REFERENCES public.areas_of_operation(id);
-
-
---
 -- Name: incidents fk_rails_7d00d680b0; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.incidents
     ADD CONSTRAINT fk_rails_7d00d680b0 FOREIGN KEY (site_id) REFERENCES public.sites(id);
+
+
+--
+-- Name: solid_queue_ready_executions fk_rails_81fcbd66af; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.solid_queue_ready_executions
+    ADD CONSTRAINT fk_rails_81fcbd66af FOREIGN KEY (job_id) REFERENCES public.solid_queue_jobs(id) ON DELETE CASCADE;
 
 
 --
@@ -2200,11 +1886,11 @@ ALTER TABLE ONLY public.assets
 
 
 --
--- Name: salute_reports fk_rails_9d7b682dfe; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: solid_queue_claimed_executions fk_rails_9cfe4d4944; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.salute_reports
-    ADD CONSTRAINT fk_rails_9d7b682dfe FOREIGN KEY (created_by_id) REFERENCES public.users(id);
+ALTER TABLE ONLY public.solid_queue_claimed_executions
+    ADD CONSTRAINT fk_rails_9cfe4d4944 FOREIGN KEY (job_id) REFERENCES public.solid_queue_jobs(id) ON DELETE CASCADE;
 
 
 --
@@ -2248,19 +1934,11 @@ ALTER TABLE ONLY public.correlation_rules
 
 
 --
--- Name: incidents fk_rails_b8b5a0282f; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: solid_queue_scheduled_executions fk_rails_c4316f352d; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.incidents
-    ADD CONSTRAINT fk_rails_b8b5a0282f FOREIGN KEY (prosecuted_by_id) REFERENCES public.users(id);
-
-
---
--- Name: commander_intents fk_rails_cca27b17dd; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.commander_intents
-    ADD CONSTRAINT fk_rails_cca27b17dd FOREIGN KEY (updated_by_id) REFERENCES public.users(id);
+ALTER TABLE ONLY public.solid_queue_scheduled_executions
+    ADD CONSTRAINT fk_rails_c4316f352d FOREIGN KEY (job_id) REFERENCES public.solid_queue_jobs(id) ON DELETE CASCADE;
 
 
 --
@@ -2277,22 +1955,6 @@ ALTER TABLE ONLY public.signal_rule_matches
 
 ALTER TABLE ONLY public.incidents
     ADD CONSTRAINT fk_rails_d2436dcc2e FOREIGN KEY (assigned_to_id) REFERENCES public.users(id);
-
-
---
--- Name: telemetry_readings fk_rails_d477387a3c; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE public.telemetry_readings
-    ADD CONSTRAINT fk_rails_d477387a3c FOREIGN KEY (asset_id) REFERENCES public.assets(id) ON DELETE CASCADE;
-
-
---
--- Name: pace_plans fk_rails_db6b98f6a6; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.pace_plans
-    ADD CONSTRAINT fk_rails_db6b98f6a6 FOREIGN KEY (area_of_operation_id) REFERENCES public.areas_of_operation(id);
 
 
 --
@@ -2320,22 +1982,6 @@ ALTER TABLE ONLY public.vessels
 
 
 --
--- Name: chokepoints fk_rails_f4f59d5fbb; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.chokepoints
-    ADD CONSTRAINT fk_rails_f4f59d5fbb FOREIGN KEY (created_by_id) REFERENCES public.users(id);
-
-
---
--- Name: chokepoints fk_rails_f514f46e00; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.chokepoints
-    ADD CONSTRAINT fk_rails_f514f46e00 FOREIGN KEY (area_of_operation_id) REFERENCES public.areas_of_operation(id);
-
-
---
 -- Name: signal_rule_matches fk_rails_f6fa1e442c; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2347,58 +1993,4 @@ ALTER TABLE ONLY public.signal_rule_matches
 -- PostgreSQL database dump complete
 --
 
-SET search_path TO "$user", public;
-
-INSERT INTO "schema_migrations" (version) VALUES
-('20260330010000'),
-('20260329230000'),
-('20260329020000'),
-('20260329010000'),
-('20260328010000'),
-('20260327030000'),
-('20260327020000'),
-('20260327010000'),
-('20260325020000'),
-('20260325010000'),
-('20260324010000'),
-('20260324000100'),
-('20260323200001'),
-('20260323100001'),
-('20260323100000'),
-('20260321234646'),
-('20260321225132'),
-('20260321150001'),
-('20260321150000'),
-('20260321120000'),
-('20260321045816'),
-('20260320000008'),
-('20260320000007'),
-('20260320000006'),
-('20260320000005'),
-('20260320000004'),
-('20260320000003'),
-('20260320000002'),
-('20260320000001'),
-('20260318030004'),
-('20260318030003'),
-('20260318030002'),
-('20260318030001'),
-('20260318030000'),
-('20260318020001'),
-('20260318020000'),
-('20260318011248'),
-('20260317232051'),
-('20260315061734'),
-('20260315000006'),
-('20260315000005'),
-('20260315000004'),
-('20260315000003'),
-('20260315000002'),
-('20260315000001'),
-('20260314034831'),
-('20260313104951'),
-('20260313104950'),
-('20260313104949'),
-('20260313104948'),
-('20260313104919');
 
