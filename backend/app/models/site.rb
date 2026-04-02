@@ -1,6 +1,7 @@
 class Site < ApplicationRecord
   STATUSES = %w[active inactive].freeze
 
+  belongs_to :organization,       optional: true
   belongs_to :area_of_operation, optional: true
 
   has_many :tasks, dependent: :restrict_with_error

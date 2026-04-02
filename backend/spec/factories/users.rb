@@ -11,5 +11,9 @@ FactoryBot.define do
     trait :operator do
       role { "operator" }
     end
+
+    trait :viewer do
+      role { "viewer" }
+    end
   end
 end

@@ -9,4 +9,11 @@ class SitePolicy < ApplicationPolicy
   def toggle_status?   = commander?
   def update_geofence? = commander?
   def unflag?          = commander?
+
+  class Scope < ApplicationPolicy::Scope
+    def resolve
+      # Apply org isolation first, then AO narrowing within that org.
+      org_filter(ao_filter(scope))
+    end
+  end
 end

@@ -333,6 +333,19 @@ ALTER SEQUENCE public.operational_statuses_id_seq OWNED BY public.operational_st
 
 
 --
+-- Name: organizations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.organizations (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    name character varying NOT NULL,
+    slug character varying NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
 -- Name: pace_plans; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -491,7 +504,8 @@ CREATE TABLE public.sites (
     flagged_at timestamp(6) without time zone,
     flag_reason text,
     geofence_radius_km double precision DEFAULT 50.0 NOT NULL,
-    location public.geography(Point,4326)
+    location public.geography(Point,4326),
+    organization_id uuid
 );
 
 
@@ -784,6 +798,8 @@ CREATE TABLE public.users (
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
     tokens_valid_after timestamp(6) without time zone,
+    area_of_operation_id uuid,
+    organization_id uuid,
     CONSTRAINT users_role_check CHECK (((role)::text = ANY (ARRAY[('operator'::character varying)::text, ('commander'::character varying)::text])))
 );
 
@@ -1012,6 +1028,14 @@ ALTER TABLE ONLY public.incidents
 
 ALTER TABLE ONLY public.operational_statuses
     ADD CONSTRAINT operational_statuses_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: organizations organizations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.organizations
+    ADD CONSTRAINT organizations_pkey PRIMARY KEY (id);
 
 
 --
@@ -1456,6 +1480,13 @@ CREATE INDEX index_incidents_on_status ON public.incidents USING btree (status);
 
 
 --
+-- Name: index_organizations_on_slug; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_organizations_on_slug ON public.organizations USING btree (slug);
+
+
+--
 -- Name: index_pace_plans_on_area_of_operation_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1652,6 +1683,13 @@ CREATE INDEX index_sites_on_area_of_operation_id ON public.sites USING btree (ar
 
 
 --
+-- Name: index_sites_on_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_sites_on_organization_id ON public.sites USING btree (organization_id);
+
+
+--
 -- Name: index_sites_on_status; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1701,10 +1739,24 @@ CREATE INDEX index_telemetry_readings_on_occurred_at ON ONLY public.telemetry_re
 
 
 --
+-- Name: index_users_on_area_of_operation_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_users_on_area_of_operation_id ON public.users USING btree (area_of_operation_id);
+
+
+--
 -- Name: index_users_on_email; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX index_users_on_email ON public.users USING btree (email);
+
+
+--
+-- Name: index_users_on_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_users_on_organization_id ON public.users USING btree (organization_id);
 
 
 --
@@ -2245,6 +2297,14 @@ ALTER TABLE ONLY public.pace_plans
 
 
 --
+-- Name: sites fk_rails_404a8b1c56; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sites
+    ADD CONSTRAINT fk_rails_404a8b1c56 FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
 -- Name: prosecution_steps fk_rails_49c61f9f4e; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2266,6 +2326,14 @@ ALTER TABLE ONLY public.tasks
 
 ALTER TABLE ONLY public.signal_rule_matches
     ADD CONSTRAINT fk_rails_56955fb8d9 FOREIGN KEY (signal_id) REFERENCES public.external_signals(id);
+
+
+--
+-- Name: users fk_rails_6aff989a3f; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT fk_rails_6aff989a3f FOREIGN KEY (area_of_operation_id) REFERENCES public.areas_of_operation(id);
 
 
 --
@@ -2405,6 +2473,14 @@ ALTER TABLE public.telemetry_readings
 
 
 --
+-- Name: users fk_rails_d7b9ff90af; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT fk_rails_d7b9ff90af FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
+
+
+--
 -- Name: pace_plans fk_rails_db6b98f6a6; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2467,6 +2543,8 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260402040000'),
+('20260402030000'),
 ('20260402020000'),
 ('20260402010000'),
 ('20260401030000'),

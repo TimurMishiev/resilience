@@ -25,12 +25,27 @@
 # Any libraries that use a connection pool or another resource pool should
 # be configured to provide at least as many connections as the number of
 # threads. This includes Active Record's `pool` parameter in `database.yml`.
-# SSE streams permanently occupy Puma threads while connected. The default 32
-# thread pool works with the runtime SSE admission caps to preserve headroom
-# for regular API traffic instead of letting reconnect storms consume the pool.
-# NOTE: production (fly.toml) overrides this to RAILS_MAX_THREADS=10. Tune
-# SSE_MAX_STREAMS_PER_USER and SSE_MAX_STREAMS_PER_IP against the actual
-# thread count in each environment, not this default.
+# ── SSE thread budget ────────────────────────────────────────────────────────
+# SSE (Server-Sent Events) streams permanently occupy a Puma thread for their
+# entire lifetime — they never return the thread to the pool while connected.
+# This makes the thread pool the hard capacity ceiling for concurrent SSE clients.
+#
+# Constraint chain (production, fly.toml):
+#   RAILS_MAX_THREADS = 20       → 20 total threads per process
+#   SSE_MAX_STREAMS_PER_USER = 4 → max 4 streams per authenticated user
+#   SSE_MAX_STREAMS_PER_IP   = 12 → max 12 streams per source IP
+#   Fly hard_limit = 30 connections (HTTP), enforced at the load balancer
+#
+# At full SSE occupancy (12 streams) → 8 threads remain for API calls.
+# The Fly hard_limit of 30 exceeds 20 threads intentionally, as most API
+# requests complete in <10 ms, keeping average thread utilization low.
+#
+# Enforcement: Sse::StreamAdmission uses a PostgreSQL advisory lock + lease
+# table (sse_stream_leases) to atomically admit or deny stream requests.
+#
+# To tune: keep SSE_MAX_STREAMS_PER_IP < (RAILS_MAX_THREADS - headroom),
+# where headroom is the number of threads you want available for API calls.
+# A minimum headroom of 4–8 threads is recommended for interactive workloads.
 threads_count = ENV.fetch("RAILS_MAX_THREADS", 32)
 threads threads_count, threads_count
 
