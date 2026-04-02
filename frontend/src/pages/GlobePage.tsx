@@ -227,6 +227,8 @@ export default function GlobePage() {
   const [showHeatmap,      setShowHeatmap]      = useState(false)
   const [showCoverage,     setShowCoverage]     = useState(true)
   const [showChokepoints,  setShowChokepoints]  = useState(true)
+  const [showTrails,       setShowTrails]       = useState(true)
+  const [trailWindowMinutes, setTrailWindowMinutes] = useState(30)
 
   // ---------------------------------------------------------------------------
   // Data queries
@@ -418,7 +420,7 @@ export default function GlobePage() {
   const vesselTracks = useMemo(() => vesselTrackRes?.data ?? [], [vesselTrackRes?.data])
 
   // Replay-only multi-asset trails
-  const assetTrails = useAssetTrails(isReplaying ? asOf : null)
+  const assetTrails = useAssetTrails(isReplaying ? asOf : null, trailWindowMinutes)
 
   // ---------------------------------------------------------------------------
   // Engine refs
@@ -480,6 +482,7 @@ export default function GlobePage() {
     showHeatmap,
     showCoverage,
     showChokepoints,
+    showTrails: isReplaying && showTrails,
     asOf: asOf ?? undefined,
     isReplaying,
     signalFocusCenter: selectedCenter,
@@ -994,6 +997,31 @@ export default function GlobePage() {
           >
             CHOKEPOINTS {showChokepoints ? 'ON' : 'OFF'}
           </div>
+        )}
+        {isReplaying && (
+          <>
+            <div
+              className={`globe-signal-toggle${showTrails ? ' globe-signal-toggle--active' : ''}`}
+              onClick={() => setShowTrails(v => !v)}
+              role="button"
+              aria-label="Toggle asset trails"
+            >
+              TRAILS {showTrails ? 'ON' : 'OFF'}
+            </div>
+            {showTrails && (
+              <select
+                className="globe-trail-window-select"
+                value={trailWindowMinutes}
+                onChange={e => setTrailWindowMinutes(Number(e.target.value))}
+                aria-label="Trail window"
+                title="Trail history window"
+              >
+                <option value={30}>30 min</option>
+                <option value={60}>60 min</option>
+                <option value={120}>120 min</option>
+              </select>
+            )}
+          </>
         )}
         <span className="globe-toolbar-hint bp6-text-muted">
           {signalError && !isReplaying

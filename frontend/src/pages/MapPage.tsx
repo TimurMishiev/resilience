@@ -109,6 +109,8 @@ export default function MapPage() {
   const [showCoverage,    setShowCoverage]    = useState(true)
   const [showHeatmap,     setShowHeatmap]     = useState(false)
   const [showChokepoints, setShowChokepoints] = useState(true)
+  const [showTrails,      setShowTrails]      = useState(true)
+  const [trailWindowMinutes, setTrailWindowMinutes] = useState(30)
   const [mapStyle,        setMapStyle]        = useState<MapStyleKey>('tactical')
 
   // ---------------------------------------------------------------------------
@@ -210,7 +212,7 @@ export default function MapPage() {
   const vesselTracks = useMemo(() => vesselTrackRes?.data ?? [], [vesselTrackRes?.data])
 
   // Replay-only multi-asset trails
-  const assetTrails = useAssetTrails(isReplaying ? asOf : null)
+  const assetTrails = useAssetTrails(isReplaying ? asOf : null, trailWindowMinutes)
 
   // Active geofence breach site IDs — backed by an unpaginated backend query
   const { data: activeBreachRes } = useActiveBreachSiteIds({
@@ -327,6 +329,7 @@ export default function MapPage() {
     showCoverage,
     showHeatmap,
     showChokepoints,
+    showTrails: isReplaying && showTrails,
     mapStyle,
     isReplaying,
     selectedSiteId,
@@ -650,6 +653,54 @@ export default function MapPage() {
           <span className="map-coverage-toggle-dot" />
           CHOKEPOINTS {showChokepoints ? 'ON' : 'OFF'}
         </div>
+      )}
+
+      {/* Asset trail layer toggle + window selector — replay-only */}
+      {isReplaying && showTrails && (
+        <div className="map-coverage-legend">
+          <div className="map-coverage-legend-item">
+            <span className="map-coverage-legend-swatch" style={{ background: 'rgba(61,220,132,0.28)', borderColor: '#3ddc84' }} />
+            Available
+          </div>
+          <div className="map-coverage-legend-item">
+            <span className="map-coverage-legend-swatch" style={{ background: 'rgba(82,130,255,0.24)', borderColor: '#5282ff' }} />
+            Assigned
+          </div>
+          <div className="map-coverage-legend-item">
+            <span className="map-coverage-legend-swatch" style={{ background: 'rgba(255,179,102,0.18)', borderColor: '#ffb366' }} />
+            Degraded
+          </div>
+          <div className="map-coverage-legend-item">
+            <span className="map-coverage-legend-swatch" style={{ background: 'rgba(134,142,150,0.18)', borderColor: '#868e96' }} />
+            Offline
+          </div>
+        </div>
+      )}
+      {isReplaying && (
+        <>
+          <div
+            className={`map-coverage-toggle${showTrails ? ' map-coverage-toggle--active' : ''}`}
+            onClick={() => setShowTrails(v => !v)}
+            role="button"
+            aria-label="Toggle asset trails"
+          >
+            <span className="map-coverage-toggle-dot" />
+            TRAILS {showTrails ? 'ON' : 'OFF'}
+          </div>
+          {showTrails && (
+            <select
+              className="map-trail-window-select"
+              value={trailWindowMinutes}
+              onChange={e => setTrailWindowMinutes(Number(e.target.value))}
+              aria-label="Trail window"
+              title="Trail history window"
+            >
+              <option value={30}>30 min</option>
+              <option value={60}>60 min</option>
+              <option value={120}>120 min</option>
+            </select>
+          )}
+        </>
       )}
 
       {/* Signal layer toggle */}

@@ -146,6 +146,7 @@ export interface MapEngineInput {
   showCoverage: boolean
   showHeatmap:     boolean
   showChokepoints: boolean
+  showTrails:      boolean
   mapStyle:        MapStyleKey
   isReplaying:  boolean
   selectedSiteId:   string | null
@@ -193,6 +194,7 @@ export function useMapLibreEngine({
   showCoverage,
   showHeatmap,
   showChokepoints,
+  showTrails,
   mapStyle,
   isReplaying,
   selectedSiteId,
@@ -1110,6 +1112,16 @@ export function useMapLibreEngine({
       },
     }, 'signal-glow')
   }, [mapLoaded, assetTrails])
+
+  // ---------------------------------------------------------------------------
+  // Asset trail visibility toggle — mirrors showSignals pattern
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapLoaded) return
+    if (!map.getLayer('asset-trail-line')) return
+    map.setLayoutProperty('asset-trail-line', 'visibility', showTrails ? 'visible' : 'none')
+  }, [mapLoaded, showTrails])
 
   // ---------------------------------------------------------------------------
   // Signal layer visibility — also clears selection when hidden

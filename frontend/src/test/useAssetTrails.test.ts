@@ -47,4 +47,22 @@ describe('useAssetTrails', () => {
     expect(result.current[0].asset_id).toBe('a1')
     expect(result.current[0].points).toHaveLength(2)
   })
+
+  it('passes window_minutes to getAssetTrails when provided', async () => {
+    const { getAssetTrails } = await import('../api/telemetry')
+    renderHook(() => useAssetTrails('2026-03-30T12:00:00Z', 60), { wrapper: createWrapper() })
+    await waitFor(() => expect(getAssetTrails).toHaveBeenCalledWith(
+      expect.objectContaining({ as_of: '2026-03-30T12:00:00Z', window_minutes: 60 })
+    ))
+  })
+
+  it('omits window_minutes when not provided', async () => {
+    const { getAssetTrails } = await import('../api/telemetry')
+    renderHook(() => useAssetTrails('2026-03-30T12:00:00Z'), { wrapper: createWrapper() })
+    await waitFor(() => expect(getAssetTrails).toHaveBeenCalledWith(
+      expect.objectContaining({ as_of: '2026-03-30T12:00:00Z' })
+    ))
+    const call = (getAssetTrails as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(call).not.toHaveProperty('window_minutes')
+  })
 })

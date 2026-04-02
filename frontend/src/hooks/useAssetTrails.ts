@@ -10,11 +10,14 @@ const EMPTY_TRAILS: AssetTrail[] = []
  * Fetches windowed asset trail points for replay polylines.
  * Returns [] when not replaying — trails are replay-only; live mode uses the
  * SSE stream for current positions. Surfaces a warning toast on fetch failure.
+ *
+ * @param asOf         Replay timestamp ISO string; null/undefined disables the query.
+ * @param windowMinutes Trail window duration in minutes (1–120, default 30).
  */
-export function useAssetTrails(asOf: string | null | undefined) {
+export function useAssetTrails(asOf: string | null | undefined, windowMinutes?: number) {
   const query = useQuery({
-    queryKey:             ['asset-trails', { as_of: asOf ?? null }],
-    queryFn:              () => getAssetTrails({ as_of: asOf! }),
+    queryKey:             ['asset-trails', { as_of: asOf ?? null, window_minutes: windowMinutes ?? null }],
+    queryFn:              () => getAssetTrails({ as_of: asOf!, ...(windowMinutes !== undefined ? { window_minutes: windowMinutes } : {}) }),
     enabled:              Boolean(asOf),
     staleTime:            Infinity,
     refetchOnWindowFocus: false,

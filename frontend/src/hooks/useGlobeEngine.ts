@@ -475,6 +475,7 @@ export interface GlobeEngineInput {
   showHeatmap:     boolean
   showCoverage:    boolean
   showChokepoints: boolean
+  showTrails:      boolean
 
   // Included in position-update dep array so asset positions recompute on
   // replay state changes even when assets/readings identity is unchanged.
@@ -536,6 +537,7 @@ export function useGlobeEngine({
   showHeatmap,
   showCoverage,
   showChokepoints,
+  showTrails,
   asOf,
   isReplaying,
   signalFocusCenter,
@@ -1263,6 +1265,16 @@ export function useGlobeEngine({
       entityMap.set(trail.asset_id, entity)
     }
   }, [viewerReady, assetTrails])
+
+  // ---------------------------------------------------------------------------
+  // Asset trail visibility toggle — mirrors showSignals/showCoverage pattern
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const entityMap = assetTrailEntitiesRef.current
+    for (const entity of entityMap.values()) {
+      entity.show = showTrails
+    }
+  }, [showTrails])
 
   // ---------------------------------------------------------------------------
   // Signal entities — migrate to PointPrimitiveCollection for mass rendering
