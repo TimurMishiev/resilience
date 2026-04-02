@@ -17,11 +17,12 @@ module Analytics
     MAX_LANE_LIMIT     = 12
     MAX_VISIBLE_EVENTS = 24
 
-    def initialize(days: DEFAULT_DAYS, kinds: nil, lane_limit: DEFAULT_LANE_LIMIT, site_ids: nil)
+    def initialize(days: DEFAULT_DAYS, kinds: nil, lane_limit: DEFAULT_LANE_LIMIT, site_ids: nil, as_of: nil)
       @days       = (days.presence || DEFAULT_DAYS).to_i.clamp(1, MAX_DAYS)
       @kinds      = normalize_list(kinds, VALID_KINDS)
       @lane_limit = (lane_limit.presence || DEFAULT_LANE_LIMIT).to_i.clamp(1, MAX_LANE_LIMIT)
       @site_ids   = normalize_list(site_ids)
+      @as_of      = as_of
     end
 
     def call
@@ -38,7 +39,8 @@ module Analytics
           lane_count:        lanes.size,
           total_events:      lanes.sum { |lane| lane[:event_count] },
           event_kinds:       @kinds.presence || VALID_KINDS,
-          selected_site_ids: @site_ids
+          selected_site_ids: @site_ids,
+          as_of:             @as_of&.iso8601
         }
       }
     end
@@ -55,7 +57,7 @@ module Analytics
     end
 
     def build_lane(site)
-      events = Sites::TimelineService.call(site: site, days: @days)
+      events = Sites::TimelineService.call(site: site, days: @days, as_of: @as_of)
       events = events.select { |event| @kinds.include?(event[:event_kind]) } if @kinds.any?
       return nil if events.empty?
 

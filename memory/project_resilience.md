@@ -6,6 +6,12 @@ type: project
 
 # Resilience — Project Memory
 
+Companion files:
+- `memory/project_roadmap.md` — current implementation order and next major tracks
+- `memory/project_open_findings.md` — unresolved engineering debt and architecture programs
+
+When memory conflicts with code, prefer code. This file is the stable project snapshot; active sequencing and open debt now live in the companion files above.
+
 ## Stack
 
 - **Backend:** Ruby on Rails (API mode), PostgreSQL, SolidQueue recurring/background jobs, SSE for real-time push
@@ -22,8 +28,8 @@ type: project
 - **Site** — a monitored geographic area or facility. Has status (active/inactive), flagged state, audit trail.
 - **Vessel** — first-class AIS entity. Fields: mmsi (unique), name, vessel_type, flag, destination, lat, lng, speed, heading, first_seen_at, last_seen_at, last_signal_id (FK to external_signals), loitering_since.
 - **ExternalSignal** (external_signals table) — raw inbound sensor/feed data. Separate from entity state.
-- **SignalRule** — user-defined rule that matches on signal properties. Supports single and (upcoming) compound conditions.
-- **SignalRuleMatch** — recorded fire when a rule matches a signal. Will gain confidence float field.
+- **SignalRule** — user-defined rule that matches on signal properties. Supports single and compound AND/OR conditions.
+- **SignalRuleMatch** — recorded fire when a rule matches a signal. Includes workflow state and confidence scoring.
 - **Task** — actionable work item associated with a site. Has title, description, priority.
 - **AuditEvent** — append-only audit trail for site actions.
 
@@ -38,7 +44,7 @@ Every new entity must answer: "Is this an entity, a property, a relationship, or
 
 - **AisIngestionService** — ingests AIS pings, creates ExternalSignal, calls Vessel.upsert_from_signal!. Lives in `feeds/` namespace to preserve SRP.
 - **IngestService** — generic ingestion coordinator.
-- **EvaluatorService** — evaluates SignalRules against incoming signals. Will be extended for compound conditions.
+- **EvaluatorService** — evaluates SignalRules against incoming signals, including compound AND/OR conditions.
 - **Tasks::UpdateService** — needs string-keyed params, not symbol keys (known quirk). Accepts `actor_role:` keyword ("commander" / "operator"); operators are restricted to title+description only; priority is commander authority. Correlation engine passes `actor_role: "commander"` for automated escalations.
 
 ---
@@ -90,7 +96,7 @@ Every new entity must answer: "Is this an entity, a property, a relationship, or
 **Step 3 — vessel_tracks table + retention job** (DONE, committed: b7e2323)
 **Step 4 — AIS gap detection job** (DONE)
 - Vessels::GapDetectionJob synthesizes ais_gap derived signals when vessel unseen > 20 min
-- Confidence scoring: base 0.50, +0.25 if speed ≥ 5kn, -0.20 if speed < 1kn, +0.20 if inside high-threat AO bbox
+- Confidence scoring: base 0.50, +0.25 if speed ≥ 5kn, -0.20 if speed < 1kn, +0.20 if inside high-threat AO polygon
 - External ID = "gap_#{mmsi}_#{last_seen_at.to_i}" for idempotency; occurred_at anchored to last_seen_at
 - 9 RSpec examples, all passing
 
@@ -250,10 +256,9 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
 1. ~~**Kill-chain / prosecution workflow**~~ — **SHIPPED (2026-03-29)**
 2. ~~**Cross-entity natural-language ontology query**~~ — **SHIPPED (2026-03-29)**
 3. ~~**Globe heatmap parity**~~ — **SHIPPED (2026-03-30)**
-4. **Playback-grade multi-asset trails** — **NEXT (defined 2026-03-30)**
-   - Intended scope: replay-aware historical trails for moving assets (not just selected vessels), available on both MapPage and GlobePage with bounded query windows and toggleable multi-entity rendering.
-   - An intervening platform-hardening detour was explicitly taken on 2026-04-02 to finish the partial Pundit auth rollout before resuming this product slice.
-   - A second hardening detour was explicitly taken on 2026-04-02 to normalize the older AI services (`FilterService`, `SignalFilterService`, `SummaryService`) to the hardened ontology-query standard before resuming this product slice.
+4. ~~**Playback-grade multi-asset trails**~~ — **SHIPPED**
+   - Current active sequencing moved on to platform hardening and replay/security maturity work.
+   - See `memory/project_roadmap.md` for the current next-build order.
 
 #### Recently closed
 
@@ -306,6 +311,15 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
   - Summary signal retrieval no longer relies on a bounded `limit * 2` heuristic under the non-PostGIS fallback; it now scans ordered bounding-box candidates until it finds the exact-radius matches needed to satisfy the response limit or exhausts the candidate set.
   - Added direct service proof for both filter services, extended summary proof for timeout handling, model override, observability capture, and exhaustive exact-radius retrieval, and added commander success/failure request proof for `GET /api/ai/filter` in both task and signal modes.
   - Validation for this slice: focused AI proof 61 RSpec, full backend 1125 RSpec, Brakeman 0 warnings, `git diff --check` passed.
+
+- **Current hardening tranche** (2026-04-02)
+  - Replay parity expanded for historical briefing generation and historical swimlane windows.
+  - Telemetry simulator now requires explicit `TELEMETRY_SIMULATOR_ENABLED=true`.
+  - `Recommendations::LlmEnricher` now matches the hardened Anthropic pattern (timeout, zero retries, env model override, observability).
+  - AIS gap confidence now uses exact GeoJSON polygon containment for high-threat AO scoring instead of a bounding-box approximation.
+  - PostgreSQL relay listeners now publish explicit relay-health heartbeat/error snapshots into `OperationalStatus`.
+  - Anthropic-backed services now share a circuit-breaker layer.
+  - Logout now revokes the current JWT by `jti`, and revoked tokens can no longer authenticate.
 
 - **Chokepoint geographic overlays**
   - Shipped on both MapPage and GlobePage.
@@ -367,7 +381,8 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
   3. ~~Globe heatmap parity~~ — SHIPPED
   4. Intervening platform hardening detour: Pundit auth-layer finish — SHIPPED
   5. Intervening platform hardening detour: AI service hardening parity — SHIPPED
-  6. Playback-grade multi-asset trails — NEXT
+  6. Playback-grade multi-asset trails — SHIPPED
+  7. See `memory/project_roadmap.md` for the current post-trails hardening order
 
 #### Expected remaining canonical phases
 
@@ -390,7 +405,7 @@ If any external summary, audit, or delegated-agent note disagrees with this sect
 1. Fusion layer lives INSIDE the existing correlation engine (extended schema), not a separate engine.
 2. AIS gap detection uses a periodic background job (Vessels::GapDetectionJob) that synthesizes ais_gap signals — these flow through the existing correlation engine unchanged.
 3. Compound rule conditions: extend JSONB conditions schema with operator: AND/OR and nested conditions array.
-4. Confidence scoring: add confidence float to SignalRuleMatch.
+4. Confidence scoring lives on `SignalRuleMatch.confidence` and is computed at rule-fire time.
 5. Track retention: vessel_tracks table + Vessels::TrackRetentionJob shipped (Step 3). Append-only design — no updated_at, before_update guard throws abort. Composite index leads with vessel_id; separate occurred_at index for cross-vessel retention queries. BATCH_SIZE=1000 keeps transactions small.
 6. AisIngestionService owns vessel upsert to preserve SRP; extract Vessels::StateUpdaterService only when manual injection is introduced (YAGNI).
 

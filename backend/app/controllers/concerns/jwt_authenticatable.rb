@@ -11,23 +11,59 @@ module JwtAuthenticatable
   module_function
 
   def encode(payload)
-    payload = payload.merge(exp: TTL.from_now.to_i, iat: Time.current.to_i)
+    payload = payload.merge(exp: TTL.from_now.to_i, iat: Time.current.to_i, jti: SecureRandom.uuid)
     JWT.encode(payload, SECRET, ALGORITHM)
   end
 
   # Issues a short-lived (60s) SSE-only token.
   # Tokens carry sse_only: true so regular API endpoints can reject them.
   def encode_sse(user_id)
-    payload = { sub: user_id, sse_only: true, exp: SSE_TTL.from_now.to_i, iat: Time.current.to_i }
+    payload = { sub: user_id, sse_only: true, exp: SSE_TTL.from_now.to_i, iat: Time.current.to_i, jti: SecureRandom.uuid }
     JWT.encode(payload, SECRET, ALGORITHM)
   end
 
   def decode(token)
+    payload = decode_payload(token)
+    raise JwtAuthenticatable::AuthenticationError, "Token revoked" if revoked?(payload[:jti])
+
+    payload
+  end
+
+  def revoke!(token)
+    payload = decode_payload(token)
+    revoke_payload!(payload)
+  rescue JwtAuthenticatable::AuthenticationError
+    nil
+  end
+
+  def decode_payload(token)
     JWT.decode(token, SECRET, true, algorithm: ALGORITHM).first.with_indifferent_access
   rescue JWT::ExpiredSignature
     raise JwtAuthenticatable::AuthenticationError, "Token expired"
   rescue JWT::DecodeError
     raise JwtAuthenticatable::AuthenticationError, "Invalid token"
+  end
+
+  def revoke_payload!(payload)
+    jti = payload[:jti].presence
+    exp = payload[:exp].present? ? Time.at(payload[:exp].to_i) : nil
+    return if jti.blank? || exp.blank? || exp <= Time.current
+
+    RevokedJwt.upsert(
+      {
+        jti: jti,
+        expires_at: exp,
+        created_at: Time.current,
+        updated_at: Time.current,
+      },
+      unique_by: :index_revoked_jwts_on_jti
+    )
+  end
+
+  def revoked?(jti)
+    return false if jti.blank?
+
+    RevokedJwt.active.exists?(jti: jti)
   end
 
   included do

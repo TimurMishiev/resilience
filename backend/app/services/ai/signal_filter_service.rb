@@ -14,6 +14,7 @@ module Ai
     ].freeze
 
     TOOL_NAME = "apply_signal_filters"
+    BREAKER_SERVICE           = "signal_filter"
     DEFAULT_MODEL             = "claude-haiku-4-5-20251001"
     ANTHROPIC_TIMEOUT_SECONDS = 30
     ANTHROPIC_MAX_RETRIES     = 0
@@ -26,6 +27,7 @@ module Ai
 
     def call
       return ServiceResult.failure(errors: ["Query cannot be blank"]) if @query.blank?
+      return ServiceResult.failure(errors: ["AI temporarily unavailable. Please retry shortly."]) if Ai::CircuitBreaker.open?(service: BREAKER_SERVICE)
 
       sites  = site_catalog
       client = Anthropic::Client.new(
@@ -47,14 +49,17 @@ module Ai
       return ServiceResult.failure(errors: ["AI did not return a filter tool call"]) unless tool_block
 
       filters = validate_filters(tool_block.input || {}, sites)
+      Ai::CircuitBreaker.record_success(service: BREAKER_SERVICE)
       ServiceResult.success({ original_query: @query, filters: filters })
 
     rescue KeyError
       ServiceResult.failure(errors: ["ANTHROPIC_API_KEY is not set"])
     rescue Anthropic::Errors::APITimeoutError => e
+      Ai::CircuitBreaker.record_failure(service: BREAKER_SERVICE)
       report_exception(e, message: "Signal filter query timed out", failure: "timeout")
       ServiceResult.failure(errors: ["Signal filter query timed out"])
     rescue => e
+      Ai::CircuitBreaker.record_failure(service: BREAKER_SERVICE)
       report_exception(e, message: "AI service error: #{e.message}", failure: "error")
       ServiceResult.failure(errors: ["AI service error: #{e.message}"])
     end

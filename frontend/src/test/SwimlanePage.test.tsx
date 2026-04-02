@@ -6,6 +6,7 @@ import SwimlanePage from '../pages/SwimlanePage'
 
 const mockReplay = vi.hoisted(() => ({
   isReplaying: false,
+  asOf: null as string | null,
 }))
 
 const hookState = vi.hoisted(() => ({
@@ -47,7 +48,7 @@ const hookState = vi.hoisted(() => ({
 
 vi.mock('../context/ReplayContext', () => ({
   useReplay: () => ({
-    asOf: null,
+    asOf: mockReplay.asOf,
     isReplaying: mockReplay.isReplaying,
   }),
 }))
@@ -82,6 +83,7 @@ function renderPage() {
 describe('SwimlanePage', () => {
   beforeEach(() => {
     mockReplay.isReplaying = false
+    mockReplay.asOf = null
     hookState.lastParams = null
     hookState.lastEnabled = true
   })
@@ -95,12 +97,19 @@ describe('SwimlanePage', () => {
     expect(screen.getByLabelText('Alert: Rule fired')).toBeInTheDocument()
   })
 
-  it('fails closed during replay and disables the query', () => {
+  it('renders a replay-anchored historical swimlane during replay', () => {
     mockReplay.isReplaying = true
+    mockReplay.asOf = '2026-03-29T10:00:00Z'
     renderPage()
 
-    expect(screen.getByText(/swimlane is unavailable during replay/i)).toBeInTheDocument()
-    expect(hookState.lastEnabled).toBe(false)
+    expect(screen.getByText(/historical swimlane snapshot anchored to the selected replay time/i)).toBeInTheDocument()
+    expect(screen.getByText(/Showing 1 sites \/ 3 events over 3 days · anchored/i)).toBeInTheDocument()
+    expect(hookState.lastEnabled).toBe(true)
+    expect(hookState.lastParams).toMatchObject({
+      days: 3,
+      lane_limit: 8,
+      as_of: '2026-03-29T10:00:00Z',
+    })
   })
 
   it('updates query params when lookback and kind filters change', () => {

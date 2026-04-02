@@ -20,6 +20,7 @@ module Ai
   #   - Recent SignalRuleMatches across all sites (top 10)
   class SummaryService < ApplicationService
     ALLOWED_SUMMARY_TYPES = %w[site_activity readiness_change leadership_briefing].freeze
+    BREAKER_SERVICE = "summary"
 
     MAX_AUDIT_EVENTS  = 40
     MAX_SIGNALS       = 20
@@ -41,6 +42,7 @@ module Ai
       unless @summary_type.in?(ALLOWED_SUMMARY_TYPES)
         return ServiceResult.failure(errors: ["Invalid summary_type. Must be one of: #{ALLOWED_SUMMARY_TYPES.join(', ')}"])
       end
+      return ServiceResult.failure(errors: ["AI temporarily unavailable. Please retry shortly."]) if Ai::CircuitBreaker.open?(service: BREAKER_SERVICE)
 
       @site    = Site.find(@site_id) if @site_id.present?
       events   = fetch_events
@@ -73,6 +75,7 @@ module Ai
       valid_ids = events.map { |e| e[:id] }.to_set
       citations = Array(parsed["citations"]).select { |id| valid_ids.include?(id) }
 
+      Ai::CircuitBreaker.record_success(service: BREAKER_SERVICE)
       ServiceResult.success(
         summary:   parsed["summary"].to_s.strip,
         citations: citations,
@@ -83,15 +86,18 @@ module Ai
         }
       )
     rescue JSON::ParserError
+      Ai::CircuitBreaker.record_failure(service: BREAKER_SERVICE)
       ServiceResult.failure(errors: ["AI returned an unparseable response"])
     rescue KeyError
       ServiceResult.failure(errors: ["ANTHROPIC_API_KEY is not set"])
     rescue ActiveRecord::RecordNotFound
       ServiceResult.failure(errors: ["Site not found"])
     rescue Anthropic::Errors::APITimeoutError => e
+      Ai::CircuitBreaker.record_failure(service: BREAKER_SERVICE)
       report_exception(e, message: "Summary generation timed out", failure: "timeout")
       ServiceResult.failure(errors: ["Summary generation timed out"])
     rescue => e
+      Ai::CircuitBreaker.record_failure(service: BREAKER_SERVICE)
       report_exception(e, message: "AI service error: #{e.message}", failure: "error")
       ServiceResult.failure(errors: ["AI service error: #{e.message}"])
     end
@@ -143,10 +149,10 @@ module Ai
     def fetch_signals
       return [] unless @site.present?
 
-      cutoff = CONTEXT_WINDOW_HOURS.hours.ago
+      cutoff = context_upper_bound - CONTEXT_WINDOW_HOURS.hours
       scope  = ExternalSignal
         .near_point(@site.latitude, @site.longitude, SIGNAL_RADIUS_KM)
-        .where("occurred_at > ?", cutoff)
+        .where("occurred_at > ? AND occurred_at <= ?", cutoff, context_upper_bound)
         .order(occurred_at: :desc)
 
       exact_signals =
@@ -171,9 +177,9 @@ module Ai
     # Returns recent SignalRuleMatch records.
     # Site-scoped when @site is set; last 10 across all sites otherwise (leadership briefing).
     def fetch_matches
-      cutoff = CONTEXT_WINDOW_HOURS.hours.ago
+      cutoff = context_upper_bound - CONTEXT_WINDOW_HOURS.hours
       scope  = SignalRuleMatch
-        .where("fired_at > ?", cutoff)
+        .where("fired_at > ? AND fired_at <= ?", cutoff, context_upper_bound)
         .includes(:correlation_rule, :signal, :site)
         .order(fired_at: :desc)
         .limit(MAX_RULE_FIRES)
@@ -333,6 +339,10 @@ module Ai
 
     def summary_model
       ENV.fetch("SUMMARY_MODEL", DEFAULT_MODEL)
+    end
+
+    def context_upper_bound
+      @to || Time.current
     end
 
     def report_exception(exception, message:, failure:)

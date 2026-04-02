@@ -342,6 +342,19 @@ CREATE TABLE public.recommendations (
 
 
 --
+-- Name: revoked_jwts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.revoked_jwts (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    jti character varying NOT NULL,
+    expires_at timestamp(6) without time zone NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
 -- Name: salute_reports; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -972,6 +985,14 @@ ALTER TABLE ONLY public.recommendations
 
 
 --
+-- Name: revoked_jwts revoked_jwts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.revoked_jwts
+    ADD CONSTRAINT revoked_jwts_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: salute_reports salute_reports_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1420,6 +1441,20 @@ CREATE INDEX index_recommendations_on_recommendation_type ON public.recommendati
 --
 
 CREATE INDEX index_recommendations_on_status ON public.recommendations USING btree (status);
+
+
+--
+-- Name: index_revoked_jwts_on_expires_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_revoked_jwts_on_expires_at ON public.revoked_jwts USING btree (expires_at);
+
+
+--
+-- Name: index_revoked_jwts_on_jti; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_revoked_jwts_on_jti ON public.revoked_jwts USING btree (jti);
 
 
 --
@@ -2350,6 +2385,7 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260402010000'),
 ('20260401030000'),
 ('20260401020000'),
 ('20260401010000'),

@@ -59,9 +59,9 @@ function GroundingBadge({ counts }: { counts: AiSummaryResult['context_counts'] 
 // ── main component ────────────────────────────────────────────────────────────
 
 export default function BriefingPanel() {
-  const { asOf, isReplaying }  = useReplay()
-  const { data: sitesData } = useSites({ per_page: 100 }, !isReplaying)
-  const sites     = sitesData?.data ?? []
+  const { asOf, isReplaying } = useReplay()
+  const { data: sitesData } = useSites({ per_page: 100 }, true)
+  const sites = sitesData?.data ?? []
 
   const [summaryType, setSummaryType] = useState<AiSummaryType>('leadership_briefing')
   const [siteId, setSiteId]           = useState<string>('')
@@ -80,16 +80,6 @@ export default function BriefingPanel() {
     return () => { mountedRef.current = false }
   }, [])
 
-  if (isReplaying) {
-    return (
-      <div className="briefing-panel">
-        <Callout intent="warning" icon="history" style={{ marginBottom: 12 }}>
-          Operational briefings are unavailable during replay because briefing generation still depends on live signal and rule-fire context that is not replay-scoped.
-        </Callout>
-      </div>
-    )
-  }
-
   function generate() {
     setLoading(true)
     setError(null)
@@ -99,7 +89,7 @@ export default function BriefingPanel() {
     postAiSummary({
       summary_type: summaryType,
       site_id:      siteId || undefined,
-      from:         asOf ?? undefined,
+      to:           asOf ?? undefined,
     })
       .then(({ data }) => { if (mountedRef.current) setResult(data) })
       .catch((err: unknown) => { if (mountedRef.current) setError(getApiErrorMessage(err, 'Failed to generate briefing')) })
@@ -140,6 +130,12 @@ export default function BriefingPanel() {
 
   return (
     <div className="briefing-panel">
+      {isReplaying && (
+        <Callout intent="warning" icon="history" style={{ marginBottom: 12 }}>
+          Generating a historical briefing snapshot anchored to the selected replay time. Live SSE updates are excluded while replay is active.
+        </Callout>
+      )}
+
       <div className="briefing-controls">
         {/* site selector */}
         <HTMLSelect
@@ -184,7 +180,9 @@ export default function BriefingPanel() {
       {/* context hint */}
       {siteId && (
         <p className="bp6-text-muted" style={{ fontSize: 11, marginTop: 6, marginBottom: 0 }}>
-          Briefing will include audit trail, intelligence signals within 200 km, and rule fires for this site.
+          {isReplaying
+            ? 'Briefing will include audit trail, intelligence signals within 200 km, and rule fires for this site up to the selected replay time.'
+            : 'Briefing will include audit trail, intelligence signals within 200 km, and rule fires for this site.'}
         </p>
       )}
 

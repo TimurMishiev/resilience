@@ -29,6 +29,10 @@ module Api
 
       # DELETE /api/auth/logout — clears the session cookie
       def destroy
+        token = request.cookies["_resilience_session"]&.strip
+        token ||= request.headers["Authorization"]&.delete_prefix("Bearer ")&.strip
+        JwtAuthenticatable.revoke!(token) if token.present?
+
         response.delete_cookie(:_resilience_session, path: "/")
         head :no_content
       end

@@ -31,7 +31,8 @@ module Api
         days:       params[:days],
         kinds:      params[:kinds],
         lane_limit: params[:lane_limit],
-        site_ids:   params[:site_ids]
+        site_ids:   params[:site_ids],
+        as_of:      as_of
       )
     end
   end

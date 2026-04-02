@@ -99,6 +99,21 @@ RSpec.describe "Api::Analytics#swimlane", type: :request do
       expect(body["data"].first["site_id"]).to eq(bravo.id)
     end
 
+    it "returns a historical lane set when as_of is provided" do
+      create(:task, site: alpha, title: "Historical task", created_at: 5.hours.ago)
+      create(:task, site: bravo, title: "Future task", created_at: 30.minutes.ago)
+
+      get "/api/analytics/swimlane",
+          params: { as_of: 2.hours.ago.iso8601 },
+          headers: auth_headers(current_user)
+
+      expect(response).to have_http_status(:ok)
+      body = JSON.parse(response.body)
+      expect(body["meta"]["as_of"]).to be_present
+      expect(body["data"].map { |lane| lane["site_id"] }).to eq([alpha.id])
+      expect(body["data"].first["events"].map { |event| event["title"] }).to include("Task created: Historical task")
+    end
+
     it "returns 401 without authentication" do
       get "/api/analytics/swimlane"
       expect(response).to have_http_status(:unauthorized)

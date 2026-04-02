@@ -68,6 +68,21 @@ RSpec.describe Sites::TimelineService, type: :service do
         expect(ids).not_to include("sig_#{old_signal.id}")
       end
     end
+
+    context "when a signal occurs after as_of" do
+      let!(:future_signal) do
+        create(:external_signal,
+               lat:         26.6,
+               lng:         56.2,
+               occurred_at: 2.hours.ago)
+      end
+
+      it "excludes the signal from a historical replay window" do
+        historical_events = described_class.call(site: site, days: 7, as_of: 3.hours.ago)
+        ids = historical_events.map { |e| e[:id] }
+        expect(ids).not_to include("sig_#{future_signal.id}")
+      end
+    end
   end
 
   # ── rule_fired events ──────────────────────────────────────────────────────

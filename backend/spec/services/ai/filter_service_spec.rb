@@ -121,6 +121,16 @@ RSpec.describe Ai::FilterService, type: :service do
       expect(first.send(:site_catalog)).to eq(second.send(:site_catalog))
       expect(calls).to eq(1)
     end
+
+    it "fails closed when the AI circuit breaker is open" do
+      allow(Ai::CircuitBreaker).to receive(:open?).with(service: described_class::BREAKER_SERVICE).and_return(true)
+      expect(Anthropic::Client).not_to receive(:new)
+
+      result = described_class.call(query: query)
+
+      expect(result.success).to be(false)
+      expect(result.errors).to eq(["AI temporarily unavailable. Please retry shortly."])
+    end
   end
 
   describe "filter validation" do

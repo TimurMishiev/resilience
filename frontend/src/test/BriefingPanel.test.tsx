@@ -43,17 +43,18 @@ describe('BriefingPanel', () => {
     exportBriefing.mockReset()
   })
 
-  it('shows a replay warning instead of the generate controls during replay', () => {
+  it('shows a replay warning and keeps the generate controls available during replay', () => {
     mockState.isReplaying = true
 
     render(<BriefingPanel />)
 
-    expect(screen.getByText(/Operational briefings are unavailable during replay/i)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Generate briefing/i })).not.toBeInTheDocument()
+    expect(screen.getByText(/historical briefing snapshot anchored to the selected replay time/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Generate briefing/i })).toBeInTheDocument()
   })
 
   it('generates a site-scoped briefing and renders grounded output', async () => {
     const user = userEvent.setup()
+    mockState.isReplaying = true
     mockState.asOf = '2026-03-26T21:30:00.000Z'
     postAiSummary.mockResolvedValue({
       data: {
@@ -75,7 +76,7 @@ describe('BriefingPanel', () => {
     expect(postAiSummary).toHaveBeenCalledWith({
       summary_type: 'leadership_briefing',
       site_id: 'site-1',
-      from: '2026-03-26T21:30:00.000Z',
+      to: '2026-03-26T21:30:00.000Z',
     })
 
     expect(await screen.findByText(/Forward Site Alpha remains stable/i)).toBeInTheDocument()

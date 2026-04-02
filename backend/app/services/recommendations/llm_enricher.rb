@@ -9,10 +9,15 @@ module Recommendations
   # This keeps the prompt tight, reduces hallucination surface, and ensures the
   # model reasons about the same data the operator sees.
   class LlmEnricher < ApplicationService
-    MODEL             = "claude-3-5-haiku-20241022"
-    MAX_TOKENS        = 1024
-    TEMPERATURE       = 0.2   # low temp → more deterministic operational output
-    VALID_REC_TYPES   = Recommendation::VALID_TYPES
+    ParseFailure = Class.new(StandardError)
+
+    BREAKER_SERVICE           = "recommendation_llm_enricher"
+    DEFAULT_MODEL             = "claude-haiku-4-5-20251001"
+    MAX_TOKENS                = 1024
+    TEMPERATURE               = 0.2   # low temp → more deterministic operational output
+    VALID_REC_TYPES           = Recommendation::VALID_TYPES
+    ANTHROPIC_TIMEOUT_SECONDS = 30
+    ANTHROPIC_MAX_RETRIES     = 0
 
     def initialize(context:)
       @ctx = context
@@ -20,12 +25,21 @@ module Recommendations
 
     def call
       return ServiceResult.success(recommendations: []) unless api_key_present?
+      return ServiceResult.success(recommendations: []) if Ai::CircuitBreaker.open?(service: BREAKER_SERVICE)
 
       raw = call_anthropic(build_prompt)
       parsed = parse_response(raw)
+      Ai::CircuitBreaker.record_success(service: BREAKER_SERVICE)
       ServiceResult.success(recommendations: parsed)
+    rescue ParseFailure
+      ServiceResult.success(recommendations: [])
+    rescue Anthropic::Errors::APITimeoutError => e
+      Ai::CircuitBreaker.record_failure(service: BREAKER_SERVICE)
+      report_exception(e, message: "Recommendation enrichment timed out", failure: "timeout")
+      ServiceResult.success(recommendations: [])
     rescue => e
-      Rails.logger.error "[LlmEnricher] #{e.message}"
+      Ai::CircuitBreaker.record_failure(service: BREAKER_SERVICE)
+      report_exception(e, message: "Recommendation enrichment error: #{e.message}", failure: "error")
       ServiceResult.success(recommendations: [])  # degrade gracefully — Tier 1 still runs
     end
 
@@ -99,10 +113,11 @@ module Recommendations
     def call_anthropic(prompt)
       client = Anthropic::Client.new(
         api_key: ENV.fetch("ANTHROPIC_API_KEY"),
-        timeout: 30,
+        timeout: ANTHROPIC_TIMEOUT_SECONDS,
+        max_retries: ANTHROPIC_MAX_RETRIES,
       )
       response = client.messages.create(
-        model:      MODEL,
+        model:      llm_model,
         max_tokens: MAX_TOKENS,
         temperature: TEMPERATURE,
         messages:   [{ role: "user", content: prompt }],
@@ -133,8 +148,30 @@ module Recommendations
         }
       end
     rescue JSON::ParserError => e
-      Rails.logger.warn "[LlmEnricher] JSON parse failed: #{e.message}"
-      []
+      Ai::CircuitBreaker.record_failure(service: BREAKER_SERVICE)
+      report_exception(e, message: "Recommendation enrichment JSON parse failed: #{e.message}", failure: "parse_error", level: :warn)
+      raise ParseFailure
+    end
+
+    def llm_model
+      ENV.fetch("RECOMMENDATION_LLM_MODEL", DEFAULT_MODEL)
+    end
+
+    def report_exception(exception, message:, failure:, level: :error)
+      Rails.logger.public_send(level, "[LlmEnricher] #{message}")
+      Observability.capture_exception(
+        exception,
+        tags: { service: "recommendation_llm_enricher", failure: failure },
+        extra: {
+          stale_alerts: @ctx.fetch(:stale_alerts, []).size,
+          high_conf_alerts: @ctx.fetch(:high_conf_alerts, []).size,
+          open_incidents: @ctx.fetch(:open_incidents, []).size,
+          overdue_tasks: @ctx.fetch(:overdue_tasks, []).size,
+          flaggable_sites: @ctx.fetch(:flaggable_sites, []).size,
+          bulk_triage_sites: @ctx.fetch(:bulk_triage_sites, []).size,
+        },
+        throttle_key: "recommendation_llm_enricher:#{failure}:#{exception.class}",
+      )
     end
   end
 end

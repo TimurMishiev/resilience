@@ -4,6 +4,7 @@ module Ai
   # against the existing data model.
   class OntologyQueryService < ApplicationService
     TOOL_NAME              = "plan_ontology_query"
+    BREAKER_SERVICE        = "ontology_query"
     DEFAULT_MODEL          = "claude-haiku-4-5-20251001"
     DEFAULT_WINDOW_HOURS   = 72
     MAX_WINDOW_HOURS       = 720
@@ -32,6 +33,7 @@ module Ai
 
     def call
       return ServiceResult.failure(errors: ["Query cannot be blank"]) if @query.blank?
+      return ServiceResult.failure(errors: ["AI temporarily unavailable. Please retry shortly."]) if Ai::CircuitBreaker.open?(service: BREAKER_SERVICE)
 
       plan          = plan_query
       return plan if plan.failure?
@@ -49,6 +51,7 @@ module Ai
       execute_graph(root_type:, root:, relations:, limit:, time_window_hours: time_window)
 
       counts = build_counts
+      Ai::CircuitBreaker.record_success(service: BREAKER_SERVICE)
       ServiceResult.success(
         original_query: @query,
         normalized_query: {
@@ -67,9 +70,11 @@ module Ai
     rescue KeyError
       ServiceResult.failure(errors: ["ANTHROPIC_API_KEY is not set"])
     rescue Anthropic::Errors::APITimeoutError => e
+      Ai::CircuitBreaker.record_failure(service: BREAKER_SERVICE)
       report_exception(e, message: "Ontology query timed out", failure: "timeout")
       ServiceResult.failure(errors: ["Ontology query timed out"])
     rescue => e
+      Ai::CircuitBreaker.record_failure(service: BREAKER_SERVICE)
       report_exception(e, message: "AI service error: #{e.message}", failure: "error")
       ServiceResult.failure(errors: ["AI service error: #{e.message}"])
     end

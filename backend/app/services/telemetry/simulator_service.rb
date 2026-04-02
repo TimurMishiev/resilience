@@ -7,6 +7,7 @@ module Telemetry
   # Started once via config/initializers/telemetry_simulator.rb.
   # Safe to call start! multiple times — idempotent via @thread guard.
   class SimulatorService
+    ENABLED_ENV       = "TELEMETRY_SIMULATOR_ENABLED"
     TICK_INTERVAL     = 3      # seconds between full broadcast cycles
     BATTERY_DRAIN     = 0.02   # % per tick for moving assets
     BATTERY_IDLE_DRAIN = 0.005 # % per tick for stationary assets
@@ -15,6 +16,31 @@ module Telemetry
 
     def self.start!
       @thread ||= new.tap(&:run)
+    end
+
+    def self.enabled?
+      ActiveModel::Type::Boolean.new.cast(ENV.fetch(ENABLED_ENV, false))
+    end
+
+    def self.server_process?
+      defined?(Rails::Server) || $PROGRAM_NAME.include?("puma") || $PROGRAM_NAME.include?("server")
+    end
+
+    def self.boot!(logger: Rails.logger)
+      unless enabled?
+        logger.info "[Telemetry] Simulator disabled. Set #{ENABLED_ENV}=true to enable."
+        return false
+      end
+
+      unless server_process?
+        logger.info "[Telemetry] skipped outside server process"
+        return false
+      end
+
+      logger.info "[Telemetry] Starting simulator..."
+      start!
+      logger.info "[Telemetry] Simulator started."
+      true
     end
 
     def run

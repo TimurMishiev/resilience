@@ -14,8 +14,11 @@ module Realtime
 
       def listen(channel:, logger_prefix:, &block)
         Thread.new do
-          Thread.current.name = "#{logger_prefix.downcase.tr(' ', '-')}-relay"
+          relay_name = logger_prefix.downcase.tr(" ", "_")
+
+          Thread.current.name = "#{relay_name.tr('_', '-')}-relay"
           Thread.current.abort_on_exception = false
+          last_notify_at = nil
 
           loop do
             connection = nil
@@ -23,30 +26,58 @@ module Realtime
             begin
               connection = build_listener_connection
               connection.exec("LISTEN #{PG::Connection.quote_ident(channel.to_s)}")
+              Realtime::RelayHealthRegistry.record_heartbeat(
+                channel: channel,
+                relay: relay_name,
+                last_notify_at: last_notify_at,
+              )
 
               loop do
                 connection.wait_for_notify(30) do |_event, _pid, payload|
+                  last_notify_at = Time.current
+                  Realtime::RelayHealthRegistry.record_heartbeat(
+                    channel: channel,
+                    relay: relay_name,
+                    last_notify_at: last_notify_at,
+                  )
                   yield payload
                 end
+                Realtime::RelayHealthRegistry.record_heartbeat(
+                  channel: channel,
+                  relay: relay_name,
+                  last_notify_at: last_notify_at,
+                )
               end
             rescue PG::Error, IOError => e
+              Realtime::RelayHealthRegistry.record_error(
+                channel: channel,
+                relay: relay_name,
+                error: e,
+                last_notify_at: last_notify_at,
+              )
               Rails.logger.error(
                 "[#{logger_prefix}] relay_error channel=#{channel} error=#{e.class} message=#{e.message}"
               )
               Observability.capture_exception(
                 e,
-                tags: { component: "postgres_relay", channel: channel, relay: logger_prefix.downcase.tr(" ", "_") },
+                tags: { component: "postgres_relay", channel: channel, relay: relay_name },
                 throttle_key: "postgres_relay:#{channel}:#{e.class}",
                 throttle_seconds: 60
               )
               sleep RECONNECT_DELAY_SECONDS
             rescue StandardError => e
+              Realtime::RelayHealthRegistry.record_error(
+                channel: channel,
+                relay: relay_name,
+                error: e,
+                last_notify_at: last_notify_at,
+              )
               Rails.logger.error(
                 "[#{logger_prefix}] relay_unexpected_error channel=#{channel} error=#{e.class} message=#{e.message}"
               )
               Observability.capture_exception(
                 e,
-                tags: { component: "postgres_relay", channel: channel, relay: logger_prefix.downcase.tr(" ", "_") },
+                tags: { component: "postgres_relay", channel: channel, relay: relay_name },
                 throttle_key: "postgres_relay_unexpected:#{channel}:#{e.class}",
                 throttle_seconds: 60
               )

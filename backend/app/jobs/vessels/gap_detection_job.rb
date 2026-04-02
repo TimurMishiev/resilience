@@ -101,40 +101,82 @@ module Vessels
       score.clamp(0.0, 1.0)
     end
 
-    # Rough bounding-box check against AO geometries.
-    # AO geometry is GeoJSON — we check the vessel's last position against
-    # the bounding box of each AO polygon as a fast pre-filter.
-    # Full polygon containment (ray casting) is a Phase 2 enhancement.
+    # Exact point-in-polygon check against GeoJSON AO geometry.
+    # Supports Polygon, MultiPolygon, and Feature-wrapped geometry.
+    # Coordinates are GeoJSON [lng, lat].
     def inside_high_threat_ao?(vessel, areas)
+      point = [ vessel.lng.to_f, vessel.lat.to_f ]
+
       areas.any? do |ao|
         next false unless ao.geometry.is_a?(Hash)
 
-        coords = extract_bbox_coords(ao.geometry)
-        next false unless coords
-
-        min_lat, max_lat, min_lng, max_lng = coords
-        vessel.lat.between?(min_lat, max_lat) && vessel.lng.between?(min_lng, max_lng)
+        geometry_contains_point?(ao.geometry, point)
       end
     end
 
-    def extract_bbox_coords(geojson)
-      # Support GeoJSON Polygon and MultiPolygon
-      all_coords = case geojson["type"]
-                   when "Polygon"
-                     geojson.dig("coordinates", 0) || []
-                   when "MultiPolygon"
-                     (geojson["coordinates"] || []).flat_map { |poly| poly[0] || [] }
-                   when "Feature"
-                     return extract_bbox_coords(geojson["geometry"] || {})
-                   else
-                     []
-                   end
+    def geometry_contains_point?(geojson, point)
+      case geojson["type"]
+      when "Polygon"
+        polygon_contains_point?(geojson["coordinates"] || [], point)
+      when "MultiPolygon"
+        Array(geojson["coordinates"]).any? { |polygon| polygon_contains_point?(polygon, point) }
+      when "Feature"
+        geometry_contains_point?(geojson["geometry"] || {}, point)
+      else
+        false
+      end
+    end
 
-      return nil if all_coords.empty?
+    def polygon_contains_point?(polygon_coords, point)
+      outer_ring = Array(polygon_coords).first || []
+      holes = Array(polygon_coords).drop(1)
+      return false unless ring_contains_point?(outer_ring, point)
 
-      lngs = all_coords.map { |c| c[0].to_f }
-      lats = all_coords.map { |c| c[1].to_f }
-      [ lats.min, lats.max, lngs.min, lngs.max ]
+      holes.none? { |hole| ring_contains_point?(hole, point) }
+    end
+
+    def ring_contains_point?(ring, point)
+      normalized_ring = normalize_ring(ring)
+      return false if normalized_ring.size < 4
+
+      x = point[0].to_f
+      y = point[1].to_f
+      inside = false
+
+      normalized_ring.each_cons(2) do |(x1, y1), (x2, y2)|
+        x1 = x1.to_f
+        y1 = y1.to_f
+        x2 = x2.to_f
+        y2 = y2.to_f
+
+        return true if point_on_segment?(x, y, x1, y1, x2, y2)
+
+        crosses_latitude = (y1 > y) != (y2 > y)
+        next unless crosses_latitude
+
+        intersection_x = ((x2 - x1) * (y - y1) / (y2 - y1)) + x1
+        inside = !inside if x < intersection_x
+      end
+
+      inside
+    end
+
+    def normalize_ring(ring)
+      points = Array(ring).map { |coord| [ coord[0], coord[1] ] }
+      return points if points.empty? || points.first == points.last
+
+      points + [ points.first ]
+    end
+
+    def point_on_segment?(x, y, x1, y1, x2, y2)
+      cross_product = (y - y1) * (x2 - x1) - (x - x1) * (y2 - y1)
+      return false unless cross_product.abs < 1e-9
+
+      dot_product = (x - x1) * (x2 - x1) + (y - y1) * (y2 - y1)
+      return false if dot_product.negative?
+
+      squared_length = (x2 - x1)**2 + (y2 - y1)**2
+      dot_product <= squared_length
     end
   end
 end

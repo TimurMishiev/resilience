@@ -117,6 +117,16 @@ RSpec.describe Ai::SummaryService, type: :service do
       expect(result.success).to be(false)
       expect(result.errors).to eq(["AI service error: summary exploded"])
     end
+
+    it "fails closed when the AI circuit breaker is open" do
+      allow(Ai::CircuitBreaker).to receive(:open?).with(service: described_class::BREAKER_SERVICE).and_return(true)
+      expect(Anthropic::Client).not_to receive(:new)
+
+      result = described_class.call(summary_type: "site_activity", site_id: site.id)
+
+      expect(result.success).to be(false)
+      expect(result.errors).to eq(["AI temporarily unavailable. Please retry shortly."])
+    end
   end
 
   # ── no data guard ─────────────────────────────────────────────────────────
@@ -340,6 +350,43 @@ RSpec.describe Ai::SummaryService, type: :service do
           occurred_at: older_exact_signal.occurred_at.iso8601,
         )
       end
+    end
+  end
+
+  describe "historical upper bound" do
+    let!(:task) { create(:task, site: site) }
+    let!(:audit) do
+      create(:audit_event, entity_type: "Task", entity_id: task.id,
+             event_type: "task_transitioned", occurred_at: 6.hours.ago)
+    end
+    let!(:old_signal) do
+      create(:external_signal,
+             lat: 26.6, lng: 56.2,
+             signal_type: "gps_jamming", source: "gpsjam",
+             occurred_at: 5.hours.ago)
+    end
+    let!(:recent_signal) do
+      create(:external_signal,
+             lat: 26.6, lng: 56.2,
+             signal_type: "gps_jamming", source: "gpsjam",
+             occurred_at: 30.minutes.ago)
+    end
+
+    it "anchors signal context to the provided to timestamp" do
+      content_sent = nil
+      allow(fake_messages).to receive(:create) do |args|
+        content_sent = args[:messages].first[:content]
+        fake_response
+      end
+
+      described_class.call(
+        summary_type: "site_activity",
+        site_id: site.id,
+        to: 2.hours.ago,
+      )
+
+      expect(content_sent).to include(old_signal.occurred_at.iso8601)
+      expect(content_sent).not_to include(recent_signal.occurred_at.iso8601)
     end
   end
 

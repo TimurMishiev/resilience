@@ -43,8 +43,7 @@ module Api
       authorize site, :timeline?
       days = (params[:days] || 7).to_i.clamp(1, 90)
 
-      events = Sites::TimelineService.call(site: site, days: days)
-
+      events = Sites::TimelineService.call(site: site, days: days, as_of: as_of)
       # Optional kind filter — e.g. ?kinds[]=rule_fired&kinds[]=signal_detected
       if params[:kinds].present?
         allowed = Array(params[:kinds]) & TIMELINE_VALID_KINDS
@@ -53,7 +52,7 @@ module Api
 
       render json: {
         data:    events,
-        meta:    { total: events.size, site_id: site.id, days: days }
+        meta:    { total: events.size, site_id: site.id, days: days, as_of: as_of&.iso8601 }
       }
     end
 

@@ -173,17 +173,20 @@ export default function SwimlanePage() {
 
   const kinds = activeKinds.length === ALL_KINDS.length ? undefined : activeKinds
   const { data, isPending, error, dataUpdatedAt } = useSwimlane(
-    { days, kinds, lane_limit: LANE_LIMIT },
-    { enabled: !isReplaying },
+    { days, kinds, lane_limit: LANE_LIMIT, ...(asOf ? { as_of: asOf } : {}) },
+    { enabled: true },
   )
 
   const nowMs = useReferenceTimeMs(asOf)
   const windowStartMs = nowMs - days * 24 * 60 * 60 * 1000
   const lanes = data?.data ?? []
   const meta = data?.meta
+  const anchoredAt = isReplaying && asOf ? fmtTimestamp(asOf) : null
   const summary = !isPending && !error
-    ? `Showing ${meta?.lane_count ?? 0} sites / ${meta?.total_events ?? 0} events over ${days} day${days === 1 ? '' : 's'}${dataUpdatedAt ? ` · updated ${fmtTimestamp(new Date(dataUpdatedAt).toISOString())}` : ''}`
-    : 'Loading live swimlane…'
+    ? `Showing ${meta?.lane_count ?? 0} sites / ${meta?.total_events ?? 0} events over ${days} day${days === 1 ? '' : 's'}${anchoredAt ? ` · anchored ${anchoredAt}` : ''}${dataUpdatedAt ? ` · updated ${fmtTimestamp(new Date(dataUpdatedAt).toISOString())}` : ''}`
+    : isReplaying
+      ? 'Loading historical swimlane…'
+      : 'Loading live swimlane…'
 
   const axisLabels = useMemo(
     () => AXIS_MARKERS.map((marker) => ({
@@ -209,16 +212,17 @@ export default function SwimlanePage() {
         <div>
           <h2>Swimlane</h2>
           <p className="bp6-text-muted" style={{ margin: '4px 0 0', maxWidth: 760 }}>
-            Cross-site temporal view of signals, alerts, tasks, and site actions. This surface is
-            live-only and ranks the busiest active sites in the current lookback window.
+            Cross-site temporal view of signals, alerts, tasks, and site actions. This surface
+            ranks the busiest sites in the selected lookback window, anchored to live time or the
+            selected replay timestamp.
           </p>
         </div>
       </div>
 
       {isReplaying && (
         <Callout intent="warning" icon="history" style={{ marginBottom: 16 }}>
-          Swimlane is unavailable during replay because it aggregates live site timelines and alert
-          state. Return to live mode to inspect current operational tempo.
+          Showing a historical swimlane snapshot anchored to the selected replay time. Live SSE
+          updates are excluded while replay is active.
         </Callout>
       )}
 
@@ -263,43 +267,45 @@ export default function SwimlanePage() {
         </ButtonGroup>
       </div>
 
-      {!isReplaying && <div className="swimlane-summary bp6-text-muted">{summary}</div>}
+      <div className="swimlane-summary bp6-text-muted">{summary}</div>
 
-      {!isReplaying && (
-        <div className="swimlane-axis" aria-hidden="true">
-          {axisLabels.map((entry) => (
-            <span
-              key={entry.marker}
-              className="swimlane-axis-label"
-              style={{ left: `${entry.marker * 100}%` }}
-            >
-              {entry.label}
-            </span>
-          ))}
-        </div>
-      )}
+      <div className="swimlane-axis" aria-hidden="true">
+        {axisLabels.map((entry) => (
+          <span
+            key={entry.marker}
+            className="swimlane-axis-label"
+            style={{ left: `${entry.marker * 100}%` }}
+          >
+            {entry.label}
+          </span>
+        ))}
+      </div>
 
-      {!isReplaying && isPending && (
+      {isPending && (
         <div className="swimlane-loading">
           <Spinner size={28} />
         </div>
       )}
 
-      {!isReplaying && error && (
+      {error && (
         <Callout intent="danger" icon="error" style={{ marginTop: 12 }}>
           {(error as Error).message || 'Failed to load swimlane analytics.'}
         </Callout>
       )}
 
-      {!isReplaying && !isPending && !error && lanes.length === 0 && (
+      {!isPending && !error && lanes.length === 0 && (
         <NonIdealState
           icon="timeline-events"
           title="No recent cross-site activity"
-          description="No active sites produced swimlane events in the selected lookback window."
+          description={
+            isReplaying
+              ? 'No sites produced swimlane events before the selected replay time in the chosen lookback window.'
+              : 'No active sites produced swimlane events in the selected lookback window.'
+          }
         />
       )}
 
-      {!isReplaying && !isPending && !error && lanes.length > 0 && (
+      {!isPending && !error && lanes.length > 0 && (
         <div className="swimlane-list">
           {lanes.map((lane) => (
             <SwimlaneLaneRow

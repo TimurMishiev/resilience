@@ -121,6 +121,16 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
       expect(first.send(:catalog_context)).to eq(second.send(:catalog_context))
       expect(calls).to eq(1)
     end
+
+    it "fails closed when the AI circuit breaker is open" do
+      allow(Ai::CircuitBreaker).to receive(:open?).with(service: described_class::BREAKER_SERVICE).and_return(true)
+      expect(Anthropic::Client).not_to receive(:new)
+
+      result = described_class.call(query: query)
+
+      expect(result.success).to be(false)
+      expect(result.errors).to eq(["AI temporarily unavailable. Please retry shortly."])
+    end
   end
 
   describe "site-root graph execution" do

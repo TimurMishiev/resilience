@@ -714,12 +714,13 @@ export interface TimelineEvent {
 
 export interface SiteTimelineResponse {
   data: TimelineEvent[]
-  meta: { total: number; site_id: string; days: number }
+  meta: { total: number; site_id: string; days: number; as_of?: string | null }
 }
 
 export interface SiteTimelineParams {
   days?:  number
   kinds?: TimelineEventKind[]
+  as_of?: string
 }
 
 export interface SwimlaneLane {
@@ -742,6 +743,7 @@ export interface SwimlaneResponse {
     total_events: number
     event_kinds: TimelineEventKind[]
     selected_site_ids: string[]
+    as_of?: string | null
   }
 }
 
@@ -750,4 +752,5 @@ export interface SwimlaneParams {
   kinds?: TimelineEventKind[]
   lane_limit?: number
   site_ids?: string[]
+  as_of?: string
 }

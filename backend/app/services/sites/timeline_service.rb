@@ -16,13 +16,14 @@ module Sites
     MAX_LOOKBACK     = 90
     MAX_PER_KIND     = 150
 
-    def initialize(site:, days: DEFAULT_DAYS)
+    def initialize(site:, days: DEFAULT_DAYS, as_of: nil)
       @site = site
       @days = days.to_i.clamp(1, MAX_LOOKBACK)
+      @as_of = as_of || Time.current
     end
 
     def call
-      cutoff = @days.days.ago
+      cutoff = @as_of - @days.days
 
       events = []
       events.concat(signal_events(cutoff))
@@ -44,7 +45,7 @@ module Sites
     def signal_events(cutoff)
       ExternalSignal
         .near_point(@site.latitude, @site.longitude, SIGNAL_RADIUS_KM)
-        .where("occurred_at > ?", cutoff)
+        .where("occurred_at > ? AND occurred_at <= ?", cutoff, @as_of)
         .order(occurred_at: :desc)
         .limit(MAX_PER_KIND)
         .filter_map { |sig| build_signal_event(sig) }
@@ -53,7 +54,7 @@ module Sites
     def rule_fire_events(cutoff)
       SignalRuleMatch
         .for_site(@site.id)
-        .where("fired_at > ?", cutoff)
+        .where("fired_at > ? AND fired_at <= ?", cutoff, @as_of)
         .includes(:correlation_rule, :signal)
         .order(fired_at: :desc)
         .limit(MAX_PER_KIND)
@@ -63,7 +64,7 @@ module Sites
     def task_created_events(cutoff)
       Task
         .where(site_id: @site.id)
-        .where("created_at > ?", cutoff)
+        .where("created_at > ? AND created_at <= ?", cutoff, @as_of)
         .order(created_at: :desc)
         .limit(MAX_PER_KIND)
         .map { |t| build_task_created_event(t) }
@@ -75,7 +76,7 @@ module Sites
 
       AuditEvent
         .where(entity_type: "Task", entity_id: task_ids)
-        .where("occurred_at > ?", cutoff)
+        .where("occurred_at > ? AND occurred_at <= ?", cutoff, @as_of)
         .order(occurred_at: :desc)
         .limit(MAX_PER_KIND)
         .map { |e| build_audit_event(e, "task_transitioned") }
@@ -84,7 +85,7 @@ module Sites
     def site_audit_events(cutoff)
       AuditEvent
         .where(entity_type: "Site", entity_id: @site.id)
-        .where("occurred_at > ?", cutoff)
+        .where("occurred_at > ? AND occurred_at <= ?", cutoff, @as_of)
         .order(occurred_at: :desc)
         .map { |e| build_audit_event(e, "site_event") }
     end

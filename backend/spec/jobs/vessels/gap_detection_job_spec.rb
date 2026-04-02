@@ -71,6 +71,44 @@ RSpec.describe Vessels::GapDetectionJob, type: :job do
         signal = ExternalSignal.find_by(external_id: "gap_#{vessel.mmsi}_#{vessel.last_seen_at.to_i}")
         expect(signal.magnitude).to eq(0.50)
       end
+
+      it "does not boost confidence for points that are only inside an AO bounding box" do
+        create(
+          :area_of_operation,
+          threat_level: "red",
+          geometry: {
+            "type" => "Polygon",
+            "coordinates" => [
+              [[0.0, 0.0], [2.0, 0.0], [0.0, 2.0], [0.0, 0.0]]
+            ]
+          }
+        )
+        vessel = create(:vessel, last_seen_at: 30.minutes.ago, speed: nil, lat: 1.5, lng: 1.5)
+
+        job.perform
+
+        signal = ExternalSignal.find_by(external_id: "gap_#{vessel.mmsi}_#{vessel.last_seen_at.to_i}")
+        expect(signal.magnitude).to eq(0.50)
+      end
+
+      it "boosts confidence for points contained by the high-threat AO polygon" do
+        create(
+          :area_of_operation,
+          threat_level: "red",
+          geometry: {
+            "type" => "Polygon",
+            "coordinates" => [
+              [[0.0, 0.0], [2.0, 0.0], [0.0, 2.0], [0.0, 0.0]]
+            ]
+          }
+        )
+        vessel = create(:vessel, last_seen_at: 30.minutes.ago, speed: nil, lat: 0.5, lng: 0.5)
+
+        job.perform
+
+        signal = ExternalSignal.find_by(external_id: "gap_#{vessel.mmsi}_#{vessel.last_seen_at.to_i}")
+        expect(signal.magnitude).to eq(0.70)
+      end
     end
 
     context "idempotency" do
