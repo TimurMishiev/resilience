@@ -17,20 +17,13 @@ import { useChokepoints } from '../hooks/useChokepoints'
 import { useRole } from '../hooks/useRole'
 import { useReplayParams } from '../hooks/useReplayParams'
 import { useAssetTrails } from '../hooks/useAssetTrails'
+import { useEntitySelectionSync } from '../hooks/useEntitySelectionSync'
 import { useMapLibreEngine, MAP_STYLE_CONFIGS, type MapStyleKey } from '../hooks/useMapLibreEngine'
 import type { Task } from '../api/types'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import { assetDisplayPosition, getLiveTelemetryReading } from '../lib/assetPresentation'
 import { buildCoverageCircles } from '../lib/coverage'
-import {
-  buildEntitySelectionSearch,
-  buildEntitySelectionSyncLocationState,
-  consumeEntitySelectionSyncLocationState,
-  isEntitySelectionRouteAuthoritative,
-  parseEntitySelectionRoute,
-  shouldClearEntitySelectionAfterLoad,
-  trackEntitySelectionSyncToken,
-} from '../lib/entitySelectionRoute'
+import { parseEntitySelectionRoute } from '../lib/entitySelectionRoute'
 import { computeReadiness } from '../lib/formatters'
 import { SIGNAL_COLORS, SIGNAL_LABELS } from '../lib/signalConfig'
 import { MapSitePanel } from '../components/MapSitePanel'
@@ -84,23 +77,11 @@ declare global {
 
 export default function MapPage() {
   const location    = useLocation()
-  const navigate    = useNavigate()
   const { asOf, isReplaying, asOfParam, signalQueryParams } = useReplayParams()
   const { role }    = useRole()
   const queryClient = useQueryClient()
 
-  const mapContainerRef        = useRef<HTMLDivElement>(null)
-  const urlSelectionAppliedRef = useRef(false)
-  const replayResetReadyRef    = useRef(false)
-  const nextRouteWriteTokenRef = useRef(0)
-  const pendingRouteWriteTokensRef = useRef<Set<number>>(new Set())
-
-  // ---------------------------------------------------------------------------
-  // Selection state — owned here, driven by engine callbacks
-  // ---------------------------------------------------------------------------
-  const [selectedSiteId,   setSelectedSiteId]   = useState<string | null>(null)
-  const [selectedAssetId,  setSelectedAssetId]  = useState<string | null>(null)
-  const [selectedSignalId, setSelectedSignalId] = useState<string | null>(null)
+  const mapContainerRef = useRef<HTMLDivElement>(null)
 
   // ---------------------------------------------------------------------------
   // Map UI state — passed to engine
@@ -131,6 +112,12 @@ export default function MapPage() {
     [areasRes?.data, isReplaying],
   )
 
+  const sites    = useMemo(() => sitesQuery.data?.data  ?? [], [sitesQuery.data?.data])
+  const allTasks = useMemo(() => tasksQuery.data?.data  ?? [], [tasksQuery.data?.data])
+  const assets   = useMemo(() => assetsQuery.data?.data ?? [], [assetsQuery.data?.data])
+  const loading  = sitesQuery.isLoading || tasksQuery.isLoading
+  const error    = sitesQuery.error?.message ?? tasksQuery.error?.message ?? null
+
   const { signals, connected: signalsConnected, error: signalError } = useSignalsLive({
     enabled: true,
     asOf,
@@ -138,60 +125,22 @@ export default function MapPage() {
   })
 
   // ---------------------------------------------------------------------------
-  // SSE grace period — prevents the stale-selection clear from firing before
-  // the stream has had a chance to deliver post-baseline signals for a
-  // deep-linked signal URL.  Scoped to the React Router location.key so that
-  // every distinct navigation attempt — including same-signal retries in a
-  // long-lived session — gets a fresh 1500 ms window.  signalsSettledKey
-  // holds the location.key whose window has elapsed; null means no attempt
-  // has settled yet (or the stream disconnected).
+  // Entity selection sync — shared with GlobePage
   // ---------------------------------------------------------------------------
-  const [signalsSettledKey, setSignalsSettledKey] = useState<string | null>(null)
-  const signalsSettledTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const signalsSettledTimerForRef  = useRef<string | null>(null)
-
-  useEffect(() => {
-    if (!signalsConnected || signalError != null) {
-      /* eslint-disable react-hooks/set-state-in-effect -- Resets internal grace-window state on disconnect or error; no selection state is mutated and no URL write occurs */
-      setSignalsSettledKey(null)
-      /* eslint-enable react-hooks/set-state-in-effect */
-      signalsSettledTimerForRef.current = null
-      if (signalsSettledTimerRef.current != null) {
-        clearTimeout(signalsSettledTimerRef.current)
-        signalsSettledTimerRef.current = null
-      }
-      return
-    }
-
-    const routeSignalId = parseEntitySelectionRoute(location.search).signalId
-    if (routeSignalId == null) return  // no signal deep-linked; nothing to wait for
-
-    // Cancel the running timer when the navigation key changes (new route attempt).
-    if (
-      signalsSettledTimerRef.current != null &&
-      signalsSettledTimerForRef.current !== location.key
-    ) {
-      clearTimeout(signalsSettledTimerRef.current)
-      signalsSettledTimerRef.current = null
-      signalsSettledTimerForRef.current = null
-    }
-
-    if (signalsSettledTimerRef.current != null) return  // timer already running for this attempt
-
-    const thisKey = location.key
-    signalsSettledTimerForRef.current = thisKey
-    signalsSettledTimerRef.current = setTimeout(() => {
-      setSignalsSettledKey(thisKey)
-      signalsSettledTimerRef.current = null
-    }, 1500)
-
-    return () => {
-      if (signalsSettledTimerRef.current != null) {
-        clearTimeout(signalsSettledTimerRef.current)
-        signalsSettledTimerRef.current = null
-      }
-    }
-  }, [signalsConnected, signalError, location.search, location.key])
+  const {
+    selectedSiteId, selectedAssetId, selectedSignalId,
+    setSelectedSiteId, setSelectedAssetId, setSelectedSignalId,
+    onSiteClick, onAssetClick, onSignalClick,
+    updateSelectionRoute,
+    urlSelectionAppliedRef,
+  } = useEntitySelectionSync({
+    source: 'map',
+    signals, signalsConnected, signalError,
+    sites, assets,
+    sitesLoaded: sitesQuery.isSuccess,
+    assetsLoaded: assetsQuery.isSuccess,
+    isReplaying, asOf,
+  })
 
   const selectedSignal = selectedSignalId ? (signals.find(signal => signal.id === selectedSignalId) ?? null) : null
   const selectedVesselMmsi = selectedSignal?.signal_type === 'vessel_position' ? selectedSignal.external_id : null
@@ -224,12 +173,6 @@ export default function MapPage() {
     [activeBreachRes?.site_ids, isReplaying],
   )
 
-  const sites    = useMemo(() => sitesQuery.data?.data  ?? [], [sitesQuery.data?.data])
-  const allTasks = useMemo(() => tasksQuery.data?.data  ?? [], [tasksQuery.data?.data])
-  const assets   = useMemo(() => assetsQuery.data?.data ?? [], [assetsQuery.data?.data])
-  const loading  = sitesQuery.isLoading || tasksQuery.isLoading
-  const error    = sitesQuery.error?.message ?? tasksQuery.error?.message ?? null
-
   const { readings, connected: telemetryConnected } = useTelemetry(true, isReplaying ? asOf : null)
 
   const tasksBySite = useMemo(() => {
@@ -250,64 +193,6 @@ export default function MapPage() {
   const coverageCircles = useMemo(() => buildCoverageCircles({
     assets, tasks: allTasks, sites, readings, allowHistoricalTelemetry: isReplaying,
   }), [assets, allTasks, isReplaying, sites, readings])
-
-  const updateSelectionRoute = useCallback((selection: {
-    siteId: string | null
-    assetId: string | null
-    signalId: string | null
-  }) => {
-    const nextSearch = buildEntitySelectionSearch(location.search, selection)
-    if (nextSearch === location.search) return
-
-    const token = nextRouteWriteTokenRef.current + 1
-    nextRouteWriteTokenRef.current = token
-    trackEntitySelectionSyncToken(pendingRouteWriteTokensRef.current, token)
-    navigate(
-      {
-        pathname: location.pathname,
-        search: nextSearch,
-      },
-      {
-        replace: true,
-        state: buildEntitySelectionSyncLocationState(location.state, {
-          source: 'map',
-          token,
-        }),
-      },
-    )
-  }, [location.pathname, location.search, location.state, navigate])
-
-  const updateSelectionRouteRef = useRef(updateSelectionRoute)
-  useEffect(() => {
-    updateSelectionRouteRef.current = updateSelectionRoute
-  }, [updateSelectionRoute])
-
-  // ---------------------------------------------------------------------------
-  // Selection callbacks — engine fires these, page owns state
-  // ---------------------------------------------------------------------------
-  const onSiteClick = useCallback((siteId: string | null) => {
-    const nextSiteId = siteId
-    setSelectedAssetId(null)
-    setSelectedSignalId(null)
-    setSelectedSiteId(nextSiteId)
-    updateSelectionRoute({ siteId: nextSiteId, assetId: null, signalId: null })
-  }, [updateSelectionRoute])
-
-  const onAssetClick = useCallback((assetId: string | null) => {
-    const nextAssetId = assetId
-    setSelectedSiteId(null)
-    setSelectedSignalId(null)
-    setSelectedAssetId(nextAssetId)
-    updateSelectionRoute({ siteId: null, assetId: nextAssetId, signalId: null })
-  }, [updateSelectionRoute])
-
-  const onSignalClick = useCallback((signalId: string | null) => {
-    const nextSignalId = signalId
-    setSelectedSiteId(null)
-    setSelectedAssetId(null)
-    setSelectedSignalId(nextSignalId)
-    updateSelectionRoute({ siteId: null, assetId: null, signalId: nextSignalId })
-  }, [updateSelectionRoute])
 
   // ---------------------------------------------------------------------------
   // MapLibre engine
@@ -341,35 +226,10 @@ export default function MapPage() {
   })
 
   // ---------------------------------------------------------------------------
-  // Reset selection on replay timestamp change (React 18 batches these → 1 paint)
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    if (!replayResetReadyRef.current) {
-      replayResetReadyRef.current = true
-      return
-    }
-    /* eslint-disable react-hooks/set-state-in-effect -- Replay timestamp changes must synchronously clear selection before route propagation to keep UI and URL in lockstep */
-    setSelectedSiteId(null)
-    setSelectedAssetId(null)
-    setSelectedSignalId(null)
-    /* eslint-enable react-hooks/set-state-in-effect */
-    updateSelectionRouteRef.current({ siteId: null, assetId: null, signalId: null })
-  }, [asOf])
-
-  useEffect(() => {
-    urlSelectionAppliedRef.current = false
-  }, [location.search])
-
-  // ---------------------------------------------------------------------------
   // URL deep-link selection — fires once per navigation after map is ready
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!mapLoaded || urlSelectionAppliedRef.current) return
-
-    if (consumeEntitySelectionSyncLocationState(location.state, 'map', pendingRouteWriteTokensRef.current)) {
-      urlSelectionAppliedRef.current = true
-      return
-    }
 
     const { siteId, assetId, signalId } = parseEntitySelectionRoute(location.search)
 
@@ -414,70 +274,7 @@ export default function MapPage() {
       urlSelectionAppliedRef.current = true
     }
     /* eslint-enable react-hooks/set-state-in-effect */
-  }, [assets, flyTo, isReplaying, location.search, location.state, mapLoaded, readings, signals, sites])
-
-  useEffect(() => {
-    const routeSelection = parseEntitySelectionRoute(location.search)
-
-    const availability = {
-      sitesLoaded: sitesQuery.isSuccess,
-      assetsLoaded: assetsQuery.isSuccess,
-      // signalsLoaded must not become true prematurely when a signal is
-      // deep-linked but has not yet arrived via SSE.  The SSE stream seeds
-      // from the snapshot cursor, so a brand-new signal may be delivered
-      // 100–500 ms after the baseline completes.  We defer the "loaded"
-      // declaration until one of the following is true:
-      //   • replay mode: snapshots are the complete truth, no SSE lag
-      //   • the URL selection was already applied (signal found and set)
-      //   • no signal is deep-linked (nothing to wait for)
-      //   • the signal is already in the current dataset (baseline had it)
-      //   • 1500 ms grace period expired (bounded fallback for non-existent signals)
-      signalsLoaded: signalsConnected && signalError == null && (
-        isReplaying ||
-        urlSelectionAppliedRef.current ||
-        routeSelection.signalId == null ||
-        signals.some(s => s.id === routeSelection.signalId) ||
-        signalsSettledKey === location.key
-      ),
-      siteIds: sites.map(site => site.id),
-      assetIds: assets.map(asset => asset.id),
-      signalIds: signals.map(signal => signal.id),
-    }
-
-    const stateSelection = {
-      siteId: selectedSiteId,
-      assetId: selectedAssetId,
-      signalId: selectedSignalId,
-    }
-    const routeAuthoritative = isEntitySelectionRouteAuthoritative(location.state, 'map')
-
-    if (!shouldClearEntitySelectionAfterLoad(routeSelection, stateSelection, availability, routeAuthoritative)) {
-      return
-    }
-
-    /* eslint-disable react-hooks/set-state-in-effect -- When a previously selected entity disappears after its dataset settles, state and URL must be synchronously cleared together to avoid stale selection truth */
-    setSelectedSiteId(null)
-    setSelectedAssetId(null)
-    setSelectedSignalId(null)
-    /* eslint-enable react-hooks/set-state-in-effect */
-    updateSelectionRouteRef.current({ siteId: null, assetId: null, signalId: null })
-  }, [
-    assets,
-    assetsQuery.isSuccess,
-    isReplaying,
-    location.key,
-    location.search,
-    location.state,
-    selectedAssetId,
-    selectedSignalId,
-    selectedSiteId,
-    signalError,
-    signals,
-    signalsConnected,
-    signalsSettledKey,
-    sites,
-    sitesQuery.isSuccess,
-  ])
+  }, [assets, flyTo, isReplaying, location.search, mapLoaded, readings, setSelectedAssetId, setSelectedSignalId, setSelectedSiteId, signals, sites, urlSelectionAppliedRef])
 
   // ---------------------------------------------------------------------------
   // Derived selection

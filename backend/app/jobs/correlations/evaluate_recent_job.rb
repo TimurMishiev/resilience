@@ -2,12 +2,6 @@ module Correlations
   # Evaluates recently ingested signals against all active correlation rules
   # and checks for geofence breaches.
   #
-  # Replaces the boot-time BackgroundEvaluator thread. Benefits:
-  #   - Job-level retry with exponential backoff
-  #   - Observability through Solid Queue's jobs table
-  #   - No persistent thread holding a DB connection
-  #   - Consistent scheduling that survives process restarts
-  #
   # Scheduling: configured as a Solid Queue recurring task in
   # config/recurring.yml (every 10 seconds).
   class EvaluateRecentJob < ApplicationJob

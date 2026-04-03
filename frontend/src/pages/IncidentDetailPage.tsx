@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
-  Button, Callout, Classes, EditableText, HTMLSelect, HTMLTable,
-  Icon, NonIdealState, Spinner, Tab, Tabs, Tag,
+  Button, Callout, Classes, EditableText, HTMLSelect,
+  Icon, Spinner, Tab, Tabs, Tag,
 } from '@blueprintjs/core'
 import {
   useIncident, useTransitionIncident, useUpdateIncident,
@@ -10,20 +10,16 @@ import {
 } from '../hooks/useIncidents'
 import IntelChainPanel from '../components/IntelChainPanel'
 import ProsecutionPanel from '../components/ProsecutionPanel'
-import { AssetPicker } from '../components/AssetPicker'
+import IncidentAlertsTab from '../components/incident-detail/IncidentAlertsTab'
+import IncidentTasksTab from '../components/incident-detail/IncidentTasksTab'
 import { PostureBadge } from '../components/PostureBadge'
 import { useAuth } from '../context/AuthContext'
 import { useReplay } from '../context/ReplayContext'
 import { useRole } from '../hooks/useRole'
-import { useAssets } from '../hooks/useAssets'
-import { useTasks, useUpdateTask } from '../hooks/useTasks'
 import AuditTimeline from '../components/AuditTimeline'
 import IncidentNotesPanel from '../components/IncidentNotesPanel'
 import IncidentRecommendationsPanel from '../components/IncidentRecommendationsPanel'
-import { SIGNAL_ICON_NAME } from '../lib/signalIcons'
-import type { IncidentStatus, IncidentSeverity, IncidentAlert, IncidentTask } from '../api/incidents'
-import type { Posture } from '../api/types'
-import { humanize } from '../utils/humanize'
+import type { IncidentStatus, IncidentSeverity } from '../api/incidents'
 
 // ── constants ─────────────────────────────────────────────────────────────
 
@@ -50,157 +46,12 @@ const TRANSITION_INTENT: Record<IncidentStatus, 'primary' | 'warning' | 'success
   closed:       'none',
 }
 
-const ALERT_STATUS_INTENT: Record<string, 'danger' | 'warning' | 'primary' | 'success' | 'none'> = {
-  unacknowledged: 'danger',
-  acknowledged:   'warning',
-  investigating:  'primary',
-  closed:         'success',
-}
-
-const TASK_PRIORITY_INTENT: Record<string, 'danger' | 'warning' | 'primary' | 'none'> = {
-  critical: 'danger',
-  high:     'warning',
-  normal:   'primary',
-  low:      'none',
-}
-
 const SEVERITY_OPTIONS: IncidentSeverity[] = ['critical', 'high', 'moderate', 'low']
 
 function fmt(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
   })
-}
-
-// ── sub-components ────────────────────────────────────────────────────────
-
-function AlertsTab({ alerts }: { alerts: IncidentAlert[] }) {
-  if (alerts.length === 0) {
-    return (
-      <NonIdealState
-        icon="shield"
-        title="No alerts"
-        description="No alerts are linked to this incident yet."
-        className="tab-empty-state"
-      />
-    )
-  }
-  return (
-    <HTMLTable className="data-table" striped>
-      <thead>
-        <tr>
-          <th>Rule / Source</th>
-          <th>Signal</th>
-          <th>Status</th>
-          <th>Confidence</th>
-          <th>Fired</th>
-        </tr>
-      </thead>
-      <tbody>
-        {alerts.map((a) => (
-          <tr key={a.id}>
-            <td>
-              {a.geofence_breach
-                ? <Tag minimal intent="primary" icon="locate" style={{ fontSize: 10 }}>Geofence breach</Tag>
-                : <span>{a.correlation_rule?.name ?? <span className="bp6-text-muted">—</span>}</span>}
-            </td>
-            <td className="mono" style={{ fontSize: 12 }}>
-              {a.signal ? (
-                <>
-                  <Icon icon={SIGNAL_ICON_NAME[a.signal.signal_type] ?? 'dot'} size={12} style={{ marginRight: 5 }} />
-                  {humanize(a.signal.signal_type)}
-                </>
-              ) : <span className="bp6-text-muted">—</span>}
-            </td>
-            <td>
-              <Tag minimal intent={ALERT_STATUS_INTENT[a.workflow_status] ?? 'none'} style={{ fontSize: 10 }}>
-                {a.workflow_status}
-              </Tag>
-            </td>
-            <td className="mono">{Math.round(a.confidence * 100)}%</td>
-            <td className="mono" style={{ fontSize: 11 }}>{fmt(a.fired_at)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </HTMLTable>
-  )
-}
-
-function TasksTab({
-  tasks,
-  posture,
-  isReadOnly = false,
-  asOf,
-}: {
-  tasks: IncidentTask[]
-  posture?: Posture
-  isReadOnly?: boolean
-  asOf?: string | null
-}) {
-  const replayParams = asOf ? { as_of: asOf } : {}
-  const { data: assetRes } = useAssets({ per_page: 200, ...replayParams })
-  const { data: taskRes } = useTasks({ per_page: 200, ...replayParams })
-  const updateTask = useUpdateTask()
-  const assets = assetRes?.data ?? []
-  const allTasks = taskRes?.data ?? []
-
-  if (tasks.length === 0) {
-    return (
-      <NonIdealState
-        icon="clipboard"
-        title="No tasks"
-        description="No tasks have been generated from the alerts in this incident."
-        className="tab-empty-state"
-      />
-    )
-  }
-  return (
-    <HTMLTable className="data-table" striped>
-      <thead>
-        <tr>
-          <th>Title</th>
-          <th>Asset</th>
-          <th>Priority</th>
-          <th>Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        {tasks.map((t) => (
-          <tr key={t.id}>
-            <td>{t.title}</td>
-            <td style={{ minWidth: 160 }}>
-              <AssetPicker
-                currentAssetId={t.asset_id}
-                assets={assets}
-                pendingAsset={undefined}
-                onPendingChange={(assetId) => {
-                  updateTask.mutate({ id: t.id, body: { asset_id: assetId } })
-                }}
-                onConfirm={(assetId) => {
-                  updateTask.mutate({ id: t.id, body: { asset_id: assetId } })
-                }}
-                isPending={updateTask.isPending}
-                posture={posture}
-                assignedTasks={allTasks}
-                minimal
-                disabled={isReadOnly}
-              />
-            </td>
-            <td>
-              <Tag minimal intent={TASK_PRIORITY_INTENT[t.priority] ?? 'none'} style={{ fontSize: 10 }}>
-                {t.priority}
-              </Tag>
-            </td>
-            <td>
-              <Tag minimal style={{ fontSize: 10 }}>
-                {humanize(t.workflow_status)}
-              </Tag>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </HTMLTable>
-  )
 }
 
 // ── main page ─────────────────────────────────────────────────────────────
@@ -460,12 +311,12 @@ export default function IncidentDetailPage() {
         <Tab
           id="alerts"
           title={`Evidence (${alerts.length})`}
-          panel={<AlertsTab alerts={alerts} />}
+          panel={<IncidentAlertsTab alerts={alerts} />}
         />
         <Tab
           id="tasks"
           title={`Tasks (${tasks.length})`}
-          panel={<TasksTab tasks={tasks} posture={incident.area_of_operation?.posture} isReadOnly={isReplaying || !canMutateIncident} asOf={asOf} />}
+          panel={<IncidentTasksTab tasks={tasks} posture={incident.area_of_operation?.posture} isReadOnly={isReplaying || !canMutateIncident} asOf={asOf} />}
         />
         <Tab
           id="recommendations"

@@ -26,6 +26,9 @@ primary_region = "iad"
   # Build from the repo root using the combined Dockerfile
   dockerfile = "Dockerfile"
 
+[deploy]
+  release_command = "bin/rails db:migrate"
+
 [env]
   RAILS_ENV                = "production"
   RAILS_LOG_TO_STDOUT      = "true"
