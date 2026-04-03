@@ -22,7 +22,7 @@ class ExternalSignal < ApplicationRecord
   # that were migrated without PostGIS; the checked-in schema and CI baseline are
   # now PostGIS-backed.
   scope :near_point, ->(lat, lng, km) {
-    if connection.extension_enabled?("postgis")
+    if connection.extension_enabled?("postgis") && column_names.include?("location")
       # ST_DWithin(geography, geography, meters) — exact great-circle distance,
       # uses the GIST spatial index for O(log n) performance.
       # Uses connection.extension_enabled? (live DB query) rather than column_names

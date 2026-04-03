@@ -12,7 +12,7 @@ module Api
     end
 
     def require_commander!
-      unless current_user&.role == "commander"
+      unless current_user&.commander?
         render json: { errors: ["Commander role required"] }, status: :forbidden
       end
     end
@@ -116,19 +116,15 @@ module Api
     end
 
     def latest_audit_snapshots(entity_type:, entity_ids:, as_of:)
-      return {} if entity_ids.empty?
-
-      AuditEvent
-        .where(entity_type: entity_type, entity_id: entity_ids)
-        .where("occurred_at <= ?", as_of)
-        .order(:occurred_at)
-        .each_with_object({}) do |event, snapshots|
-          snapshots[event.entity_id] = event.after_snapshot || {}
-        end
+      Replay::AuditSnapshotService.call(
+        entity_type: entity_type,
+        entity_ids: entity_ids,
+        as_of: as_of,
+      ).snapshots
     end
 
     def snapshot_value(snapshot, key)
-      snapshot[key] || snapshot[key.to_sym]
+      Replay::AuditSnapshotService.value(snapshot, key)
     end
 
     def pagination_params

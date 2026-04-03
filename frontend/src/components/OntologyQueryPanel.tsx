@@ -58,7 +58,7 @@ function edgeLabel(edge: AiOntologyEdge, nodesById: Record<string, AiOntologyNod
 }
 
 export default function OntologyQueryPanel() {
-  const { isReplaying } = useReplay()
+  const { isReplaying, asOf } = useReplay()
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -72,7 +72,7 @@ export default function OntologyQueryPanel() {
 
   const replayBanner = isReplaying && (
     <Callout intent="primary" icon="info-sign" style={{ marginBottom: 12 }}>
-      Ontology queries run against live operational state. Results are not scoped to the replay timestamp.
+      Resolving the operational graph as it existed at the replay timestamp. Results are scoped to the selected historical cutoff.
     </Callout>
   )
 
@@ -92,7 +92,7 @@ export default function OntologyQueryPanel() {
     setError(null)
     setResult(null)
 
-    postAiOntologyQuery({ q: value })
+    postAiOntologyQuery({ q: value, ...(isReplaying && asOf ? { as_of: asOf } : {}) })
       .then(({ data }) => {
         if (!mountedRef.current) return
         setResult(data)
@@ -202,6 +202,7 @@ export default function OntologyQueryPanel() {
               <Tag minimal>{result.counts.node_count} nodes</Tag>
               <Tag minimal>{result.counts.edge_count} edges</Tag>
               <Tag minimal>{result.normalized_query.time_window_hours}h window</Tag>
+              {result.normalized_query.as_of && <Tag minimal intent="success">As of {new Date(result.normalized_query.as_of).toLocaleString()}</Tag>}
             </div>
             <div className="ontology-relation-tags">
               {result.normalized_query.relations.map(relation => (

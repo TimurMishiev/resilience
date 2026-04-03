@@ -30,6 +30,7 @@ const TasksPage           = lazy(() => import('./pages/TasksPage'))
 const IncidentsPage       = lazy(() => import('./pages/IncidentsPage'))
 const IncidentDetailPage  = lazy(() => import('./pages/IncidentDetailPage'))
 const RecommendationsPage = lazy(() => import('./pages/RecommendationsPage'))
+const SecurityPage        = lazy(() => import('./pages/SecurityPage'))
 const PlanningPage        = lazy(() => import('./pages/PlanningPage'))
 const OntologyQueryPage   = lazy(() => import('./pages/OntologyQueryPage'))
 const SwimlanePage        = lazy(() => import('./pages/SwimlanePage'))
@@ -56,6 +57,7 @@ export default function App() {
               <Route path="incidents" element={<PageErrorBoundary pageName="Incidents"><IncidentsPage /></PageErrorBoundary>} />
               <Route path="incidents/:id" element={<PageErrorBoundary pageName="Incident Detail"><IncidentDetailPage /></PageErrorBoundary>} />
               <Route path="recommendations" element={<PageErrorBoundary pageName="Recommendations"><RecommendationsPage /></PageErrorBoundary>} />
+              <Route path="security" element={<PageErrorBoundary pageName="Security"><SecurityPage /></PageErrorBoundary>} />
               <Route path="alerts" element={<PageErrorBoundary pageName="Alert Triage"><AlertTriagePage /></PageErrorBoundary>} />
               <Route path="signals" element={<PageErrorBoundary pageName="Signals"><SignalFeedPage /></PageErrorBoundary>} />
               <Route path="rules" element={<PageErrorBoundary pageName="Rules"><CorrelationRulesPage /></PageErrorBoundary>} />

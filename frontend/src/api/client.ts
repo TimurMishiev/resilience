@@ -193,7 +193,7 @@ export const api = {
     return request<T>('PATCH', path, { body })
   },
 
-  delete<T = void>(path: string): Promise<T> {
-    return request<T>('DELETE', path)
+  delete<T = void>(path: string, params?: QueryParams): Promise<T> {
+    return request<T>('DELETE', path, { params })
   },
 }

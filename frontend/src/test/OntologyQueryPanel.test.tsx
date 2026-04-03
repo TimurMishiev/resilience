@@ -5,6 +5,7 @@ import { ApiError } from '../api/client'
 
 const replayState = vi.hoisted(() => ({
   isReplaying: false,
+  asOf: '2026-04-02T12:00:00Z',
 }))
 
 const postAiOntologyQuery = vi.hoisted(() => vi.fn())
@@ -12,6 +13,7 @@ const postAiOntologyQuery = vi.hoisted(() => vi.fn())
 vi.mock('../context/ReplayContext', () => ({
   useReplay: () => ({
     isReplaying: replayState.isReplaying,
+    asOf: replayState.asOf,
   }),
 }))
 
@@ -27,12 +29,12 @@ describe('OntologyQueryPanel', () => {
     postAiOntologyQuery.mockReset()
   })
 
-  it('shows a live-data warning banner during replay but keeps query controls accessible', () => {
+  it('shows a historical replay banner during replay but keeps query controls accessible', () => {
     replayState.isReplaying = true
 
     render(<OntologyQueryPanel />)
 
-    expect(screen.getByText(/queries run against live operational state/i)).toBeInTheDocument()
+    expect(screen.getByText(/operational graph as it existed at the replay timestamp/i)).toBeInTheDocument()
     // Query controls should still be visible (not hard-gated)
     expect(screen.getByRole('button', { name: /Run ontology query/i })).toBeInTheDocument()
   })
@@ -93,6 +95,43 @@ describe('OntologyQueryPanel', () => {
     expect(await screen.findByText(/Resolved Forward Site Alpha as the focal site/i)).toBeInTheDocument()
     expect(screen.getByText(/Forward Site Alpha → Harbor breach watch/i)).toBeInTheDocument()
     expect(screen.getByText(/^Root$/i)).toBeInTheDocument()
+  })
+
+  it('submits the replay cutoff with ontology queries during replay', async () => {
+    const user = userEvent.setup()
+    replayState.isReplaying = true
+    postAiOntologyQuery.mockResolvedValue({
+      data: {
+        original_query: 'show incidents connected to Forward Site Alpha',
+        summary: 'Resolved Forward Site Alpha as the focal site.',
+        normalized_query: {
+          root_type: 'site',
+          root_id: 'site-1',
+          root_label: 'Forward Site Alpha',
+          relations: ['incidents'],
+          time_window_hours: 72,
+          limit: 8,
+          as_of: replayState.asOf,
+        },
+        nodes: [],
+        edges: [],
+        counts: {
+          node_count: 0,
+          edge_count: 0,
+          by_type: {},
+        },
+      },
+    })
+
+    render(<OntologyQueryPanel />)
+
+    await user.type(screen.getByPlaceholderText(/show incidents, alerts, tasks/i), 'show incidents connected to Forward Site Alpha')
+    await user.click(screen.getByRole('button', { name: /Run ontology query/i }))
+
+    expect(postAiOntologyQuery).toHaveBeenCalledWith({
+      q: 'show incidents connected to Forward Site Alpha',
+      as_of: replayState.asOf,
+    })
   })
 
   it('surfaces backend ontology errors cleanly', async () => {

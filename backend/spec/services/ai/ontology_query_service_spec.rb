@@ -278,7 +278,7 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
     end
     it "keeps scanning past bounding-box-only candidates until it finds the exact-radius matches" do
       service = described_class.new(query: "show signals near Equator Site")
-      result = service.send(:exact_signals_near_site, site, window_start: 24.hours.ago, limit: 2)
+      result = service.send(:exact_signals_near_site, site, window_start: 24.hours.ago, upper_bound: Time.current, limit: 2)
 
       expect(result.map(&:id)).to contain_exactly(
         near_signal.id,
@@ -287,6 +287,96 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
       expect(result.map(&:id)).not_to include(
         *bounding_box_only_signals.map(&:id),
       )
+    end
+  end
+
+  describe "historical replay execution" do
+    let(:site) do
+      create(:site, name: "Replay Site").tap do |record|
+        record.update_columns(created_at: 4.hours.ago, updated_at: 4.hours.ago)
+      end
+    end
+    let!(:task) do
+      create(
+        :task,
+        site: site,
+        title: "Investigate signal cluster",
+        priority: "high",
+        workflow_status: "triaged",
+      ).tap do |record|
+        record.update_columns(created_at: 3.hours.ago, updated_at: 3.hours.ago)
+      end
+    end
+    let!(:recommendation) do
+      create(
+        :recommendation,
+        recommendation_type: "create_task",
+        affected_entity_type: "Task",
+        affected_entity_id: task.id,
+        action_payload: { title: "Follow-up task", site_id: site.id },
+      ).tap do |record|
+        record.update_columns(created_at: 3.hours.ago, updated_at: 3.hours.ago)
+      end
+    end
+    let(:cutoff) { 1.hour.ago.change(usec: 0) }
+    let(:tool_input) do
+      {
+        "root_type" => "site",
+        "root_name" => "Replay Site",
+        "relations" => %w[tasks recommendations],
+        "time_window_hours" => 72,
+        "limit" => 8,
+      }
+    end
+
+    before do
+      create(
+        :audit_event,
+        entity_type: "Task",
+        entity_id: task.id,
+        event_type: "task.created",
+        before_snapshot: nil,
+        after_snapshot: task.attributes.except("updated_at"),
+        occurred_at: cutoff - 2.hours,
+      )
+      create(
+        :audit_event,
+        entity_type: "Recommendation",
+        entity_id: recommendation.id,
+        event_type: "recommendation_created",
+        before_snapshot: nil,
+        after_snapshot: { status: "pending" },
+        occurred_at: cutoff - 2.hours,
+      )
+
+      task.update!(workflow_status: "resolved", resolved_at: Time.current)
+      create(
+        :audit_event,
+        entity_type: "Task",
+        entity_id: task.id,
+        event_type: "task.transitioned",
+        before_snapshot: { workflow_status: "triaged" },
+        after_snapshot: task.attributes.except("updated_at"),
+        occurred_at: cutoff + 10.minutes,
+      )
+
+      recommendation.accept!(user: create(:user, :commander), reason: "after replay cutoff")
+    end
+
+    it "rewinds mutable node state to the replay cutoff" do
+      result = described_class.call(
+        query: "show the task and recommendation context around Replay Site",
+        as_of: cutoff,
+      )
+
+      expect(result.success).to be(true)
+      expect(result.normalized_query[:as_of]).to eq(cutoff.iso8601)
+
+      task_node = result.nodes.find { |node| node[:type] == "task" }
+      recommendation_node = result.nodes.find { |node| node[:type] == "recommendation" }
+
+      expect(task_node.dig(:metadata, :workflow_status)).to eq("triaged")
+      expect(recommendation_node.dig(:metadata, :status)).to eq("pending")
     end
   end
 

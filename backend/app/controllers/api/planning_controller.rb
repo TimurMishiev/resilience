@@ -24,6 +24,8 @@ module Api
     # command tool, not a log viewer, and needs the full cross-site picture at once.
     def index
       authorize :planning, :index?
+      return render json: planning_replay_payload(as_of) if as_of.present?
+
       # Tasks — eager-load site + AO in two queries (no N+1)
       raw_tasks = policy_scope(Task)
         .includes(:asset, site: :area_of_operation)
@@ -121,11 +123,334 @@ module Api
           salute_reports_truncated: salute_reports_truncated,
           salute_report_count: salute_reports.size,
           salute_report_meta_by_ao: salute_report_meta_by_ao,
+          as_of: nil,
         }
       }
     end
 
     private
+
+    def planning_replay_payload(cutoff)
+      raw_areas, areas_truncated = limited_records(
+        policy_scope(AreaOfOperation).where("created_at <= ?", cutoff).order(:name),
+        AO_LIMIT,
+      )
+      area_snapshots = latest_audit_snapshots(entity_type: "AreaOfOperation", entity_ids: raw_areas.map(&:id), as_of: cutoff)
+      replay_areas = raw_areas.map { |area| serialize_replay_planning_area(area, area_snapshots[area.id]) }
+      replay_area_by_id = replay_areas.index_by { |area| area[:id] }
+
+      visible_site_ids = policy_scope(Site)
+        .where("created_at <= ?", cutoff)
+        .pluck(:id)
+      replay_sites = build_replay_site_index(visible_site_ids, cutoff)
+
+      raw_tasks, tasks_truncated = limited_records(
+        policy_scope(Task)
+          .includes(:asset, site: :area_of_operation)
+          .where("created_at <= ?", cutoff)
+          .order(
+            Arel.sql("CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END"),
+            created_at: :asc
+          ),
+        TASK_LIMIT,
+      )
+      task_snapshots = latest_audit_snapshots(entity_type: "Task", entity_ids: raw_tasks.map(&:id), as_of: cutoff)
+      replay_tasks = raw_tasks.filter_map do |task|
+        serialize_replay_planning_task(
+          task,
+          snapshot: task_snapshots[task.id],
+          replay_areas: replay_area_by_id,
+          replay_sites: replay_sites,
+        )
+      end
+
+      raw_assets, assets_truncated = limited_records(
+        policy_scope(Asset).where("created_at <= ?", cutoff).order(:name),
+        ASSET_LIMIT,
+      )
+      asset_snapshots = latest_audit_snapshots(entity_type: "Asset", entity_ids: raw_assets.map(&:id), as_of: cutoff)
+      replay_assets = raw_assets.filter_map do |asset|
+        serialize_replay_planning_asset(asset, snapshot: asset_snapshots[asset.id])
+      end
+
+      raw_chokepoints, chokepoints_truncated = limited_records(
+        policy_scope(Chokepoint)
+          .includes(:area_of_operation)
+          .where("created_at <= ?", cutoff)
+          .order(:name),
+        CHOKEPOINT_LIMIT,
+      )
+      chokepoint_snapshots = latest_audit_snapshots(entity_type: "Chokepoint", entity_ids: raw_chokepoints.map(&:id), as_of: cutoff)
+      replay_chokepoints = raw_chokepoints.filter_map do |chokepoint|
+        serialize_replay_chokepoint(chokepoint, snapshot: chokepoint_snapshots[chokepoint.id], replay_areas: replay_area_by_id)
+      end
+
+      raw_intents, intents_truncated = limited_records(
+        policy_scope(CommanderIntent).where("created_at <= ?", cutoff).order(updated_at: :desc),
+        INTENT_LIMIT,
+      )
+      intent_snapshots = latest_audit_snapshots(entity_type: "CommanderIntent", entity_ids: raw_intents.map(&:id), as_of: cutoff)
+      replay_intents = raw_intents.filter_map do |intent|
+        serialize_replay_commander_intent(intent, snapshot: intent_snapshots[intent.id], replay_areas: replay_area_by_id)
+      end
+
+      raw_pace_plans, pace_plans_truncated = limited_records(
+        policy_scope(PacePlan).where("created_at <= ?", cutoff).order(updated_at: :desc),
+        PACE_PLAN_LIMIT,
+      )
+      pace_plan_snapshots = latest_audit_snapshots(entity_type: "PacePlan", entity_ids: raw_pace_plans.map(&:id), as_of: cutoff)
+      replay_pace_plans = raw_pace_plans.filter_map do |plan|
+        serialize_replay_pace_plan(plan, snapshot: pace_plan_snapshots[plan.id], replay_areas: replay_area_by_id)
+      end
+
+      salute_reports_truncated = false
+      salute_report_meta_by_ao = {}
+      replay_salute_reports = replay_areas.flat_map do |area|
+        rows = policy_scope(SaluteReport)
+          .includes(:site, :created_by)
+          .where(area_of_operation_id: area[:id])
+          .where("created_at <= ?", cutoff)
+          .recent_first
+          .limit(SALUTE_LIMIT + 1)
+          .to_a
+        area_truncated = rows.size > SALUTE_LIMIT
+        visible_rows = rows.first(SALUTE_LIMIT)
+        salute_reports_truncated = true if area_truncated
+        salute_report_meta_by_ao[area[:id]] = {
+          truncated: area_truncated,
+          count: visible_rows.size,
+        }
+        visible_rows.map { |report| serialize_replay_salute_report(report, replay_areas: replay_area_by_id, replay_sites: replay_sites) }
+      end
+
+      raw_incidents, incidents_truncated = limited_records(
+        policy_scope(Incident)
+          .includes(:assigned_to)
+          .where("created_at <= ?", cutoff)
+          .by_severity,
+        INCIDENT_LIMIT,
+      )
+      incident_snapshots = latest_audit_snapshots(entity_type: "Incident", entity_ids: raw_incidents.map(&:id), as_of: cutoff)
+      incident_assigned_ids = raw_incidents.filter_map do |incident|
+        snapshot_value(incident_snapshots[incident.id], "assigned_to_id") || incident.assigned_to_id
+      end.uniq.compact
+      incident_users_by_id = User.where(id: incident_assigned_ids).index_by(&:id)
+      replay_incidents = raw_incidents.filter_map do |incident|
+        serialize_replay_planning_incident(
+          incident,
+          snapshot: incident_snapshots[incident.id],
+          users_by_id: incident_users_by_id,
+        )
+      end
+
+      {
+        tasks: replay_tasks,
+        assets: replay_assets,
+        areas_of_operation: replay_areas,
+        chokepoints: replay_chokepoints,
+        commander_intents: replay_intents,
+        pace_plans: replay_pace_plans,
+        salute_reports: replay_salute_reports,
+        open_incidents: replay_incidents,
+        meta: {
+          truncated: tasks_truncated,
+          task_count: replay_tasks.size,
+          assets_truncated: assets_truncated,
+          asset_count: replay_assets.size,
+          areas_truncated: areas_truncated,
+          area_count: replay_areas.size,
+          chokepoints_truncated: chokepoints_truncated,
+          chokepoint_count: replay_chokepoints.size,
+          intents_truncated: intents_truncated,
+          intent_count: replay_intents.size,
+          pace_plans_truncated: pace_plans_truncated,
+          pace_plan_count: replay_pace_plans.size,
+          incidents_truncated: incidents_truncated,
+          incident_count: replay_incidents.size,
+          salute_reports_truncated: salute_reports_truncated,
+          salute_report_count: replay_salute_reports.size,
+          salute_report_meta_by_ao: salute_report_meta_by_ao,
+          as_of: cutoff.iso8601,
+        },
+      }
+    end
+
+    def limited_records(relation, limit)
+      rows = relation.limit(limit + 1).to_a
+      [rows.first(limit), rows.size > limit]
+    end
+
+    def build_replay_site_index(site_ids, cutoff)
+      return {} if site_ids.empty?
+
+      sites = policy_scope(Site).where(id: site_ids, created_at: ..cutoff).index_by(&:id)
+      snapshots = latest_audit_snapshots(entity_type: "Site", entity_ids: sites.keys, as_of: cutoff)
+
+      sites.each_with_object({}) do |(site_id, site), index|
+        snapshot = snapshots[site_id] || {}
+        index[site_id] = {
+          id: site_id,
+          name: snapshot_value(snapshot, "name") || site.name,
+          area_of_operation_id: snapshot_value(snapshot, "area_of_operation_id") || site.area_of_operation_id,
+          status: snapshot_value(snapshot, "status") || site.status,
+          latitude: snapshot_value(snapshot, "latitude") || site.latitude,
+          longitude: snapshot_value(snapshot, "longitude") || site.longitude,
+          geofence_radius_km: snapshot_value(snapshot, "geofence_radius_km") || site.geofence_radius_km,
+        }
+      end
+    end
+
+    def serialize_replay_planning_task(task, snapshot:, replay_areas:, replay_sites:)
+      workflow_status = snapshot_value(snapshot, "workflow_status") || task.workflow_status
+      return nil if workflow_status == "resolved"
+
+      site = replay_sites[task.site_id]
+      area = site ? replay_areas[site[:area_of_operation_id]] : nil
+
+      {
+        id: task.id,
+        site_id: task.site_id,
+        site_name: site ? site[:name] : task.site&.name,
+        ao_id: site ? site[:area_of_operation_id] : task.site&.area_of_operation_id,
+        ao_posture: area ? area[:posture] : task.site&.area_of_operation&.posture,
+        asset_id: snapshot_value(snapshot, "asset_id") || task.asset_id,
+        title: snapshot_value(snapshot, "title") || task.title,
+        description: snapshot_value(snapshot, "description") || task.description,
+        priority: snapshot_value(snapshot, "priority") || task.priority,
+        workflow_status: workflow_status,
+        blocked_reason: snapshot_value(snapshot, "blocked_reason"),
+        created_at: task.created_at,
+      }
+    end
+
+    def serialize_replay_planning_asset(asset, snapshot:)
+      {
+        id: asset.id,
+        name: snapshot_value(snapshot, "name") || asset.name,
+        asset_type: snapshot_value(snapshot, "asset_type") || asset.asset_type,
+        status: snapshot_value(snapshot, "status") || asset.status,
+        home_site_id: snapshot_value(snapshot, "home_site_id") || asset.home_site_id,
+        last_reported_at: snapshot_value(snapshot, "last_reported_at") || asset.last_reported_at,
+      }
+    end
+
+    def serialize_replay_planning_area(area, snapshot)
+      return serialize_planning_ao(area) if snapshot.blank?
+
+      {
+        id: area.id,
+        name: snapshot_value(snapshot, "name") || area.name,
+        posture: snapshot_value(snapshot, "posture") || area.posture,
+      }
+    end
+
+    def serialize_replay_commander_intent(intent, snapshot:, replay_areas:)
+      area_id = snapshot_value(snapshot, "area_of_operation_id") || intent.area_of_operation_id
+      return nil unless replay_areas.key?(area_id)
+
+      {
+        id: intent.id,
+        area_of_operation_id: area_id,
+        title: snapshot_value(snapshot, "title") || intent.title,
+        objective: snapshot_value(snapshot, "objective") || intent.objective,
+        end_state: snapshot_value(snapshot, "end_state") || intent.end_state,
+        constraints: snapshot_value(snapshot, "constraints"),
+        created_by_id: intent.created_by_id,
+        updated_by_id: intent.updated_by_id,
+        created_at: intent.created_at,
+        updated_at: intent.updated_at,
+      }
+    end
+
+    def serialize_replay_pace_plan(plan, snapshot:, replay_areas:)
+      area_id = snapshot_value(snapshot, "area_of_operation_id") || plan.area_of_operation_id
+      return nil unless replay_areas.key?(area_id)
+
+      {
+        id: plan.id,
+        area_of_operation_id: area_id,
+        primary_plan: snapshot_value(snapshot, "primary_plan") || plan.primary_plan,
+        alternate_plan: snapshot_value(snapshot, "alternate_plan") || plan.alternate_plan,
+        contingency_plan: snapshot_value(snapshot, "contingency_plan") || plan.contingency_plan,
+        emergency_plan: snapshot_value(snapshot, "emergency_plan") || plan.emergency_plan,
+        notes: snapshot_value(snapshot, "notes"),
+        created_by_id: plan.created_by_id,
+        updated_by_id: plan.updated_by_id,
+        created_at: plan.created_at,
+        updated_at: plan.updated_at,
+      }
+    end
+
+    def serialize_replay_chokepoint(chokepoint, snapshot:, replay_areas:)
+      return nil if ActiveModel::Type::Boolean.new.cast(snapshot_value(snapshot, "deleted"))
+
+      area_id = snapshot_value(snapshot, "area_of_operation_id") || chokepoint.area_of_operation_id
+      area = replay_areas[area_id]
+      return nil unless area
+
+      {
+        id: chokepoint.id,
+        area_of_operation_id: area_id,
+        area_of_operation_name: area[:name],
+        name: snapshot_value(snapshot, "name") || chokepoint.name,
+        category: snapshot_value(snapshot, "category") || chokepoint.category,
+        status: snapshot_value(snapshot, "status") || chokepoint.status,
+        latitude: (snapshot_value(snapshot, "latitude") || chokepoint.latitude).to_f,
+        longitude: (snapshot_value(snapshot, "longitude") || chokepoint.longitude).to_f,
+        watch_radius_km: (snapshot_value(snapshot, "watch_radius_km") || chokepoint.watch_radius_km).to_f,
+        notes: snapshot_value(snapshot, "notes"),
+        created_by_id: chokepoint.created_by_id,
+        updated_by_id: chokepoint.updated_by_id,
+        created_at: chokepoint.created_at,
+        updated_at: chokepoint.updated_at,
+      }
+    end
+
+    def serialize_replay_salute_report(report, replay_areas:, replay_sites:)
+      area = replay_areas[report.area_of_operation_id]
+      return nil unless area
+
+      site = report.site_id.present? ? replay_sites[report.site_id] : nil
+
+      {
+        id: report.id,
+        area_of_operation_id: report.area_of_operation_id,
+        area_of_operation_name: area[:name],
+        site_id: report.site_id,
+        site_name: site ? site[:name] : report.site&.name,
+        size: report.size,
+        activity: report.activity,
+        location: report.location,
+        unit: report.unit,
+        observed_at: report.observed_at,
+        equipment: report.equipment,
+        remarks: report.remarks,
+        created_by_id: report.created_by_id,
+        created_at: report.created_at,
+      }
+    end
+
+    def serialize_replay_planning_incident(incident, snapshot:, users_by_id: {})
+      status = snapshot_value(snapshot, "status") || incident.status
+      return nil if status == "closed"
+
+      assigned_to_id = snapshot_value(snapshot, "assigned_to_id") || incident.assigned_to_id
+      assigned_user = assigned_to_id.present? ? users_by_id[assigned_to_id] : nil
+
+      {
+        id: incident.id,
+        title: snapshot_value(snapshot, "title") || incident.title,
+        severity: snapshot_value(snapshot, "severity") || incident.severity,
+        status: status,
+        site_id: snapshot_value(snapshot, "site_id") || incident.site_id,
+        ao_id: snapshot_value(snapshot, "area_of_operation_id") || incident.area_of_operation_id,
+        assigned_to: assigned_user ? {
+          id: assigned_user.id,
+          email: assigned_user.email,
+          role: assigned_user.role,
+        } : nil,
+      }
+    end
 
     def serialize_planning_task(task)
       {

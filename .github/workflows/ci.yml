@@ -104,6 +104,9 @@ jobs:
       - name: Set up database
         run: bundle exec rails db:schema:load
 
+      - name: Verify migrations are in sync with structure.sql
+        run: bundle exec rails db:migrate && bundle exec rails db:schema:dump && git diff --exit-code db/structure.sql
+
       - name: Run specs
         run: bundle exec rspec --format progress
 

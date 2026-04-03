@@ -164,5 +164,111 @@ RSpec.describe "Api::Planning", type: :request do
       ao2_reports = body["salute_reports"].select { |r| r["area_of_operation_id"] == ao2.id }
       expect(ao2_reports.map { |r| r["id"] }).to include(ao2_report.id)
     end
+
+    it "reconstructs planning state historically when as_of is provided" do
+      cutoff = 1.hour.ago.change(usec: 0)
+
+      ao.update_columns(created_at: 4.hours.ago, updated_at: 4.hours.ago)
+      site.update_columns(created_at: 4.hours.ago, updated_at: 4.hours.ago)
+      open_task.update_columns(created_at: 3.hours.ago, updated_at: 3.hours.ago)
+      commander_intent.update_columns(created_at: 3.hours.ago, updated_at: 3.hours.ago)
+
+      create(
+        :audit_event,
+        actor: "system",
+        entity_type: "AreaOfOperation",
+        entity_id: ao.id,
+        event_type: "area_of_operation_created",
+        before_snapshot: nil,
+        after_snapshot: {
+          name: ao.name,
+          description: ao.description,
+          threat_level: ao.threat_level,
+          posture: "observe",
+          color: ao.color,
+          geometry: ao.geometry,
+        },
+        occurred_at: cutoff - 2.hours,
+      )
+      create(
+        :audit_event,
+        actor: "system",
+        entity_type: "Task",
+        entity_id: open_task.id,
+        event_type: "task.created",
+        before_snapshot: nil,
+        after_snapshot: open_task.attributes.except("updated_at"),
+        occurred_at: cutoff - 2.hours,
+      )
+      create(
+        :audit_event,
+        actor: "system",
+        entity_type: "CommanderIntent",
+        entity_id: commander_intent.id,
+        event_type: "commander_intent.created",
+        before_snapshot: nil,
+        after_snapshot: {
+          area_of_operation_id: commander_intent.area_of_operation_id,
+          title: "Hold corridor",
+          objective: commander_intent.objective,
+          end_state: commander_intent.end_state,
+          constraints: commander_intent.constraints,
+        },
+        occurred_at: cutoff - 2.hours,
+      )
+
+      ao.update!(posture: "weapons_free")
+      create(
+        :audit_event,
+        actor: commander.email,
+        entity_type: "AreaOfOperation",
+        entity_id: ao.id,
+        event_type: "posture_changed",
+        before_snapshot: { posture: "observe" },
+        after_snapshot: { posture: "weapons_free" },
+        occurred_at: cutoff + 10.minutes,
+      )
+
+      commander_intent.update!(title: "New intent title")
+      create(
+        :audit_event,
+        actor: commander.email,
+        entity_type: "CommanderIntent",
+        entity_id: commander_intent.id,
+        event_type: "commander_intent.updated",
+        before_snapshot: {
+          area_of_operation_id: commander_intent.area_of_operation_id,
+          title: "Hold corridor",
+          objective: commander_intent.objective,
+          end_state: commander_intent.end_state,
+          constraints: commander_intent.constraints,
+        },
+        after_snapshot: {
+          area_of_operation_id: commander_intent.area_of_operation_id,
+          title: "New intent title",
+          objective: commander_intent.objective,
+          end_state: commander_intent.end_state,
+          constraints: commander_intent.constraints,
+        },
+        occurred_at: cutoff + 10.minutes,
+      )
+
+      Tasks::TransitionService.call(
+        task: open_task,
+        to_status: "resolved",
+        actor: commander.email,
+        actor_role: "commander",
+      )
+
+      get "/api/planning", params: { as_of: cutoff.iso8601 }, headers: auth_headers(commander)
+      body = JSON.parse(response.body)
+
+      expect(response).to have_http_status(:ok)
+      expect(body.dig("meta", "as_of")).to eq(cutoff.iso8601)
+      expect(body["tasks"].map { |task| task["id"] }).to include(open_task.id)
+      expect(body["tasks"].find { |task| task["id"] == open_task.id }.fetch("workflow_status")).to eq("new")
+      expect(body["areas_of_operation"].find { |area| area["id"] == ao.id }.fetch("posture")).to eq("observe")
+      expect(body["commander_intents"].find { |intent| intent["id"] == commander_intent.id }.fetch("title")).to eq("Hold corridor")
+    end
   end
 end

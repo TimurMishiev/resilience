@@ -4,6 +4,7 @@ class AreaOfOperation < ApplicationRecord
   THREAT_LEVELS = %w[green amber red black].freeze
   POSTURES      = %w[observe defensive weapons_free].freeze
 
+  belongs_to :organization, optional: true
   belongs_to :created_by, class_name: "User"
   has_many :sites,             dependent: :nullify
   has_many :correlation_rules, dependent: :nullify
@@ -19,6 +20,7 @@ class AreaOfOperation < ApplicationRecord
   validates :color,        presence: true,
                            format: { with: /\A#[0-9a-fA-F]{6}\z/,
                                      message: "must be a 6-digit hex color (e.g. #ff4757)" }
+  validate :organization_matches_creator_scope
 
   scope :by_threat,   ->(level)   { where(threat_level: level) }
   scope :by_posture,  ->(posture) { where(posture: posture) }
@@ -28,4 +30,13 @@ class AreaOfOperation < ApplicationRecord
 
   # Returns true when any asset assignment is permitted.
   def assignment_allowed? = posture != "observe"
+
+  private
+
+  def organization_matches_creator_scope
+    return if organization.blank? || created_by.blank?
+    return if created_by.organization_id.blank? || created_by.organization_id == organization_id
+
+    errors.add(:organization_id, "must match the creator's organization scope")
+  end
 end

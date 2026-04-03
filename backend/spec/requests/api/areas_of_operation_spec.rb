@@ -99,6 +99,17 @@ RSpec.describe "Api::AreasOfOperation", type: :request do
       expect(response).to have_http_status(:forbidden)
     end
 
+    it "creates the AO inside the commander's organization scope" do
+      organization = create(:organization)
+      scoped_commander = create(:user, :commander, organization: organization)
+
+      post "/api/areas_of_operation", params: valid_params, headers: auth_headers(scoped_commander), as: :json
+
+      expect(response).to have_http_status(:created)
+      expect(JSON.parse(response.body)["organization_id"]).to eq(organization.id)
+      expect(AreaOfOperation.order(:created_at).last.organization_id).to eq(organization.id)
+    end
+
     it "returns 422 when name is missing" do
       post "/api/areas_of_operation",
            params:  { area_of_operation: valid_params[:area_of_operation].except(:name) },

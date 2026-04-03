@@ -82,6 +82,7 @@ export function AppSidebar() {
           labelElement={!isCommander ? <LockLabel /> : undefined}
         />
         <MenuItem icon="feed"      text="Signals" active={pathname.startsWith('/signals')} onClick={() => navigate('/signals')} />
+        <MenuItem icon="shield"    text="Security" active={pathname.startsWith('/security')} onClick={() => navigate('/security')} />
         <MenuItem
           icon="lightning"
           text="Rules"

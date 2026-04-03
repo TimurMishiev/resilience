@@ -1,11 +1,13 @@
 import { api } from './client'
 
-export type UserRole = 'viewer' | 'operator' | 'commander'
+export type UserRole = 'viewer' | 'operator' | 'commander' | 'admin'
 
 export interface CurrentUser {
   id: string
   email: string
   role: UserRole
+  organization_id?: string | null
+  area_of_operation_id?: string | null
 }
 
 const USER_KEY = 'resilience_user'
@@ -20,12 +22,65 @@ export async function login(email: string, password: string): Promise<{ user: Cu
   return res
 }
 
-export async function logout(): Promise<void> {
+export async function logout(options?: { allSessions?: boolean }): Promise<void> {
   try {
-    await api.delete('/api/auth/logout')
+    await api.delete('/api/auth/logout', options?.allSessions ? { all_sessions: true } : undefined)
   } catch {
     // Proceed with local logout even if the server request fails
   }
+  clearStoredUser()
+}
+
+export interface UserSessionRecord {
+  id: string
+  user_id: string
+  user_email: string
+  current: boolean
+  ip_address: string | null
+  user_agent: string | null
+  last_seen_at: string
+  created_at: string
+  expires_at: string
+  revoked_at: string | null
+  revoke_reason: string | null
+  revoked_by_email: string | null
+}
+
+export interface UserSessionsResponse {
+  data: UserSessionRecord[]
+  meta: {
+    user_id: string
+    user_email: string
+  }
+}
+
+export interface UserSessionQueryParams {
+  user_id?: string
+  user_email?: string
+}
+
+export interface RevokeAllSessionsParams extends UserSessionQueryParams {
+  keep_current?: boolean
+}
+
+export async function getUserSessions(params?: UserSessionQueryParams): Promise<UserSessionsResponse> {
+  return api.get<UserSessionsResponse>('/api/auth/sessions', params)
+}
+
+export async function revokeUserSession(id: string, params?: UserSessionQueryParams): Promise<void> {
+  await api.delete(`/api/auth/sessions/${id}`, params)
+}
+
+export async function revokeAllUserSessions(params?: RevokeAllSessionsParams): Promise<void> {
+  await api.delete('/api/auth/sessions', {
+    all: true,
+    ...(params?.keep_current !== undefined ? { keep_current: params.keep_current } : {}),
+    ...(params?.user_id ? { user_id: params.user_id } : {}),
+    ...(params?.user_email ? { user_email: params.user_email } : {}),
+  })
+}
+
+export function clearStoredUser(): void {
   sessionStorage.removeItem(USER_KEY)
 }
 

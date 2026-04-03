@@ -19,9 +19,12 @@ module Api
     end
 
     # POST /api/ai/ontology_query
-    # Body: { q: "show incidents, alerts, and tasks connected to Forward Site Alpha" }
+    # Body: { q: "show incidents, alerts, and tasks connected to Forward Site Alpha", as_of?: ISO8601 }
     def ontology_query
-      result = Ai::OntologyQueryService.call(query: params.require(:q))
+      result = Ai::OntologyQueryService.call(
+        query: params.require(:q),
+        as_of: safe_parse_datetime(params[:as_of]),
+      )
 
       if result.success
         render json: { data: result.payload }

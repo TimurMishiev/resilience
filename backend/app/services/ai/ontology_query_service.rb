@@ -26,8 +26,9 @@ module Ai
     }.freeze
     ALL_RELATIONS = RELATIONS_BY_ROOT.values.flatten.uniq.freeze
 
-    def initialize(query:)
+    def initialize(query:, as_of: nil)
       @query = query.to_s.strip
+      @as_of = as_of
       reset_graph!
     end
 
@@ -41,14 +42,16 @@ module Ai
       root_type     = plan.root_type
       root_name     = plan.root_name
       time_window   = plan.time_window_hours
+      upper_bound   = replay_upper_bound
       limit         = plan.limit
       relations     = normalize_relations(root_type, plan.relations)
-      resolved_root = resolve_root(root_type, root_name)
+      resolved_root = resolve_root(root_type, root_name, upper_bound: upper_bound)
 
       return resolved_root if resolved_root.failure?
 
       root = resolved_root.root
-      execute_graph(root_type:, root:, relations:, limit:, time_window_hours: time_window)
+      execute_graph(root_type:, root:, relations:, limit:, time_window_hours: time_window, upper_bound: upper_bound)
+      apply_replay_snapshots!(upper_bound) if @as_of.present?
 
       counts = build_counts
       Ai::CircuitBreaker.record_success(service: BREAKER_SERVICE)
@@ -61,8 +64,9 @@ module Ai
           relations:         relations,
           time_window_hours: time_window,
           limit:             limit,
+          as_of:             @as_of&.iso8601,
         },
-        summary: build_summary(root_type:, root:, relations:, time_window_hours: time_window, counts: counts),
+        summary: build_summary(root_type:, root:, relations:, time_window_hours: time_window, counts: counts, upper_bound: upper_bound),
         nodes:    @nodes.values,
         edges:    @edges,
         counts:   counts,
@@ -165,19 +169,25 @@ module Ai
     end
 
     def catalog_context
-      Rails.cache.fetch(CATALOG_CACHE_KEY, expires_in: CATALOG_CACHE_TTL) do
+      Rails.cache.fetch(catalog_cache_key, expires_in: CATALOG_CACHE_TTL) do
         build_catalog_context
       end
+    end
+
+    def catalog_cache_key
+      return CATALOG_CACHE_KEY unless @as_of.present?
+
+      "#{CATALOG_CACHE_KEY}/#{@as_of.to_i}"
     end
 
     def build_catalog_context
       [
         "Known entities:",
-        "Sites: #{catalog_names(Site.active.order(:name).limit(50).pluck(:name))}",
-        "Areas of operation: #{catalog_names(AreaOfOperation.order(:name).limit(30).pluck(:name))}",
-        "Incidents: #{catalog_names(Incident.recent.limit(40).pluck(:title))}",
-        "Tasks: #{catalog_names(Task.order(created_at: :desc).limit(40).pluck(:title))}",
-        "Assets: #{catalog_names(Asset.order(:name).limit(50).pluck(:name))}",
+        "Sites: #{catalog_names(apply_replay_existence_scope(Site.active).order(:name).limit(50).pluck(:name))}",
+        "Areas of operation: #{catalog_names(apply_replay_existence_scope(AreaOfOperation.all).order(:name).limit(30).pluck(:name))}",
+        "Incidents: #{catalog_names(apply_replay_existence_scope(Incident.recent).limit(40).pluck(:title))}",
+        "Tasks: #{catalog_names(apply_replay_existence_scope(Task.all).order(created_at: :desc).limit(40).pluck(:title))}",
+        "Assets: #{catalog_names(apply_replay_existence_scope(Asset.all).order(:name).limit(50).pluck(:name))}",
       ].join("\n")
     end
 
@@ -205,7 +215,7 @@ module Ai
       picked.presence || supported
     end
 
-    def resolve_root(root_type, root_name)
+    def resolve_root(root_type, root_name, upper_bound:)
       scope, label_column =
         case root_type
         when "site"
@@ -222,6 +232,7 @@ module Ai
 
       return ServiceResult.failure(errors: ["Unsupported root entity type: #{root_type}"]) if scope.nil?
 
+      scope = apply_replay_existence_scope(scope, upper_bound: upper_bound)
       quoted_column = scope.klass.connection.quote_column_name(label_column.to_s)
 
       if uuid_like?(root_name)
@@ -247,26 +258,26 @@ module Ai
       ServiceResult.failure(errors: ["No #{human_root_type(root_type).downcase} matched '#{root_name}'"])
     end
 
-    def execute_graph(root_type:, root:, relations:, limit:, time_window_hours:)
-      window_start = time_window_hours.hours.ago
+    def execute_graph(root_type:, root:, relations:, limit:, time_window_hours:, upper_bound:)
+      window_start = upper_bound - time_window_hours.hours
 
       case root_type
       when "site"
-        build_site_graph(root, relations:, limit:, window_start:)
+        build_site_graph(root, relations:, limit:, window_start:, upper_bound:)
       when "incident"
-        build_incident_graph(root, relations:, limit:, window_start:)
+        build_incident_graph(root, relations:, limit:, window_start:, upper_bound:)
       when "task"
-        build_task_graph(root, relations:, limit:, window_start:)
+        build_task_graph(root, relations:, limit:, window_start:, upper_bound:)
       when "asset"
-        build_asset_graph(root, relations:, limit:, window_start:)
+        build_asset_graph(root, relations:, limit:, window_start:, upper_bound:)
       when "area_of_operation"
-        build_area_graph(root, relations:, limit:, window_start:)
+        build_area_graph(root, relations:, limit:, window_start:, upper_bound:)
       else
         raise ArgumentError, "Unsupported root_type #{root_type}"
       end
     end
 
-    def build_site_graph(site, relations:, limit:, window_start:)
+    def build_site_graph(site, relations:, limit:, window_start:, upper_bound:)
       site_node = add_site_node(site, root: true)
       included_targets = [["Site", site.id]]
 
@@ -277,7 +288,10 @@ module Ai
 
       incidents = []
       if relations.include?("incidents")
-        incidents = Incident.where(site_id: site.id).includes(:site, :area_of_operation, :signal_rule_matches).order(opened_at: :desc).limit(limit)
+        incidents = apply_replay_existence_scope(Incident.where(site_id: site.id), upper_bound: upper_bound)
+          .includes(:site, :area_of_operation, :signal_rule_matches)
+          .order(opened_at: :desc)
+          .limit(limit)
         incidents.each do |incident|
           incident_node = add_incident_node(incident)
           add_edge(site_node, incident_node, "site_incident")
@@ -287,7 +301,7 @@ module Ai
 
       tasks = []
       if relations.include?("tasks")
-        tasks = Task.where(site_id: site.id)
+        tasks = apply_replay_existence_scope(Task.where(site_id: site.id), upper_bound: upper_bound)
         tasks = tasks.includes(:asset) if relations.include?("assets")
         tasks = tasks.order(created_at: :desc).limit(limit)
         tasks.each do |task|
@@ -303,7 +317,7 @@ module Ai
       end
 
       if relations.include?("assets")
-        Asset.where(home_site_id: site.id).order(:name).limit(limit).each do |asset|
+        apply_replay_existence_scope(Asset.where(home_site_id: site.id), upper_bound: upper_bound).order(:name).limit(limit).each do |asset|
           asset_node = add_asset_node(asset)
           add_edge(site_node, asset_node, "home_site_asset")
           included_targets << ["Asset", asset.id]
@@ -314,6 +328,7 @@ module Ai
       if relations.include?("alerts")
         alerts = SignalRuleMatch.where(site_id: site.id)
                                 .where("fired_at >= ?", window_start)
+                                .where("fired_at <= ?", upper_bound)
                                 .includes(:task, :signal, :correlation_rule, incident: :signal_rule_matches)
                                 .order(fired_at: :desc)
                                 .limit(limit)
@@ -335,7 +350,7 @@ module Ai
       end
 
       if relations.include?("signals")
-        exact_signals_near_site(site, window_start:, limit:).each do |signal|
+        exact_signals_near_site(site, window_start:, upper_bound:, limit:).each do |signal|
           signal_node = add_signal_node(signal)
           add_edge(site_node, signal_node, "site_signal")
         end
@@ -351,10 +366,10 @@ module Ai
 
       return unless relations.include?("recommendations")
 
-      add_recommendation_nodes(included_targets.uniq, limit:, window_start:)
+      add_recommendation_nodes(included_targets.uniq, limit:, window_start:, upper_bound:)
     end
 
-    def build_incident_graph(incident, relations:, limit:, window_start:)
+    def build_incident_graph(incident, relations:, limit:, window_start:, upper_bound:)
       incident_node    = add_incident_node(incident, root: true)
       included_targets = [["Incident", incident.id]]
 
@@ -372,6 +387,7 @@ module Ai
       if relations.include?("alerts")
         alerts = incident.signal_rule_matches
                          .where("fired_at >= ?", window_start)
+                         .where("fired_at <= ?", upper_bound)
                          .includes(:signal, :task, :correlation_rule)
                          .order(fired_at: :desc)
                          .limit(limit)
@@ -383,7 +399,7 @@ module Ai
       end
 
       if relations.include?("tasks")
-        incident.tasks.distinct.order(created_at: :desc).limit(limit).each do |task|
+        apply_replay_existence_scope(incident.tasks.distinct, upper_bound: upper_bound).order(created_at: :desc).limit(limit).each do |task|
           task_node = add_task_node(task)
           add_edge(incident_node, task_node, "incident_task")
           included_targets << ["Task", task.id]
@@ -393,6 +409,7 @@ module Ai
       if relations.include?("signals")
         incident.signals
                 .where("external_signals.occurred_at >= ?", window_start)
+                .where("external_signals.occurred_at <= ?", upper_bound)
                 .distinct
                 .order(occurred_at: :desc)
                 .limit(limit)
@@ -413,6 +430,7 @@ module Ai
       if relations.include?("prosecution_steps")
         incident.prosecution_steps
                 .where("occurred_at >= ?", window_start)
+                .where("occurred_at <= ?", upper_bound)
                 .includes(:actor)
                 .order(occurred_at: :asc, created_at: :asc)
                 .limit(limit)
@@ -424,10 +442,10 @@ module Ai
 
       return unless relations.include?("recommendations")
 
-      add_recommendation_nodes(included_targets.uniq, limit:, window_start:)
+      add_recommendation_nodes(included_targets.uniq, limit:, window_start:, upper_bound:)
     end
 
-    def build_task_graph(task, relations:, limit:, window_start:)
+    def build_task_graph(task, relations:, limit:, window_start:, upper_bound:)
       task_node        = add_task_node(task, root: true)
       included_targets = [["Task", task.id]]
 
@@ -447,6 +465,7 @@ module Ai
         alerts = SignalRuleMatch.where(task_id: task.id)
                                 .includes(:signal, :correlation_rule, incident: :signal_rule_matches)
                                 .where("fired_at >= ?", window_start)
+                                .where("fired_at <= ?", upper_bound)
                                 .order(fired_at: :desc)
                                 .limit(limit)
         alerts.each do |alert|
@@ -465,6 +484,7 @@ module Ai
       if relations.include?("incidents")
         Incident.joins(:signal_rule_matches)
                 .where(signal_rule_matches: { task_id: task.id })
+                .where("incidents.created_at <= ?", upper_bound)
                 .includes(:signal_rule_matches)
                 .distinct
                 .order(opened_at: :desc)
@@ -478,10 +498,10 @@ module Ai
 
       return unless relations.include?("recommendations")
 
-      add_recommendation_nodes(included_targets.uniq, limit:, window_start:)
+      add_recommendation_nodes(included_targets.uniq, limit:, window_start:, upper_bound:)
     end
 
-    def build_asset_graph(asset, relations:, limit:, window_start:)
+    def build_asset_graph(asset, relations:, limit:, window_start:, upper_bound:)
       asset_node       = add_asset_node(asset, root: true)
       included_targets = [["Asset", asset.id]]
 
@@ -491,7 +511,7 @@ module Ai
       end
 
       if relations.include?("tasks")
-        Task.where(asset_id: asset.id).includes(:site).order(created_at: :desc).limit(limit).each do |task|
+        apply_replay_existence_scope(Task.where(asset_id: asset.id), upper_bound: upper_bound).includes(:site).order(created_at: :desc).limit(limit).each do |task|
           task_node = add_task_node(task)
           add_edge(task_node, asset_node, "task_asset")
           included_targets << ["Task", task.id]
@@ -500,16 +520,16 @@ module Ai
 
       return unless relations.include?("recommendations")
 
-      add_recommendation_nodes(included_targets.uniq, limit:, window_start:)
+      add_recommendation_nodes(included_targets.uniq, limit:, window_start:, upper_bound:)
     end
 
-    def build_area_graph(area, relations:, limit:, window_start:)
+    def build_area_graph(area, relations:, limit:, window_start:, upper_bound:)
       area_node        = add_area_node(area, root: true)
       included_targets = []
 
       sites = []
       if relations.include?("sites")
-        sites = Site.where(area_of_operation_id: area.id).order(:name).limit(limit)
+        sites = apply_replay_existence_scope(Site.where(area_of_operation_id: area.id), upper_bound: upper_bound).order(:name).limit(limit)
         sites.each do |site|
           site_node = add_site_node(site)
           add_edge(site_node, area_node, "in_area_of_operation")
@@ -518,7 +538,11 @@ module Ai
       end
 
       if relations.include?("incidents")
-        Incident.where(area_of_operation_id: area.id).includes(:site, :signal_rule_matches).order(opened_at: :desc).limit(limit).each do |incident|
+        apply_replay_existence_scope(Incident.where(area_of_operation_id: area.id), upper_bound: upper_bound)
+          .includes(:site, :signal_rule_matches)
+          .order(opened_at: :desc)
+          .limit(limit)
+          .each do |incident|
           incident_node = add_incident_node(incident)
           add_edge(incident_node, area_node, "incident_area_of_operation")
           included_targets << ["Incident", incident.id]
@@ -534,12 +558,13 @@ module Ai
       included_targets
     end
 
-    def add_recommendation_nodes(targets, limit:, window_start:)
+    def add_recommendation_nodes(targets, limit:, window_start:, upper_bound:)
       grouped = targets.group_by(&:first).transform_values { |pairs| pairs.map(&:last).uniq }
       scopes  = grouped.map do |entity_type, ids|
         Recommendation
           .where(affected_entity_type: entity_type, affected_entity_id: ids)
           .where("created_at >= ?", window_start)
+          .where("created_at <= ?", upper_bound)
       end
 
       relation = scopes.reduce { |combined, scope| combined.or(scope) }
@@ -564,7 +589,7 @@ module Ai
       end
     end
 
-    def exact_signals_near_site(site, window_start:, limit:)
+    def exact_signals_near_site(site, window_start:, upper_bound:, limit:)
       matches    = []
       batch_size = [limit * 4, 25].max
       offset     = 0
@@ -572,6 +597,7 @@ module Ai
       candidates = ExternalSignal
         .near_point(site.latitude.to_f, site.longitude.to_f, SIGNAL_RADIUS_KM)
         .where("occurred_at >= ?", window_start)
+        .where("occurred_at <= ?", upper_bound)
         .order(occurred_at: :desc, id: :desc)
 
       loop do
@@ -763,6 +789,191 @@ module Ai
       "#{type}:#{entity_id}"
     end
 
+    def apply_replay_snapshots!(upper_bound)
+      incident_alert_counts = @edges.each_with_object(Hash.new(0)) do |edge, counts|
+        next unless edge[:relation] == "incident_alert"
+
+        incident_id = edge[:source].to_s.delete_prefix("incident:")
+        counts[incident_id] += 1
+      end
+
+      apply_replay_nodes!(
+        node_type: "site",
+        entity_type: "Site",
+        upper_bound: upper_bound,
+      ) do |node, record, snapshot|
+        name = Replay::AuditSnapshotService.value(snapshot, "name") || record.name
+        status = Replay::AuditSnapshotService.value(snapshot, "status") || record.status
+        geofence_radius_km = Replay::AuditSnapshotService.value(snapshot, "geofence_radius_km") || record.geofence_radius_km
+
+        node[:label] = name
+        node[:sublabel] = "Site · #{status}"
+        node[:metadata] = {
+          status: status,
+          geofence_radius_km: geofence_radius_km,
+        }.compact
+      end
+
+      apply_replay_nodes!(
+        node_type: "area_of_operation",
+        entity_type: "AreaOfOperation",
+        upper_bound: upper_bound,
+      ) do |node, record, snapshot|
+        name = Replay::AuditSnapshotService.value(snapshot, "name") || record.name
+        posture = Replay::AuditSnapshotService.value(snapshot, "posture") || record.posture
+        threat_level = Replay::AuditSnapshotService.value(snapshot, "threat_level") || record.threat_level
+
+        node[:label] = name
+        node[:sublabel] = "Area of operation · #{posture}"
+        node[:metadata] = {
+          posture: posture,
+          threat_level: threat_level,
+        }.compact
+      end
+
+      apply_replay_nodes!(
+        node_type: "incident",
+        entity_type: "Incident",
+        upper_bound: upper_bound,
+      ) do |node, record, snapshot|
+        title = Replay::AuditSnapshotService.value(snapshot, "title") || record.title
+        severity = Replay::AuditSnapshotService.value(snapshot, "severity") || record.severity
+        status = Replay::AuditSnapshotService.value(snapshot, "status") || record.status
+
+        node[:label] = title
+        node[:sublabel] = "Incident · #{severity} · #{status}"
+        node[:metadata] = {
+          severity: severity,
+          status: status,
+          alert_count: incident_alert_counts[record.id],
+        }.compact
+      end
+
+      apply_replay_nodes!(
+        node_type: "task",
+        entity_type: "Task",
+        upper_bound: upper_bound,
+      ) do |node, record, snapshot|
+        title = Replay::AuditSnapshotService.value(snapshot, "title") || record.title
+        priority = Replay::AuditSnapshotService.value(snapshot, "priority") || record.priority
+        workflow_status = Replay::AuditSnapshotService.value(snapshot, "workflow_status") || record.workflow_status
+
+        node[:label] = title
+        node[:sublabel] = "Task · #{priority} · #{workflow_status}"
+        node[:metadata] = {
+          priority: priority,
+          workflow_status: workflow_status,
+        }.compact
+      end
+
+      apply_replay_nodes!(
+        node_type: "asset",
+        entity_type: "Asset",
+        upper_bound: upper_bound,
+      ) do |node, record, snapshot|
+        name = Replay::AuditSnapshotService.value(snapshot, "name") || record.name
+        asset_type = Replay::AuditSnapshotService.value(snapshot, "asset_type") || record.asset_type
+        status = Replay::AuditSnapshotService.value(snapshot, "status") || record.status
+
+        node[:label] = name
+        node[:sublabel] = "Asset · #{asset_type} · #{status}"
+        node[:metadata] = {
+          asset_type: asset_type,
+          status: status,
+        }.compact
+      end
+
+      apply_replay_nodes!(
+        node_type: "alert",
+        entity_type: "SignalRuleMatch",
+        upper_bound: upper_bound,
+      ) do |node, record, snapshot|
+        workflow_status = Replay::AuditSnapshotService.value(snapshot, "workflow_status") || record.workflow_status
+        rule_name = record.correlation_rule&.name || "Derived alert"
+
+        node[:label] = rule_name
+        node[:sublabel] = "Alert · #{workflow_status} · #{(record.confidence.to_f * 100).round}%"
+        node[:metadata] = {
+          workflow_status: workflow_status,
+          confidence: record.confidence.to_f.round(4),
+          fired_at: record.fired_at&.iso8601,
+        }.compact
+      end
+
+      apply_replay_nodes!(
+        node_type: "recommendation",
+        entity_type: "Recommendation",
+        upper_bound: upper_bound,
+      ) do |node, record, snapshot|
+        status = Replay::AuditSnapshotService.value(snapshot, "status") || "pending"
+        status = "expired" if status == "pending" && record.expires_at.present? && record.expires_at <= upper_bound
+
+        node[:label] = record.recommendation_type.humanize
+        node[:sublabel] = "Recommendation · #{status} · #{record.tier}"
+        node[:metadata] = {
+          recommendation_type: record.recommendation_type,
+          status: status,
+          tier: record.tier,
+          confidence: record.confidence.to_f.round(4),
+        }.compact
+      end
+    end
+
+    def apply_replay_nodes!(node_type:, entity_type:, upper_bound:)
+      entity_ids = @nodes.values.filter_map { |node| node[:type] == node_type ? node[:entity_id] : nil }
+      return if entity_ids.empty?
+
+      records = replay_records_for(entity_type, entity_ids, upper_bound)
+      snapshots = Replay::AuditSnapshotService.call(
+        entity_type: entity_type,
+        entity_ids: entity_ids,
+        as_of: upper_bound,
+      ).snapshots
+
+      @nodes.each_value do |node|
+        next unless node[:type] == node_type
+
+        record = records[node[:entity_id]]
+        next unless record
+
+        yield(node, record, snapshots[node[:entity_id]] || {})
+      end
+    end
+
+    def replay_records_for(entity_type, entity_ids, upper_bound)
+      scope =
+        case entity_type
+        when "Site"
+          Site.all
+        when "AreaOfOperation"
+          AreaOfOperation.all
+        when "Incident"
+          Incident.includes(:signal_rule_matches)
+        when "Task"
+          Task.all
+        when "Asset"
+          Asset.all
+        when "SignalRuleMatch"
+          SignalRuleMatch.includes(:correlation_rule)
+        when "Recommendation"
+          Recommendation.all
+        else
+          return {}
+        end
+
+      apply_replay_existence_scope(scope.where(id: entity_ids), upper_bound: upper_bound).index_by(&:id)
+    end
+
+    def apply_replay_existence_scope(scope, upper_bound: replay_upper_bound)
+      return scope unless @as_of.present? && scope.klass.column_names.include?("created_at")
+
+      scope.where("created_at <= ?", upper_bound)
+    end
+
+    def replay_upper_bound
+      @as_of || Time.current
+    end
+
     def build_counts
       by_type = @nodes.values.each_with_object(Hash.new(0)) do |node, counts|
         counts[node[:type]] += 1
@@ -775,7 +986,7 @@ module Ai
       }
     end
 
-    def build_summary(root_type:, root:, relations:, time_window_hours:, counts:)
+    def build_summary(root_type:, root:, relations:, time_window_hours:, counts:, upper_bound:)
       related_summary = counts[:by_type]
         .reject { |type, _| type == root_type }
         .map { |type, count| "#{count} #{type.tr('_', ' ')}#{'s' unless count == 1}" }
@@ -785,12 +996,18 @@ module Ai
 
       if related_summary.present?
         "Resolved #{root_label_for(root_type, root)} as the focal #{human_root_type(root_type).downcase}. " \
-          "Traversed #{relation_summary} over the last #{time_window_hours}h and returned #{counts[:node_count]} nodes " \
+          "Traversed #{relation_summary} over the last #{time_window_hours}h#{summary_cutoff_suffix(upper_bound)} and returned #{counts[:node_count]} nodes " \
           "and #{counts[:edge_count]} edges, including #{related_summary}."
       else
         "Resolved #{root_label_for(root_type, root)} as the focal #{human_root_type(root_type).downcase}. " \
-          "Traversed #{relation_summary} over the last #{time_window_hours}h and found no additional connected entities."
+          "Traversed #{relation_summary} over the last #{time_window_hours}h#{summary_cutoff_suffix(upper_bound)} and found no additional connected entities."
       end
+    end
+
+    def summary_cutoff_suffix(upper_bound)
+      return "" unless @as_of.present?
+
+      " ending at #{upper_bound.iso8601}"
     end
 
     def root_label_for(root_type, root)

@@ -12,6 +12,15 @@ module Api
       authorize Site
       sites = policy_scope(Site).order(:name)
       sites = sites.where(status: params[:status]) if params[:status].present?
+
+      if as_of
+        sites = sites.where("created_at <= ?", as_of)
+        records, meta = paginate(sites)
+        snapshots = latest_audit_snapshots(entity_type: "Site", entity_ids: records.map(&:id), as_of: as_of)
+        render json: { data: records.map { |site| serialize_site(site, snapshot: snapshots[site.id]) }, meta: meta }
+        return
+      end
+
       records, meta = paginate(sites)
       render json: { data: records.map { |s| serialize_site(s) }, meta: meta }
     end
@@ -19,7 +28,15 @@ module Api
     def show
       site = scoped_record(Site, params[:id])
       authorize site
-      render json: serialize_site(site)
+
+      if as_of
+        return render json: { errors: ["Site not found"] }, status: :not_found if site.created_at > as_of
+
+        snapshot = latest_audit_snapshots(entity_type: "Site", entity_ids: [site.id], as_of: as_of)[site.id]
+        render json: serialize_site(site, snapshot: snapshot)
+      else
+        render json: serialize_site(site)
+      end
     end
 
     def risk_history
@@ -157,8 +174,19 @@ module Api
       }
     end
 
-    def serialize_site(site)
-      site.as_json(only: %i[id name latitude longitude status area_of_operation_id flagged_at flag_reason geofence_radius_km created_at])
+    def serialize_site(site, snapshot: nil)
+      {
+        id: site.id,
+        name: snapshot_value(snapshot, "name") || site.name,
+        latitude: snapshot_value(snapshot, "latitude") || site.latitude,
+        longitude: snapshot_value(snapshot, "longitude") || site.longitude,
+        status: snapshot_value(snapshot, "status") || site.status,
+        area_of_operation_id: snapshot_value(snapshot, "area_of_operation_id") || site.area_of_operation_id,
+        flagged_at: snapshot_value(snapshot, "flagged_at") || site.flagged_at,
+        flag_reason: snapshot_value(snapshot, "flag_reason") || site.flag_reason,
+        geofence_radius_km: snapshot_value(snapshot, "geofence_radius_km") || site.geofence_radius_km,
+        created_at: site.created_at,
+      }
     end
   end
 end

@@ -2,17 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Button,
   Callout,
-  Card,
   Drawer,
   DrawerSize,
-  FormGroup,
   HTMLTable,
-  HTMLSelect,
-  InputGroup,
   NonIdealState,
   Spinner,
   Tag,
-  TextArea,
 } from '@blueprintjs/core'
 import { usePlanning } from '../hooks/usePlanning'
 import { useSites } from '../hooks/useSites'
@@ -34,150 +29,36 @@ import { useNavigate } from 'react-router-dom'
 import { PostureBadge } from '../components/PostureBadge'
 import { AssetPicker } from '../components/AssetPicker'
 import EntityCard from '../components/EntityCard'
+import { PlanningChokepointsSection } from '../components/planning/PlanningChokepointsSection'
+import { PlanningDoctrineSection } from '../components/planning/PlanningDoctrineSection'
 import { useReplay } from '../context/ReplayContext'
 import { humanize } from '../utils/humanize'
 import { computeFlags } from '../utils/planningFlags'
 import { buildCoverageCircles, coverageBySite } from '../lib/coverage'
 import { useTelemetry } from '../hooks/useTelemetry'
 import { getApiErrorMessage } from '../api/client'
-import type { Chokepoint, ChokepointCategory, ChokepointStatus, Posture, TaskPriority } from '../api/types'
+import {
+  makeDefaultObservedAt,
+  PRIORITY_INTENT,
+  PRIORITY_ORDER,
+  sameChokepointDraft,
+  sameIntentDraft,
+  samePaceDraft,
+  sameSaluteDraft,
+  type ChokepointDraft,
+  type IntentDraft,
+  type PaceDraft,
+  type SaluteDraft,
+} from '../lib/planningPageUtils'
+import type { Chokepoint, Posture } from '../api/types'
 import type { EntityType } from '../components/EntityCard'
-
-const PRIORITY_ORDER: Record<TaskPriority, number> = {
-  critical: 0,
-  high:     1,
-  normal:   2,
-  low:      3,
-}
-
-const PRIORITY_INTENT: Record<TaskPriority, 'danger' | 'warning' | 'primary' | 'none'> = {
-  critical: 'danger',
-  high:     'warning',
-  normal:   'primary',
-  low:      'none',
-}
-
-const CHOKEPOINT_CATEGORY_OPTIONS: Array<{ value: ChokepointCategory; label: string }> = [
-  { value: 'strait', label: 'Strait' },
-  { value: 'canal', label: 'Canal' },
-  { value: 'harbor_approach', label: 'Harbor approach' },
-  { value: 'lane_constriction', label: 'Lane constriction' },
-  { value: 'anchorage', label: 'Anchorage' },
-]
-
-const CHOKEPOINT_STATUS_OPTIONS: Array<{ value: ChokepointStatus; label: string }> = [
-  { value: 'monitor', label: 'Monitor' },
-  { value: 'constrained', label: 'Constrained' },
-  { value: 'contested', label: 'Contested' },
-  { value: 'closed', label: 'Closed' },
-]
-
-function makeDefaultObservedAt() {
-  return new Date(Date.now() - new Date().getTimezoneOffset() * 60_000)
-    .toISOString()
-    .slice(0, 16)
-}
-
-function sameIntentDraft(
-  left: { title: string; objective: string; end_state: string; constraints: string },
-  right: { title: string; objective: string; end_state: string; constraints: string },
-) {
-  return left.title === right.title &&
-    left.objective === right.objective &&
-    left.end_state === right.end_state &&
-    left.constraints === right.constraints
-}
-
-function samePaceDraft(
-  left: {
-    primary_plan: string
-    alternate_plan: string
-    contingency_plan: string
-    emergency_plan: string
-    notes: string
-  },
-  right: {
-    primary_plan: string
-    alternate_plan: string
-    contingency_plan: string
-    emergency_plan: string
-    notes: string
-  },
-) {
-  return left.primary_plan === right.primary_plan &&
-    left.alternate_plan === right.alternate_plan &&
-    left.contingency_plan === right.contingency_plan &&
-    left.emergency_plan === right.emergency_plan &&
-    left.notes === right.notes
-}
-
-function sameSaluteDraft(
-  left: {
-    site_id: string
-    size: string
-    activity: string
-    location: string
-    unit: string
-    observed_at: string
-    equipment: string
-    remarks: string
-  },
-  right: {
-    site_id: string
-    size: string
-    activity: string
-    location: string
-    unit: string
-    observed_at: string
-    equipment: string
-    remarks: string
-  },
-) {
-  return left.site_id === right.site_id &&
-    left.size === right.size &&
-    left.activity === right.activity &&
-    left.location === right.location &&
-    left.unit === right.unit &&
-    left.observed_at === right.observed_at &&
-    left.equipment === right.equipment &&
-    left.remarks === right.remarks
-}
-
-function sameChokepointDraft(
-  left: {
-    name: string
-    category: ChokepointCategory
-    status: ChokepointStatus
-    latitude: string
-    longitude: string
-    watch_radius_km: string
-    notes: string
-  },
-  right: {
-    name: string
-    category: ChokepointCategory
-    status: ChokepointStatus
-    latitude: string
-    longitude: string
-    watch_radius_km: string
-    notes: string
-  },
-) {
-  return left.name === right.name &&
-    left.category === right.category &&
-    left.status === right.status &&
-    left.latitude === right.latitude &&
-    left.longitude === right.longitude &&
-    left.watch_radius_km === right.watch_radius_km &&
-    left.notes === right.notes
-}
 
 export default function PlanningPage() {
   const { isCommander } = useRole()
-  const { isReplaying } = useReplay()
+  const { isReplaying, asOf } = useReplay()
   const navigate = useNavigate()
   const { data, isLoading, isError } = usePlanning(isCommander)
-  const sitesQuery = useSites({ per_page: 200 }, isCommander)
+  const sitesQuery = useSites({ per_page: 200, ...(isReplaying && asOf ? { as_of: asOf } : {}) }, isCommander)
   const updateTask = useUpdateTask()
   const createCommanderIntent = useCreateCommanderIntent()
   const updateCommanderIntent = useUpdateCommanderIntent()
@@ -187,26 +68,26 @@ export default function PlanningPage() {
   const createChokepoint = useCreateChokepoint()
   const updateChokepoint = useUpdateChokepoint()
   const deleteChokepoint = useDeleteChokepoint()
-  const { readings } = useTelemetry(isCommander)
+  const { readings } = useTelemetry(isCommander, asOf)
 
   // Per-row pending asset selection — keyed by task id
   const [pendingAssets, setPendingAssets] = useState<Record<string, string | null | undefined>>({})
   const [entityCard, setEntityCard] = useState<{ type: EntityType; id: string } | null>(null)
   const [selectedDoctrineAoId, setSelectedDoctrineAoId] = useState<string>('')
-  const [intentDraft, setIntentDraft] = useState({
+  const [intentDraft, setIntentDraft] = useState<IntentDraft>({
     title: '',
     objective: '',
     end_state: '',
     constraints: '',
   })
-  const [paceDraft, setPaceDraft] = useState({
+  const [paceDraft, setPaceDraft] = useState<PaceDraft>({
     primary_plan: '',
     alternate_plan: '',
     contingency_plan: '',
     emergency_plan: '',
     notes: '',
   })
-  const [saluteDraft, setSaluteDraft] = useState({
+  const [saluteDraft, setSaluteDraft] = useState<SaluteDraft>({
     site_id: '',
     size: '',
     activity: '',
@@ -218,10 +99,10 @@ export default function PlanningPage() {
   })
   const [selectedChokepointId, setSelectedChokepointId] = useState<string>('')
   const [pendingSelectedChokepoint, setPendingSelectedChokepoint] = useState<Chokepoint | null>(null)
-  const [chokepointDraft, setChokepointDraft] = useState({
+  const [chokepointDraft, setChokepointDraft] = useState<ChokepointDraft>({
     name: '',
-    category: 'strait' as ChokepointCategory,
-    status: 'monitor' as ChokepointStatus,
+    category: 'strait',
+    status: 'monitor',
     latitude: '',
     longitude: '',
     watch_radius_km: '25',
@@ -701,7 +582,7 @@ export default function PlanningPage() {
     <div style={{ padding: '20px 24px', maxWidth: 1400 }}>
       {isReplaying && (
         <Callout intent="primary" icon="info-sign" style={{ marginBottom: 16 }}>
-          Viewing current planning state. Write actions are disabled during replay.
+          Viewing planning state as it existed at the replay timestamp. Doctrine, coverage, task allocation, and open-incident data are clipped to the selected historical cutoff. Write actions are disabled during replay.
         </Callout>
       )}
       <div style={{ marginBottom: 24 }}>
@@ -711,491 +592,59 @@ export default function PlanningPage() {
         </span>
       </div>
 
-      <section style={{ marginBottom: 28 }}>
-        <h3 className="bp6-heading" style={{ fontSize: 14, marginBottom: 10, color: 'var(--bp6-text-muted-color)' }}>
-          COMMANDER DOCTRINE
-        </h3>
-        {areas_of_operation.length === 0 ? (
-          <Callout intent="warning" compact>
-            Create an area of operation before recording commander intent, PACE, or SALUTE doctrine.
-          </Callout>
-        ) : (
-          <>
-            <div style={{ marginBottom: 16, maxWidth: 320 }}>
-              <FormGroup label="Area of operation" inline>
-                <HTMLSelect
-                  fill
-                  value={selectedDoctrineAoId}
-                  onChange={e => handleDoctrineAoChange(e.target.value)}
-                  options={areas_of_operation.map(ao => ({ label: ao.name, value: ao.id }))}
-                />
-              </FormGroup>
-            </div>
+      <PlanningDoctrineSection
+        areasOfOperation={areas_of_operation}
+        selectedDoctrineAoId={selectedDoctrineAoId}
+        selectedDoctrineAo={selectedDoctrineAo}
+        selectedCommanderIntent={selectedCommanderIntent}
+        selectedPacePlan={selectedPacePlan}
+        doctrineSites={doctrineSites}
+        doctrineSaluteReports={doctrineSaluteReports}
+        doctrineSaluteMeta={doctrineSaluteMeta}
+        intentDraft={intentDraft}
+        paceDraft={paceDraft}
+        saluteDraft={saluteDraft}
+        setIntentDraft={setIntentDraft}
+        setPaceDraft={setPaceDraft}
+        setSaluteDraft={setSaluteDraft}
+        onDoctrineAoChange={handleDoctrineAoChange}
+        onIntentSave={handleIntentSave}
+        onPaceSave={handlePaceSave}
+        onSaluteSubmit={handleSaluteSubmit}
+        isReplaying={isReplaying}
+        intentError={intentError}
+        paceError={paceError}
+        saluteError={saluteError}
+        intentNotice={intentNotice}
+        paceNotice={paceNotice}
+        saluteNotice={saluteNotice}
+        intentSaving={createCommanderIntent.isPending || updateCommanderIntent.isPending}
+        paceSaving={createPacePlan.isPending || updatePacePlan.isPending}
+        saluteSaving={createSaluteReport.isPending}
+      />
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginBottom: 16 }}>
-              <Card style={{ background: 'rgba(255,255,255,0.02)' }}>
-                <h4 className="bp6-heading" style={{ marginTop: 0, marginBottom: 12 }}>Commander Intent</h4>
-                {selectedDoctrineAo && (
-                  <div className="bp6-text-muted" style={{ fontSize: 12, marginBottom: 12 }}>
-                    {selectedDoctrineAo.name} · {humanize(selectedDoctrineAo.posture)}
-                  </div>
-                )}
-                <FormGroup label="Intent title" labelFor="commander-intent-title">
-                  <InputGroup
-                    id="commander-intent-title"
-                    value={intentDraft.title}
-                    onChange={e => setIntentDraft(prev => ({ ...prev, title: e.target.value }))}
-                    placeholder="Secure northern shipping corridor"
-                  />
-                </FormGroup>
-                <FormGroup label="Objective" labelFor="commander-intent-objective">
-                  <TextArea
-                    id="commander-intent-objective"
-                    fill
-                    rows={4}
-                    value={intentDraft.objective}
-                    onChange={e => setIntentDraft(prev => ({ ...prev, objective: e.target.value }))}
-                    placeholder="What must the force accomplish in this AO?"
-                  />
-                </FormGroup>
-                <FormGroup label="End state" labelFor="commander-intent-end-state">
-                  <TextArea
-                    id="commander-intent-end-state"
-                    fill
-                    rows={4}
-                    value={intentDraft.end_state}
-                    onChange={e => setIntentDraft(prev => ({ ...prev, end_state: e.target.value }))}
-                    placeholder="Describe the desired operational picture when this intent is satisfied."
-                  />
-                </FormGroup>
-                <FormGroup label="Constraints" labelFor="commander-intent-constraints">
-                  <TextArea
-                    id="commander-intent-constraints"
-                    fill
-                    rows={3}
-                    value={intentDraft.constraints}
-                    onChange={e => setIntentDraft(prev => ({ ...prev, constraints: e.target.value }))}
-                    placeholder="Operational or political constraints, ROE limitations, civilian concerns."
-                  />
-                </FormGroup>
-                {intentError && <Callout intent="danger" compact style={{ marginBottom: 12 }}>{intentError}</Callout>}
-                {intentNotice && <Callout intent="success" compact style={{ marginBottom: 12 }}>{intentNotice}</Callout>}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                  <span className="bp6-text-muted" style={{ fontSize: 12 }}>
-                    {selectedCommanderIntent ? `Last updated ${new Date(selectedCommanderIntent.updated_at).toLocaleString()}` : 'No intent recorded yet'}
-                  </span>
-                  <Button
-                    intent="primary"
-                    disabled={isReplaying}
-                    loading={createCommanderIntent.isPending || updateCommanderIntent.isPending}
-                    onClick={handleIntentSave}
-                  >
-                    Save commander intent
-                  </Button>
-                </div>
-              </Card>
-
-              <Card style={{ background: 'rgba(255,255,255,0.02)' }}>
-                <h4 className="bp6-heading" style={{ marginTop: 0, marginBottom: 12 }}>PACE Plan</h4>
-                <FormGroup label="Primary" labelFor="pace-primary">
-                  <InputGroup
-                    id="pace-primary"
-                    value={paceDraft.primary_plan}
-                    onChange={e => setPaceDraft(prev => ({ ...prev, primary_plan: e.target.value }))}
-                    placeholder="SATCOM mission chat"
-                  />
-                </FormGroup>
-                <FormGroup label="Alternate" labelFor="pace-alternate">
-                  <InputGroup
-                    id="pace-alternate"
-                    value={paceDraft.alternate_plan}
-                    onChange={e => setPaceDraft(prev => ({ ...prev, alternate_plan: e.target.value }))}
-                    placeholder="Secure VHF relay"
-                  />
-                </FormGroup>
-                <FormGroup label="Contingency" labelFor="pace-contingency">
-                  <InputGroup
-                    id="pace-contingency"
-                    value={paceDraft.contingency_plan}
-                    onChange={e => setPaceDraft(prev => ({ ...prev, contingency_plan: e.target.value }))}
-                    placeholder="Burst SMS via field gateway"
-                  />
-                </FormGroup>
-                <FormGroup label="Emergency" labelFor="pace-emergency">
-                  <InputGroup
-                    id="pace-emergency"
-                    value={paceDraft.emergency_plan}
-                    onChange={e => setPaceDraft(prev => ({ ...prev, emergency_plan: e.target.value }))}
-                    placeholder="HF voice net or courier fallback"
-                  />
-                </FormGroup>
-                <FormGroup label="Notes" labelFor="pace-notes">
-                  <TextArea
-                    id="pace-notes"
-                    fill
-                    rows={3}
-                    value={paceDraft.notes}
-                    onChange={e => setPaceDraft(prev => ({ ...prev, notes: e.target.value }))}
-                    placeholder="Escalation thresholds, relay assumptions, or network caveats."
-                  />
-                </FormGroup>
-                {paceError && <Callout intent="danger" compact style={{ marginBottom: 12 }}>{paceError}</Callout>}
-                {paceNotice && <Callout intent="success" compact style={{ marginBottom: 12 }}>{paceNotice}</Callout>}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                  <span className="bp6-text-muted" style={{ fontSize: 12 }}>
-                    {selectedPacePlan ? `Last updated ${new Date(selectedPacePlan.updated_at).toLocaleString()}` : 'No PACE plan recorded yet'}
-                  </span>
-                  <Button
-                    intent="primary"
-                    disabled={isReplaying}
-                    loading={createPacePlan.isPending || updatePacePlan.isPending}
-                    onClick={handlePaceSave}
-                  >
-                    Save PACE plan
-                  </Button>
-                </div>
-              </Card>
-            </div>
-
-            <Card style={{ marginBottom: 16, background: 'rgba(255,255,255,0.02)' }}>
-              <h4 className="bp6-heading" style={{ marginTop: 0, marginBottom: 12 }}>SALUTE Report</h4>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
-                <FormGroup label="Site" labelFor="salute-site">
-                  <HTMLSelect
-                    id="salute-site"
-                    fill
-                    value={saluteDraft.site_id}
-                    onChange={e => setSaluteDraft(prev => ({ ...prev, site_id: e.target.value }))}
-                    options={[
-                      { label: 'Area-wide / not site-specific', value: '' },
-                      ...doctrineSites.map(site => ({ label: site.name, value: site.id })),
-                    ]}
-                  />
-                </FormGroup>
-                <FormGroup label="Size" labelFor="salute-size">
-                  <InputGroup
-                    id="salute-size"
-                    value={saluteDraft.size}
-                    onChange={e => setSaluteDraft(prev => ({ ...prev, size: e.target.value }))}
-                    placeholder="2 fast boats"
-                  />
-                </FormGroup>
-                <FormGroup label="Unit" labelFor="salute-unit">
-                  <InputGroup
-                    id="salute-unit"
-                    value={saluteDraft.unit}
-                    onChange={e => setSaluteDraft(prev => ({ ...prev, unit: e.target.value }))}
-                    placeholder="Unknown irregular maritime element"
-                  />
-                </FormGroup>
-                <FormGroup label="Time observed" labelFor="salute-observed-at">
-                  <InputGroup
-                    id="salute-observed-at"
-                    type="datetime-local"
-                    value={saluteDraft.observed_at}
-                    onChange={e => setSaluteDraft(prev => ({ ...prev, observed_at: e.target.value }))}
-                  />
-                </FormGroup>
-              </div>
-              <FormGroup label="Activity" labelFor="salute-activity">
-                <TextArea
-                  id="salute-activity"
-                  fill
-                  rows={3}
-                  value={saluteDraft.activity}
-                  onChange={e => setSaluteDraft(prev => ({ ...prev, activity: e.target.value }))}
-                  placeholder="Describe what the observed element is doing."
-                />
-              </FormGroup>
-              <FormGroup label="Location" labelFor="salute-location">
-                <TextArea
-                  id="salute-location"
-                  fill
-                  rows={2}
-                  value={saluteDraft.location}
-                  onChange={e => setSaluteDraft(prev => ({ ...prev, location: e.target.value }))}
-                  placeholder="Grid, landmark, lane, harbor, or route description."
-                />
-              </FormGroup>
-              <FormGroup label="Equipment" labelFor="salute-equipment">
-                <TextArea
-                  id="salute-equipment"
-                  fill
-                  rows={2}
-                  value={saluteDraft.equipment}
-                  onChange={e => setSaluteDraft(prev => ({ ...prev, equipment: e.target.value }))}
-                  placeholder="Observed kit, comms, armament, or sensor packages."
-                />
-              </FormGroup>
-              <FormGroup label="Remarks" labelFor="salute-remarks">
-                <TextArea
-                  id="salute-remarks"
-                  fill
-                  rows={2}
-                  value={saluteDraft.remarks}
-                  onChange={e => setSaluteDraft(prev => ({ ...prev, remarks: e.target.value }))}
-                  placeholder="Assessment, caveats, or follow-on collection needs."
-                />
-              </FormGroup>
-              {saluteError && <Callout intent="danger" compact style={{ marginBottom: 12 }}>{saluteError}</Callout>}
-              {saluteNotice && <Callout intent="success" compact style={{ marginBottom: 12 }}>{saluteNotice}</Callout>}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                <span className="bp6-text-muted" style={{ fontSize: 12 }}>
-                  {selectedDoctrineAo ? `${selectedDoctrineAo.name} · ${doctrineSaluteReports.length} recent report${doctrineSaluteReports.length === 1 ? '' : 's'}` : 'Select an area of operation'}
-                </span>
-                <Button
-                  intent="primary"
-                  disabled={isReplaying}
-                  loading={createSaluteReport.isPending}
-                  onClick={handleSaluteSubmit}
-                >
-                  Submit SALUTE report
-                </Button>
-              </div>
-            </Card>
-
-            {doctrineSaluteMeta.truncated && (
-              <Callout intent="warning" icon="history" compact style={{ marginBottom: 12 }}>
-                Showing the most recent {doctrineSaluteMeta.count} SALUTE reports for this area of operation.
-              </Callout>
-            )}
-
-            <HTMLTable compact bordered style={{ width: '100%', maxWidth: 1200 }}>
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>Site</th>
-                  <th>Size</th>
-                  <th>Activity</th>
-                  <th>Unit</th>
-                  <th>Location</th>
-                  <th>Equipment</th>
-                </tr>
-              </thead>
-              <tbody>
-                {doctrineSaluteReports.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="bp6-text-muted" style={{ fontSize: 12 }}>
-                      No SALUTE reports recorded for this area of operation yet.
-                    </td>
-                  </tr>
-                ) : (
-                  doctrineSaluteReports.map(report => (
-                    <tr key={report.id}>
-                      <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>
-                        {new Date(report.observed_at).toLocaleString()}
-                      </td>
-                      <td style={{ fontSize: 12 }}>{report.site_name ?? 'AO-wide'}</td>
-                      <td style={{ fontSize: 12 }}>{report.size || '—'}</td>
-                      <td style={{ fontSize: 12 }}>{report.activity}</td>
-                      <td style={{ fontSize: 12 }}>{report.unit || '—'}</td>
-                      <td style={{ fontSize: 12 }}>{report.location}</td>
-                      <td style={{ fontSize: 12 }}>{report.equipment || '—'}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </HTMLTable>
-          </>
-        )}
-      </section>
-
-      <section style={{ marginBottom: 28 }}>
-        <h3 className="bp6-heading" style={{ fontSize: 14, marginBottom: 10, color: 'var(--bp6-text-muted-color)' }}>
-          MARITIME CHOKEPOINTS
-        </h3>
-        {areas_of_operation.length === 0 ? (
-          <Callout intent="warning" compact>
-            Create an area of operation before recording monitored straits, canals, or harbor approaches.
-          </Callout>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(340px, 420px) minmax(0, 1fr)', gap: 16 }}>
-            <Card style={{ background: 'rgba(255,255,255,0.02)' }}>
-              <FormGroup label="Area of operation" inline>
-                <HTMLSelect
-                  fill
-                  value={selectedDoctrineAoId}
-                  onChange={e => handleDoctrineAoChange(e.target.value)}
-                  options={areas_of_operation.map(ao => ({ label: ao.name, value: ao.id }))}
-                />
-              </FormGroup>
-              <FormGroup label="Editing" labelFor="chokepoint-editing">
-                <HTMLSelect
-                  id="chokepoint-editing"
-                  fill
-                  value={selectedChokepointId}
-                  onChange={e => {
-                    setPendingSelectedChokepoint(null)
-                    setSelectedChokepointId(e.target.value)
-                    setChokepointNotice(null)
-                    setChokepointError(null)
-                  }}
-                  options={[
-                    { label: 'New chokepoint', value: '' },
-                    ...(
-                      pendingSelectedChokepoint &&
-                      pendingSelectedChokepoint.area_of_operation_id === selectedDoctrineAoId &&
-                      !doctrineChokepoints.some(point => point.id === pendingSelectedChokepoint.id)
-                        ? [{ label: pendingSelectedChokepoint.name, value: pendingSelectedChokepoint.id }]
-                        : []
-                    ),
-                    ...doctrineChokepoints.map(point => ({ label: point.name, value: point.id })),
-                  ]}
-                />
-              </FormGroup>
-              <FormGroup label="Name" labelFor="chokepoint-name">
-                <InputGroup
-                  id="chokepoint-name"
-                  value={chokepointDraft.name}
-                  onChange={e => setChokepointDraft(prev => ({ ...prev, name: e.target.value }))}
-                  placeholder="Hormuz outbound lane"
-                />
-              </FormGroup>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <FormGroup label="Category" labelFor="chokepoint-category">
-                  <HTMLSelect
-                    id="chokepoint-category"
-                    fill
-                    value={chokepointDraft.category}
-                    onChange={e => setChokepointDraft(prev => ({ ...prev, category: e.target.value as ChokepointCategory }))}
-                    options={CHOKEPOINT_CATEGORY_OPTIONS.map(option => ({ label: option.label, value: option.value }))}
-                  />
-                </FormGroup>
-                <FormGroup label="Status" labelFor="chokepoint-status">
-                  <HTMLSelect
-                    id="chokepoint-status"
-                    fill
-                    value={chokepointDraft.status}
-                    onChange={e => setChokepointDraft(prev => ({ ...prev, status: e.target.value as ChokepointStatus }))}
-                    options={CHOKEPOINT_STATUS_OPTIONS.map(option => ({ label: option.label, value: option.value }))}
-                  />
-                </FormGroup>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-                <FormGroup label="Latitude" labelFor="chokepoint-latitude">
-                  <InputGroup
-                    id="chokepoint-latitude"
-                    value={chokepointDraft.latitude}
-                    onChange={e => setChokepointDraft(prev => ({ ...prev, latitude: e.target.value }))}
-                    placeholder="25.285447"
-                  />
-                </FormGroup>
-                <FormGroup label="Longitude" labelFor="chokepoint-longitude">
-                  <InputGroup
-                    id="chokepoint-longitude"
-                    value={chokepointDraft.longitude}
-                    onChange={e => setChokepointDraft(prev => ({ ...prev, longitude: e.target.value }))}
-                    placeholder="56.334457"
-                  />
-                </FormGroup>
-                <FormGroup label="Watch radius (km)" labelFor="chokepoint-radius">
-                  <InputGroup
-                    id="chokepoint-radius"
-                    value={chokepointDraft.watch_radius_km}
-                    onChange={e => setChokepointDraft(prev => ({ ...prev, watch_radius_km: e.target.value }))}
-                    placeholder="25"
-                  />
-                </FormGroup>
-              </div>
-              <FormGroup label="Notes" labelFor="chokepoint-notes">
-                <TextArea
-                  id="chokepoint-notes"
-                  fill
-                  rows={4}
-                  value={chokepointDraft.notes}
-                  onChange={e => setChokepointDraft(prev => ({ ...prev, notes: e.target.value }))}
-                  placeholder="Traffic restrictions, boarding pattern, ISR emphasis, or escalation thresholds."
-                />
-              </FormGroup>
-              {chokepointError && <Callout intent="danger" compact style={{ marginBottom: 12 }}>{chokepointError}</Callout>}
-              {chokepointNotice && <Callout intent="success" compact style={{ marginBottom: 12 }}>{chokepointNotice}</Callout>}
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
-                <span className="bp6-text-muted" style={{ fontSize: 12 }}>
-                  {selectedDoctrineAo ? `${selectedDoctrineAo.name} · ${doctrineChokepoints.length} chokepoint${doctrineChokepoints.length === 1 ? '' : 's'}` : 'Select an area of operation'}
-                </span>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {selectedChokepoint && (
-                    <Button
-                      intent="danger"
-                      outlined
-                      loading={deleteChokepoint.isPending}
-                      onClick={handleChokepointDelete}
-                    >
-                      Delete
-                    </Button>
-                  )}
-                  <Button
-                    intent="primary"
-                    disabled={isReplaying}
-                    loading={createChokepoint.isPending || updateChokepoint.isPending}
-                    onClick={handleChokepointSave}
-                  >
-                    {selectedChokepoint ? 'Update chokepoint' : 'Create chokepoint'}
-                  </Button>
-                </div>
-              </div>
-            </Card>
-
-            <Card style={{ background: 'rgba(255,255,255,0.02)' }}>
-              <HTMLTable compact bordered style={{ width: '100%' }}>
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Category</th>
-                    <th>Status</th>
-                    <th>Radius</th>
-                    <th>Location</th>
-                    <th>Updated</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {doctrineChokepoints.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="bp6-text-muted" style={{ fontSize: 12 }}>
-                        No chokepoints recorded for this area of operation yet.
-                      </td>
-                    </tr>
-                  ) : (
-                    doctrineChokepoints.map(point => (
-                      <tr key={point.id}>
-                        <td style={{ fontSize: 12 }}>{point.name}</td>
-                        <td style={{ fontSize: 12 }}>{humanize(point.category)}</td>
-                        <td style={{ fontSize: 12 }}>
-                          <Tag minimal intent={
-                            point.status === 'closed' ? 'danger' :
-                              point.status === 'contested' ? 'warning' :
-                                point.status === 'constrained' ? 'primary' :
-                                  'none'
-                          }>
-                            {humanize(point.status)}
-                          </Tag>
-                        </td>
-                        <td style={{ fontSize: 12 }}>{point.watch_radius_km.toFixed(1)} km</td>
-                        <td style={{ fontSize: 12 }}>{point.latitude.toFixed(3)}, {point.longitude.toFixed(3)}</td>
-                        <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{new Date(point.updated_at).toLocaleString()}</td>
-                        <td style={{ fontSize: 12 }}>
-                          <Button
-                            small
-                            minimal
-                            icon="edit"
-                            onClick={() => {
-                              setPendingSelectedChokepoint(null)
-                              setSelectedChokepointId(point.id)
-                            }}
-                          >
-                            Edit
-                          </Button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </HTMLTable>
-            </Card>
-          </div>
-        )}
-      </section>
+      <PlanningChokepointsSection
+        areasOfOperation={areas_of_operation}
+        selectedDoctrineAoId={selectedDoctrineAoId}
+        selectedDoctrineAo={selectedDoctrineAo}
+        selectedChokepointId={selectedChokepointId}
+        selectedChokepoint={selectedChokepoint}
+        doctrineChokepoints={doctrineChokepoints}
+        pendingSelectedChokepoint={pendingSelectedChokepoint}
+        firstDoctrineSite={firstDoctrineSite}
+        chokepointDraft={chokepointDraft}
+        setChokepointDraft={setChokepointDraft}
+        setSelectedChokepointId={setSelectedChokepointId}
+        setPendingSelectedChokepoint={setPendingSelectedChokepoint}
+        onDoctrineAoChange={handleDoctrineAoChange}
+        onSave={handleChokepointSave}
+        onDelete={handleChokepointDelete}
+        isReplaying={isReplaying}
+        saving={createChokepoint.isPending || updateChokepoint.isPending}
+        deleting={deleteChokepoint.isPending}
+        error={chokepointError}
+        notice={chokepointNotice}
+      />
 
       {/* ── Overcommitment callouts ───────────────────────────────────────── */}
       {flags.length > 0 && (

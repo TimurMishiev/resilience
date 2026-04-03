@@ -368,6 +368,18 @@ describe('PlanningPage', () => {
     expect(screen.getByLabelText(/Editing/i)).toHaveValue('cp-1')
   })
 
+  it('shows a historical replay callout and disables write actions during replay', () => {
+    planningState.isReplaying = true
+
+    renderPlanningPage()
+
+    expect(screen.getByText(/Viewing planning state as it existed at the replay timestamp/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Save commander intent/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Save PACE plan/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Submit SALUTE report/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Create chokepoint/i })).toBeDisabled()
+  })
+
   it('blocks operators from the planning surface', () => {
     planningState.isCommander = false
 

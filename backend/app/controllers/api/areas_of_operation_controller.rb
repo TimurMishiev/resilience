@@ -25,6 +25,7 @@ module Api
       authorize AreaOfOperation, :create?
       area = AreaOfOperation.new(area_params)
       area.created_by = current_user
+      area.organization = current_user.organization if current_user.organization.present?
 
       ApplicationRecord.transaction do
         area.save!
@@ -162,12 +163,13 @@ module Api
         posture: area.posture,
         color: area.color,
         geometry: area.geometry,
+        organization_id: area.organization_id,
       }
     end
 
     def serialize_area(area)
       area.as_json(only: %i[
-        id name description threat_level color posture posture_changed_at
+        id name description threat_level color posture posture_changed_at organization_id
         created_at updated_at
       ]).merge(
         geometry:   area.geometry,

@@ -272,6 +272,7 @@ export interface PlanningResponse {
     salute_reports_truncated: boolean
     salute_report_count: number
     salute_report_meta_by_ao: Record<string, { truncated: boolean; count: number }>
+    as_of?: string | null
   }
 }
 
@@ -407,6 +408,7 @@ export type AiOntologyRelation =
 
 export interface AiOntologyQueryRequest {
   q: string
+  as_of?: string
 }
 
 export interface AiOntologyNode {
@@ -435,6 +437,7 @@ export interface AiOntologyQueryResult {
     relations: AiOntologyRelation[]
     time_window_hours: number
     limit: number
+    as_of?: string | null
   }
   nodes: AiOntologyNode[]
   edges: AiOntologyEdge[]

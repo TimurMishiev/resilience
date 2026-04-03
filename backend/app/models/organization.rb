@@ -1,6 +1,7 @@
 class Organization < ApplicationRecord
   has_many :users,         dependent: :nullify
   has_many :sites,         dependent: :nullify
+  has_many :areas_of_operation, dependent: :nullify
 
   validates :name, presence: true
   validates :slug, presence: true, uniqueness: true,

@@ -96,7 +96,9 @@ module JwtAuthenticatable
         raise JwtAuthenticatable::AuthenticationError, "SSE token cannot be used for API requests"
       end
 
+      @current_token_payload = payload
       @current_user = User.find(payload[:sub])
+      hydrate_current_session(payload)
     rescue ActiveRecord::RecordNotFound
       raise JwtAuthenticatable::AuthenticationError, "User not found"
     end
@@ -119,8 +121,26 @@ module JwtAuthenticatable
       @current_user
     end
 
+    def current_token_payload
+      @current_token_payload
+    end
+
+    def current_session
+      @current_session
+    end
+
     def actor
       current_user.email
+    end
+
+    def hydrate_current_session(payload)
+      return unless defined?(UserSession) && UserSession.table_exists?
+      return if payload[:jti].blank?
+
+      @current_session = UserSession.active.find_by(jti: payload[:jti])
+      @current_session&.touch_if_stale!
+    rescue StandardError => e
+      Rails.logger.warn("[JwtAuthenticatable] failed to hydrate current session jti=#{payload[:jti]} error=#{e.class}: #{e.message}")
     end
   end
 end

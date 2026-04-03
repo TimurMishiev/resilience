@@ -174,6 +174,37 @@ RSpec.describe "Api::Ai", type: :request do
       )
     end
 
+    it "forwards the replay cutoff to the ontology service" do
+      cutoff = Time.zone.parse("2026-04-02T12:00:00Z")
+
+      expect(Ai::OntologyQueryService).to receive(:call).with(
+        query: valid_payload[:q],
+        as_of: cutoff,
+      ).and_return(ServiceResult.success(
+        original_query: valid_payload[:q],
+        summary: "ok",
+        normalized_query: {
+          root_type: "site",
+          root_id: "site-1",
+          root_label: "Forward Site Alpha",
+          relations: %w[incidents],
+          time_window_hours: 72,
+          limit: 8,
+          as_of: cutoff.iso8601,
+        },
+        nodes: [],
+        edges: [],
+        counts: { node_count: 0, edge_count: 0, by_type: {} },
+      ))
+
+      post "/api/ai/ontology_query",
+           params: valid_payload.merge(as_of: cutoff.iso8601),
+           headers: auth_headers(commander),
+           as: :json
+
+      expect(response).to have_http_status(:ok)
+    end
+
     it "surfaces ontology service validation failures" do
       allow(Ai::OntologyQueryService).to receive(:call).and_return(
         ServiceResult.failure(errors: ["No site matched 'phantom base'"]),

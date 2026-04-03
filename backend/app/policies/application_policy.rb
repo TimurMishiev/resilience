@@ -21,15 +21,19 @@ class ApplicationPolicy
   protected
 
   def viewer?
-    user.role == "viewer"
+    user.viewer?
   end
 
   def operator?
-    user.role == "operator"
+    user.operator?
   end
 
   def commander?
-    user.role == "commander"
+    user.commander?
+  end
+
+  def admin?
+    user.admin?
   end
 
   def operator_or_above?
@@ -53,9 +57,11 @@ class ApplicationPolicy
     return true unless scope_restricted?
 
     area_id = area_or_id.respond_to?(:id) ? area_or_id.id : area_or_id
+    area_org_id = area_or_id.respond_to?(:organization_id) ? area_or_id.organization_id : nil
     return false if area_id.blank?
     return false if user.area_of_operation_id.present? && area_id != user.area_of_operation_id
     return true unless user.organization_id.present?
+    return area_org_id == user.organization_id if area_org_id.present?
 
     AreaOfOperation.joins(:sites).where(id: area_id, sites: { organization_id: user.organization_id }).exists?
   end
@@ -106,7 +112,13 @@ class ApplicationPolicy
     def area_of_operation_scope(base = AreaOfOperation.all)
       scoped = base
       if user.organization_id.present?
-        scoped = scoped.joins(:sites).where(sites: { organization_id: user.organization_id }).distinct
+        klass = scoped.respond_to?(:klass) ? scoped.klass : scoped
+        if klass.column_names.include?("organization_id")
+          # Include org-null records — they are treated as global AOs visible to all orgs.
+          scoped = scoped.where(organization_id: [user.organization_id, nil])
+        else
+          scoped = scoped.joins(:sites).where(sites: { organization_id: user.organization_id }).distinct
+        end
       end
       scoped = scoped.where(id: user.area_of_operation_id) if user.area_of_operation_id.present?
       scoped

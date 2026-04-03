@@ -1,6 +1,7 @@
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -63,42 +64,6 @@ END;
 $$;
 
 
---
--- Name: sync_external_signal_location(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.sync_external_signal_location() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-BEGIN
-  IF NEW.lat IS NOT NULL AND NEW.lng IS NOT NULL THEN
-    NEW.location := ST_SetSRID(
-      ST_MakePoint(NEW.lng::double precision, NEW.lat::double precision), 4326
-    );
-  END IF;
-  RETURN NEW;
-END;
-$$;
-
-
---
--- Name: sync_site_location(); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE FUNCTION public.sync_site_location() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-BEGIN
-  IF NEW.latitude IS NOT NULL AND NEW.longitude IS NOT NULL THEN
-    NEW.location := ST_SetSRID(
-      ST_MakePoint(NEW.longitude::double precision, NEW.latitude::double precision), 4326
-    );
-  END IF;
-  RETURN NEW;
-END;
-$$;
-
-
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
@@ -131,6 +96,7 @@ CREATE TABLE public.areas_of_operation (
     updated_at timestamp(6) without time zone NOT NULL,
     posture character varying DEFAULT 'observe'::character varying NOT NULL,
     posture_changed_at timestamp(6) without time zone,
+    organization_id uuid,
     CONSTRAINT areas_of_operation_threat_level_check CHECK ((threat_level = ANY (ARRAY['green'::text, 'amber'::text, 'red'::text, 'black'::text])))
 );
 
@@ -250,7 +216,6 @@ CREATE TABLE public.external_signals (
     raw_payload jsonb DEFAULT '{}'::jsonb NOT NULL,
     occurred_at timestamp(6) without time zone NOT NULL,
     ingested_at timestamp(6) without time zone DEFAULT now() NOT NULL,
-    location public.geography(Point,4326),
     CONSTRAINT signals_signal_type_check CHECK ((signal_type = ANY (ARRAY['aircraft_position'::text, 'vessel_position'::text, 'seismic_event'::text, 'gps_jamming'::text, 'wildfire'::text, 'manual'::text, 'ais_gap'::text, 'conflict_event'::text, 'disaster_alert'::text]))),
     CONSTRAINT signals_source_check CHECK ((source = ANY (ARRAY['opensky'::text, 'ais'::text, 'usgs_seismic'::text, 'gpsjam'::text, 'firms_wildfire'::text, 'manual'::text, 'derived'::text, 'acled'::text, 'gdacs'::text])))
 );
@@ -503,7 +468,6 @@ CREATE TABLE public.sites (
     flagged_at timestamp(6) without time zone,
     flag_reason text,
     geofence_radius_km double precision DEFAULT 50.0 NOT NULL,
-    location public.geography(Point,4326),
     organization_id uuid
 );
 
@@ -786,6 +750,26 @@ CREATE TABLE public.telemetry_readings_p20260404 (
 
 
 --
+-- Name: user_sessions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.user_sessions (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    user_id uuid NOT NULL,
+    jti character varying NOT NULL,
+    user_agent character varying,
+    ip_address character varying,
+    last_seen_at timestamp(6) without time zone NOT NULL,
+    expires_at timestamp(6) without time zone NOT NULL,
+    revoked_at timestamp(6) without time zone,
+    revoked_by_id uuid,
+    revoke_reason character varying,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
 -- Name: users; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -799,7 +783,7 @@ CREATE TABLE public.users (
     tokens_valid_after timestamp(6) without time zone,
     area_of_operation_id uuid,
     organization_id uuid,
-    CONSTRAINT users_role_check CHECK (((role)::text = ANY (ARRAY[('viewer'::character varying)::text, ('operator'::character varying)::text, ('commander'::character varying)::text])))
+    CONSTRAINT users_role_check CHECK (((role)::text = ANY (ARRAY[('viewer'::character varying)::text, ('operator'::character varying)::text, ('commander'::character varying)::text, ('admin'::character varying)::text])))
 );
 
 
@@ -1126,6 +1110,14 @@ ALTER TABLE ONLY public.tasks
 
 
 --
+-- Name: user_sessions user_sessions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_sessions
+    ADD CONSTRAINT user_sessions_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1147,13 +1139,6 @@ ALTER TABLE ONLY public.vessel_tracks
 
 ALTER TABLE ONLY public.vessels
     ADD CONSTRAINT vessels_pkey PRIMARY KEY (id);
-
-
---
--- Name: idx_external_signals_location_gist; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_external_signals_location_gist ON public.external_signals USING gist (location);
 
 
 --
@@ -1213,13 +1198,6 @@ CREATE UNIQUE INDEX idx_recommendations_pending_dedup ON public.recommendations 
 
 
 --
--- Name: idx_sites_location_gist; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX idx_sites_location_gist ON public.sites USING gist (location);
-
-
---
 -- Name: idx_sse_stream_leases_ip_expiry; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1259,6 +1237,20 @@ CREATE INDEX index_ao_on_threat_level ON public.areas_of_operation USING btree (
 --
 
 CREATE INDEX index_areas_of_operation_on_created_by_id ON public.areas_of_operation USING btree (created_by_id);
+
+
+--
+-- Name: index_areas_of_operation_on_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_areas_of_operation_on_organization_id ON public.areas_of_operation USING btree (organization_id);
+
+
+--
+-- Name: index_areas_of_operation_on_organization_id_and_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_areas_of_operation_on_organization_id_and_name ON public.areas_of_operation USING btree (organization_id, name);
 
 
 --
@@ -1738,6 +1730,48 @@ CREATE INDEX index_telemetry_readings_on_occurred_at ON ONLY public.telemetry_re
 
 
 --
+-- Name: index_user_sessions_on_expires_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_user_sessions_on_expires_at ON public.user_sessions USING btree (expires_at);
+
+
+--
+-- Name: index_user_sessions_on_jti; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_user_sessions_on_jti ON public.user_sessions USING btree (jti);
+
+
+--
+-- Name: index_user_sessions_on_revoked_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_user_sessions_on_revoked_at ON public.user_sessions USING btree (revoked_at);
+
+
+--
+-- Name: index_user_sessions_on_revoked_by_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_user_sessions_on_revoked_by_id ON public.user_sessions USING btree (revoked_by_id);
+
+
+--
+-- Name: index_user_sessions_on_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_user_sessions_on_user_id ON public.user_sessions USING btree (user_id);
+
+
+--
+-- Name: index_user_sessions_on_user_id_and_last_seen_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_user_sessions_on_user_id_and_last_seen_at ON public.user_sessions USING btree (user_id, last_seen_at);
+
+
+--
 -- Name: index_users_on_area_of_operation_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2186,20 +2220,6 @@ CREATE TRIGGER incident_notes_no_delete BEFORE DELETE ON public.incident_notes F
 
 
 --
--- Name: external_signals trg_sync_external_signal_location; Type: TRIGGER; Schema: public; Owner: -
---
-
-CREATE TRIGGER trg_sync_external_signal_location BEFORE INSERT OR UPDATE OF lat, lng ON public.external_signals FOR EACH ROW EXECUTE FUNCTION public.sync_external_signal_location();
-
-
---
--- Name: sites trg_sync_site_location; Type: TRIGGER; Schema: public; Owner: -
---
-
-CREATE TRIGGER trg_sync_site_location BEFORE INSERT OR UPDATE OF latitude, longitude ON public.sites FOR EACH ROW EXECUTE FUNCTION public.sync_site_location();
-
-
---
 -- Name: chokepoints fk_rails_05fec8fd98; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2392,6 +2412,14 @@ ALTER TABLE ONLY public.salute_reports
 
 
 --
+-- Name: user_sessions fk_rails_9fa262d742; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_sessions
+    ADD CONSTRAINT fk_rails_9fa262d742 FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
 -- Name: tasks fk_rails_a53067c46b; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2437,6 +2465,14 @@ ALTER TABLE ONLY public.correlation_rules
 
 ALTER TABLE ONLY public.incidents
     ADD CONSTRAINT fk_rails_b8b5a0282f FOREIGN KEY (prosecuted_by_id) REFERENCES public.users(id);
+
+
+--
+-- Name: areas_of_operation fk_rails_c977736256; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.areas_of_operation
+    ADD CONSTRAINT fk_rails_c977736256 FOREIGN KEY (organization_id) REFERENCES public.organizations(id);
 
 
 --
@@ -2504,6 +2540,14 @@ ALTER TABLE ONLY public.signal_rule_matches
 
 
 --
+-- Name: user_sessions fk_rails_f1ed1a810d; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_sessions
+    ADD CONSTRAINT fk_rails_f1ed1a810d FOREIGN KEY (revoked_by_id) REFERENCES public.users(id);
+
+
+--
 -- Name: vessels fk_rails_f4b4982a14; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2542,6 +2586,9 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260402070000'),
+('20260402060000'),
+('20260402050000'),
 ('20260402040000'),
 ('20260402030000'),
 ('20260402020000'),
@@ -2600,3 +2647,4 @@ INSERT INTO "schema_migrations" (version) VALUES
 ('20260313104949'),
 ('20260313104948'),
 ('20260313104919');
+

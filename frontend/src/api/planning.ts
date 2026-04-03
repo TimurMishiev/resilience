@@ -11,8 +11,9 @@ import type {
   UpdatePacePlanBody,
 } from './types'
 
-export function getPlanning(): Promise<PlanningResponse> {
-  return api.get('/api/planning')
+export function getPlanning(params?: { as_of?: string | null }): Promise<PlanningResponse> {
+  const query = params?.as_of ? { as_of: params.as_of } : undefined
+  return api.get('/api/planning', query)
 }
 
 export function createCommanderIntent(body: CreateCommanderIntentBody): Promise<CommanderIntent> {
