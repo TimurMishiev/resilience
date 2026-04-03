@@ -77,7 +77,7 @@ function FeedHealthTable({ feeds }: { feeds: FeedHealthEntry[] }) {
   )
 }
 
-function RelayHealthTable({ entries }: { entries: OperationalStatusEntry[] }) {
+function RelayHealthTable({ entries, now }: { entries: OperationalStatusEntry[]; now: number }) {
   const relays = entries.filter(e => e.category === 'relay_health')
 
   if (relays.length === 0) {
@@ -100,7 +100,7 @@ function RelayHealthTable({ entries }: { entries: OperationalStatusEntry[] }) {
           const p = entry.payload
           const status = (p.status as string) ?? 'unknown'
           const isExpired = p.heartbeat_expires_at
-            ? Date.parse(p.heartbeat_expires_at as string) < Date.now()
+            ? Date.parse(p.heartbeat_expires_at as string) < now
             : false
 
           return (
@@ -132,7 +132,7 @@ function RelayHealthTable({ entries }: { entries: OperationalStatusEntry[] }) {
 
 export default function OperationalHealthPage() {
   const { data: feedData, isPending: feedPending, error: feedError } = useFeedHealth()
-  const { data: opsData, isPending: opsPending, error: opsError } = useOperationalHealth()
+  const { data: opsData, isPending: opsPending, error: opsError, dataUpdatedAt } = useOperationalHealth()
 
   const feeds = feedData?.data ?? []
   const opsEntries = opsData?.data ?? []
@@ -140,9 +140,14 @@ export default function OperationalHealthPage() {
   const okFeeds = feeds.filter(f => f.status === 'ok').length
   const errorFeeds = feeds.filter(f => f.status === 'error' || f.status === 'disabled').length
   const relayEntries = opsEntries.filter(e => e.category === 'relay_health')
+
+  // Use React Query's dataUpdatedAt as the reference timestamp for stale
+  // detection — avoids calling Date.now() during render (react-hooks/purity).
+  const now = dataUpdatedAt || 0
+
   const staleRelays = relayEntries.filter(e => {
     const expires = e.payload.heartbeat_expires_at as string | undefined
-    return expires ? Date.parse(expires) < Date.now() : false
+    return expires ? Date.parse(expires) < now : false
   }).length
 
   return (
@@ -209,7 +214,7 @@ export default function OperationalHealthPage() {
         {opsPending ? (
           <div className={Classes.SKELETON} style={{ width: '100%', height: 120 }}>&nbsp;</div>
         ) : (
-          <RelayHealthTable entries={opsEntries} />
+          <RelayHealthTable entries={opsEntries} now={now} />
         )}
       </div>
 

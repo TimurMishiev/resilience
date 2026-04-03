@@ -23,6 +23,7 @@ vi.mock('../hooks/useOperationalHealth', () => ({
     data: { data: mockState.opsEntries },
     isPending: mockState.opsPending,
     error: mockState.opsError,
+    dataUpdatedAt: Date.now(),
   }),
 }))
 
