@@ -22,12 +22,19 @@ export async function login(email: string, password: string): Promise<{ user: Cu
   return res
 }
 
-export async function logout(options?: { allSessions?: boolean }): Promise<void> {
+export async function logout(options?: { allSessions?: boolean; suppressErrors?: boolean }): Promise<void> {
   try {
     await api.delete('/api/auth/logout', options?.allSessions ? { all_sessions: true } : undefined)
-  } catch {
+  } catch (error) {
+    if (options?.suppressErrors == false) {
+      throw error
+    }
+
     // Proceed with local logout even if the server request fails
+    clearStoredUser()
+    return
   }
+
   clearStoredUser()
 }
 

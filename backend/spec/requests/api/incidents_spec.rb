@@ -80,6 +80,32 @@ RSpec.describe "Api::Incidents", type: :request do
       expect(row.fetch("status")).to eq("open")
       expect(row.fetch("assigned_to")).to be_nil
     end
+
+    it "preserves untouched fields when future partial audit events exist" do
+      AuditEvent.create!(
+        actor: "system",
+        entity_type: "Incident",
+        entity_id: incident.id,
+        event_type: "note_added",
+        action: "note",
+        before_snapshot: {},
+        after_snapshot: {
+          note_id: SecureRandom.uuid,
+          body_preview: "Later note",
+        },
+        occurred_at: 15.minutes.ago,
+        correlation_id: SecureRandom.uuid,
+      )
+
+      get "/api/incidents",
+          params: { as_of: 45.minutes.ago.iso8601 },
+          headers: auth_headers(operator)
+
+      expect(response).to have_http_status(:ok)
+      row = JSON.parse(response.body).fetch("data").first
+      expect(row.fetch("title")).to eq("Test incident")
+      expect(row.fetch("severity")).to eq("high")
+    end
   end
 
   describe "GET /api/incidents/:id" do
@@ -147,6 +173,123 @@ RSpec.describe "Api::Incidents", type: :request do
       expect(body.fetch("task_count")).to eq(0)
       expect(body.fetch("alerts").first.fetch("workflow_status")).to eq("unacknowledged")
       expect(body.fetch("tasks")).to eq([])
+    end
+
+    it "replays historical site, AO, and rule context as_of" do
+      area = create(:area_of_operation, name: "Gulf AO", posture: "observe")
+      site.update!(name: "Port Alpha", area_of_operation: area)
+      incident.update!(area_of_operation: area)
+      rule = create(:correlation_rule, name: "Perimeter Watch")
+      create(:signal_rule_match, :without_task, incident: incident, site: site, correlation_rule: rule, fired_at: 2.hours.ago)
+
+      AuditEvent.create!(
+        actor: "system",
+        entity_type: "Site",
+        entity_id: site.id,
+        event_type: "site.created",
+        action: "create",
+        before_snapshot: nil,
+        after_snapshot: {
+          name: "Port Alpha",
+          area_of_operation_id: area.id,
+        },
+        occurred_at: 2.hours.ago,
+        correlation_id: SecureRandom.uuid,
+      )
+      AuditEvent.create!(
+        actor: "system",
+        entity_type: "AreaOfOperation",
+        entity_id: area.id,
+        event_type: "area_of_operation_created",
+        action: "create",
+        before_snapshot: nil,
+        after_snapshot: {
+          name: "Gulf AO",
+          posture: "observe",
+        },
+        occurred_at: 2.hours.ago,
+        correlation_id: SecureRandom.uuid,
+      )
+      AuditEvent.create!(
+        actor: "system",
+        entity_type: "CorrelationRule",
+        entity_id: rule.id,
+        event_type: "correlation_rule.created",
+        action: "create",
+        before_snapshot: nil,
+        after_snapshot: {
+          name: "Perimeter Watch",
+        },
+        occurred_at: 2.hours.ago,
+        correlation_id: SecureRandom.uuid,
+      )
+
+      travel_to 20.minutes.ago do
+        site.update!(name: "Port Zeta")
+        area.update!(name: "Renamed AO", posture: "weapons_free")
+        rule.update!(name: "Renamed Rule")
+
+        AuditEvent.create!(
+          actor: "system",
+          entity_type: "Site",
+          entity_id: site.id,
+          event_type: "site.updated",
+          action: "update",
+          before_snapshot: {
+            name: "Port Alpha",
+            area_of_operation_id: area.id,
+          },
+          after_snapshot: {
+            name: "Port Zeta",
+            area_of_operation_id: area.id,
+          },
+          occurred_at: Time.current,
+          correlation_id: SecureRandom.uuid,
+        )
+        AuditEvent.create!(
+          actor: "system",
+          entity_type: "AreaOfOperation",
+          entity_id: area.id,
+          event_type: "area_of_operation_updated",
+          action: "update",
+          before_snapshot: {
+            name: "Gulf AO",
+            posture: "observe",
+          },
+          after_snapshot: {
+            name: "Renamed AO",
+            posture: "weapons_free",
+          },
+          occurred_at: Time.current,
+          correlation_id: SecureRandom.uuid,
+        )
+        AuditEvent.create!(
+          actor: "system",
+          entity_type: "CorrelationRule",
+          entity_id: rule.id,
+          event_type: "correlation_rule.updated",
+          action: "update",
+          before_snapshot: {
+            name: "Perimeter Watch",
+          },
+          after_snapshot: {
+            name: "Renamed Rule",
+          },
+          occurred_at: Time.current,
+          correlation_id: SecureRandom.uuid,
+        )
+      end
+
+      get "/api/incidents/#{incident.id}",
+          params: { as_of: 45.minutes.ago.iso8601 },
+          headers: auth_headers(operator)
+
+      expect(response).to have_http_status(:ok)
+      body = JSON.parse(response.body)
+      expect(body.dig("site", "name")).to eq("Port Alpha")
+      expect(body.dig("area_of_operation", "name")).to eq("Gulf AO")
+      expect(body.dig("area_of_operation", "posture")).to eq("observe")
+      expect(body.fetch("alerts").first.dig("correlation_rule", "name")).to eq("Perimeter Watch")
     end
   end
 

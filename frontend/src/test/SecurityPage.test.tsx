@@ -46,6 +46,7 @@ const mockState = vi.hoisted(() => ({
   revokeSession: vi.fn().mockResolvedValue(undefined),
   revokeAll: vi.fn().mockResolvedValue(undefined),
 }))
+const logoutMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 
 vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({
@@ -90,7 +91,7 @@ vi.mock('../hooks/useUserSessions', () => ({
 }))
 
 vi.mock('../api/auth', () => ({
-  logout: vi.fn().mockResolvedValue(undefined),
+  logout: logoutMock,
 }))
 
 async function renderPage() {
@@ -117,6 +118,8 @@ describe('SecurityPage', () => {
     mockState.sessionsParams = null
     mockState.revokeSession.mockClear()
     mockState.revokeAll.mockClear()
+    logoutMock.mockReset()
+    logoutMock.mockResolvedValue(undefined)
   })
 
   it('shows access scope and allows revoking another session', async () => {
@@ -148,5 +151,16 @@ describe('SecurityPage', () => {
     await user.click(screen.getByRole('button', { name: /load sessions/i }))
 
     expect(mockState.sessionsParams).toEqual({ user_email: 'viewer@resilience.test' })
+  })
+
+  it('surfaces sign-out-all failures instead of treating them as success', async () => {
+    const user = userEvent.setup()
+    logoutMock.mockRejectedValue(new Error('session revoke failed'))
+
+    await renderPage()
+    await user.click(screen.getByRole('button', { name: /sign out all sessions/i }))
+
+    expect(logoutMock).toHaveBeenCalledWith({ allSessions: true, suppressErrors: false })
+    expect(await screen.findByText(/session revoke failed/i)).toBeInTheDocument()
   })
 })

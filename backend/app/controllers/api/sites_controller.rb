@@ -177,14 +177,14 @@ module Api
     def serialize_site(site, snapshot: nil)
       {
         id: site.id,
-        name: snapshot_value(snapshot, "name") || site.name,
-        latitude: snapshot_value(snapshot, "latitude") || site.latitude,
-        longitude: snapshot_value(snapshot, "longitude") || site.longitude,
-        status: snapshot_value(snapshot, "status") || site.status,
-        area_of_operation_id: snapshot_value(snapshot, "area_of_operation_id") || site.area_of_operation_id,
-        flagged_at: snapshot_value(snapshot, "flagged_at") || site.flagged_at,
-        flag_reason: snapshot_value(snapshot, "flag_reason") || site.flag_reason,
-        geofence_radius_km: snapshot_value(snapshot, "geofence_radius_km") || site.geofence_radius_km,
+        name: snapshot_or_current(snapshot, "name", site.name),
+        latitude: snapshot_or_current(snapshot, "latitude", site.latitude),
+        longitude: snapshot_or_current(snapshot, "longitude", site.longitude),
+        status: snapshot_or_current(snapshot, "status", site.status),
+        area_of_operation_id: snapshot_or_current(snapshot, "area_of_operation_id", site.area_of_operation_id),
+        flagged_at: snapshot_or_current(snapshot, "flagged_at", site.flagged_at),
+        flag_reason: snapshot_or_current(snapshot, "flag_reason", site.flag_reason),
+        geofence_radius_km: snapshot_or_current(snapshot, "geofence_radius_km", site.geofence_radius_km),
         created_at: site.created_at,
       }
     end

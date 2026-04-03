@@ -123,8 +123,12 @@ module Api
       ).snapshots
     end
 
-    def snapshot_value(snapshot, key)
-      Replay::AuditSnapshotService.value(snapshot, key)
+    def snapshot_value(snapshot, key, fallback: nil)
+      Replay::AuditSnapshotService.value(snapshot, key, default: fallback)
+    end
+
+    def snapshot_or_current(snapshot, key, current_value)
+      snapshot_value(snapshot, key, fallback: current_value)
     end
 
     def pagination_params

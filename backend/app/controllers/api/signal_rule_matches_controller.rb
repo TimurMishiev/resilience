@@ -50,7 +50,14 @@ module Api
         includes: [:signal, :correlation_rule, :site, :task, :acknowledged_by]
       )
       authorize match
-      render json: serialize_match(match)
+
+      if as_of
+        return render json: { errors: ["Signal rule match not found"] }, status: :not_found if match.fired_at > as_of
+
+        render json: serialize_replay_matches([match], as_of: as_of).first
+      else
+        render json: serialize_match(match)
+      end
     end
 
     # GET /api/signal_rule_matches/active_breach_sites
@@ -140,7 +147,7 @@ module Api
       params.require(:transition).permit(:to_status, :notes)
     end
 
-    def serialize_match(match, replay_state: nil)
+    def serialize_match(match, replay_state: nil, rule_snapshot: nil, site_snapshot: nil, task_snapshot: nil, task_visible: true)
       {
         id:              match.id,
         fired_at:        match.fired_at,
@@ -161,26 +168,40 @@ module Api
           lng:         match.signal.lng,
           occurred_at: match.signal.occurred_at
         } : nil,
-        correlation_rule: match.correlation_rule ? {
-          id:   match.correlation_rule.id,
-          name: match.correlation_rule.name
-        } : nil,
-        site: match.site ? {
-          id:   match.site.id,
-          name: match.site.name
-        } : nil,
-        task: match.task ? {
-          id:              match.task.id,
-          title:           match.task.title,
-          workflow_status: match.task.workflow_status,
-          priority:        match.task.priority
-        } : nil
+        correlation_rule: serialize_match_rule(match, snapshot: rule_snapshot),
+        site: serialize_match_site(match, snapshot: site_snapshot),
+        task: serialize_match_task(match, snapshot: task_snapshot, visible: task_visible)
       }
     end
 
     def serialize_replay_matches(records, as_of:)
       replay_states = replay_states_for_matches(records, as_of: as_of)
-      records.map { |record| serialize_match(record, replay_state: replay_states.fetch(record.id)) }
+      site_snapshots = latest_audit_snapshots(
+        entity_type: "Site",
+        entity_ids: records.filter_map(&:site_id).uniq,
+        as_of: as_of
+      )
+      rule_snapshots = latest_audit_snapshots(
+        entity_type: "CorrelationRule",
+        entity_ids: records.filter_map(&:correlation_rule_id).uniq,
+        as_of: as_of
+      )
+      task_snapshots = latest_audit_snapshots(
+        entity_type: "Task",
+        entity_ids: records.filter_map(&:task_id).uniq,
+        as_of: as_of
+      )
+
+      records.map do |record|
+        serialize_match(
+          record,
+          replay_state: replay_states.fetch(record.id),
+          rule_snapshot: rule_snapshots[record.correlation_rule_id],
+          site_snapshot: site_snapshots[record.site_id],
+          task_snapshot: task_snapshots[record.task_id],
+          task_visible: record.task_id.blank? || task_snapshots.key?(record.task_id)
+        )
+      end
     end
 
     def replay_states_for_matches(records, as_of:)
@@ -194,7 +215,7 @@ module Api
         acknowledged_by_id = snapshot_value(snapshot, "acknowledged_by_id")
 
         states[record.id] = {
-          workflow_status: snapshot_value(snapshot, "workflow_status") || "unacknowledged",
+          workflow_status: snapshot_value(snapshot, "workflow_status", fallback: "unacknowledged"),
           acknowledged_at: snapshot_value(snapshot, "acknowledged_at"),
           notes:           snapshot_value(snapshot, "notes"),
           acknowledged_by: acknowledged_by_id.present? ? {
@@ -203,6 +224,36 @@ module Api
           }.compact : nil,
         }
       end
+    end
+
+    def serialize_match_rule(match, snapshot: nil)
+      return nil if match.correlation_rule_id.blank? && match.correlation_rule.blank? && snapshot.blank?
+
+      {
+        id: match.correlation_rule_id || match.correlation_rule&.id,
+        name: snapshot_or_current(snapshot, "name", match.correlation_rule&.name),
+      }
+    end
+
+    def serialize_match_site(match, snapshot: nil)
+      return nil if match.site_id.blank? && match.site.blank? && snapshot.blank?
+
+      {
+        id: match.site_id || match.site&.id,
+        name: snapshot_or_current(snapshot, "name", match.site&.name),
+      }
+    end
+
+    def serialize_match_task(match, snapshot: nil, visible: true)
+      return nil unless visible
+      return nil if match.task_id.blank? && match.task.blank? && snapshot.blank?
+
+      {
+        id: match.task_id || match.task&.id || snapshot_value(snapshot, "id"),
+        title: snapshot_or_current(snapshot, "title", match.task&.title),
+        workflow_status: snapshot_or_current(snapshot, "workflow_status", match.task&.workflow_status),
+        priority: snapshot_or_current(snapshot, "priority", match.task&.priority),
+      }
     end
   end
 end

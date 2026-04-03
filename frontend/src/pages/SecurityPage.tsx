@@ -47,7 +47,7 @@ export default function SecurityPage() {
   async function handleSignOutAllSessions() {
     setError(null)
     try {
-      await logout({ allSessions: true })
+      await logout({ allSessions: true, suppressErrors: false })
       navigate('/login', { replace: true })
     } catch (sessionError) {
       setError(getApiErrorMessage(sessionError, 'Failed to sign out all sessions'))

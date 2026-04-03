@@ -189,7 +189,7 @@ module Api
 
       records.each_with_object({}) do |record, states|
         snapshot      = latest_snapshots[record.id] || {}
-        replay_status = snapshot_value(snapshot, "status") || "pending"
+        replay_status = snapshot_value(snapshot, "status", fallback: "pending")
         replay_status = "expired" if replay_status == "pending" && record.expires_at.present? && record.expires_at <= as_of
 
         reviewed_status = %w[accepted rejected deferred executed].include?(replay_status)
@@ -200,7 +200,7 @@ module Api
             email: record.reviewer.email,
           } : nil,
           reviewed_at: reviewed_status && record.reviewed_at.present? && record.reviewed_at <= as_of ? record.reviewed_at : nil,
-          review_reason: reviewed_status ? snapshot_value(snapshot, "review_reason") || record.review_reason : nil,
+          review_reason: reviewed_status ? snapshot_or_current(snapshot, "review_reason", record.review_reason) : nil,
           executed_at: replay_status == "executed" && record.executed_at.present? && record.executed_at <= as_of ? record.executed_at : nil,
         }
       end

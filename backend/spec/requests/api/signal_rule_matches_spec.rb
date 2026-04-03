@@ -201,6 +201,104 @@ RSpec.describe "Api::SignalRuleMatches", type: :request do
       get "/api/signal_rule_matches/#{SecureRandom.uuid}", headers: auth_headers(user)
       expect(response).to have_http_status(:not_found)
     end
+
+    it "replays historical rule and site context and hides future tasks as_of" do
+      replay_site = create(:site, name: "Site Alpha")
+      replay_rule = create(:correlation_rule, name: "Rule Alpha")
+      future_task = create(:task, site: replay_site, title: "Future task")
+      replay_match = create(
+        :signal_rule_match,
+        site: replay_site,
+        correlation_rule: replay_rule,
+        task: future_task,
+        fired_at: 40.minutes.ago
+      )
+
+      AuditEvent.create!(
+        actor: "system",
+        entity_type: "Site",
+        entity_id: replay_site.id,
+        event_type: "site.created",
+        action: "create",
+        before_snapshot: nil,
+        after_snapshot: {
+          name: "Site Alpha",
+        },
+        occurred_at: 2.hours.ago,
+        correlation_id: SecureRandom.uuid,
+      )
+      AuditEvent.create!(
+        actor: "system",
+        entity_type: "CorrelationRule",
+        entity_id: replay_rule.id,
+        event_type: "correlation_rule.created",
+        action: "create",
+        before_snapshot: nil,
+        after_snapshot: {
+          name: "Rule Alpha",
+        },
+        occurred_at: 2.hours.ago,
+        correlation_id: SecureRandom.uuid,
+      )
+
+      travel_to 20.minutes.ago do
+        replay_site.update!(name: "Site Renamed")
+        replay_rule.update!(name: "Rule Renamed")
+
+        AuditEvent.create!(
+          actor: "system",
+          entity_type: "Site",
+          entity_id: replay_site.id,
+          event_type: "site.updated",
+          action: "update",
+          before_snapshot: {
+            name: "Site Alpha",
+          },
+          after_snapshot: {
+            name: "Site Renamed",
+          },
+          occurred_at: Time.current,
+          correlation_id: SecureRandom.uuid,
+        )
+        AuditEvent.create!(
+          actor: "system",
+          entity_type: "CorrelationRule",
+          entity_id: replay_rule.id,
+          event_type: "correlation_rule.updated",
+          action: "update",
+          before_snapshot: {
+            name: "Rule Alpha",
+          },
+          after_snapshot: {
+            name: "Rule Renamed",
+          },
+          occurred_at: Time.current,
+          correlation_id: SecureRandom.uuid,
+        )
+      end
+
+      AuditEvent.create!(
+        actor: "system",
+        entity_type: "Task",
+        entity_id: future_task.id,
+        event_type: "task.created",
+        action: "create",
+        before_snapshot: nil,
+        after_snapshot: future_task.attributes.except("updated_at"),
+        occurred_at: 15.minutes.ago,
+        correlation_id: SecureRandom.uuid,
+      )
+
+      get "/api/signal_rule_matches/#{replay_match.id}",
+          params: { as_of: 30.minutes.ago.iso8601 },
+          headers: auth_headers(user)
+
+      expect(response).to have_http_status(:ok)
+      body = JSON.parse(response.body)
+      expect(body.dig("site", "name")).to eq("Site Alpha")
+      expect(body.dig("correlation_rule", "name")).to eq("Rule Alpha")
+      expect(body["task"]).to be_nil
+    end
   end
 
   describe "POST /api/signal_rule_matches/bulk_transition" do

@@ -394,6 +394,8 @@ module Api
       replay_state: nil,
       alert_count: nil,
       task_count: nil,
+      site_snapshot: nil,
+      area_snapshot: nil,
       alerts: nil,
       tasks: nil
     )
@@ -416,12 +418,8 @@ module Api
           role:  incident.assigned_to.role,
         } : nil),
         assigned_at:       replay_state ? replay_state[:assigned_at] : incident.assigned_at,
-        site:              incident.site ? { id: incident.site.id, name: incident.site.name } : nil,
-        area_of_operation: incident.area_of_operation ? {
-          id:      incident.area_of_operation.id,
-          name:    incident.area_of_operation.name,
-          posture: incident.area_of_operation.posture
-        } : nil,
+        site:              serialize_incident_site(incident, snapshot: site_snapshot),
+        area_of_operation: serialize_incident_area(incident, snapshot: area_snapshot),
         # Prosecution fields — present on all responses, null when not prosecuted
         prosecution_phase:          replay_state ? replay_state[:prosecution_phase] : incident.prosecution_phase,
         prosecution_initiated_at:   replay_state ? replay_state[:prosecution_initiated_at] : incident.prosecution_initiated_at,
@@ -453,6 +451,25 @@ module Api
         matches_by_incident.values.flatten.filter_map(&:task_id).uniq,
         as_of: as_of
       )
+      site_snapshots = latest_audit_snapshots(
+        entity_type: "Site",
+        entity_ids: records.filter_map(&:site_id).uniq,
+        as_of: as_of
+      )
+      area_snapshots = latest_audit_snapshots(
+        entity_type: "AreaOfOperation",
+        entity_ids: records.filter_map(&:area_of_operation_id).uniq,
+        as_of: as_of
+      )
+      rule_snapshots = if detailed
+        latest_audit_snapshots(
+          entity_type: "CorrelationRule",
+          entity_ids: matches_by_incident.values.flatten.filter_map(&:correlation_rule_id).uniq,
+          as_of: as_of
+        )
+      else
+        {}
+      end
 
       records.map do |record|
         matches = matches_by_incident.fetch(record.id)
@@ -463,7 +480,15 @@ module Api
           replay_state: replay_states.fetch(record.id),
           alert_count: matches.size,
           task_count: task_ids.size,
-          alerts: detailed ? matches.map { |match| serialize_alert(match, replay_state: replay_match_states[match.id]) } : nil,
+          site_snapshot: site_snapshots[record.site_id],
+          area_snapshot: area_snapshots[record.area_of_operation_id],
+          alerts: detailed ? matches.map { |match|
+            serialize_alert(
+              match,
+              replay_state: replay_match_states[match.id],
+              rule_snapshot: rule_snapshots[match.correlation_rule_id]
+            )
+          } : nil,
           tasks: detailed ? task_ids.filter_map { |task_id| serialize_task_snapshot(task_snapshots[task_id]) } : nil
         )
       end
@@ -567,7 +592,7 @@ module Api
         acknowledged_by_id = snapshot_value(snapshot, "acknowledged_by_id")
 
         states[match.id] = {
-          workflow_status: snapshot_value(snapshot, "workflow_status") || "unacknowledged",
+          workflow_status: snapshot_value(snapshot, "workflow_status", fallback: "unacknowledged"),
           acknowledged_at: snapshot_value(snapshot, "acknowledged_at"),
           notes:           snapshot_value(snapshot, "notes"),
           acknowledged_by: acknowledged_by_id.present? ? {
@@ -579,15 +604,7 @@ module Api
     end
 
     def load_replay_task_snapshots(task_ids, as_of:)
-      return {} if task_ids.empty?
-
-      Replay::ProjectionService.call(
-        entity_type: "Task",
-        entity_ids: task_ids,
-        as_of: as_of
-      ).payload[:snapshots].each_with_object({}) do |snapshot, states|
-        states[snapshot_value(snapshot, "id")] = snapshot
-      end
+      latest_audit_snapshots(entity_type: "Task", entity_ids: task_ids, as_of: as_of)
     end
 
     def serialize_incident_tasks(incident)
@@ -599,16 +616,14 @@ module Api
         .map { |task| serialize_task(task) }
     end
 
-    def serialize_alert(m, replay_state: nil)
+    def serialize_alert(m, replay_state: nil, rule_snapshot: nil)
       {
         id:               m.id,
         fired_at:         m.fired_at,
         workflow_status:  replay_state ? replay_state[:workflow_status] : m.workflow_status,
         confidence:       m.confidence,
         geofence_breach:  m.metadata["geofence_breach"] == true,
-        correlation_rule: m.correlation_rule ? {
-          id: m.correlation_rule.id, name: m.correlation_rule.name
-        } : nil,
+        correlation_rule: serialize_alert_rule(m, snapshot: rule_snapshot),
         signal: m.signal ? {
           id: m.signal.id, signal_type: m.signal.signal_type,
           source: m.signal.source, lat: m.signal.lat, lng: m.signal.lng,
@@ -634,6 +649,34 @@ module Api
         workflow_status: snapshot_value(snapshot, "workflow_status"),
         priority:        snapshot_value(snapshot, "priority"),
         asset_id:        snapshot_value(snapshot, "asset_id"),
+      }
+    end
+
+    def serialize_incident_site(incident, snapshot: nil)
+      return nil if incident.site_id.blank? && incident.site.blank? && snapshot.blank?
+
+      {
+        id: incident.site_id || incident.site&.id,
+        name: snapshot_or_current(snapshot, "name", incident.site&.name),
+      }
+    end
+
+    def serialize_incident_area(incident, snapshot: nil)
+      return nil if incident.area_of_operation_id.blank? && incident.area_of_operation.blank? && snapshot.blank?
+
+      {
+        id: incident.area_of_operation_id || incident.area_of_operation&.id,
+        name: snapshot_or_current(snapshot, "name", incident.area_of_operation&.name),
+        posture: snapshot_or_current(snapshot, "posture", incident.area_of_operation&.posture),
+      }
+    end
+
+    def serialize_alert_rule(match, snapshot: nil)
+      return nil if match.correlation_rule_id.blank? && match.correlation_rule.blank? && snapshot.blank?
+
+      {
+        id: match.correlation_rule_id || match.correlation_rule&.id,
+        name: snapshot_or_current(snapshot, "name", match.correlation_rule&.name),
       }
     end
 

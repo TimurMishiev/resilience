@@ -33,25 +33,21 @@ If this roadmap disagrees with code, prefer code and then update memory.
 - JWT logout revocation
 - Scoped API authorization enforcement across collections, member lookups, aggregate endpoints, and entity-scoped audit history
 - Viewer-role schema parity plus scoped request-matrix proof
+- Replay parity for recommendations, ontology query, incident detail, and alert triage
 
 ## Current Major Tracks
 
 These are the real remaining programs. They are not “small hardening patches.”
 
-1. Replay parity backlog
-   - Recommendations
-   - Ontology query
-   - Incident detail
-   - Alert triage
-2. Security/identity maturity
+1. Security/identity maturity
    - richer role modeling beyond `viewer` / `operator` / `commander`
    - session lifecycle beyond single-token logout revocation
-3. Tenant/workspace isolation
+2. Tenant/workspace isolation
    - domain-wide data scoping
    - policy/query isolation
-4. Frontend decomposition
+3. Frontend decomposition
    - split the largest engine/page files into smaller maintained units
-5. Spatial baseline/documentation cleanup
+4. Spatial baseline/documentation cleanup
    - keep PostGIS-backed schema reality, local test setup, and comments/docs aligned
 
 ## Explicit Non-Goals For The Current Tracks

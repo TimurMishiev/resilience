@@ -146,7 +146,7 @@ Scrub backward in time to any past timestamp. Sites, tasks, readiness scores, an
                           │ REST API + Server-Sent Events
 ┌─────────────────────────▼───────────────────────────────────────┐
 │                      Backend (Rails 8 API)                       │
-│   Service objects · JWT auth · PostgreSQL 16 · SolidQueue        │
+│   Service objects · JWT auth · PostgreSQL 17 + PostGIS · SolidQueue │
 └──────────┬──────────────────────────────────────────┬───────────┘
            │ background threads                       │ push events
 ┌──────────▼────────────────────────────┐  ┌──────────▼───────────┐
@@ -184,7 +184,7 @@ Scrub backward in time to any past timestamp. Sites, tasks, readiness scores, an
 | **Maps** | MapLibre GL (2D), CesiumJS (3D) | Open-source, no token required, handles large feature sets |
 | **Charts** | Recharts, D3.js | Composable charts and custom force-directed graph |
 | **Backend** | Ruby on Rails 8 (API mode) | Fast to build correct things; service layer pattern scales cleanly |
-| **Database** | PostgreSQL 16 | UUID PKs via pgcrypto, structure.sql, partial unique indexes |
+| **Database** | PostgreSQL 17 + PostGIS | UUID PKs via pgcrypto, structure.sql, partial unique indexes, geography columns |
 | **Background jobs** | SolidQueue | In-process async jobs, no Redis needed |
 | **Real-time** | Server-Sent Events | Simpler than WebSockets for unidirectional push; HTTP/2 compatible |
 | **Auth** | JWT + Rack::Attack | Stateless tokens, short-lived SSE tokens, rate limiting |
@@ -201,7 +201,8 @@ If you want to run the app locally for development:
 **Requirements**
 - Ruby 3.4.7 (use [rbenv](https://github.com/rbenv/rbenv) or [asdf](https://asdf-vm.com/))
 - Node.js 22.13+ and Yarn 1.22+ (`nvm use` from the repo root reads `.nvmrc`)
-- PostgreSQL 16
+- PostgreSQL 17 with PostGIS
+  - Homebrew: install matching `postgresql@17` and `postgis`, or use the bundled `postgis/postgis:17-3.5` Compose service
 
 ```bash
 # 1. Clone the repo
@@ -230,6 +231,8 @@ Open **[http://localhost:5176](http://localhost:5176)**
 **Running the test suite**
 
 Tests run locally only — the Docker image is a production build and does not include test tooling. Run from your local checkout:
+
+Backend specs require the same PostGIS-backed PostgreSQL 17 setup described above.
 
 ```bash
 cd backend

@@ -183,7 +183,7 @@ module Ai
     def build_catalog_context
       [
         "Known entities:",
-        "Sites: #{catalog_names(apply_replay_existence_scope(Site.active).order(:name).limit(50).pluck(:name))}",
+        "Sites: #{catalog_names(apply_replay_existence_scope(site_catalog_scope).order(:name).limit(50).pluck(:name))}",
         "Areas of operation: #{catalog_names(apply_replay_existence_scope(AreaOfOperation.all).order(:name).limit(30).pluck(:name))}",
         "Incidents: #{catalog_names(apply_replay_existence_scope(Incident.recent).limit(40).pluck(:title))}",
         "Tasks: #{catalog_names(apply_replay_existence_scope(Task.all).order(created_at: :desc).limit(40).pluck(:title))}",
@@ -219,7 +219,7 @@ module Ai
       scope, label_column =
         case root_type
         when "site"
-          [Site.active.includes(:area_of_operation), :name]
+          [site_root_scope, :name]
         when "incident"
           [Incident.includes(:signal_rule_matches, :site, :area_of_operation), :title]
         when "task"
@@ -789,6 +789,18 @@ module Ai
       "#{type}:#{entity_id}"
     end
 
+    def site_catalog_scope
+      @as_of.present? ? Site.all : Site.active
+    end
+
+    def site_root_scope
+      site_catalog_scope.includes(:area_of_operation)
+    end
+
+    def snapshot_or_current(snapshot, key, current_value)
+      Replay::AuditSnapshotService.value(snapshot, key, default: current_value)
+    end
+
     def apply_replay_snapshots!(upper_bound)
       incident_alert_counts = @edges.each_with_object(Hash.new(0)) do |edge, counts|
         next unless edge[:relation] == "incident_alert"
@@ -802,9 +814,9 @@ module Ai
         entity_type: "Site",
         upper_bound: upper_bound,
       ) do |node, record, snapshot|
-        name = Replay::AuditSnapshotService.value(snapshot, "name") || record.name
-        status = Replay::AuditSnapshotService.value(snapshot, "status") || record.status
-        geofence_radius_km = Replay::AuditSnapshotService.value(snapshot, "geofence_radius_km") || record.geofence_radius_km
+        name = snapshot_or_current(snapshot, "name", record.name)
+        status = snapshot_or_current(snapshot, "status", record.status)
+        geofence_radius_km = snapshot_or_current(snapshot, "geofence_radius_km", record.geofence_radius_km)
 
         node[:label] = name
         node[:sublabel] = "Site · #{status}"
@@ -819,9 +831,9 @@ module Ai
         entity_type: "AreaOfOperation",
         upper_bound: upper_bound,
       ) do |node, record, snapshot|
-        name = Replay::AuditSnapshotService.value(snapshot, "name") || record.name
-        posture = Replay::AuditSnapshotService.value(snapshot, "posture") || record.posture
-        threat_level = Replay::AuditSnapshotService.value(snapshot, "threat_level") || record.threat_level
+        name = snapshot_or_current(snapshot, "name", record.name)
+        posture = snapshot_or_current(snapshot, "posture", record.posture)
+        threat_level = snapshot_or_current(snapshot, "threat_level", record.threat_level)
 
         node[:label] = name
         node[:sublabel] = "Area of operation · #{posture}"
@@ -836,9 +848,9 @@ module Ai
         entity_type: "Incident",
         upper_bound: upper_bound,
       ) do |node, record, snapshot|
-        title = Replay::AuditSnapshotService.value(snapshot, "title") || record.title
-        severity = Replay::AuditSnapshotService.value(snapshot, "severity") || record.severity
-        status = Replay::AuditSnapshotService.value(snapshot, "status") || record.status
+        title = snapshot_or_current(snapshot, "title", record.title)
+        severity = snapshot_or_current(snapshot, "severity", record.severity)
+        status = snapshot_or_current(snapshot, "status", record.status)
 
         node[:label] = title
         node[:sublabel] = "Incident · #{severity} · #{status}"
@@ -854,9 +866,9 @@ module Ai
         entity_type: "Task",
         upper_bound: upper_bound,
       ) do |node, record, snapshot|
-        title = Replay::AuditSnapshotService.value(snapshot, "title") || record.title
-        priority = Replay::AuditSnapshotService.value(snapshot, "priority") || record.priority
-        workflow_status = Replay::AuditSnapshotService.value(snapshot, "workflow_status") || record.workflow_status
+        title = snapshot_or_current(snapshot, "title", record.title)
+        priority = snapshot_or_current(snapshot, "priority", record.priority)
+        workflow_status = snapshot_or_current(snapshot, "workflow_status", record.workflow_status)
 
         node[:label] = title
         node[:sublabel] = "Task · #{priority} · #{workflow_status}"
@@ -871,9 +883,9 @@ module Ai
         entity_type: "Asset",
         upper_bound: upper_bound,
       ) do |node, record, snapshot|
-        name = Replay::AuditSnapshotService.value(snapshot, "name") || record.name
-        asset_type = Replay::AuditSnapshotService.value(snapshot, "asset_type") || record.asset_type
-        status = Replay::AuditSnapshotService.value(snapshot, "status") || record.status
+        name = snapshot_or_current(snapshot, "name", record.name)
+        asset_type = snapshot_or_current(snapshot, "asset_type", record.asset_type)
+        status = snapshot_or_current(snapshot, "status", record.status)
 
         node[:label] = name
         node[:sublabel] = "Asset · #{asset_type} · #{status}"
@@ -888,7 +900,7 @@ module Ai
         entity_type: "SignalRuleMatch",
         upper_bound: upper_bound,
       ) do |node, record, snapshot|
-        workflow_status = Replay::AuditSnapshotService.value(snapshot, "workflow_status") || record.workflow_status
+        workflow_status = snapshot_or_current(snapshot, "workflow_status", record.workflow_status)
         rule_name = record.correlation_rule&.name || "Derived alert"
 
         node[:label] = rule_name
@@ -905,7 +917,7 @@ module Ai
         entity_type: "Recommendation",
         upper_bound: upper_bound,
       ) do |node, record, snapshot|
-        status = Replay::AuditSnapshotService.value(snapshot, "status") || "pending"
+        status = Replay::AuditSnapshotService.value(snapshot, "status", default: "pending")
         status = "expired" if status == "pending" && record.expires_at.present? && record.expires_at <= upper_bound
 
         node[:label] = record.recommendation_type.humanize

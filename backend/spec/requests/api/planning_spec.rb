@@ -270,5 +270,101 @@ RSpec.describe "Api::Planning", type: :request do
       expect(body["areas_of_operation"].find { |area| area["id"] == ao.id }.fetch("posture")).to eq("observe")
       expect(body["commander_intents"].find { |intent| intent["id"] == commander_intent.id }.fetch("title")).to eq("Hold corridor")
     end
+
+    it "keeps non-deleted chokepoints visible during replay when snapshots omit deleted" do
+      cutoff = 1.hour.ago.change(usec: 0)
+
+      ao.update_columns(created_at: 4.hours.ago, updated_at: 4.hours.ago)
+      chokepoint.update_columns(created_at: 3.hours.ago, updated_at: 3.hours.ago)
+
+      create(
+        :audit_event,
+        actor: "system",
+        entity_type: "AreaOfOperation",
+        entity_id: ao.id,
+        event_type: "area_of_operation_created",
+        before_snapshot: nil,
+        after_snapshot: {
+          name: ao.name,
+          description: ao.description,
+          threat_level: ao.threat_level,
+          posture: ao.posture,
+          color: ao.color,
+          geometry: ao.geometry,
+        },
+        occurred_at: cutoff - 2.hours,
+      )
+      create(
+        :audit_event,
+        actor: "system",
+        entity_type: "Chokepoint",
+        entity_id: chokepoint.id,
+        event_type: "chokepoint.created",
+        before_snapshot: {},
+        after_snapshot: {
+          area_of_operation_id: chokepoint.area_of_operation_id,
+          name: chokepoint.name,
+          category: chokepoint.category,
+          status: chokepoint.status,
+          latitude: chokepoint.latitude,
+          longitude: chokepoint.longitude,
+          watch_radius_km: chokepoint.watch_radius_km,
+          notes: chokepoint.notes,
+        },
+        occurred_at: cutoff - 2.hours,
+      )
+
+      get "/api/planning", params: { as_of: cutoff.iso8601 }, headers: auth_headers(commander)
+      body = JSON.parse(response.body)
+
+      expect(response).to have_http_status(:ok)
+      expect(body["chokepoints"].map { |point| point["id"] }).to include(chokepoint.id)
+    end
+
+    it "keeps scanning replay tasks past historically resolved rows before truncating" do
+      stub_const("Api::PlanningController::TASK_LIMIT", 1)
+      cutoff = 1.hour.ago.change(usec: 0)
+
+      resolved_before_cutoff = create(
+        :task, :resolved,
+        site: site,
+        priority: "critical",
+        title: "Resolved before cutoff",
+      )
+      open_after_resolved = create(
+        :task,
+        site: site,
+        priority: "critical",
+        workflow_status: "new",
+        title: "Still open at cutoff",
+      )
+
+      resolved_before_cutoff.update_columns(created_at: 5.hours.ago, updated_at: 5.hours.ago)
+      open_after_resolved.update_columns(created_at: 4.hours.ago, updated_at: 4.hours.ago)
+
+      create(
+        :audit_event,
+        entity_type: "Task",
+        entity_id: resolved_before_cutoff.id,
+        event_type: "task.created",
+        after_snapshot: resolved_before_cutoff.attributes.except("updated_at"),
+        occurred_at: cutoff - 3.hours,
+      )
+      create(
+        :audit_event,
+        entity_type: "Task",
+        entity_id: open_after_resolved.id,
+        event_type: "task.created",
+        after_snapshot: open_after_resolved.attributes.except("updated_at"),
+        occurred_at: cutoff - 3.hours,
+      )
+
+      get "/api/planning", params: { as_of: cutoff.iso8601 }, headers: auth_headers(commander)
+      body = JSON.parse(response.body)
+
+      expect(response).to have_http_status(:ok)
+      expect(body["tasks"].map { |task| task["id"] }).to contain_exactly(open_after_resolved.id)
+      expect(body.dig("meta", "truncated")).to be(false)
+    end
   end
 end

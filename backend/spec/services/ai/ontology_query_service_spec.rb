@@ -378,6 +378,18 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
       expect(task_node.dig(:metadata, :workflow_status)).to eq("triaged")
       expect(recommendation_node.dig(:metadata, :status)).to eq("pending")
     end
+
+    it "resolves a replay site root even when the site is currently inactive" do
+      site.update!(status: "inactive")
+
+      result = described_class.call(
+        query: "show the task and recommendation context around Replay Site",
+        as_of: cutoff,
+      )
+
+      expect(result.success).to be(true)
+      expect(result.normalized_query[:root_id]).to eq(site.id)
+    end
   end
 
   describe "incident-root graph execution" do
