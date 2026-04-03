@@ -233,7 +233,6 @@ export default function MapPage() {
 
     const { siteId, assetId, signalId } = parseEntitySelectionRoute(location.search)
 
-    /* eslint-disable react-hooks/set-state-in-effect -- URL selection hydration must synchronously reconcile panel state before the first focused flyTo */
     if (!siteId && !assetId && !signalId) {
       setSelectedSiteId(null)
       setSelectedAssetId(null)
@@ -273,7 +272,6 @@ export default function MapPage() {
       flyTo([Number(signal.lng), Number(signal.lat)], 7)
       urlSelectionAppliedRef.current = true
     }
-    /* eslint-enable react-hooks/set-state-in-effect */
   }, [assets, flyTo, isReplaying, location.search, mapLoaded, readings, setSelectedAssetId, setSelectedSignalId, setSelectedSiteId, signals, sites, urlSelectionAppliedRef])
 
   // ---------------------------------------------------------------------------

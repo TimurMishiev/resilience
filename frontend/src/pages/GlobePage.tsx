@@ -167,7 +167,7 @@ export default function GlobePage() {
       setSelectedSignalId(null)
       updateSelectionRoute({ siteId: selectedSiteId, assetId: selectedAssetId, signalId: null })
     }
-  }, [selectedAssetId, selectedSiteId, showSignals, updateSelectionRoute])
+  }, [selectedAssetId, selectedSiteId, setSelectedSignalId, showSignals, updateSelectionRoute])
 
   // ── Vessel enrichment ─────────────────────────────────────────────────────────
   const selectedVesselMmsi = selectedSignal?.signal_type === 'vessel_position' ? selectedSignal.external_id : null
