@@ -71,5 +71,80 @@ RSpec.describe "Api::RiskScores", type: :request do
         expect(alpha["score"]).to be > 0
       end
     end
+
+    context "replay via as_of" do
+      let(:cutoff)  { 1.hour.ago.change(usec: 0) }
+
+      before do
+        site_a.update_columns(created_at: 1.day.ago, updated_at: 1.day.ago)
+        site_b.update_columns(created_at: 1.day.ago, updated_at: 1.day.ago)
+      end
+      let!(:snap_a) do
+        create(:site_risk_snapshot,
+               site: site_a,
+               score: 72,
+               risk_level: "high",
+               alert_pressure: 30.0,
+               task_health: 22.0,
+               signal_density: 20.0,
+               recorded_at: cutoff - 30.minutes)
+      end
+      let!(:snap_b) do
+        create(:site_risk_snapshot,
+               site: site_b,
+               score: 10,
+               risk_level: "low",
+               alert_pressure: 5.0,
+               task_health: 3.0,
+               signal_density: 2.0,
+               recorded_at: cutoff - 30.minutes)
+      end
+      # A future snapshot that should be excluded
+      let!(:snap_future) do
+        create(:site_risk_snapshot,
+               site: site_a,
+               score: 90,
+               risk_level: "critical",
+               alert_pressure: 40.0,
+               task_health: 30.0,
+               signal_density: 20.0,
+               recorded_at: cutoff + 30.minutes)
+      end
+
+      it "returns historical snapshots at the cutoff" do
+        get "/api/risk_scores", params: { as_of: cutoff.iso8601 }, headers: auth_headers(user)
+        expect(response).to have_http_status(:ok)
+        body = JSON.parse(response.body)
+
+        alpha = body.find { |r| r["site_id"] == site_a.id }
+        expect(alpha["score"]).to eq(72)
+        expect(alpha["risk_level"]).to eq("high")
+        expect(alpha["components"]["alert_pressure"]).to eq(30.0)
+        expect(alpha["as_of"]).to be_present
+      end
+
+      it "excludes snapshots recorded after the cutoff" do
+        get "/api/risk_scores", params: { as_of: cutoff.iso8601 }, headers: auth_headers(user)
+        body = JSON.parse(response.body)
+        alpha = body.find { |r| r["site_id"] == site_a.id }
+        expect(alpha["score"]).to eq(72) # not 90 from future snapshot
+      end
+
+      it "returns the latest snapshot per site when multiple exist" do
+        create(:site_risk_snapshot,
+               site: site_a,
+               score: 50,
+               risk_level: "moderate",
+               alert_pressure: 20.0,
+               task_health: 15.0,
+               signal_density: 15.0,
+               recorded_at: cutoff - 2.hours)
+
+        get "/api/risk_scores", params: { as_of: cutoff.iso8601 }, headers: auth_headers(user)
+        body = JSON.parse(response.body)
+        alpha = body.find { |r| r["site_id"] == site_a.id }
+        expect(alpha["score"]).to eq(72) # latest before cutoff, not older
+      end
+    end
   end
 end

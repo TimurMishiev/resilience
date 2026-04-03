@@ -9,15 +9,26 @@ module Api
   #
   # Risk levels: low | moderate | high | critical
   #
-  # Note: no as_of replay support — risk scores are a live threat snapshot.
-  # Replaying historical risk is non-trivial (would need historical signal/match counts)
-  # and is deferred to a future iteration.
+  # Replay support: when ?as_of is provided, returns the latest SiteRiskSnapshot
+  # recorded at or before the cutoff for each site (hourly snapshots from
+  # Risk::SnapshotJob). This avoids recomputing historical signal/match counts.
   class RiskScoresController < BaseController
     def index
       authorize :risk_score, :index?
+
+      if as_of
+        render json: replay_risk_scores
+      else
+        render json: live_risk_scores
+      end
+    end
+
+    private
+
+    def live_risk_scores
       sites       = policy_scope(Site).includes(:tasks).order(:name)
       computed_at = Time.current
-      return render json: [] if sites.empty?
+      return [] if sites.empty?
 
       # Preload alert matches and nearby signals in two bulk queries instead of
       # two queries per site (N×2 → 2 total).
@@ -43,7 +54,7 @@ module Api
         .pluck(:lat, :lng)
         .map { |lat, lng| { lat: lat.to_f, lng: lng.to_f } }
 
-      result = sites.map do |site|
+      sites.map do |site|
         readiness = Readiness::CalculationService.call(site: site, tasks: site.tasks)
         risk      = Risk::ScoringService.call(
           site:               site,
@@ -54,8 +65,37 @@ module Api
 
         risk.payload.merge(computed_at: computed_at.iso8601)
       end
+    end
 
-      render json: result
+    def replay_risk_scores
+      cutoff   = as_of
+      site_ids = policy_scope(Site).where("created_at <= ?", cutoff).pluck(:id)
+      return [] if site_ids.empty?
+
+      # Find the latest snapshot per site at or before the cutoff.
+      # Uses a lateral join pattern via DISTINCT ON for efficiency.
+      snapshots = SiteRiskSnapshot
+        .where(site_id: site_ids)
+        .where("recorded_at <= ?", cutoff)
+        .select("DISTINCT ON (site_id) site_risk_snapshots.*")
+        .order(:site_id, recorded_at: :desc)
+        .includes(:site)
+
+      snapshots.map do |snap|
+        {
+          site_id:    snap.site_id,
+          site_name:  snap.site.name,
+          score:      snap.score,
+          risk_level: snap.risk_level,
+          components: {
+            alert_pressure: snap.alert_pressure.to_f,
+            task_health:    snap.task_health.to_f,
+            signal_density: snap.signal_density.to_f,
+          },
+          computed_at: snap.recorded_at.iso8601,
+          as_of:       cutoff.iso8601,
+        }
+      end
     end
   end
 end

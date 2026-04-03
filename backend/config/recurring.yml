@@ -54,6 +54,49 @@ production:
     queue: background
     schedule: every 5 minutes
 
+  # ── Feed ingestion (replaces boot-time threads) ──────────────────────────
+  feed_opensky:
+    class: Feeds::PollJob
+    queue: background
+    args: [ "opensky" ]
+    schedule: every 15 minutes
+
+  feed_usgs:
+    class: Feeds::PollJob
+    queue: background
+    args: [ "usgs" ]
+    schedule: every 5 minutes
+
+  feed_gpsjam:
+    class: Feeds::PollJob
+    queue: background
+    args: [ "gpsjam" ]
+    schedule: every 15 minutes
+
+  feed_ais:
+    class: Feeds::PollJob
+    queue: background
+    args: [ "ais" ]
+    schedule: every 30 seconds
+
+  feed_firms:
+    class: Feeds::PollJob
+    queue: background
+    args: [ "firms" ]
+    schedule: every 15 minutes
+
+  feed_gdacs:
+    class: Feeds::PollJob
+    queue: background
+    args: [ "gdacs" ]
+    schedule: every 15 minutes
+
+  feed_acled:
+    class: Feeds::PollJob
+    queue: background
+    args: [ "acled" ]
+    schedule: every hour
+
 development:
   sse_lease_cleanup:
     class: Sse::LeaseCleanupJob
@@ -79,3 +122,46 @@ development:
     class: Recommendations::GenerationJob
     queue: background
     schedule: every 30 minutes
+
+  # ── Feed ingestion ───────────────────────────────────────────────────────
+  feed_opensky:
+    class: Feeds::PollJob
+    queue: background
+    args: [ "opensky" ]
+    schedule: every 15 minutes
+
+  feed_usgs:
+    class: Feeds::PollJob
+    queue: background
+    args: [ "usgs" ]
+    schedule: every 5 minutes
+
+  feed_gpsjam:
+    class: Feeds::PollJob
+    queue: background
+    args: [ "gpsjam" ]
+    schedule: every 15 minutes
+
+  feed_ais:
+    class: Feeds::PollJob
+    queue: background
+    args: [ "ais" ]
+    schedule: every 30 seconds
+
+  feed_firms:
+    class: Feeds::PollJob
+    queue: background
+    args: [ "firms" ]
+    schedule: every 15 minutes
+
+  feed_gdacs:
+    class: Feeds::PollJob
+    queue: background
+    args: [ "gdacs" ]
+    schedule: every 15 minutes
+
+  feed_acled:
+    class: Feeds::PollJob
+    queue: background
+    args: [ "acled" ]
+    schedule: every hour

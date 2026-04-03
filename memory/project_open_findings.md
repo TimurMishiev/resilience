@@ -6,34 +6,44 @@ type: findings
 
 # Resilience — Open Findings
 
+Last reconciled with code: 2026-04-02
+
 ## P1 / High-Leverage Programs
 
-- Replay parity is still incomplete on:
-  - `frontend/src/pages/RecommendationsPage.tsx`
-  - `frontend/src/components/OntologyQueryPanel.tsx`
-  - `frontend/src/pages/IncidentDetailPage.tsx`
-  - `frontend/src/pages/AlertTriagePage.tsx`
-- Tenant/workspace isolation is still missing.
-  - Core domain data is still effectively single-tenant.
+_(No open P1 items. All prior P1 replay parity gaps have been closed.)_
 
 ## P2 / Important Platform Follow-Through
 
-- Security/identity maturity is still incomplete even after scoped auth enforcement shipped.
-  - The platform now supports `viewer`, `operator`, and `commander` plus org/AO scoping.
-  - Remaining work is broader role modeling, device/session inventory, and admin/global revocation controls.
-- Session security maturity is not finished after logout revocation.
-  - “Sign out all devices” and broader session lifecycle controls still do not exist.
+- Tenant/workspace isolation is still missing.
+  - Organization model + org/AO scoping exist, but domain-wide data isolation, workspace management, and admin tenant UI are not built.
+  - This is acknowledged as a major track, not a quick patch.
+
+- Frontend maintenance concentration reduced:
+  - `useGlobeEngine.ts` (1156→732 lines): overlays extracted to `hooks/globe/useGlobeOverlays.ts`, tracks to `hooks/globe/useGlobeTrackLayers.ts`
+  - `useMapLibreEngine.ts` (876→655 lines): overlays extracted to `hooks/map/useMapOverlays.ts`
+  - `GlobePage.tsx` (487 lines) — reasonable size after prior toolbar/legend/inspector extraction
+  - `CorrelationRulesPage.tsx` and `PlanningPage.tsx` already decomposed
+
 - The remaining SSE architecture ceiling is still thread-per-connection transport.
-  - Admission control is hardened, but the transport model itself is unchanged.
-- Frontend maintenance concentration remains high in:
-  - `frontend/src/hooks/useGlobeEngine.ts`
-  - `frontend/src/hooks/useMapLibreEngine.ts`
-  - `frontend/src/pages/PlanningPage.tsx`
-  - `frontend/src/pages/CorrelationRulesPage.tsx`
-  - `frontend/src/pages/GlobePage.tsx`
+  - Admission control is hardened (lease-based, per-user + per-IP caps, advisory locks).
+  - The transport model itself is unchanged — replacing it is a future scale project.
+
+- ~~Risk score replay is not yet supported.~~ — DONE: `RiskScoresController#replay_risk_scores` with `as_of` + 3 specs.
+
+- ~~Feed ingestion runs in boot-time threads, not Solid Queue.~~ — DONE: `Feeds::PollJob` + `config/recurring.yml` entries for all 7 feeds.
+
+- ~~Adversarial test coverage is sparse for the correlation engine and recommendation pipeline.~~ — DONE: 12 adversarial specs in `spec/services/adversarial/correlation_edge_cases_spec.rb`.
 
 ## P3 / Ongoing Hygiene
 
 - Keep `backend/db/structure.sql` and the local test environment aligned with the supported PostGIS baseline.
-- Keep `memory/project_resilience.md`, this roadmap file, and actual code aligned.
-- Avoid reintroducing local-only docs like `CLAUDE.md` into shared commits.
+- Keep `memory/project_resilience.md`, roadmap file, and actual code aligned.
+- Fix pre-existing ESLint violations (3 errors: `RuleFormDrawer.tsx` setState-in-effect, `PlanningChokepointsSection.tsx` unused var, `PlanningPage.tsx` unused import).
+- Fix pre-existing TypeScript build errors (19 errors across 8 files — `PlanningPage.tsx` type mismatches, `useMapLibreEngine.ts` missing types, test files with null assignability).
+
+## Closed Since Last Reconciliation
+
+- ~~Replay parity on RecommendationsPage, OntologyQueryPanel, IncidentDetailPage, AlertTriagePage~~ — all four now pass `as_of` and gate mutations during replay.
+- ~~Session security maturity (sign out all devices)~~ — shipped: `SecurityPage.tsx` + `sessions_controller.rb` support bulk revocation with `?all_sessions=true`, `keep_current`, and admin cross-user management.
+- ~~16 controllers skip_after_action :verify_authorized~~ — all removed; Pundit is fully enforced across every controller.
+- ~~Security/identity maturity (session lifecycle)~~ — shipped: `UserSession` model with jti tracking, per-session revocation, admin session management, `tokens_valid_after` for global logout.

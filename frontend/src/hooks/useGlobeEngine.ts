@@ -23,22 +23,11 @@ import type { VesselTrack } from '../api/vessels'
 import { assetDisplayPosition, assetSeedPosition } from '../lib/assetPresentation'
 import { haversineKm, type CoverageCircle } from '../lib/coverage'
 import {
-  breachPulseColorProperty,
-  CHOKEPOINT_COLOR_BY_STATUS,
-  COVERAGE_COLOR_BY_STATUS,
   FOCUSED_SIGNAL_RADIUS_KM,
-  heatmapColorCss,
-  heatmapFillAlpha,
-  heatmapOutlineAlpha,
-  heatmapRadiusKm,
   pickIdString,
   pruneEntityMap,
   prunePrimitiveMap,
   resolvePickCandidates,
-  setEllipseColorProperty,
-  setEllipseMaterialColor,
-  setEllipseMaterialProperty,
-  setEllipseNumericProperty,
   setEntityLabelDisableDepthTestDistance,
   setEntityLabelHeightReference,
   setEntityLabelText,
@@ -46,23 +35,17 @@ import {
   setEntityPointDisableDepthTestDistance,
   setEntityPointHeightReference,
   setEntityPosition,
-  setPolygonHierarchy,
-  setPolygonMaterialColor,
-  setPolygonNumericProperty,
-  setPolygonOutlineColor,
-  setPolylineBooleanProperty,
-  setPolylineNumericProperty,
-  setPolylinePositions,
   SIGNAL_CLOSE_VIEW_HEIGHT_M,
   siteColor,
   type CesiumModule,
   type PickInspectionResult,
 } from '../lib/globeEngineHelpers'
-import { buildGlobeSignalHeatmapCells } from '../lib/globeSignalHeatmap'
 import { nowMs, recordPerfEvent } from '../lib/perfInstrumentation'
 import { preloadGlobeRuntime } from '../lib/preloadRoutes'
-import { ASSET_STATUS_COLORS, SIGNAL_COLORS } from '../lib/signalConfig'
+import { SIGNAL_COLORS } from '../lib/signalConfig'
 import type { AssetTrail } from '../lib/telemetry'
+import { useGlobeOverlays } from './globe/useGlobeOverlays'
+import { useGlobeTrackLayers } from './globe/useGlobeTrackLayers'
 import type { TelemetryMap } from '../lib/telemetry'
 const ionToken = import.meta.env['VITE_CESIUM_ION_TOKEN'] as string | undefined
 
@@ -170,14 +153,7 @@ export function useGlobeEngine({
   const cesiumRef       = useRef<CesiumModule | null>(null)
   const siteEntitiesRef  = useRef<Map<string, CesiumType.Entity>>(new Map())
   const assetEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
-  const aoEntitiesRef    = useRef<Map<string, CesiumType.Entity>>(new Map())
-  const geofenceEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
-  const breachEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
-  const coverageEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
-  const chokepointEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
-  const heatmapEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
-  const vesselTrackEntityRef = useRef<CesiumType.Entity | null>(null)
-  const assetTrailEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
+  // Overlay + track entity maps are managed by useGlobeOverlays and useGlobeTrackLayers below
 
   // High-volume point features use PointPrimitiveCollection to avoid Entity API overhead
   const signalCollectionRef = useRef<CesiumType.PointPrimitiveCollection | null>(null)
@@ -305,38 +281,18 @@ export function useGlobeEngine({
     // Capture ref values so cleanup uses the same Map instances (not a later re-render's refs)
     const siteEntities   = siteEntitiesRef.current
     const assetEntities  = assetEntitiesRef.current
-    const aoEntities     = aoEntitiesRef.current
-    const geofenceEntities = geofenceEntitiesRef.current
-    const breachEntities = breachEntitiesRef.current
-    const coverageEntities = coverageEntitiesRef.current
-    const chokepointEntities = chokepointEntitiesRef.current
-    const heatmapEntities = heatmapEntitiesRef.current
-    const vesselTrackEntity = vesselTrackEntityRef.current
-    const assetTrailEntities = assetTrailEntitiesRef.current
     const signalPrimitives = signalPrimitivesRef.current
 
     return () => {
       cancelled = true
       setViewerReady(false)
-      if (vesselTrackEntity) {
-        viewerRef.current?.entities.remove(vesselTrackEntity)
-      }
-      for (const entity of assetTrailEntities.values()) {
-        viewerRef.current?.entities.remove(entity)
-      }
+      // Overlay + track entity cleanup is handled by their respective sub-hooks
+      // (useGlobeOverlays, useGlobeTrackLayers) — they react to viewerReady going false.
       viewerRef.current?.destroy()
       viewerRef.current = null
       cesiumRef.current = null
       siteEntities.clear()
       assetEntities.clear()
-      aoEntities.clear()
-      geofenceEntities.clear()
-      breachEntities.clear()
-      coverageEntities.clear()
-      chokepointEntities.clear()
-      heatmapEntities.clear()
-      vesselTrackEntityRef.current = null
-      assetTrailEntities.clear()
       signalPrimitives.clear()
       signalCollectionRef.current = null
     }
@@ -479,420 +435,23 @@ export function useGlobeEngine({
   }, [viewerReady, assets, readings, sites, isReplaying, asOf])
 
   // ---------------------------------------------------------------------------
-  // AO polygon entities — incremental add/update/remove
+  // Overlay layers — AO, geofence, breach, coverage, chokepoints, heatmap
+  // (delegated to useGlobeOverlays for maintainability)
   // ---------------------------------------------------------------------------
-  useEffect(() => {
-    const Cesium = cesiumRef.current
-    const viewer = viewerRef.current
-    if (!viewerReady || !viewer || !Cesium) return
-
-    const currentIds = new Set(areaOfOperations.map(ao => `ao-${ao.id}`))
-    pruneEntityMap(viewer, aoEntitiesRef.current, currentIds)
-
-    for (const ao of areaOfOperations) {
-      const key       = `ao-${ao.id}`
-      const coords    = ao.geometry.coordinates[0] as [number, number][]
-      const flat      = coords.flatMap(([lng, lat]) => [lng, lat])
-      const positions = Cesium.Cartesian3.fromDegreesArray(flat)
-      const fillColor = Cesium.Color.fromCssColorString(ao.color).withAlpha(0.15)
-      const lineColor = Cesium.Color.fromCssColorString(ao.color).withAlpha(0.8)
-
-      const existing = aoEntitiesRef.current.get(key)
-      if (existing?.polygon) {
-        existing.name = ao.name
-        setPolygonHierarchy(Cesium, existing.polygon, positions)
-        setPolygonMaterialColor(Cesium, existing.polygon, fillColor)
-        setPolygonOutlineColor(Cesium, existing.polygon, lineColor)
-        setPolygonNumericProperty(Cesium, existing.polygon.outlineWidth, 2, next => { existing.polygon!.outlineWidth = next })
-        setPolygonNumericProperty(Cesium, existing.polygon.height, 0, next => { existing.polygon!.height = next })
-        continue
-      }
-
-      const entity = viewer.entities.add({
-        id:   key,
-        name: ao.name,
-        polygon: {
-          hierarchy:    new Cesium.PolygonHierarchy(positions),
-          material:     fillColor,
-          outline:      new Cesium.ConstantProperty(true),
-          outlineColor: new Cesium.ConstantProperty(lineColor),
-          outlineWidth: new Cesium.ConstantProperty(2),
-          height:       new Cesium.ConstantProperty(0),
-        },
-      })
-      aoEntitiesRef.current.set(key, entity)
-    }
-  }, [viewerReady, areaOfOperations])
+  const { getOverlayEntity } = useGlobeOverlays({
+    viewerRef, cesiumRef, viewerReady,
+    sites, areaOfOperations, breachedSiteIds, coverageCircles, chokepoints, signals,
+    showCoverage, showChokepoints, showSignals, showHeatmap, isCloseView,
+  })
 
   // ---------------------------------------------------------------------------
-  // Geofence rings — baseline site geofence footprint
+  // Track layers — vessel track + asset trails
+  // (delegated to useGlobeTrackLayers for maintainability)
   // ---------------------------------------------------------------------------
-  useEffect(() => {
-    const Cesium = cesiumRef.current
-    const viewer = viewerRef.current
-    if (!viewerReady || !viewer || !Cesium) return
-
-    const geofenceSites = sites.filter(site => site.geofence_radius_km > 0)
-    const currentIds = new Set(geofenceSites.map(site => `geofence-${site.id}`))
-    pruneEntityMap(viewer, geofenceEntitiesRef.current, currentIds)
-
-    for (const site of geofenceSites) {
-      const key = `geofence-${site.id}`
-      const radiusMeters = site.geofence_radius_km * 1000
-      const fillColor = Cesium.Color.fromCssColorString('#5c7cfa').withAlpha(0.04)
-      const outlineColor = Cesium.Color.fromCssColorString('#5c7cfa').withAlpha(0.6)
-      const existing = geofenceEntitiesRef.current.get(key)
-
-      if (existing?.ellipse) {
-        existing.name = `${site.name} geofence`
-        setEntityPosition(Cesium, existing, Number(site.longitude), Number(site.latitude))
-        setEllipseNumericProperty(Cesium, existing.ellipse.semiMajorAxis, radiusMeters, next => { existing.ellipse!.semiMajorAxis = next })
-        setEllipseNumericProperty(Cesium, existing.ellipse.semiMinorAxis, radiusMeters, next => { existing.ellipse!.semiMinorAxis = next })
-        setEllipseNumericProperty(Cesium, existing.ellipse.height, 0, next => { existing.ellipse!.height = next })
-        setEllipseNumericProperty(Cesium, existing.ellipse.outlineWidth, 1, next => { existing.ellipse!.outlineWidth = next })
-        setEllipseMaterialColor(Cesium, existing.ellipse, fillColor)
-        setEllipseColorProperty(Cesium, existing.ellipse.outlineColor, outlineColor, next => { existing.ellipse!.outlineColor = next })
-        continue
-      }
-
-      const entity = viewer.entities.add({
-        id: key,
-        name: `${site.name} geofence`,
-        position: Cesium.Cartesian3.fromDegrees(Number(site.longitude), Number(site.latitude)),
-        ellipse: {
-          semiMajorAxis: new Cesium.ConstantProperty(radiusMeters),
-          semiMinorAxis: new Cesium.ConstantProperty(radiusMeters),
-          material: new Cesium.ColorMaterialProperty(fillColor),
-          outline: new Cesium.ConstantProperty(true),
-          outlineColor: new Cesium.ConstantProperty(outlineColor),
-          outlineWidth: new Cesium.ConstantProperty(1),
-          height: new Cesium.ConstantProperty(0),
-        },
-      })
-      geofenceEntitiesRef.current.set(key, entity)
-    }
-  }, [sites, viewerReady])
-
-  // ---------------------------------------------------------------------------
-  // Geofence breach rings — live-only active breaches rendered over base geofence
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    const Cesium = cesiumRef.current
-    const viewer = viewerRef.current
-    if (!viewerReady || !viewer || !Cesium) return
-
-    const breachedSites = sites.filter(site => site.geofence_radius_km > 0 && breachedSiteIds.has(site.id))
-    const currentIds = new Set(breachedSites.map(site => `geofence-breach-${site.id}`))
-    pruneEntityMap(viewer, breachEntitiesRef.current, currentIds)
-    const pulsingFillColor = breachPulseColorProperty(Cesium, 'fill')
-    const pulsingOutlineColor = breachPulseColorProperty(Cesium, 'outline')
-
-    for (const site of breachedSites) {
-      const key = `geofence-breach-${site.id}`
-      const radiusMeters = site.geofence_radius_km * 1000
-      const existing = breachEntitiesRef.current.get(key)
-
-      if (existing?.ellipse) {
-        existing.name = `${site.name} geofence breach`
-        setEntityPosition(Cesium, existing, Number(site.longitude), Number(site.latitude))
-        setEllipseNumericProperty(Cesium, existing.ellipse.semiMajorAxis, radiusMeters, next => { existing.ellipse!.semiMajorAxis = next })
-        setEllipseNumericProperty(Cesium, existing.ellipse.semiMinorAxis, radiusMeters, next => { existing.ellipse!.semiMinorAxis = next })
-        setEllipseNumericProperty(Cesium, existing.ellipse.height, 0, next => { existing.ellipse!.height = next })
-        setEllipseNumericProperty(Cesium, existing.ellipse.outlineWidth, 2, next => { existing.ellipse!.outlineWidth = next })
-        setEllipseMaterialProperty(Cesium, existing.ellipse, pulsingFillColor)
-        existing.ellipse.outlineColor = pulsingOutlineColor
-        continue
-      }
-
-      const entity = viewer.entities.add({
-        id: key,
-        name: `${site.name} geofence breach`,
-        position: Cesium.Cartesian3.fromDegrees(Number(site.longitude), Number(site.latitude)),
-        ellipse: {
-          semiMajorAxis: new Cesium.ConstantProperty(radiusMeters),
-          semiMinorAxis: new Cesium.ConstantProperty(radiusMeters),
-          material: new Cesium.ColorMaterialProperty(pulsingFillColor),
-          outline: new Cesium.ConstantProperty(true),
-          outlineColor: pulsingOutlineColor,
-          outlineWidth: new Cesium.ConstantProperty(2),
-          height: new Cesium.ConstantProperty(0),
-        },
-      })
-      breachEntitiesRef.current.set(key, entity)
-    }
-  }, [breachedSiteIds, sites, viewerReady])
-
-  // ---------------------------------------------------------------------------
-  // Coverage circles — incremental add/update/remove using ellipse entities
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    const Cesium = cesiumRef.current
-    const viewer = viewerRef.current
-    if (!viewerReady || !viewer || !Cesium) return
-
-    const keyForCircle = (circle: CoverageCircle) => [
-      'coverage',
-      circle.assetId,
-      circle.anchorKey,
-    ].join('-')
-
-    const currentIds = new Set(coverageCircles.map(keyForCircle))
-    pruneEntityMap(viewer, coverageEntitiesRef.current, currentIds)
-
-    for (const circle of coverageCircles) {
-      const key = keyForCircle(circle)
-      const radiusMeters = circle.radiusKm * 1000
-      const baseColor = Cesium.Color.fromCssColorString(COVERAGE_COLOR_BY_STATUS[circle.status] ?? '#8f99a8')
-      const fillColor = baseColor.withAlpha(circle.status === 'degraded' ? 0.06 : 0.08)
-      const outlineColor = baseColor.withAlpha(circle.status === 'degraded' ? 0.75 : 0.55)
-      const outlineWidth = circle.status === 'degraded' ? 1.25 : 1.5
-      const existing = coverageEntitiesRef.current.get(key)
-
-      if (existing?.ellipse) {
-        existing.show = showCoverage
-        existing.name = `${circle.assetName} coverage`
-        setEntityPosition(Cesium, existing, circle.anchorLng, circle.anchorLat)
-        setEllipseNumericProperty(Cesium, existing.ellipse.semiMajorAxis, radiusMeters, next => { existing.ellipse!.semiMajorAxis = next })
-        setEllipseNumericProperty(Cesium, existing.ellipse.semiMinorAxis, radiusMeters, next => { existing.ellipse!.semiMinorAxis = next })
-        setEllipseNumericProperty(Cesium, existing.ellipse.height, 0, next => { existing.ellipse!.height = next })
-        setEllipseNumericProperty(Cesium, existing.ellipse.outlineWidth, outlineWidth, next => { existing.ellipse!.outlineWidth = next })
-        setEllipseMaterialColor(Cesium, existing.ellipse, fillColor)
-        setEllipseColorProperty(Cesium, existing.ellipse.outlineColor, outlineColor, next => { existing.ellipse!.outlineColor = next })
-        continue
-      }
-
-      const entity = viewer.entities.add({
-        id: key,
-        name: `${circle.assetName} coverage`,
-        show: showCoverage,
-        position: Cesium.Cartesian3.fromDegrees(circle.anchorLng, circle.anchorLat),
-        ellipse: {
-          semiMajorAxis: new Cesium.ConstantProperty(radiusMeters),
-          semiMinorAxis: new Cesium.ConstantProperty(radiusMeters),
-          material: new Cesium.ColorMaterialProperty(fillColor),
-          outline: new Cesium.ConstantProperty(true),
-          outlineColor: new Cesium.ConstantProperty(outlineColor),
-          outlineWidth: new Cesium.ConstantProperty(outlineWidth),
-          height: new Cesium.ConstantProperty(0),
-        },
-      })
-      coverageEntitiesRef.current.set(key, entity)
-    }
-  }, [coverageCircles, showCoverage, viewerReady])
-
-  // ---------------------------------------------------------------------------
-  // Chokepoint watch circles — status-colored ellipse entities
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    const Cesium = cesiumRef.current
-    const viewer = viewerRef.current
-    if (!viewerReady || !viewer || !Cesium) return
-
-    const currentIds = new Set(chokepoints.map(cp => `chokepoint-${cp.id}`))
-    pruneEntityMap(viewer, chokepointEntitiesRef.current, currentIds)
-
-    for (const cp of chokepoints) {
-      const key = `chokepoint-${cp.id}`
-      const radiusMeters = cp.watch_radius_km * 1000
-      const hex = CHOKEPOINT_COLOR_BY_STATUS[cp.status] ?? '#868e96'
-      const baseColor = Cesium.Color.fromCssColorString(hex)
-      const fillColor = baseColor.withAlpha(0.10)
-      const outlineColor = baseColor.withAlpha(0.65)
-      const existing = chokepointEntitiesRef.current.get(key)
-
-      if (existing?.ellipse) {
-        existing.show = showChokepoints
-        existing.name = cp.name
-        setEntityPosition(Cesium, existing, cp.longitude, cp.latitude)
-        setEllipseNumericProperty(Cesium, existing.ellipse.semiMajorAxis, radiusMeters, next => { existing.ellipse!.semiMajorAxis = next })
-        setEllipseNumericProperty(Cesium, existing.ellipse.semiMinorAxis, radiusMeters, next => { existing.ellipse!.semiMinorAxis = next })
-        setEllipseNumericProperty(Cesium, existing.ellipse.height, 0, next => { existing.ellipse!.height = next })
-        setEllipseNumericProperty(Cesium, existing.ellipse.outlineWidth, 1.5, next => { existing.ellipse!.outlineWidth = next })
-        setEllipseMaterialColor(Cesium, existing.ellipse, fillColor)
-        setEllipseColorProperty(Cesium, existing.ellipse.outlineColor, outlineColor, next => { existing.ellipse!.outlineColor = next })
-        continue
-      }
-
-      const entity = viewer.entities.add({
-        id: key,
-        name: cp.name,
-        show: showChokepoints,
-        position: Cesium.Cartesian3.fromDegrees(cp.longitude, cp.latitude),
-        ellipse: {
-          semiMajorAxis: new Cesium.ConstantProperty(radiusMeters),
-          semiMinorAxis: new Cesium.ConstantProperty(radiusMeters),
-          material: new Cesium.ColorMaterialProperty(fillColor),
-          outline: new Cesium.ConstantProperty(true),
-          outlineColor: new Cesium.ConstantProperty(outlineColor),
-          outlineWidth: new Cesium.ConstantProperty(1.5),
-          height: new Cesium.ConstantProperty(0),
-        },
-      })
-      chokepointEntitiesRef.current.set(key, entity)
-    }
-  }, [chokepoints, showChokepoints, viewerReady])
-
-  // ---------------------------------------------------------------------------
-  // Signal heatmap — aggregated density cells rendered as translucent ellipses
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    const Cesium = cesiumRef.current
-    const viewer = viewerRef.current
-    if (!viewerReady || !viewer || !Cesium) return
-
-    const heatmapCells = buildGlobeSignalHeatmapCells(signals)
-    const currentIds = new Set(heatmapCells.map(cell => `heatmap-${cell.key}`))
-    pruneEntityMap(viewer, heatmapEntitiesRef.current, currentIds)
-
-    const isVisible = showSignals && showHeatmap && !isCloseView
-
-    for (const cell of heatmapCells) {
-      const key = `heatmap-${cell.key}`
-      const radiusMeters = heatmapRadiusKm(cell.intensity) * 1000
-      const baseColor = Cesium.Color.fromCssColorString(heatmapColorCss(cell.intensity))
-      const fillColor = baseColor.withAlpha(heatmapFillAlpha(cell.intensity))
-      const outlineColor = baseColor.withAlpha(heatmapOutlineAlpha(cell.intensity))
-      const existing = heatmapEntitiesRef.current.get(key)
-
-      if (existing?.ellipse) {
-        existing.show = isVisible
-        existing.name = `Signal heatmap cell (${cell.count})`
-        setEntityPosition(Cesium, existing, cell.lng, cell.lat)
-        setEllipseNumericProperty(Cesium, existing.ellipse.semiMajorAxis, radiusMeters, next => { existing.ellipse!.semiMajorAxis = next })
-        setEllipseNumericProperty(Cesium, existing.ellipse.semiMinorAxis, radiusMeters, next => { existing.ellipse!.semiMinorAxis = next })
-        setEllipseNumericProperty(Cesium, existing.ellipse.height, 0, next => { existing.ellipse!.height = next })
-        setEllipseNumericProperty(Cesium, existing.ellipse.outlineWidth, 1.25, next => { existing.ellipse!.outlineWidth = next })
-        setEllipseMaterialColor(Cesium, existing.ellipse, fillColor)
-        setEllipseColorProperty(Cesium, existing.ellipse.outlineColor, outlineColor, next => { existing.ellipse!.outlineColor = next })
-        continue
-      }
-
-      const entity = viewer.entities.add({
-        id: key,
-        name: `Signal heatmap cell (${cell.count})`,
-        show: isVisible,
-        position: Cesium.Cartesian3.fromDegrees(cell.lng, cell.lat),
-        ellipse: {
-          semiMajorAxis: new Cesium.ConstantProperty(radiusMeters),
-          semiMinorAxis: new Cesium.ConstantProperty(radiusMeters),
-          material: new Cesium.ColorMaterialProperty(fillColor),
-          outline: new Cesium.ConstantProperty(true),
-          outlineColor: new Cesium.ConstantProperty(outlineColor),
-          outlineWidth: new Cesium.ConstantProperty(1.25),
-          height: new Cesium.ConstantProperty(0),
-        },
-      })
-      heatmapEntitiesRef.current.set(key, entity)
-    }
-  }, [viewerReady, signals, showSignals, showHeatmap, isCloseView])
-
-  // ---------------------------------------------------------------------------
-  // Vessel track — single selected-vessel polyline, updated in place
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    const Cesium = cesiumRef.current
-    const viewer = viewerRef.current
-    if (!viewerReady || !viewer || !Cesium) return
-
-    const existing = vesselTrackEntityRef.current
-    if (vesselTracks.length < 2) {
-      if (existing) {
-        viewer.entities.remove(existing)
-        vesselTrackEntityRef.current = null
-      }
-      return
-    }
-
-    const flatCoords = vesselTracks.flatMap(track => [Number(track.lng), Number(track.lat)])
-    const positions = Cesium.Cartesian3.fromDegreesArray(flatCoords)
-    const material = new Cesium.PolylineDashMaterialProperty({
-      color: Cesium.Color.fromCssColorString(SIGNAL_COLORS.vessel_position).withAlpha(0.8),
-      dashLength: 18,
-    })
-
-    if (existing?.polyline) {
-      existing.name = 'Selected vessel track'
-      setPolylinePositions(Cesium, existing.polyline, positions)
-      existing.polyline.material = material
-      setPolylineNumericProperty(Cesium, existing.polyline.width, 2.5, next => { existing.polyline!.width = next })
-      setPolylineBooleanProperty(Cesium, existing.polyline.clampToGround, false, next => { existing.polyline!.clampToGround = next })
-      return
-    }
-
-    vesselTrackEntityRef.current = viewer.entities.add({
-      id: 'vessel-track',
-      name: 'Selected vessel track',
-      polyline: {
-        positions: new Cesium.ConstantProperty(positions),
-        width: new Cesium.ConstantProperty(2.5),
-        material,
-        clampToGround: new Cesium.ConstantProperty(false),
-      },
-    })
-  }, [viewerReady, vesselTracks])
-
-  // ---------------------------------------------------------------------------
-  // Asset trails — one polyline per asset, colored by status, replay-only
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    const Cesium = cesiumRef.current
-    const viewer = viewerRef.current
-    if (!viewerReady || !viewer || !Cesium) return
-
-    const entityMap = assetTrailEntitiesRef.current
-
-    // Build set of current asset IDs to prune stale trails
-    const currentIds = new Set(assetTrails.filter(t => t.points.length >= 2).map(t => t.asset_id))
-
-    // Remove stale
-    for (const [id, entity] of entityMap) {
-      if (!currentIds.has(id)) {
-        viewer.entities.remove(entity)
-        entityMap.delete(id)
-      }
-    }
-
-    for (const trail of assetTrails) {
-      if (trail.points.length < 2) continue
-
-      const flatCoords = trail.points.flatMap(p => [p.lng, p.lat])
-      const positions = Cesium.Cartesian3.fromDegreesArray(flatCoords)
-      const cssColor = ASSET_STATUS_COLORS[trail.status] ?? ASSET_STATUS_COLORS['offline']
-      const material = new Cesium.PolylineGlowMaterialProperty({
-        glowPower: 0.15,
-        color: Cesium.Color.fromCssColorString(cssColor).withAlpha(0.7),
-      })
-
-      const existing = entityMap.get(trail.asset_id)
-      if (existing?.polyline) {
-        setPolylinePositions(Cesium, existing.polyline, positions)
-        existing.polyline.material = material
-        continue
-      }
-
-      const entity = viewer.entities.add({
-        id: `asset-trail-${trail.asset_id}`,
-        name: `${trail.name} trail`,
-        polyline: {
-          positions: new Cesium.ConstantProperty(positions),
-          width: new Cesium.ConstantProperty(2),
-          material,
-          clampToGround: new Cesium.ConstantProperty(false),
-        },
-      })
-      entityMap.set(trail.asset_id, entity)
-    }
-  }, [viewerReady, assetTrails])
-
-  // ---------------------------------------------------------------------------
-  // Asset trail visibility toggle — mirrors showSignals/showCoverage pattern
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    const entityMap = assetTrailEntitiesRef.current
-    for (const entity of entityMap.values()) {
-      entity.show = showTrails
-    }
-  }, [showTrails])
+  const { getTrackEntity } = useGlobeTrackLayers({
+    viewerRef, cesiumRef, viewerReady,
+    vesselTracks, assetTrails, showTrails,
+  })
 
   // ---------------------------------------------------------------------------
   // Signal entities — migrate to PointPrimitiveCollection for mass rendering
@@ -1120,11 +679,8 @@ export function useGlobeEngine({
       const entity =
         siteEntitiesRef.current.get(idString) ??
         assetEntitiesRef.current.get(idString) ??
-        aoEntitiesRef.current.get(idString) ??
-        geofenceEntitiesRef.current.get(idString) ??
-        breachEntitiesRef.current.get(idString) ??
-        coverageEntitiesRef.current.get(idString) ??
-        (idString === 'vessel-track' ? vesselTrackEntityRef.current : null)
+        getOverlayEntity(idString) ??
+        getTrackEntity(idString)
 
       if (entity?.position) {
         cartesian = entity.position.getValue(viewer.clock.currentTime)
