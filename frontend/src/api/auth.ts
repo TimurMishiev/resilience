@@ -1,4 +1,4 @@
-import { api } from './client'
+import { api, type QueryParamValue } from './client'
 
 export type UserRole = 'viewer' | 'operator' | 'commander' | 'admin'
 
@@ -62,6 +62,7 @@ export interface UserSessionsResponse {
 }
 
 export interface UserSessionQueryParams {
+  [key: string]: QueryParamValue
   user_id?: string
   user_email?: string
 }

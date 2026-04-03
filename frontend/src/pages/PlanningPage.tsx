@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Button,
   Callout,
   Drawer,
   DrawerSize,
@@ -631,7 +630,6 @@ export default function PlanningPage() {
         selectedChokepoint={selectedChokepoint}
         doctrineChokepoints={doctrineChokepoints}
         pendingSelectedChokepoint={pendingSelectedChokepoint}
-        firstDoctrineSite={firstDoctrineSite}
         chokepointDraft={chokepointDraft}
         setChokepointDraft={setChokepointDraft}
         setSelectedChokepointId={setSelectedChokepointId}

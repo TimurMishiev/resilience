@@ -1,12 +1,13 @@
-# Starts the correlation engine background thread after Rails has fully booted.
-# Skipped in test mode, rake tasks, and Rails console to keep those environments clean.
-unless Rails.env.test? || defined?(Rails::Console) || File.basename($PROGRAM_NAME) == "rake"
-  Rails.application.config.after_initialize do
-    unless defined?(Rails::Server) || $PROGRAM_NAME.include?("puma") || $PROGRAM_NAME.include?("server")
-      Rails.logger.info "[CorrelationEvaluator] skipped outside server process"
-      next
-    end
-
-    Correlations::BackgroundEvaluator.start
-  end
-end
+# Correlation evaluation is now handled by Correlations::EvaluateRecentJob,
+# scheduled as a Solid Queue recurring task in config/recurring.yml
+# (every 10 seconds).
+#
+# The previous implementation used a boot-time Thread (BackgroundEvaluator)
+# that held a persistent DB connection. The job-based approach gives us:
+#   - Job-level retry with exponential backoff
+#   - Observability through Solid Queue's jobs table
+#   - No persistent thread holding a DB connection
+#   - Consistent scheduling that survives process restarts
+#
+# See: app/jobs/correlations/evaluate_recent_job.rb
+# See: app/services/correlations/background_evaluator.rb (legacy, retained for reference)

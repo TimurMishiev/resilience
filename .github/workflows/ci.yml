@@ -28,7 +28,7 @@ jobs:
         run: yarn install --frozen-lockfile
 
       - name: TypeScript typecheck
-        run: npx tsc --noEmit
+        run: npx tsc -p tsconfig.app.json --noEmit
 
       - name: ESLint
         run: yarn lint

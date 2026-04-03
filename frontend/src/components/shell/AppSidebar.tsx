@@ -101,6 +101,13 @@ export function AppSidebar() {
           <MenuItem icon="gantt-chart" text="Planning" active={pathname.startsWith('/planning')} onClick={() => navigate('/planning')} />
         )}
         <MenuItem icon="timeline-events" text="Swimlane" active={pathname.startsWith('/swimlane')} onClick={() => navigate('/swimlane')} />
+        <MenuItem
+          icon="pulse"
+          text="Health"
+          active={pathname.startsWith('/health')}
+          onClick={() => navigate('/health')}
+          labelElement={!isCommander ? <LockLabel /> : undefined}
+        />
       </Menu>
     </nav>
   )

@@ -54,6 +54,12 @@ production:
     queue: background
     schedule: every 5 minutes
 
+  # ── Correlation engine (replaces boot-time thread) ───────────────────────
+  correlation_evaluate_recent:
+    class: Correlations::EvaluateRecentJob
+    queue: background
+    schedule: every 10 seconds
+
   # ── Feed ingestion (replaces boot-time threads) ──────────────────────────
   feed_opensky:
     class: Feeds::PollJob
@@ -98,6 +104,11 @@ production:
     schedule: every hour
 
 development:
+  correlation_evaluate_recent:
+    class: Correlations::EvaluateRecentJob
+    queue: background
+    schedule: every 10 seconds
+
   sse_lease_cleanup:
     class: Sse::LeaseCleanupJob
     queue: background

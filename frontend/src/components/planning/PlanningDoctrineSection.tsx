@@ -9,14 +9,14 @@ import {
   InputGroup,
   TextArea,
 } from '@blueprintjs/core'
-import type { AreaOfOperation, CommanderIntent, PacePlan, SaluteReport, Site } from '../../api/types'
+import type { PlanningAoStub, CommanderIntent, PacePlan, SaluteReport, Site } from '../../api/types'
 import { humanize } from '../../utils/humanize'
 import type { IntentDraft, PaceDraft, SaluteDraft } from '../../lib/planningPageUtils'
 
 interface Props {
-  areasOfOperation: AreaOfOperation[]
+  areasOfOperation: PlanningAoStub[]
   selectedDoctrineAoId: string
-  selectedDoctrineAo: AreaOfOperation | null
+  selectedDoctrineAo: PlanningAoStub | null
   selectedCommanderIntent: CommanderIntent | null
   selectedPacePlan: PacePlan | null
   doctrineSites: Site[]

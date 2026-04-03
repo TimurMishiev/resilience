@@ -1,4 +1,4 @@
-import { Button, HTMLTable, NonIdealState } from '@blueprintjs/core'
+import { Button, HTMLTable, NonIdealState, Tag } from '@blueprintjs/core'
 import { PostureBadge } from '../PostureBadge'
 import { AssetPicker } from '../AssetPicker'
 import { humanize } from '../../utils/humanize'

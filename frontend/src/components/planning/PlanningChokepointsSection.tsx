@@ -10,19 +10,18 @@ import {
   Tag,
   TextArea,
 } from '@blueprintjs/core'
-import type { AreaOfOperation, Chokepoint, ChokepointCategory, ChokepointStatus, Site } from '../../api/types'
+import type { PlanningAoStub, Chokepoint, ChokepointCategory, ChokepointStatus } from '../../api/types'
 import { humanize } from '../../utils/humanize'
 import { CHOKEPOINT_CATEGORY_OPTIONS, CHOKEPOINT_STATUS_OPTIONS, type ChokepointDraft } from '../../lib/planningPageUtils'
 
 interface Props {
-  areasOfOperation: AreaOfOperation[]
+  areasOfOperation: PlanningAoStub[]
   selectedDoctrineAoId: string
-  selectedDoctrineAo: AreaOfOperation | null
+  selectedDoctrineAo: PlanningAoStub | null
   selectedChokepointId: string
   selectedChokepoint: Chokepoint | null
   doctrineChokepoints: Chokepoint[]
   pendingSelectedChokepoint: Chokepoint | null
-  firstDoctrineSite: Site | null
   chokepointDraft: ChokepointDraft
   setChokepointDraft: Dispatch<SetStateAction<ChokepointDraft>>
   setSelectedChokepointId: (id: string) => void
@@ -45,7 +44,6 @@ export function PlanningChokepointsSection({
   selectedChokepoint,
   doctrineChokepoints,
   pendingSelectedChokepoint,
-  firstDoctrineSite,
   chokepointDraft,
   setChokepointDraft,
   setSelectedChokepointId,

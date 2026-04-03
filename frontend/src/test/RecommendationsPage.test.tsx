@@ -7,7 +7,7 @@ import type { Recommendation } from '../api/recommendations'
 
 const mockState = vi.hoisted(() => ({
   isReplaying: true,
-  asOf: '2026-03-29T10:00:00Z',
+  asOf: '2026-03-29T10:00:00Z' as string | null,
   role: 'commander' as 'commander' | 'operator' | 'viewer',
   params: null as Record<string, unknown> | null,
   options: null as { refetchInterval?: number | false } | null,

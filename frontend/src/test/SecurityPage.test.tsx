@@ -9,10 +9,10 @@ const mockState = vi.hoisted(() => ({
     id: 'user-1',
     email: 'commander@resilience.test',
     role: 'commander',
-    organization_id: 'org-1',
-    area_of_operation_id: 'ao-1',
+    organization_id: 'org-1' as string | null,
+    area_of_operation_id: 'ao-1' as string | null,
   },
-  sessionsParams: null,
+  sessionsParams: null as Record<string, unknown> | null,
   sessions: [
     {
       id: 'sess-current',

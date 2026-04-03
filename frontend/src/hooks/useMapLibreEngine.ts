@@ -17,6 +17,8 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import type {
   GeoJSONSource,
   Map as MapLibreMap,
+  MapGeoJSONFeature,
+  MapMouseEvent,
   StyleSpecification,
 } from 'maplibre-gl'
 import type { Site, Task, Asset, Signal, AreaOfOperation, Chokepoint } from '../api/types'
@@ -26,6 +28,7 @@ import { useMapOverlays } from './map/useMapOverlays'
 import { expandMapSignalCluster } from '../lib/mapSignalClustering'
 import { ensureSignalLayers, updateSignalSources } from '../lib/mapEngineSignalLayers'
 import { MAP_STYLE_CONFIGS, type MapStyleKey } from '../lib/mapEngineStyles'
+export { MAP_STYLE_CONFIGS, type MapStyleKey }
 import {
   MAP_INTERACTIVE_LAYER_IDS,
   resolveMapClickCandidate,

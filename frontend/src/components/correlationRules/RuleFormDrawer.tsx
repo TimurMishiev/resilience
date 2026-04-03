@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import {
   Button,
   ButtonGroup,
@@ -45,17 +45,20 @@ interface RuleFormDrawerProps {
 export function RuleFormDrawer({
   isOpen, onClose, editingRule, initialForm, aoList, effectivenessData,
 }: RuleFormDrawerProps) {
+  // Derive the form seed from the drawer target. When the drawer opens with a
+  // different rule or seed, we compute the new form state synchronously during
+  // render instead of in an effect (which triggers a cascading re-render).
+  const formSeedKey = isOpen ? (editingRule?.id ?? 'new') : ''
+  const prevSeedKeyRef = useRef(formSeedKey)
   const [form, setForm] = useState<RuleFormState>(DEFAULT_FORM)
 
-  // Reset form whenever the drawer opens or the target rule / seed changes.
-  useEffect(() => {
-    if (!isOpen) return
-    if (editingRule) {
-      setForm(ruleToForm(editingRule))
-    } else {
-      setForm(initialForm ?? DEFAULT_FORM)
+  if (formSeedKey !== prevSeedKeyRef.current) {
+    prevSeedKeyRef.current = formSeedKey
+    if (isOpen) {
+      const next = editingRule ? ruleToForm(editingRule) : (initialForm ?? DEFAULT_FORM)
+      setForm(next)
     }
-  }, [isOpen, editingRule, initialForm])
+  }
 
   const createMutation = useCreateCorrelationRule()
   const updateMutation = useUpdateCorrelationRule()
