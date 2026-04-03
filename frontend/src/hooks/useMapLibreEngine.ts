@@ -22,7 +22,6 @@ import type {
 import type { Site, Task, Asset, Signal, AreaOfOperation, Chokepoint } from '../api/types'
 import type { VesselTrack } from '../api/vessels'
 import type { CoverageCircle } from '../lib/coverage'
-import { circlePolygon } from '../lib/coverage'
 import { useMapOverlays } from './map/useMapOverlays'
 import { expandMapSignalCluster } from '../lib/mapSignalClustering'
 import { ensureSignalLayers, updateSignalSources } from '../lib/mapEngineSignalLayers'

@@ -696,7 +696,7 @@ export function useGlobeEngine({
       x: coordinates.x,
       y: coordinates.y,
     }
-  }, [])
+  }, [getOverlayEntity, getTrackEntity])
 
   return {
     viewerReady,
