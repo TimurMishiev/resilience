@@ -20,6 +20,37 @@ RSpec.describe "Api::Analytics#swimlane", type: :request do
       expect(response).to have_http_status(:ok)
       expect(JSON.parse(response.body)["data"]).to be_an(Array)
     end
+
+    it "returns 30 days of data with resolved counts" do
+      task = create(:task, site: alpha)
+      create(:audit_event,
+        entity_type: "Task", entity_id: task.id,
+        event_type: "task.transitioned",
+        after_snapshot: { "workflow_status" => "resolved" },
+        occurred_at: 2.days.ago)
+      create(:audit_event,
+        entity_type: "Task", entity_id: task.id,
+        event_type: "task.transitioned",
+        after_snapshot: { "workflow_status" => "resolved" },
+        occurred_at: 2.days.ago)
+      create(:audit_event,
+        entity_type: "Task", entity_id: task.id,
+        event_type: "task.transitioned",
+        after_snapshot: { "workflow_status" => "in_progress" },
+        occurred_at: 1.day.ago)
+
+      get "/api/analytics/throughput", headers: auth_headers(current_user)
+
+      body = JSON.parse(response.body)
+      expect(body["data"].size).to eq(30)
+
+      target_date = 2.days.ago.to_date.to_s
+      day_entry = body["data"].find { |d| d["date"] == target_date }
+      expect(day_entry["resolved"]).to eq(2)
+
+      today_entry = body["data"].find { |d| d["date"] == Date.current.to_s }
+      expect(today_entry["resolved"]).to eq(0)
+    end
   end
 
   describe "GET /api/analytics/swimlane" do

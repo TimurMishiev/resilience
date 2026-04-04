@@ -71,11 +71,11 @@ module Sites
     end
 
     def task_audit_events(cutoff)
-      task_ids = Task.where(site_id: @site.id).pluck(:id)
-      return [] if task_ids.empty?
+      task_scope = Task.where(site_id: @site.id).select(:id)
+      return [] unless Task.where(site_id: @site.id).exists?
 
       AuditEvent
-        .where(entity_type: "Task", entity_id: task_ids)
+        .where(entity_type: "Task", entity_id: task_scope)
         .where("occurred_at > ? AND occurred_at <= ?", cutoff, @as_of)
         .order(occurred_at: :desc)
         .limit(MAX_PER_KIND)

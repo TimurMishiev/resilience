@@ -29,7 +29,7 @@ module Ai
     CONTEXT_WINDOW_HOURS = 72
     DEFAULT_MODEL             = "claude-haiku-4-5-20251001"
     ANTHROPIC_TIMEOUT_SECONDS = 30
-    ANTHROPIC_MAX_RETRIES     = 0
+    ANTHROPIC_MAX_RETRIES     = 2
 
     def initialize(summary_type:, site_id: nil, from: nil, to: nil)
       @summary_type = summary_type.to_s

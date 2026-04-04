@@ -27,8 +27,14 @@ module Readiness
 
       return ServiceResult.success(score: nil, counts: empty_counts(total)) if total.zero?
 
-      resolved     = task_list.select { |t| t.workflow_status == "resolved" }.size
-      non_blocked  = task_list.reject { |t| t.workflow_status == "blocked" }.size
+      if task_list.is_a?(ActiveRecord::Relation)
+        resolved    = task_list.where(workflow_status: "resolved").count
+        blocked     = task_list.where(workflow_status: "blocked").count
+        non_blocked = total - blocked
+      else
+        resolved    = task_list.count { |t| t.workflow_status == "resolved" }
+        non_blocked = task_list.count { |t| t.workflow_status != "blocked" }
+      end
 
       resolved_ratio    = resolved.to_f / total
       non_blocked_ratio = non_blocked.to_f / total

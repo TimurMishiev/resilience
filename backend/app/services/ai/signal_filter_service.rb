@@ -17,7 +17,7 @@ module Ai
     BREAKER_SERVICE           = "signal_filter"
     DEFAULT_MODEL             = "claude-haiku-4-5-20251001"
     ANTHROPIC_TIMEOUT_SECONDS = 30
-    ANTHROPIC_MAX_RETRIES     = 0
+    ANTHROPIC_MAX_RETRIES     = 2
     CATALOG_CACHE_KEY         = "ai/signal_filter/sites/v1"
     CATALOG_CACHE_TTL         = 60.seconds
 

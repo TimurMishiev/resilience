@@ -12,7 +12,7 @@ module Ai
     MAX_LIMIT              = 12
     SIGNAL_RADIUS_KM       = 200.0
     ANTHROPIC_TIMEOUT_SECONDS = 30
-    ANTHROPIC_MAX_RETRIES     = 0
+    ANTHROPIC_MAX_RETRIES     = 2
     CATALOG_CACHE_KEY         = "ai/ontology_query/catalog_context/v1"
     CATALOG_CACHE_TTL         = 60.seconds
 

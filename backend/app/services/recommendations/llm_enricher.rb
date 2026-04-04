@@ -17,7 +17,7 @@ module Recommendations
     TEMPERATURE               = 0.2   # low temp → more deterministic operational output
     VALID_REC_TYPES           = Recommendation::VALID_TYPES
     ANTHROPIC_TIMEOUT_SECONDS = 30
-    ANTHROPIC_MAX_RETRIES     = 0
+    ANTHROPIC_MAX_RETRIES     = 2
 
     def initialize(context:)
       @ctx = context
