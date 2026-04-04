@@ -2,7 +2,7 @@ import { HTMLTable, Tag } from '@blueprintjs/core'
 import { PostureBadge } from '../PostureBadge'
 import { humanize } from '../../utils/humanize'
 import { PRIORITY_INTENT } from '../../lib/planningPageUtils'
-import type { AreaOfOperation, Asset, Site, Task } from '../../api/types'
+import type { Asset, PlanningAoStub, Site, Task } from '../../api/types'
 import type { CoverageCircle } from '../../lib/coverage'
 
 interface PlanningAssetCounts {
@@ -15,7 +15,7 @@ interface PlanningAssetCounts {
 
 interface SiteCoverageRow {
   site: Site
-  area: AreaOfOperation | null
+  area: PlanningAoStub | null
   circles: CoverageCircle[]
   openTaskCount: number
   criticalGap: boolean
@@ -25,7 +25,7 @@ interface PlanningAssetCoverageSectionProps {
   assetCounts: PlanningAssetCounts
   allocatedAssets: Asset[]
   assetTaskMap: Map<string, Task[]>
-  areasOfOperation: AreaOfOperation[]
+  areasOfOperation: PlanningAoStub[]
   aoCoverage: Map<string, { open: number; covered: number }>
   siteCoverageRows: SiteCoverageRow[]
   onOpenAsset: (assetId: string) => void

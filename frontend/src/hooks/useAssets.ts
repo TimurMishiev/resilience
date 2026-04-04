@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useReplayGuardedMutation } from './useReplayGuardedMutation'
 import { getAsset, getAssets, updateAssetStatus } from '../api/assets'
 import type { AssetStatus, PaginationParams, AsOfParam } from '../api/types'
 
@@ -26,7 +27,7 @@ export function useAsset(id: string | undefined) {
 
 export function useUpdateAssetStatus() {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useReplayGuardedMutation({
     mutationFn: ({ id, status }: { id: string; status: AssetStatus }) =>
       updateAssetStatus(id, status),
     onSuccess: () => {

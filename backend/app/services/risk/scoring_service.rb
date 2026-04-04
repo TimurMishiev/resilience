@@ -110,9 +110,13 @@ module Risk
             ) <= SIGNAL_RADIUS_KM
           end
         else
+          # Cap at 1000 rows to prevent unbounded memory load in high-density areas.
+          # The score caps at SIGNAL_DENSITY_CAP (30) with SIGNAL_MULTIPLIER (2.0),
+          # so 16+ signals already saturates the score — 1000 is more than sufficient.
           candidates = ExternalSignal
             .near_point(@site.latitude, @site.longitude, SIGNAL_RADIUS_KM)
             .where(occurred_at: SIGNAL_WINDOW_HOURS.hours.ago..Time.current)
+            .limit(1_000)
 
           candidates.count do |sig|
             Correlations::EvaluatorService.haversine_km(

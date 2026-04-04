@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useReplayGuardedMutation } from './useReplayGuardedMutation'
 import {
   getAreaOfOperation,
   getAreasOfOperation,
@@ -33,7 +34,7 @@ export function useAreasOfOperation(params?: AreasOfOperationParams, options?: {
 
 export function useCreateAreaOfOperation() {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useReplayGuardedMutation({
     mutationFn: (body: CreateAreaOfOperationBody) => createAreaOfOperation(body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['areas_of_operation'] })
@@ -43,7 +44,7 @@ export function useCreateAreaOfOperation() {
 
 export function useUpdateAreaOfOperation() {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useReplayGuardedMutation({
     mutationFn: ({ id, body }: { id: string; body: UpdateAreaOfOperationBody }) =>
       updateAreaOfOperation(id, body),
     onSuccess: () => {
@@ -54,7 +55,7 @@ export function useUpdateAreaOfOperation() {
 
 export function useDeleteAreaOfOperation() {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useReplayGuardedMutation({
     mutationFn: (id: string) => deleteAreaOfOperation(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['areas_of_operation'] })
@@ -64,7 +65,7 @@ export function useDeleteAreaOfOperation() {
 
 export function useUpdateAreaOfOperationPosture() {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useReplayGuardedMutation({
     mutationFn: ({ id, posture }: { id: string; posture: Posture }) =>
       updateAreaOfOperationPosture(id, posture),
     onSuccess: () => {

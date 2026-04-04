@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
+import { useReplayGuardedMutation } from './useReplayGuardedMutation'
 import { getSignalRuleMatches, transitionAlert, bulkTransitionAlerts, getActiveBreachSiteIds } from '../api/signal_rule_matches'
 import type { SignalRuleMatchesParams, TransitionAlertBody } from '../api/types'
 import type { BulkTransitionBody } from '../api/signal_rule_matches'
@@ -41,7 +42,7 @@ export function useSignalRuleMatchesInfinite(
 
 export function useTransitionAlert() {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useReplayGuardedMutation({
     mutationFn: ({ id, body }: { id: string; body: TransitionAlertBody }) =>
       transitionAlert(id, body),
     onSuccess: () => {
@@ -64,7 +65,7 @@ export function useActiveBreachSiteIds(options?: { enabled?: boolean; refetchInt
 
 export function useBulkTransitionAlerts() {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useReplayGuardedMutation({
     mutationFn: (body: BulkTransitionBody) => bulkTransitionAlerts(body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['signal_rule_matches'] })

@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useReplayGuardedMutation } from './useReplayGuardedMutation'
 import {
   getCorrelationRules,
   createCorrelationRule,
@@ -22,7 +23,7 @@ export function useCorrelationRules(params?: { active_only?: boolean }, options?
 
 export function useCreateCorrelationRule() {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useReplayGuardedMutation({
     mutationFn: (body: CreateCorrelationRuleBody) => createCorrelationRule(body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['correlation_rules'] })
@@ -32,7 +33,7 @@ export function useCreateCorrelationRule() {
 
 export function useUpdateCorrelationRule() {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useReplayGuardedMutation({
     mutationFn: ({ id, body }: { id: string; body: UpdateCorrelationRuleBody }) =>
       updateCorrelationRule(id, body),
     onSuccess: () => {
@@ -43,7 +44,7 @@ export function useUpdateCorrelationRule() {
 
 export function useDeleteCorrelationRule() {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useReplayGuardedMutation({
     mutationFn: (id: string) => deleteCorrelationRule(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['correlation_rules'] })

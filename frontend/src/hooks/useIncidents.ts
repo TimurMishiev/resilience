@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useReplayGuardedMutation } from './useReplayGuardedMutation'
 import {
   getIncidents, getIncident, updateIncident, transitionIncident,
   getIncidentAllowedTransitions, assignIncident, getIncidentNotes, addIncidentNote,
@@ -43,7 +44,7 @@ export function useIncidentAllowedTransitions(id: string | undefined, options?: 
 
 export function useUpdateIncident() {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useReplayGuardedMutation({
     mutationFn: ({ id, ...body }: { id: string } & Partial<Pick<Incident, 'title' | 'description' | 'severity'>>) =>
       updateIncident(id, body),
     onSuccess: () => {
@@ -59,7 +60,7 @@ interface MutationCallbacks<TVariables> {
 
 export function useTransitionIncident(callbacks?: MutationCallbacks<{ id: string; to_status: IncidentStatus }>) {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useReplayGuardedMutation({
     mutationFn: ({ id, to_status }: { id: string; to_status: IncidentStatus }) =>
       transitionIncident(id, to_status),
     onMutate: callbacks?.onMutate,
@@ -73,7 +74,7 @@ export function useTransitionIncident(callbacks?: MutationCallbacks<{ id: string
 
 export function useAssignIncident(callbacks?: MutationCallbacks<{ id: string; assignee_id: string | null }>) {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useReplayGuardedMutation({
     mutationFn: ({ id, assignee_id }: { id: string; assignee_id: string | null }) =>
       assignIncident(id, assignee_id),
     onMutate: callbacks?.onMutate,
@@ -95,7 +96,7 @@ export function useIncidentNotes(id: string | undefined, params?: { as_of?: stri
 
 export function useAddIncidentNote() {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useReplayGuardedMutation({
     mutationFn: ({ id, body }: { id: string; body: string }) =>
       addIncidentNote(id, body),
     onSuccess: (_data, { id }) => {
@@ -126,7 +127,7 @@ export function useProsecutionSteps(id: string | undefined, params?: { as_of?: s
 
 export function useInitiateProsecution() {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useReplayGuardedMutation({
     mutationFn: ({ id, notes }: { id: string; notes?: string | null }) =>
       initiateProsecution(id, notes),
     onSuccess: (_data, { id }) => {
@@ -139,7 +140,7 @@ export function useInitiateProsecution() {
 
 export function useAddProsecutionStep() {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useReplayGuardedMutation({
     mutationFn: ({ id, body }: { id: string; body: AddProsecutionStepBody }) =>
       addProsecutionStep(id, body),
     onSuccess: (_data, { id }) => {

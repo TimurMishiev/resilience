@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useReplayGuardedMutation } from './useReplayGuardedMutation'
 import {
   getRecommendations,
   generateRecommendations,
@@ -38,7 +39,7 @@ function useRecMutation<TVariables>(
   invalidate = true,
 ) {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useReplayGuardedMutation({
     mutationFn: mutFn,
     onSuccess: () => {
       if (invalidate) {

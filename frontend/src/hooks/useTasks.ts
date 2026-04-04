@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useReplayGuardedMutation } from './useReplayGuardedMutation'
 import { getTask, getTasks, createTask, updateTask, transitionTask, getAllowedTransitions } from '../api/tasks'
 import type { PaginationParams, AsOfParam, WorkflowStatus, TransitionTaskBody, CreateTaskBody, UpdateTaskBody } from '../api/types'
 
@@ -40,7 +41,7 @@ export function useAllowedTransitions(taskId: string | null) {
 
 export function useCreateTask() {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useReplayGuardedMutation({
     mutationFn: (body: CreateTaskBody) => createTask(body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
@@ -51,7 +52,7 @@ export function useCreateTask() {
 
 export function useUpdateTask() {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useReplayGuardedMutation({
     mutationFn: ({ id, body }: { id: string; body: UpdateTaskBody }) =>
       updateTask(id, body),
     onSuccess: () => {
@@ -65,7 +66,7 @@ export function useUpdateTask() {
 export function useTransitionTask() {
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useReplayGuardedMutation({
     mutationFn: ({ id, body }: { id: string; body: TransitionTaskBody }) =>
       transitionTask(id, body),
     onSuccess: () => {

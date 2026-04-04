@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useReplayGuardedMutation } from './useReplayGuardedMutation'
 import {
   createChokepoint,
   deleteChokepoint,
@@ -21,7 +22,7 @@ export function useChokepoints(params?: ChokepointsParams, options?: { enabled?:
 
 export function useCreateChokepoint() {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useReplayGuardedMutation({
     mutationFn: (body: CreateChokepointBody) => createChokepoint(body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['planning'] })
@@ -32,7 +33,7 @@ export function useCreateChokepoint() {
 
 export function useUpdateChokepoint() {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useReplayGuardedMutation({
     mutationFn: ({ id, body }: { id: string; body: UpdateChokepointBody }) => updateChokepoint(id, body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['planning'] })
@@ -43,7 +44,7 @@ export function useUpdateChokepoint() {
 
 export function useDeleteChokepoint() {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useReplayGuardedMutation({
     mutationFn: (id: string) => deleteChokepoint(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['planning'] })

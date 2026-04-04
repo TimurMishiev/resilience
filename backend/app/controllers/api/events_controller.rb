@@ -2,12 +2,14 @@ module Api
   class EventsController < ApplicationController
     include ActionController::Live
     include JwtAuthenticatable
+    include Pundit::Authorization
 
     # GET /api/events
     # Opens a persistent SSE stream for the authenticated client.
     # The client receives a heartbeat every 25 seconds to keep the
     # connection alive through proxies and load balancers.
     def stream
+      authorize :event, :stream?
       lease = admit_sse_stream!(stream_name: "events")
       return unless lease
 

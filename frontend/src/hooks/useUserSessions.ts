@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useReplayGuardedMutation } from './useReplayGuardedMutation'
 import {
   getUserSessions,
   revokeAllUserSessions,
@@ -18,7 +19,7 @@ export function useUserSessions(params?: UserSessionQueryParams, enabled = true)
 
 export function useRevokeUserSession() {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useReplayGuardedMutation({
     mutationFn: ({ id, params }: { id: string; params?: UserSessionQueryParams }) =>
       revokeUserSession(id, params),
     onSuccess: () => {
@@ -29,7 +30,7 @@ export function useRevokeUserSession() {
 
 export function useRevokeAllUserSessions() {
   const queryClient = useQueryClient()
-  return useMutation({
+  return useReplayGuardedMutation({
     mutationFn: (params?: RevokeAllSessionsParams) => revokeAllUserSessions(params),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['user-sessions'] })
