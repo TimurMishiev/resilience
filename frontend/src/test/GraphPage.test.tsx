@@ -4,9 +4,9 @@ import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
 const mockState = vi.hoisted(() => ({
-  sites:  { data: { data: [] }, isLoading: false, error: null },
-  tasks:  { data: { data: [] }, isLoading: false, error: null },
-  assets: { data: { data: [] }, isLoading: false, error: null },
+  sites:  { data: { data: [] }, isLoading: false, error: null as Error | null },
+  tasks:  { data: { data: [] }, isLoading: false, error: null as Error | null },
+  assets: { data: { data: [] }, isLoading: false, error: null as Error | null },
 }))
 
 vi.mock('../hooks/useSites', () => ({
