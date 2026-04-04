@@ -175,7 +175,7 @@ module Api
     end
 
     def serialize_replay_recommendations(records, as_of:)
-      replay_states = replay_states_for_recommendations(records, as_of: as_of)
+      replay_states = Replay::StateSerializer.recommendation_states(records, as_of: as_of)
       serialized = records.map { |record| serialize(record, replay_state: replay_states.fetch(record.id)) }
 
       return serialized unless params[:status].present?
@@ -183,27 +183,5 @@ module Api
       serialized.select { |record| record[:status] == params[:status] }
     end
 
-    def replay_states_for_recommendations(records, as_of:)
-      ids = records.map(&:id)
-      latest_snapshots = latest_audit_snapshots(entity_type: "Recommendation", entity_ids: ids, as_of: as_of)
-
-      records.each_with_object({}) do |record, states|
-        snapshot      = latest_snapshots[record.id] || {}
-        replay_status = snapshot_value(snapshot, "status", fallback: "pending")
-        replay_status = "expired" if replay_status == "pending" && record.expires_at.present? && record.expires_at <= as_of
-
-        reviewed_status = %w[accepted rejected deferred executed].include?(replay_status)
-        states[record.id] = {
-          status: replay_status,
-          reviewed_by: reviewed_status && record.reviewer ? {
-            id: record.reviewer.id,
-            email: record.reviewer.email,
-          } : nil,
-          reviewed_at: reviewed_status && record.reviewed_at.present? && record.reviewed_at <= as_of ? record.reviewed_at : nil,
-          review_reason: reviewed_status ? snapshot_or_current(snapshot, "review_reason", record.review_reason) : nil,
-          executed_at: replay_status == "executed" && record.executed_at.present? && record.executed_at <= as_of ? record.executed_at : nil,
-        }
-      end
-    end
   end
 end

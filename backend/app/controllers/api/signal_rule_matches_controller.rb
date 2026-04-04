@@ -175,7 +175,7 @@ module Api
     end
 
     def serialize_replay_matches(records, as_of:)
-      replay_states = replay_states_for_matches(records, as_of: as_of)
+      replay_states = Replay::StateSerializer.match_states(records, as_of: as_of)
       site_snapshots = latest_audit_snapshots(
         entity_type: "Site",
         entity_ids: records.filter_map(&:site_id).uniq,
@@ -201,28 +201,6 @@ module Api
           task_snapshot: task_snapshots[record.task_id],
           task_visible: record.task_id.blank? || task_snapshots.key?(record.task_id)
         )
-      end
-    end
-
-    def replay_states_for_matches(records, as_of:)
-      ids = records.map(&:id)
-      latest_snapshots = latest_audit_snapshots(entity_type: "SignalRuleMatch", entity_ids: ids, as_of: as_of)
-      acknowledged_by_ids = latest_snapshots.values.filter_map { |snapshot| snapshot_value(snapshot, "acknowledged_by_id") }.uniq
-      emails_by_id = User.where(id: acknowledged_by_ids).pluck(:id, :email).to_h
-
-      records.each_with_object({}) do |record, states|
-        snapshot = latest_snapshots[record.id] || {}
-        acknowledged_by_id = snapshot_value(snapshot, "acknowledged_by_id")
-
-        states[record.id] = {
-          workflow_status: snapshot_value(snapshot, "workflow_status", fallback: "unacknowledged"),
-          acknowledged_at: snapshot_value(snapshot, "acknowledged_at"),
-          notes:           snapshot_value(snapshot, "notes"),
-          acknowledged_by: acknowledged_by_id.present? ? {
-            id: acknowledged_by_id,
-            email: emails_by_id[acknowledged_by_id]
-          }.compact : nil,
-        }
       end
     end
 

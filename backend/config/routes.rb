@@ -98,13 +98,16 @@ Rails.application.routes.draw do
         post  :transition
         get   :allowed_transitions
         patch :assign
-        get   'notes', action: :list_notes
-        post  'notes', action: :add_note
         get   :chain
-        post  :prosecute,                        action: :initiate_prosecution
-        get   'prosecution_steps',               action: :list_prosecution_steps
-        post  'prosecution_steps',               action: :add_prosecution_step
       end
+    end
+    # Prosecution & notes — routed to sub-controllers under Api::Incidents::
+    scope "incidents/:incident_id", module: :incidents, as: :incident do
+      get    "notes",              to: "notes#index"
+      post   "notes",             to: "notes#create"
+      post   "prosecute",         to: "prosecution#initiate"
+      get    "prosecution_steps", to: "prosecution#index"
+      post   "prosecution_steps", to: "prosecution#create"
     end
 
     resources :recommendations, only: %i[index] do

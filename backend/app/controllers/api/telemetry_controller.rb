@@ -16,8 +16,11 @@ module Api
       authorize TelemetryReading
       upper_bound = as_of || Time.current
 
+      visible_asset_ids = policy_scope(Asset).select(:id)
+
       readings = TelemetryReading
         .select("DISTINCT ON (asset_id) telemetry_readings.*")
+        .where(asset_id: visible_asset_ids)
         .where("occurred_at <= ?", upper_bound)
         .includes(:asset)
         .order("asset_id, occurred_at DESC")
@@ -40,10 +43,13 @@ module Api
       ].min
       lower_bound = upper_bound - window_minutes.minutes
 
+      visible_asset_ids = policy_scope(Asset).select(:id)
+
       # Use ROW_NUMBER() to cap at TRAIL_POINT_LIMIT per asset at the SQL layer
       # so we never materialize unbounded rows in Ruby.
       cte_sql = TelemetryReading
         .select("telemetry_readings.*, ROW_NUMBER() OVER (PARTITION BY asset_id ORDER BY occurred_at DESC) AS rn")
+        .where(asset_id: visible_asset_ids)
         .where(occurred_at: lower_bound..upper_bound)
         .to_sql
 
