@@ -72,7 +72,7 @@ module Sites
 
     def task_audit_events(cutoff)
       task_scope = Task.where(site_id: @site.id).select(:id)
-      return [] unless Task.where(site_id: @site.id).exists?
+      return [] unless task_scope.exists?
 
       AuditEvent
         .where(entity_type: "Task", entity_id: task_scope)
