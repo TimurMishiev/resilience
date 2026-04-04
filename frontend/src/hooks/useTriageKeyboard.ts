@@ -35,11 +35,13 @@ export function useTriageKeyboard({
   scrollToIndex,
 }: TriageKeyboardInput): TriageKeyboardReturn {
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null)
+  const [prevMatchCount, setPrevMatchCount] = useState(matches.length)
 
   // Reset focus when matches change (filter switch, new data)
-  useEffect(() => {
-    setFocusedIndex(null)
-  }, [matches.length])
+  if (prevMatchCount !== matches.length) {
+    setPrevMatchCount(matches.length)
+    if (focusedIndex !== null) setFocusedIndex(null)
+  }
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (!enabled || matches.length === 0) return
