@@ -24,6 +24,8 @@ const LIVE_EVENT_NAMES = [
   'posture_changed',
   'planning_doctrine_updated',
   'chokepoint_updated',
+  'prosecution_started',
+  'prosecution_step_added',
 ] as const
 
 /**

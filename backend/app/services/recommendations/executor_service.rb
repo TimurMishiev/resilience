@@ -142,6 +142,7 @@ module Recommendations
       begin
         Sse::Broadcaster.instance.publish(
           event: "site_risk_updated",
+          organization_id: site.organization_id,
           data:  { site_id: site.id }
         )
       rescue StandardError => e
@@ -173,6 +174,7 @@ module Recommendations
         begin
           Sse::Broadcaster.instance.publish(
             event: "task_updated",
+            organization_id: task.site&.organization_id,
             data:  { task_id: task.id, title: task.title, site_name: task.site&.name }
           )
         rescue StandardError => e

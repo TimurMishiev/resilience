@@ -80,6 +80,7 @@ module Correlations
       begin
         Sse::Broadcaster.instance.publish(
           event: "rule_fired",
+          organization_id: @site.organization_id,
           data: {
             rule_id:       @rule.id,
             rule_name:     @rule.name,

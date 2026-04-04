@@ -51,8 +51,12 @@ class ApplicationController < ActionController::API
   def set_security_headers
     # API responses only return JSON — no scripts, images, or iframes needed.
     response.set_header("Content-Security-Policy", "default-src 'none'")
-    # HSTS is handled at the Fly.io proxy layer (not here) to avoid
-    # double-redirect issues when force_ssl is off.
+    # HSTS: 1 year max-age. Safe even without force_ssl because Fly terminates
+    # TLS at the edge — the header only applies to future browser requests.
+    # Excluded in development via assume_ssl check.
+    if Rails.configuration.assume_ssl
+      response.set_header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    end
   end
 
   def start_sse_heartbeat(stream_name:, interval_seconds: 25, &block)

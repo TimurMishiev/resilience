@@ -61,11 +61,13 @@ RSpec.describe "Api::Chokepoints", type: :request do
       post "/api/chokepoints", params: valid_params, headers: auth_headers(commander)
 
       expect(broadcaster).to have_received(:publish).with(
-        event: "chokepoint_updated",
-        data: hash_including(
-          kind: "created",
-          chokepoint_name: "Hormuz East",
-          area_of_operation_name: "Northern Gulf"
+        hash_including(
+          event: "chokepoint_updated",
+          data: hash_including(
+            kind: "created",
+            chokepoint_name: "Hormuz East",
+            area_of_operation_name: "Northern Gulf"
+          )
         )
       )
     end

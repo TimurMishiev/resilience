@@ -107,11 +107,13 @@ RSpec.describe Correlations::RuleFiringService do
     it "includes all expected fields" do
       result
       expect(Sse::Broadcaster.instance).to have_received(:publish).with(
-        event: "rule_fired",
-        data:  hash_including(
-          :rule_id, :rule_name, :site_id, :site_name,
-          :task_id, :task_title, :priority,
-          :signal_type, :source, :distance_km, :fired_at
+        hash_including(
+          event: "rule_fired",
+          data:  hash_including(
+            :rule_id, :rule_name, :site_id, :site_name,
+            :task_id, :task_title, :priority,
+            :signal_type, :source, :distance_km, :fired_at
+          )
         )
       )
     end

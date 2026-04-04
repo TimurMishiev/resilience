@@ -89,6 +89,7 @@ module Incidents
       begin
         Sse::Broadcaster.instance.publish(
           event: "prosecution_started",
+          organization_id: @incident.site&.organization_id,
           data:  { incident_id: @incident.id, prosecution_phase: "assessing" }
         )
       rescue StandardError => e
@@ -167,6 +168,7 @@ module Incidents
       begin
         Sse::Broadcaster.instance.publish(
           event: "prosecution_step_added",
+          organization_id: @incident.site&.organization_id,
           data:  { incident_id: @incident.id, prosecution_phase: @incident.prosecution_phase }
         )
       rescue StandardError => e

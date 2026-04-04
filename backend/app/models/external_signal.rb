@@ -21,8 +21,18 @@ class ExternalSignal < ApplicationRecord
   # (Haversine applied in Ruby callers) only for legacy plain-Postgres instances
   # that were migrated without PostGIS; the checked-in schema and CI baseline are
   # now PostGIS-backed.
+  # Class-level memoization of PostGIS availability. Cleared on connection pool
+  # reconnect (new process) because the class is reloaded. Thread-safe because
+  # concurrent reads of a boolean are atomic in MRI, and the worst case of a
+  # duplicate DB query on first call is harmless.
+  def self.postgis_available?
+    return @postgis_available if defined?(@postgis_available)
+
+    @postgis_available = connection.extension_enabled?("postgis") && column_names.include?("location")
+  end
+
   scope :near_point, ->(lat, lng, km) {
-    if connection.extension_enabled?("postgis") && column_names.include?("location")
+    if postgis_available?
       # ST_DWithin(geography, geography, meters) — exact great-circle distance,
       # uses the GIST spatial index for O(log n) performance.
       # Uses connection.extension_enabled? (live DB query) rather than column_names

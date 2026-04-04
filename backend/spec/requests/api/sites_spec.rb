@@ -90,7 +90,7 @@ RSpec.describe "Api::Sites", type: :request do
       expect(response).to have_http_status(:ok)
       expect(alpha.reload.status).to eq("inactive")
       expect(broadcaster).to have_received(:publish).with(
-        event: "site_risk_updated", data: { site_id: alpha.id }
+        hash_including(event: "site_risk_updated", data: { site_id: alpha.id })
       )
     end
 
@@ -113,7 +113,7 @@ RSpec.describe "Api::Sites", type: :request do
       expect(response).to have_http_status(:ok)
       expect(flagged_site.reload.flagged_at).to be_nil
       expect(broadcaster).to have_received(:publish).with(
-        event: "site_risk_updated", data: { site_id: flagged_site.id }
+        hash_including(event: "site_risk_updated", data: { site_id: flagged_site.id })
       )
     end
 
@@ -171,7 +171,7 @@ RSpec.describe "Api::Sites", type: :request do
             headers: auth_headers(current_user), as: :json
 
       expect(broadcaster).to have_received(:publish).with(
-        event: "site_risk_updated", data: { site_id: alpha.id }
+        hash_including(event: "site_risk_updated", data: { site_id: alpha.id })
       )
     end
   end

@@ -87,6 +87,7 @@ module Sites
     def publish_breach(site:, match:, distance_km:)
       Sse::Broadcaster.instance.publish(
         event: "geofence_breach",
+        organization_id: site.organization_id,
         data: {
           site_id:        site.id,
           site_name:      site.name,

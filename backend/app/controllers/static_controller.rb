@@ -21,5 +21,20 @@ class StaticController < ApplicationController
   def set_spa_security_headers
     response.set_header("X-Frame-Options",        "DENY")
     response.set_header("X-Content-Type-Options",  "nosniff")
+    if Rails.configuration.assume_ssl
+      response.set_header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    end
+    response.set_header("Content-Security-Policy",
+      "default-src 'self'; " \
+      "script-src 'self' blob:; " \
+      "style-src 'self' 'unsafe-inline'; " \
+      "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://ion.cesium.com; " \
+      "connect-src 'self' https://ion.cesium.com https://assets.ion.cesium.com https://api.cesium.com wss:; " \
+      "worker-src 'self' blob:; " \
+      "child-src 'self' blob:; " \
+      "font-src 'self'; " \
+      "object-src 'none'; " \
+      "base-uri 'self'; " \
+      "frame-ancestors 'none'")
   end
 end

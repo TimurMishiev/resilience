@@ -11,7 +11,7 @@ module Correlations
     # between ticks (same margin as the previous thread-based evaluator).
     WINDOW_SECONDS = 12
 
-    retry_on StandardError, wait: :polynomially_later, attempts: 3
+    retry_on StandardError, wait: :polynomially_longer, attempts: 3
 
     def perform
       window_start = WINDOW_SECONDS.seconds.ago

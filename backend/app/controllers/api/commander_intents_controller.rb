@@ -114,8 +114,10 @@ module Api
     end
 
     def broadcast_planning_update(kind:, area_of_operation_id:)
+      ao_org_id = AreaOfOperation.where(id: area_of_operation_id).pick(:organization_id)
       Sse::Broadcaster.instance.publish(
         event: "planning_doctrine_updated",
+        organization_id: ao_org_id,
         data: {
           kind: kind,
           area_of_operation_id: area_of_operation_id,

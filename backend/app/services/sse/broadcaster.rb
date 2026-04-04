@@ -51,16 +51,12 @@ module Sse
     MAX_QUEUE_SIZE = 500
 
     # Push a message to all connected clients.
-    # event  - SSE event name string (e.g. "task_updated")
-    # data   - Hash that will be serialised to JSON
-    #
-    # Uses a copy-on-read pattern: snapshot the client list inside the mutex,
-    # release it, then push to each client outside the lock. This eliminates
-    # long mutex holds during the push loop so subscribe/unsubscribe are never
-    # blocked by a slow-client eviction or a large client set.
-    def publish(event:, data: {})
-      payload = { event: event, data: data }.to_json
-      relay_payload = { origin: @relay_instance_id, event: event, data: data }.to_json
+    # organization_id - optional UUID; when present, EventsController will
+    #   only deliver the event to clients whose user belongs to the same org
+    #   (or to users with no org — i.e. unrestricted users).
+    def publish(event:, data: {}, organization_id: nil)
+      payload = { event: event, data: data, organization_id: organization_id }.to_json
+      relay_payload = { origin: @relay_instance_id, event: event, data: data, organization_id: organization_id }.to_json
 
       # Snapshot under lock — O(n) array dup, no I/O.
       deliver_payload(payload, event: event)
@@ -89,7 +85,7 @@ module Sse
       parsed = JSON.parse(payload)
       return if parsed["origin"] == @relay_instance_id
 
-      deliver_payload({ event: parsed.fetch("event"), data: parsed["data"] }.to_json, event: parsed["event"])
+      deliver_payload({ event: parsed.fetch("event"), data: parsed["data"], organization_id: parsed["organization_id"] }.to_json, event: parsed["event"])
     rescue JSON::ParserError, KeyError => e
       Rails.logger.error("[SSE] relay_payload_error error=#{e.class} message=#{e.message}")
     end

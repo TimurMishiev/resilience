@@ -64,6 +64,9 @@ class Vessel < ApplicationRecord
     end
 
     [ vessel, created ]
+  rescue ActiveRecord::RecordNotUnique
+    # Concurrent insert for the same MMSI — retry with the now-persisted record.
+    retry
   end
 
   # ── Instance Methods ─────────────────────────────────────────────────────────

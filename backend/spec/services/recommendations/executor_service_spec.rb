@@ -210,8 +210,10 @@ RSpec.describe Recommendations::ExecutorService, type: :service do
       execute(rec)
 
       expect(broadcaster).to have_received(:publish).with(
-        event: "task_updated",
-        data:  hash_including(task_id: task.id, title: task.title)
+        hash_including(
+          event: "task_updated",
+          data:  hash_including(task_id: task.id, title: task.title)
+        )
       )
       expect(broadcaster).not_to have_received(:publish).with(hash_including(event: "task_transitioned"))
     end

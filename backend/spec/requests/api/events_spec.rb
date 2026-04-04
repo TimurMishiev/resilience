@@ -59,5 +59,77 @@ RSpec.describe "Api::Events", type: :request do
       expect(response).to have_http_status(:too_many_requests)
       expect(response.headers["Retry-After"]).to be_present
     end
+
+    # ── Org-scoped SSE filtering ───────────────────────────────────────────────
+
+    context "org-scoped event filtering" do
+      let(:org) { create(:organization) }
+      let(:org_user) { create(:user, organization: org) }
+      let(:org_sse_token) { JwtAuthenticatable.encode_sse(org_user.id) }
+
+      let(:other_org) { create(:organization) }
+
+      def enqueue_event(event:, organization_id: nil)
+        { event: event, data: { test: true }, organization_id: organization_id }.to_json
+      end
+
+      it "delivers events matching the user's organization" do
+        q = Queue.new
+        q << enqueue_event(event: "task_created", organization_id: org.id)
+        q.close
+
+        allow(broadcaster).to receive(:subscribe).and_return(q)
+
+        get "/api/events", params: { token: org_sse_token }
+
+        expect(response).to have_http_status(:ok)
+        expect(response.body).to include("event: task_created")
+      end
+
+      it "filters out events from a different organization" do
+        q = Queue.new
+        q << enqueue_event(event: "task_created", organization_id: other_org.id)
+        q.close
+
+        allow(broadcaster).to receive(:subscribe).and_return(q)
+
+        get "/api/events", params: { token: org_sse_token }
+
+        expect(response).to have_http_status(:ok)
+        expect(response.body).to include("event: connected")
+        expect(response.body).not_to include("event: task_created")
+      end
+
+      it "delivers events with nil organization_id (global events) to org users" do
+        q = Queue.new
+        q << enqueue_event(event: "alert_transitioned", organization_id: nil)
+        q.close
+
+        allow(broadcaster).to receive(:subscribe).and_return(q)
+
+        get "/api/events", params: { token: org_sse_token }
+
+        expect(response).to have_http_status(:ok)
+        expect(response.body).to include("event: alert_transitioned")
+      end
+
+      it "delivers all events to users without an organization (unrestricted)" do
+        unrestricted_user = create(:user, organization: nil)
+        unrestricted_token = JwtAuthenticatable.encode_sse(unrestricted_user.id)
+
+        q = Queue.new
+        q << enqueue_event(event: "rule_fired", organization_id: org.id)
+        q << enqueue_event(event: "task_created", organization_id: other_org.id)
+        q.close
+
+        allow(broadcaster).to receive(:subscribe).and_return(q)
+
+        get "/api/events", params: { token: unrestricted_token }
+
+        expect(response).to have_http_status(:ok)
+        expect(response.body).to include("event: rule_fired")
+        expect(response.body).to include("event: task_created")
+      end
+    end
   end
 end

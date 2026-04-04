@@ -59,8 +59,10 @@ RSpec.describe Incidents::ProsecutionService, type: :service do
     it "broadcasts a prosecution_started SSE event" do
       broadcaster = Sse::Broadcaster.instance
       expect(broadcaster).to receive(:publish).with(
-        event: "prosecution_started",
-        data:  hash_including(incident_id: incident.id, prosecution_phase: "assessing")
+        hash_including(
+          event: "prosecution_started",
+          data:  hash_including(incident_id: incident.id, prosecution_phase: "assessing")
+        )
       )
       call
     end
@@ -204,8 +206,10 @@ RSpec.describe Incidents::ProsecutionService, type: :service do
     it "broadcasts a prosecution_step_added SSE event" do
       broadcaster = Sse::Broadcaster.instance
       expect(broadcaster).to receive(:publish).with(
-        event: "prosecution_step_added",
-        data:  hash_including(incident_id: incident.id)
+        hash_including(
+          event: "prosecution_step_added",
+          data:  hash_including(incident_id: incident.id)
+        )
       )
       call
     end

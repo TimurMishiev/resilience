@@ -60,7 +60,7 @@ module Api
 
     # PATCH /api/incidents/:id
     def update
-      incident = scoped_record(Incident, params[:id])
+      incident = scoped_record(Incident, params[:id], includes: [:site, :area_of_operation, :signal_rule_matches, :assigned_to])
       authorize incident
       result   = ::Incidents::UpdateService.call(
         incident: incident,
@@ -77,7 +77,7 @@ module Api
     # POST /api/incidents/:id/transition
     # Body: { to_status: "acknowledged" }
     def transition
-      incident  = scoped_record(Incident, params[:id])
+      incident  = scoped_record(Incident, params[:id], includes: [:site, :area_of_operation, :signal_rule_matches, :assigned_to])
       authorize incident, :transition?
       to_status = params[:to_status].to_s.strip
 
@@ -104,7 +104,7 @@ module Api
     # PATCH /api/incidents/:id/assign
     # Body: { assignee_id: "<uuid>" } — pass null/absent to unassign
     def assign
-      incident = scoped_record(Incident, params[:id])
+      incident = scoped_record(Incident, params[:id], includes: [:site, :area_of_operation, :signal_rule_matches, :assigned_to])
       authorize incident, :assign?
       assignee = if params[:assignee_id].present?
         user = User.find_by(id: params[:assignee_id])

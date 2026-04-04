@@ -139,6 +139,9 @@ module JwtAuthenticatable
 
       @current_session = UserSession.active.find_by(jti: payload[:jti])
       @current_session&.touch_if_stale!
+    rescue ActiveRecord::ConnectionNotEstablished, PG::Error => e
+      Rails.logger.error("[JwtAuthenticatable] DB connection failure during session hydration jti=#{payload[:jti]} error=#{e.class}: #{e.message}")
+      Observability.capture_exception(e, tags: { component: "session_hydration" }) if defined?(Observability)
     rescue StandardError => e
       Rails.logger.warn("[JwtAuthenticatable] failed to hydrate current session jti=#{payload[:jti]} error=#{e.class}: #{e.message}")
     end

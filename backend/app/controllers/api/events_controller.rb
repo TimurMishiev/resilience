@@ -35,11 +35,20 @@ module Api
       # named-event listeners (e.g. addEventListener('task_created', ...)).
       # Raw JSON written directly would arrive as a 'message' event and silently
       # miss every named listener registered in useEventSource.ts.
+      user_org_id = current_user.organization_id
+
       loop do
         payload = queue.pop          # blocks until a message arrives
         break if payload.nil?
         refresh_sse_stream_lease(lease, stream_name: "events")
         parsed  = JSON.parse(payload)
+
+        # Org-scoped filtering: skip events from a different organization.
+        # Events without an organization_id pass through (global events).
+        # Users without an organization_id see everything (unrestricted).
+        event_org_id = parsed["organization_id"]
+        next if user_org_id.present? && event_org_id.present? && event_org_id != user_org_id
+
         break unless sse_write(response.stream, event: parsed["event"], data: parsed["data"])
       rescue JSON::ParserError => e
         Rails.logger.error("[SSE] malformed queue payload — skipping: #{e.message}")

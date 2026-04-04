@@ -183,12 +183,11 @@ module Telemetry
         "(#{columns.map { |column| TelemetryReading.connection.quote(row[column]) }.join(', ')})"
       end.join(", ")
 
-      TelemetryReading.connection.exec_insert_all(
-        <<~SQL,
+      TelemetryReading.connection.execute(
+        <<~SQL
           INSERT INTO telemetry_readings (#{columns.join(', ')})
           VALUES #{values_sql}
         SQL
-        "Telemetry Bulk Insert"
       )
 
       Asset.where(id: rows.map { |row| row[:asset_id] }).update_all(last_reported_at: occurred_at)

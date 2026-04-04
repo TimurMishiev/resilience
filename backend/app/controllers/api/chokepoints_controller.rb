@@ -172,6 +172,7 @@ module Api
     def broadcast_chokepoint_update(kind:, chokepoint:, area_of_operation_name:)
       Sse::Broadcaster.instance.publish(
         event: "chokepoint_updated",
+        organization_id: chokepoint.area_of_operation&.organization_id,
         data: {
           kind:                   kind,
           chokepoint_name:        chokepoint.name,

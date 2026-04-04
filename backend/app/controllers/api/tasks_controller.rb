@@ -31,7 +31,7 @@ module Api
       authorize task, :create?
       result = Tasks::CreationService.call(params: task_create_params, actor: actor)
       if result.success
-        task = result.payload[:task]
+        task = Task.includes(:asset, site: :area_of_operation).find(result.payload[:task].id)
         broadcast("task_created", task)
         render json: serialize_task(task), status: :created
       else
@@ -44,7 +44,7 @@ module Api
       authorize task
       result = Tasks::UpdateService.call(task: task, params: task_update_params, actor: actor, actor_role: current_user.role)
       if result.success
-        task = result.payload[:task]
+        task = Task.includes(:asset, site: :area_of_operation).find(result.payload[:task].id)
         broadcast("task_updated", task)
         render json: serialize_task(task)
       else
@@ -63,7 +63,7 @@ module Api
         blocked_reason: transition_params[:blocked_reason]
       )
       if result.success
-        task = result.payload[:task]
+        task = Task.includes(:asset, site: :area_of_operation).find(result.payload[:task].id)
         broadcast("task_transitioned", task)
         render json: serialize_task(task)
       else
@@ -145,6 +145,7 @@ module Api
     def broadcast(event, task)
       Sse::Broadcaster.instance.publish(
         event: event,
+        organization_id: task.site&.organization_id,
         data:  {
           id:              task.id,
           site_id:         task.site_id,

@@ -140,6 +140,7 @@ module Api
 
       Sse::Broadcaster.instance.publish(
         event: "posture_changed",
+        organization_id: area.organization_id,
         data:  { area_of_operation_id: area.id, name: area.name, posture: posture }
       )
 

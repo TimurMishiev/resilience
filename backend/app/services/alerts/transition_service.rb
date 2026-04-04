@@ -65,6 +65,7 @@ module Alerts
       begin
         Sse::Broadcaster.instance.publish(
           event: "alert_transitioned",
+          organization_id: @match.site&.organization_id,
           data: {
             id:              @match.id,
             workflow_status: @match.workflow_status,

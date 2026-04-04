@@ -133,11 +133,13 @@ RSpec.describe Alerts::TransitionService do
     it "publishes an alert_transitioned event after a successful transition" do
       described_class.call(match: match, to_status: "acknowledged", actor: actor)
       expect(Sse::Broadcaster.instance).to have_received(:publish).with(
-        event: "alert_transitioned",
-        data:  hash_including(
-          id:              match.id,
-          workflow_status: "acknowledged",
-          acknowledged_by: actor.email
+        hash_including(
+          event: "alert_transitioned",
+          data:  hash_including(
+            id:              match.id,
+            workflow_status: "acknowledged",
+            acknowledged_by: actor.email
+          )
         )
       )
     end
