@@ -196,6 +196,63 @@ RSpec.describe "API scoped access", type: :request do
       expect(response).to have_http_status(:forbidden)
     end
 
+    it "scopes global audit view to the commander's org across all entity types" do
+      chokepoint_a = create(:chokepoint, area_of_operation: ao_a)
+      chokepoint_b = create(:chokepoint, area_of_operation: ao_b)
+      intent_a     = create(:commander_intent, area_of_operation: ao_a)
+      intent_b     = create(:commander_intent, area_of_operation: ao_b)
+      pace_a       = create(:pace_plan, area_of_operation: ao_a)
+      pace_b       = create(:pace_plan, area_of_operation: ao_b)
+      salute_a     = create(:salute_report, area_of_operation: ao_a, site: site_a)
+      salute_b     = create(:salute_report, area_of_operation: ao_b, site: site_b)
+
+      # Create audit events for every entity type in both orgs
+      visible_events = [
+        audit_task_a,
+        create(:audit_event, entity_type: "Site",              entity_id: site_a.id,          event_type: "site.created"),
+        create(:audit_event, entity_type: "AreaOfOperation",   entity_id: ao_a.id,            event_type: "ao.created"),
+        create(:audit_event, entity_type: "Incident",          entity_id: incident_a.id,      event_type: "incident.created"),
+        create(:audit_event, entity_type: "SignalRuleMatch",   entity_id: match_a.id,         event_type: "alert.fired"),
+        create(:audit_event, entity_type: "CorrelationRule",   entity_id: rule_a.id,          event_type: "rule.created"),
+        create(:audit_event, entity_type: "Asset",             entity_id: asset_a.id,         event_type: "asset.updated"),
+        create(:audit_event, entity_type: "Chokepoint",        entity_id: chokepoint_a.id,    event_type: "chokepoint.created"),
+        create(:audit_event, entity_type: "PacePlan",          entity_id: pace_a.id,          event_type: "pace_plan.created"),
+        create(:audit_event, entity_type: "CommanderIntent",   entity_id: intent_a.id,        event_type: "intent.created"),
+        create(:audit_event, entity_type: "SaluteReport",      entity_id: salute_a.id,        event_type: "salute.created"),
+        create(:audit_event, entity_type: "Recommendation",    entity_id: recommendation_a.id, event_type: "rec.created"),
+      ]
+
+      hidden_events = [
+        audit_task_b,
+        create(:audit_event, entity_type: "Site",              entity_id: site_b.id,          event_type: "site.created"),
+        create(:audit_event, entity_type: "AreaOfOperation",   entity_id: ao_b.id,            event_type: "ao.created"),
+        create(:audit_event, entity_type: "Incident",          entity_id: incident_b.id,      event_type: "incident.created"),
+        create(:audit_event, entity_type: "SignalRuleMatch",   entity_id: match_b.id,         event_type: "alert.fired"),
+        create(:audit_event, entity_type: "CorrelationRule",   entity_id: rule_b.id,          event_type: "rule.created"),
+        create(:audit_event, entity_type: "Asset",             entity_id: asset_b.id,         event_type: "asset.updated"),
+        create(:audit_event, entity_type: "Chokepoint",        entity_id: chokepoint_b.id,    event_type: "chokepoint.created"),
+        create(:audit_event, entity_type: "PacePlan",          entity_id: pace_b.id,          event_type: "pace_plan.created"),
+        create(:audit_event, entity_type: "CommanderIntent",   entity_id: intent_b.id,        event_type: "intent.created"),
+        create(:audit_event, entity_type: "SaluteReport",      entity_id: salute_b.id,        event_type: "salute.created"),
+        create(:audit_event, entity_type: "Recommendation",    entity_id: recommendation_b.id, event_type: "rec.created"),
+      ]
+
+      get "/api/audit_events", headers: auth_headers(scoped_commander)
+
+      expect(response).to have_http_status(:ok)
+      returned_ids = json_body.map { |e| e.fetch("id") }
+
+      visible_events.each do |event|
+        expect(returned_ids).to include(event.id),
+          "expected #{event.entity_type} event #{event.id} to be visible but it was excluded"
+      end
+
+      hidden_events.each do |event|
+        expect(returned_ids).not_to include(event.id),
+          "expected #{event.entity_type} event #{event.id} to be hidden but it leaked through"
+      end
+    end
+
     it "scopes recommendations to visible entities" do
       get "/api/recommendations", headers: auth_headers(scoped_operator)
 
