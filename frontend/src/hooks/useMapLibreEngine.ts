@@ -1,8 +1,14 @@
 /**
  * useMapLibreEngine
  *
- * Owns all MapLibre GL lifecycle: map init, style switching, GeoJSON
- * sources/layers, popup handlers, and overlay animations.
+ * Owns all MapLibre GL lifecycle: map init, style switching, click handling,
+ * and signal layer visibility.
+ *
+ * Entity/layer management is delegated to sub-hooks:
+ *  - useMapSiteLayers   — site GeoJSON source/layers + selection ring
+ *  - useMapAssetLayers  — asset GeoJSON source/layers + selection ring
+ *  - useMapOverlays     — AO polygons, geofence, breach, coverage, chokepoints
+ *  - useMapTrackLayers  — vessel track + asset trail polylines
  *
  * Design contract:
  *  - Imperative: all effects are internal; the caller passes data + callbacks.
@@ -25,6 +31,9 @@ import type { Site, Task, Asset, Signal, AreaOfOperation, Chokepoint } from '../
 import type { VesselTrack } from '../api/vessels'
 import type { CoverageCircle } from '../lib/coverage'
 import { useMapOverlays } from './map/useMapOverlays'
+import { useMapSiteLayers } from './map/useMapSiteLayers'
+import { useMapAssetLayers } from './map/useMapAssetLayers'
+import { useMapTrackLayers } from './map/useMapTrackLayers'
 import { expandMapSignalCluster } from '../lib/mapSignalClustering'
 import { ensureSignalLayers, updateSignalSources } from '../lib/mapEngineSignalLayers'
 import { MAP_STYLE_CONFIGS, type MapStyleKey } from '../lib/mapEngineStyles'
@@ -34,17 +43,11 @@ import {
   resolveMapClickCandidate,
   type MapInteractiveKind,
 } from '../lib/mapClickResolution'
-import {
-  buildAssetFeatureCollection,
-  buildSiteFeatureCollection,
-} from '../lib/mapRenderData'
 import { buildMapSignalFeatureCollection, buildMapSignalRenderCollections } from '../lib/mapSignalRendering'
 import { preloadMapRuntime } from '../lib/preloadRoutes'
-import { ASSET_STATUS_COLORS, SIGNAL_COLORS } from '../lib/signalConfig'
 import type { AssetTrail } from '../lib/telemetry'
 import type { TelemetryMap } from '../lib/telemetry'
 
-const EMPTY_READINGS: TelemetryMap = new Map()
 export type MapLibreModule = typeof import('maplibre-gl')
 
 // ---------------------------------------------------------------------------
@@ -132,7 +135,6 @@ export function useMapLibreEngine({
 }: MapEngineInput): MapEngineReturn {
   const mapRef           = useRef<MapLibreMap | null>(null)
   const maplibreRef      = useRef<MapLibreModule | null>(null)
-  // Kept in a ref so signal click handler never goes stale without re-registering
   const signalsRef       = useRef<Signal[]>([])
   const selectedSignalIdRef = useRef<string | null>(selectedSignalId)
   const mapStyleRef      = useRef<MapStyleKey>(mapStyle)
@@ -185,14 +187,12 @@ export function useMapLibreEngine({
   }, [])
 
   // ---------------------------------------------------------------------------
-  // Style switching — skip the very first render (init already loaded tactical)
+  // Style switching
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
     if (appliedStyleRef.current === mapStyle) return
-    // Must synchronously clear mapLoaded before setStyle so dependent effects
-    // don't fire against the old style context
     setMapLoaded(false)
     appliedStyleRef.current = mapStyle
     map.setStyle(MAP_STYLE_CONFIGS[mapStyle].style as StyleSpecification)
@@ -200,205 +200,35 @@ export function useMapLibreEngine({
   }, [mapStyle])
 
   // ---------------------------------------------------------------------------
-  // Site source + layers — style-owned, callbacks stay current via refs
+  // Sub-hooks — layer management delegated for maintainability
   // ---------------------------------------------------------------------------
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map || !mapLoaded) return
+  useMapSiteLayers({
+    mapRef, mapLoaded, sites, tasksBySite, selectedSiteId,
+  })
 
-    if (!map.getSource('site-points')) {
-      map.addSource('site-points', { type: 'geojson', data: buildSiteFeatureCollection([], {}) })
-    }
+  useMapAssetLayers({
+    mapRef, mapLoaded, sites, assets, readings, isReplaying, selectedAssetId,
+  })
 
-    if (!map.getLayer('site-circles')) {
-      map.addLayer({
-        id: 'site-circles',
-        type: 'circle',
-        source: 'site-points',
-        paint: {
-          'circle-radius': 9,
-          'circle-color': ['get', 'color'],
-          'circle-stroke-width': 2,
-          'circle-stroke-color': 'rgba(255,255,255,0.85)',
-        },
-      })
-    }
-
-    if (!map.getLayer('site-selection-ring')) {
-      map.addLayer({
-        id: 'site-selection-ring',
-        type: 'circle',
-        source: 'site-points',
-        paint: {
-          'circle-radius': 15,
-          'circle-color': 'rgba(0,0,0,0)',
-          'circle-stroke-width': 2.5,
-          'circle-stroke-color': '#ffffff',
-          'circle-stroke-opacity': 0.95,
-          'circle-blur': 0.15,
-        },
-        filter: ['==', ['get', 'id'], ''],
-      })
-    }
-
-    const handleMouseEnter = () => { map.getCanvas().style.cursor = 'pointer' }
-    const handleMouseLeave = () => { map.getCanvas().style.cursor = '' }
-
-    map.on('mouseenter', 'site-circles', handleMouseEnter)
-    map.on('mouseleave', 'site-circles', handleMouseLeave)
-
-    return () => {
-      map.off('mouseenter', 'site-circles', handleMouseEnter)
-      map.off('mouseleave', 'site-circles', handleMouseLeave)
-    }
-  }, [mapLoaded])
-
-  // ---------------------------------------------------------------------------
-  // Site source data — update when sites / task data changes
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map || !mapLoaded) return
-    const existing = map.getSource('site-points') as GeoJSONSource | undefined
-    if (existing) existing.setData(buildSiteFeatureCollection(sites, tasksBySite))
-  }, [mapLoaded, sites, tasksBySite])
-
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map || !mapLoaded || !map.getLayer('site-selection-ring')) return
-    map.setFilter(
-      'site-selection-ring',
-      ['==', ['get', 'id'], selectedSiteId ?? ''],
-    )
-  }, [mapLoaded, selectedSiteId])
-
-  // ---------------------------------------------------------------------------
-  // Asset source + layers — style-owned, positions update via source.setData
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map || !mapLoaded) return
-
-    if (!map.getSource('asset-points')) {
-      map.addSource('asset-points', { type: 'geojson', data: buildAssetFeatureCollection([], [], EMPTY_READINGS) })
-    }
-
-    if (!map.getLayer('asset-circles')) {
-      map.addLayer({
-        id: 'asset-circles',
-        type: 'circle',
-        source: 'asset-points',
-        paint: {
-          'circle-radius': 11,
-          'circle-color': [
-            'match', ['get', 'status'],
-            'available', '#163329',
-            'assigned', '#1f2f4a',
-            'degraded', '#4a2f17',
-            '#3a3f4b',
-          ],
-          'circle-stroke-width': 1.5,
-          'circle-stroke-color': [
-            'match', ['get', 'status'],
-            'available', '#3ddc84',
-            'assigned', '#5282ff',
-            'degraded', '#ffb366',
-            '#8f99a8',
-          ],
-        },
-      })
-    }
-
-    if (!map.getLayer('asset-selection-ring')) {
-      map.addLayer({
-        id: 'asset-selection-ring',
-        type: 'circle',
-        source: 'asset-points',
-        paint: {
-          'circle-radius': 17,
-          'circle-color': 'rgba(0,0,0,0)',
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#9ed0ff',
-          'circle-stroke-opacity': 0.95,
-        },
-        filter: ['==', ['get', 'id'], ''],
-      })
-    }
-
-    if (!map.getLayer('asset-symbols')) {
-      map.addLayer({
-        id: 'asset-symbols',
-        type: 'symbol',
-        source: 'asset-points',
-        layout: {
-          'text-field': ['get', 'icon'],
-          'text-size': 13,
-          'text-anchor': 'center',
-          'text-allow-overlap': true,
-          'text-ignore-placement': true,
-        },
-        paint: {
-          'text-color': '#ffffff',
-          'text-halo-color': 'rgba(0,0,0,0.55)',
-          'text-halo-width': 1,
-        },
-      })
-    }
-
-    const handleMouseEnter = () => { map.getCanvas().style.cursor = 'pointer' }
-    const handleMouseLeave = () => { map.getCanvas().style.cursor = '' }
-
-    map.on('mouseenter', 'asset-circles', handleMouseEnter)
-    map.on('mouseenter', 'asset-symbols', handleMouseEnter)
-    map.on('mouseleave', 'asset-circles', handleMouseLeave)
-    map.on('mouseleave', 'asset-symbols', handleMouseLeave)
-
-    return () => {
-      map.off('mouseenter', 'asset-circles', handleMouseEnter)
-      map.off('mouseenter', 'asset-symbols', handleMouseEnter)
-      map.off('mouseleave', 'asset-circles', handleMouseLeave)
-      map.off('mouseleave', 'asset-symbols', handleMouseLeave)
-    }
-  }, [mapLoaded])
-
-  // ---------------------------------------------------------------------------
-  // Asset source data — update on telemetry/site/asset changes
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map || !mapLoaded) return
-    const existing = map.getSource('asset-points') as GeoJSONSource | undefined
-    if (existing) existing.setData(buildAssetFeatureCollection(assets, sites, readings, isReplaying))
-  }, [assets, isReplaying, mapLoaded, readings, sites])
-
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map || !mapLoaded || !map.getLayer('asset-selection-ring')) return
-    map.setFilter(
-      'asset-selection-ring',
-      ['==', ['get', 'id'], selectedAssetId ?? ''],
-    )
-  }, [mapLoaded, selectedAssetId])
-
-  // ---------------------------------------------------------------------------
-  // Overlay layers — AO, geofence, breach, coverage, chokepoints
-  // (delegated to useMapOverlays for maintainability)
-  // ---------------------------------------------------------------------------
   useMapOverlays({
     mapRef, mapLoaded,
     sites, areaOfOperations, breachedSiteIds, coverageCircles, chokepoints,
     showCoverage, showChokepoints,
   })
 
+  useMapTrackLayers({
+    mapRef, mapLoaded, vesselTracks, assetTrails, showTrails,
+  })
+
   // ---------------------------------------------------------------------------
-  // Keep signalsRef current so signal click handler reads fresh data
+  // Keep signalsRef current for click handler
   // ---------------------------------------------------------------------------
   useEffect(() => {
     signalsRef.current = signals
   }, [signals])
 
   // ---------------------------------------------------------------------------
-  // Signal GeoJSON source data — update on each refresh
+  // Signal GeoJSON source data
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const map = mapRef.current
@@ -424,7 +254,7 @@ export function useMapLibreEngine({
   }, [mapLoaded])
 
   // ---------------------------------------------------------------------------
-  // Unified click handling — resolve exactly one interactive target per click
+  // Unified click handling
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const map = mapRef.current
@@ -438,25 +268,19 @@ export function useMapLibreEngine({
 
       if (resolved.kind === 'site') {
         const siteId = resolved.feature.properties?.id
-        if (typeof siteId === 'string') {
-          onSiteClickRef.current(siteId)
-        }
+        if (typeof siteId === 'string') onSiteClickRef.current(siteId)
         return
       }
 
       if (resolved.kind === 'asset') {
         const assetId = resolved.feature.properties?.id
-        if (typeof assetId === 'string') {
-          onAssetClickRef.current(assetId)
-        }
+        if (typeof assetId === 'string') onAssetClickRef.current(assetId)
         return
       }
 
       if (resolved.kind === 'signal') {
         const signalId = resolved.feature.properties?.id
-        if (typeof signalId === 'string') {
-          onSignalClickRef.current(signalId)
-        }
+        if (typeof signalId === 'string') onSignalClickRef.current(signalId)
         return
       }
 
@@ -466,111 +290,11 @@ export function useMapLibreEngine({
     }
 
     map.on('click', handleMapClick)
-
-    return () => {
-      map.off('click', handleMapClick)
-    }
+    return () => { map.off('click', handleMapClick) }
   }, [mapLoaded])
 
   // ---------------------------------------------------------------------------
-  // Vessel track polyline — removed/recreated when vesselTracks changes
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map || !mapLoaded) return
-
-    // Always remove stale layer/source first (handles empty → populated and vice versa)
-    if (map.getLayer('vessel-track-line')) map.removeLayer('vessel-track-line')
-    if (map.getSource('vessel-track'))     map.removeSource('vessel-track')
-
-    if (vesselTracks.length < 2) return
-
-    const coords = vesselTracks.map(t => [Number(t.lng), Number(t.lat)])
-    map.addSource('vessel-track', {
-      type: 'geojson',
-      data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } },
-    })
-    map.addLayer({
-      id: 'vessel-track-line', type: 'line', source: 'vessel-track',
-      layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: {
-        'line-color':     SIGNAL_COLORS.vessel_position,
-        'line-width':     2.5,
-        'line-opacity':   0.80,
-        'line-dasharray': [4, 3],
-      },
-    }, 'signal-glow')
-  }, [mapLoaded, vesselTracks])
-
-  // ---------------------------------------------------------------------------
-  // Asset trails — one LineString per asset, colored by status, replay-only.
-  // Uses setData() on the existing source to avoid layer flicker on asOf changes.
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map || !mapLoaded) return
-
-    const featureCollection = {
-      type: 'FeatureCollection' as const,
-      features: assetTrails
-        .filter(trail => trail.points.length >= 2)
-        .map(trail => ({
-          type: 'Feature' as const,
-          properties: { status: trail.status, name: trail.name },
-          geometry: {
-            type: 'LineString' as const,
-            coordinates: trail.points.map(p => [p.lng, p.lat]),
-          },
-        })),
-    }
-
-    // If source already exists, patch data in-place — no layer flicker
-    const existingSource = map.getSource('asset-trails') as GeoJSONSource | undefined
-    if (existingSource) {
-      if (featureCollection.features.length === 0) {
-        if (map.getLayer('asset-trail-line')) map.removeLayer('asset-trail-line')
-        map.removeSource('asset-trails')
-      } else {
-        existingSource.setData(featureCollection)
-      }
-      return
-    }
-
-    if (featureCollection.features.length === 0) return
-
-    // First render: add source + layer
-    map.addSource('asset-trails', { type: 'geojson', data: featureCollection })
-    map.addLayer({
-      id: 'asset-trail-line',
-      type: 'line',
-      source: 'asset-trails',
-      layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: {
-        'line-color': [
-          'match', ['get', 'status'],
-          'available', ASSET_STATUS_COLORS['available'],
-          'assigned',  ASSET_STATUS_COLORS['assigned'],
-          'degraded',  ASSET_STATUS_COLORS['degraded'],
-          ASSET_STATUS_COLORS['offline'], // fallback
-        ],
-        'line-width':  2,
-        'line-opacity': 0.7,
-      },
-    }, 'signal-glow')
-  }, [mapLoaded, assetTrails])
-
-  // ---------------------------------------------------------------------------
-  // Asset trail visibility toggle — mirrors showSignals pattern
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map || !mapLoaded) return
-    if (!map.getLayer('asset-trail-line')) return
-    map.setLayoutProperty('asset-trail-line', 'visibility', showTrails ? 'visible' : 'none')
-  }, [mapLoaded, showTrails])
-
-  // ---------------------------------------------------------------------------
-  // Signal layer visibility — also clears selection when hidden
+  // Signal layer visibility
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const map = mapRef.current
@@ -592,12 +316,11 @@ export function useMapLibreEngine({
       if (map.getLayer(layerId)) map.setLayoutProperty(layerId, 'visibility', vis)
     }
 
-    // Synchronously clear selection when signals are hidden
     if (!showSignals) onSignalClickRef.current(null)
   }, [showSignals, mapLoaded])
 
   // ---------------------------------------------------------------------------
-  // Heatmap visibility — derived from both signal visibility and heatmap toggle
+  // Heatmap visibility
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const map = mapRef.current
@@ -605,9 +328,8 @@ export function useMapLibreEngine({
     map.setLayoutProperty('signal-heatmap', 'visibility', showSignals && showHeatmap ? 'visible' : 'none')
   }, [showHeatmap, showSignals, mapLoaded])
 
-
   // ---------------------------------------------------------------------------
-  // flyTo helper
+  // Return values
   // ---------------------------------------------------------------------------
   const flyTo = useCallback((center: [number, number], zoom: number) => {
     mapRef.current?.flyTo({ center, zoom })
@@ -621,7 +343,6 @@ export function useMapLibreEngine({
   const projectPosition = useCallback((lng: number, lat: number) => {
     const map = mapRef.current
     if (!map) return null
-
     const point = map.project([lng, lat])
     return { x: point.x, y: point.y }
   }, [])

@@ -2726,6 +2726,8 @@ body {
 .alert-row--danger  { border-left-color: #cd4246; }
 .alert-row--warning { border-left-color: #f0b726; }
 .alert-row--none    { border-left-color: #383e47; }
+.alert-row--selected { background: #1c2733; }
+.alert-row--focused  { outline: 1px solid #5c7cfa; outline-offset: -1px; background: #1a2332; }
 
 .alert-row-left {
   display: flex;

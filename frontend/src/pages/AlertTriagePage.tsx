@@ -20,6 +20,7 @@ import type { AlertStatus, SignalRuleMatch } from '../api/types'
 import { humanize } from '../utils/humanize'
 import { useReplay } from '../context/ReplayContext'
 import { useRole } from '../hooks/useRole'
+import { useTriageKeyboard } from '../hooks/useTriageKeyboard'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -102,9 +103,10 @@ interface AlertRowProps {
   rowIndex:     number
   onChainClick: (m: SignalRuleMatch) => void
   isReadOnly?:  boolean
+  isFocused?:   boolean
 }
 
-function AlertRow({ match: m, canTriage, isChecked, someSelected, onCheck, rowIndex, onChainClick, isReadOnly = false }: AlertRowProps) {
+function AlertRow({ match: m, canTriage, isChecked, someSelected, onCheck, rowIndex, onChainClick, isReadOnly = false, isFocused = false }: AlertRowProps) {
   const navigate   = useNavigate()
   const transition = useTransitionAlert()
   const actions    = (m.metadata?.actions_taken as string[] | undefined) ?? []
@@ -117,7 +119,7 @@ function AlertRow({ match: m, canTriage, isChecked, someSelected, onCheck, rowIn
   const txBtns     = ALERT_TRANSITIONS[status] ?? []
 
   return (
-    <div className={`alert-row alert-row--${intent}${isChecked ? ' alert-row--selected' : ''}`}>
+    <div className={`alert-row alert-row--${intent}${isChecked ? ' alert-row--selected' : ''}${isFocused ? ' alert-row--focused' : ''}`}>
       <div
         className="alert-row-main"
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
@@ -284,6 +286,21 @@ export default function AlertTriagePage() {
   const allSelected  = selectedIds.size > 0 && selectedIds.size === matches.length
   const someSelected = selectedIds.size > 0
 
+  // ── Keyboard triage (j/k/a/i/c) ──────────────────────────────────────────
+
+  const keyboardTransition = useTransitionAlert()
+
+  const handleKeyboardTransition = useCallback((id: string, toStatus: AlertStatus) => {
+    keyboardTransition.mutate({ id, body: { to_status: toStatus } })
+  }, [keyboardTransition])
+
+  const { focusedIndex } = useTriageKeyboard({
+    matches,
+    enabled: canTriageAlerts && !isReplaying && !someSelected,
+    onTransition: handleKeyboardTransition,
+    scrollToIndex: (index) => virtualizer.scrollToIndex(index, { align: 'auto' }),
+  })
+
   const handleToggleAll = useCallback(() => {
     setSelectedIds(allSelected ? new Set() : new Set(matches.map(m => m.id)))
     lastClickedIdxRef.current = null
@@ -380,6 +397,13 @@ export default function AlertTriagePage() {
           </ButtonGroup>
         </div>
       </div>
+
+      {/* ── Keyboard hint ── */}
+      {canTriageAlerts && !isReplaying && !someSelected && matches.length > 0 && (
+        <div style={{ fontSize: 11, color: '#5c7080', marginBottom: 6 }}>
+          <kbd>j</kbd>/<kbd>k</kbd> navigate &middot; <kbd>a</kbd>cknowledge &middot; <kbd>i</kbd>nvestigate &middot; <kbd>c</kbd>lose &middot; <kbd>Esc</kbd> clear
+        </div>
+      )}
 
       {/* ── Partial failure notice ── */}
       {failCount !== null && (
@@ -487,6 +511,7 @@ export default function AlertTriagePage() {
                       onCheck={handleRowCheck}
                       onChainClick={setChainMatch}
                       isReadOnly={isReplaying}
+                      isFocused={focusedIndex === vItem.index}
                     />
                   </div>
                 )

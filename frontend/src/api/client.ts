@@ -105,6 +105,8 @@ function buildUrl(path: string, params?: QueryParams): string {
   return url.pathname + url.search
 }
 
+const DEFAULT_TIMEOUT_MS = 30_000
+
 async function request<T>(
   method: string,
   path: string,
@@ -117,13 +119,21 @@ async function request<T>(
     Accept: 'application/json',
   }
 
-  const init: RequestInit = { method, headers, credentials: 'include' }
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS)
+
+  const init: RequestInit = { method, headers, credentials: 'include', signal: controller.signal }
 
   if (options.body !== undefined) {
     init.body = JSON.stringify(options.body)
   }
 
-  const res = await fetch(url, init)
+  let res: Response
+  try {
+    res = await fetch(url, init)
+  } finally {
+    clearTimeout(timeoutId)
+  }
 
   let payload: unknown
   const contentType = res.headers.get('content-type') ?? ''
@@ -168,12 +178,21 @@ export async function postBlob(path: string, body: unknown): Promise<Blob> {
     Accept: 'application/pdf',
   }
 
-  const res = await fetch(path, {
-    method: 'POST',
-    headers,
-    credentials: 'include',
-    body: JSON.stringify(body),
-  })
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 120_000) // PDF exports can be slow
+
+  let res: Response
+  try {
+    res = await fetch(path, {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timeoutId)
+  }
 
   if (res.status === 401) {
     onUnauthorized?.()

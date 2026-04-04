@@ -178,17 +178,7 @@ module Telemetry
         }
       end
 
-      columns = %i[asset_id lat lng heading speed battery occurred_at created_at]
-      values_sql = payload.map do |row|
-        "(#{columns.map { |column| TelemetryReading.connection.quote(row[column]) }.join(', ')})"
-      end.join(", ")
-
-      TelemetryReading.connection.execute(
-        <<~SQL
-          INSERT INTO telemetry_readings (#{columns.join(', ')})
-          VALUES #{values_sql}
-        SQL
-      )
+      TelemetryReading.insert_all!(payload)
 
       Asset.where(id: rows.map { |row| row[:asset_id] }).update_all(last_reported_at: occurred_at)
     end

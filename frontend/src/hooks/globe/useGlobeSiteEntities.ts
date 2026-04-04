@@ -1,0 +1,104 @@
+/**
+ * useGlobeSiteEntities
+ *
+ * Manages Cesium Entity instances for sites — incremental add/update/remove
+ * based on the current site + task data. Extracted from useGlobeEngine.
+ */
+
+import { useEffect, useRef } from 'react'
+import type * as CesiumType from 'cesium'
+import type { Site, Task } from '../../api/types'
+import {
+  pruneEntityMap,
+  setEntityLabelDisableDepthTestDistance,
+  setEntityLabelHeightReference,
+  setEntityLabelText,
+  setEntityPointColor,
+  setEntityPointDisableDepthTestDistance,
+  setEntityPointHeightReference,
+  setEntityPosition,
+  siteColor,
+  type CesiumModule,
+} from '../../lib/globeEngineHelpers'
+
+export interface GlobeSiteEntitiesInput {
+  viewerRef:   React.RefObject<CesiumType.Viewer | null>
+  cesiumRef:   React.RefObject<CesiumModule | null>
+  viewerReady: boolean
+  sites:       Site[]
+  tasksBySite: Record<string, Task[]>
+}
+
+export interface GlobeSiteEntitiesReturn {
+  siteEntitiesRef: React.RefObject<Map<string, CesiumType.Entity>>
+}
+
+export function useGlobeSiteEntities({
+  viewerRef,
+  cesiumRef,
+  viewerReady,
+  sites,
+  tasksBySite,
+}: GlobeSiteEntitiesInput): GlobeSiteEntitiesReturn {
+  const siteEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
+
+  useEffect(() => {
+    const Cesium = cesiumRef.current
+    const viewer = viewerRef.current
+    if (!viewerReady || !viewer || !Cesium) return
+
+    const currentIds = new Set(sites.map(s => `site-${s.id}`))
+    pruneEntityMap(viewer, siteEntitiesRef.current, currentIds)
+
+    if (sites.length === 0) return
+
+    for (const site of sites) {
+      const siteTasks = tasksBySite[site.id] ?? []
+      const color     = siteColor(Cesium, siteTasks, site.status)
+      const key       = `site-${site.id}`
+
+      const existing = siteEntitiesRef.current.get(key)
+      if (existing) {
+        existing.name = site.name
+        setEntityPosition(Cesium, existing, Number(site.longitude), Number(site.latitude))
+        setEntityPointColor(Cesium, existing, color)
+        setEntityPointHeightReference(Cesium, existing, Cesium.HeightReference.CLAMP_TO_GROUND)
+        setEntityPointDisableDepthTestDistance(Cesium, existing, 0)
+        setEntityLabelText(Cesium, existing, site.name)
+        setEntityLabelHeightReference(Cesium, existing, Cesium.HeightReference.CLAMP_TO_GROUND)
+        setEntityLabelDisableDepthTestDistance(Cesium, existing, 0)
+        continue
+      }
+
+      const entity = viewer.entities.add({
+        id:       key,
+        name:     site.name,
+        position: Cesium.Cartesian3.fromDegrees(Number(site.longitude), Number(site.latitude)),
+        point: {
+          pixelSize:               16,
+          color,
+          outlineColor:            Cesium.Color.WHITE.withAlpha(0.8),
+          outlineWidth:            2,
+          disableDepthTestDistance: 0,
+          heightReference:         Cesium.HeightReference.CLAMP_TO_GROUND,
+          scaleByDistance:         new Cesium.NearFarScalar(1e5, 1.5, 8e6, 0.8),
+        },
+        label: {
+          text:                    site.name,
+          font:                    '600 12px "system-ui", sans-serif',
+          fillColor:               Cesium.Color.WHITE,
+          outlineColor:            Cesium.Color.BLACK,
+          outlineWidth:            2,
+          style:                   Cesium.LabelStyle.FILL_AND_OUTLINE,
+          pixelOffset:             new Cesium.Cartesian2(0, -22),
+          disableDepthTestDistance: 0,
+          heightReference:         Cesium.HeightReference.CLAMP_TO_GROUND,
+          translucencyByDistance:  new Cesium.NearFarScalar(1e6, 1.0, 8e6, 0.0),
+        },
+      })
+      siteEntitiesRef.current.set(key, entity)
+    }
+  }, [viewerReady, sites, tasksBySite, cesiumRef, viewerRef])
+
+  return { siteEntitiesRef }
+}
