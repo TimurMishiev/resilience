@@ -2,6 +2,8 @@
 // Base API client — thin fetch wrapper, no external dependencies
 // ---------------------------------------------------------------------------
 
+import { AppToaster } from '../lib/toaster'
+
 export class ApiError extends Error {
   public readonly status: number
   public readonly body: unknown
@@ -136,6 +138,18 @@ async function request<T>(
     throw new ApiError(res.status, payload, extractApiMessage(payload, 'Unauthorized'))
   }
 
+  if (res.status === 429) {
+    void AppToaster.then((t) =>
+      t.show({
+        message: 'Too many requests — please wait a moment and retry.',
+        intent: 'warning',
+        icon: 'time',
+        timeout: 5000,
+      }),
+    )
+    throw new ApiError(res.status, payload, extractApiMessage(payload, 'Rate limited'))
+  }
+
   if (!res.ok) {
     throw new ApiError(res.status, payload, extractApiMessage(payload, `API ${method} ${path} → ${res.status}`))
   }
@@ -164,6 +178,18 @@ export async function postBlob(path: string, body: unknown): Promise<Blob> {
   if (res.status === 401) {
     onUnauthorized?.()
     throw new ApiError(res.status, null, 'Unauthorized')
+  }
+
+  if (res.status === 429) {
+    void AppToaster.then((t) =>
+      t.show({
+        message: 'Too many requests — please wait a moment and retry.',
+        intent: 'warning',
+        icon: 'time',
+        timeout: 5000,
+      }),
+    )
+    throw new ApiError(res.status, null, 'Rate limited')
   }
 
   if (!res.ok) {

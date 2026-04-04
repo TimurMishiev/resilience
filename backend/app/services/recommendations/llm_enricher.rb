@@ -138,7 +138,7 @@ module Recommendations
           recommendation_type:  rec["recommendation_type"],
           tier:                 "llm",
           confidence:           rec["confidence"].to_f.clamp(0.0, 1.0),
-          rationale:            rec["rationale"].to_s.presence || "LLM recommendation",
+          rationale:            (rec["rationale"].to_s.presence || "LLM recommendation").truncate(2000),
           evidence:             Array(rec["evidence"]),
           action_payload:       rec["action_payload"].is_a?(Hash) ? rec["action_payload"] : {},
           affected_entity_type: rec["affected_entity_type"],

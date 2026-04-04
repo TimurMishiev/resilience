@@ -46,6 +46,22 @@ RSpec.describe Organization, type: :model do
       site
       expect(org.sites).to include(site)
     end
+
+    it "prevents destruction when users exist" do
+      user
+      expect { org.destroy! }.to raise_error(ActiveRecord::DeleteRestrictionError)
+    end
+
+    it "prevents destruction when sites exist" do
+      site
+      expect { org.destroy! }.to raise_error(ActiveRecord::DeleteRestrictionError)
+    end
+
+    it "prevents destruction when areas of operation exist" do
+      commander = create(:user, role: "commander", organization: org)
+      create(:area_of_operation, organization: org, created_by: commander)
+      expect { org.destroy! }.to raise_error(ActiveRecord::DeleteRestrictionError)
+    end
   end
 
   describe "SitePolicy org isolation" do
