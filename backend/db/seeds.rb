@@ -110,6 +110,16 @@ commander_for_ao = User.find_or_create_by!(email: "commander@resilience.mil") do
   u.role     = "commander"
 end
 
+User.find_or_create_by!(email: "operator@resilience.mil") do |u|
+  u.password = "password123"
+  u.role     = "operator"
+end
+
+User.find_or_create_by!(email: "viewer@resilience.mil") do |u|
+  u.password = "password123"
+  u.role     = "viewer"
+end
+
 eucom = AreaOfOperation.create!(
   name:         "European Command (EUCOM)",
   description:  "NATO eastern flank operations — Poland, Germany, Turkey theater",

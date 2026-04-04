@@ -8,6 +8,22 @@ const AUTH_STATE_PATH = resolve(E2E_DIR, '.auth/commander.json')
 const AUTH_USER_PATH = resolve(E2E_DIR, '.auth/commander-user.json')
 const SESSION_COOKIE_NAME = '_resilience_session'
 
+export type RoleName = 'commander' | 'operator' | 'viewer'
+
+const ROLE_CREDENTIALS: Record<RoleName, { email: string; password: string }> = {
+  commander: { email: 'commander@resilience.mil', password: 'password123' },
+  operator:  { email: 'operator@resilience.mil',  password: 'password123' },
+  viewer:    { email: 'viewer@resilience.mil',     password: 'password123' },
+}
+
+export function authStatePath(role: RoleName): string {
+  return resolve(E2E_DIR, `.auth/${role}.json`)
+}
+
+export function authUserPath(role: RoleName): string {
+  return resolve(E2E_DIR, `.auth/${role}-user.json`)
+}
+
 type StorageStateCookie = {
   name: string
   domain?: string
@@ -50,6 +66,34 @@ export async function login(page: Page) {
   throw new Error('Playwright login failed after exhausting rate-limit retries')
 }
 
+export async function loginAs(page: Page, role: RoleName) {
+  const { email, password } = ROLE_CREDENTIALS[role]
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    await page.goto('/login')
+    await page.locator('#email').fill(email)
+    await page.locator('#password').fill(password)
+
+    const responsePromise = page.waitForResponse(response =>
+      response.url().endsWith('/api/auth/login') && response.request().method() === 'POST',
+    )
+
+    await page.getByRole('button', { name: 'Sign in' }).click()
+    const response = await responsePromise
+
+    if (response.status() === 429) {
+      const retryAfter = Number(response.headers()['retry-after'] ?? '5')
+      await page.waitForTimeout((retryAfter + 1) * 1000)
+      continue
+    }
+
+    await expect(page).toHaveURL(/\/sites$/)
+    return
+  }
+
+  throw new Error(`Playwright login as ${role} failed after exhausting rate-limit retries`)
+}
+
 function baseUrlAllowsSecureCookies(baseURL: string): boolean {
   try {
     return new URL(baseURL).protocol === 'https:'
@@ -58,13 +102,16 @@ function baseUrlAllowsSecureCookies(baseURL: string): boolean {
   }
 }
 
-export function canReuseAuthArtifacts(baseURL: string): boolean {
-  if (!existsSync(AUTH_STATE_PATH) || !existsSync(AUTH_USER_PATH)) {
+export function canReuseAuthArtifacts(baseURL: string, statePath?: string): boolean {
+  const resolvedStatePath = statePath ?? AUTH_STATE_PATH
+  const resolvedUserPath = statePath ? statePath.replace('.json', '-user.json') : AUTH_USER_PATH
+
+  if (!existsSync(resolvedStatePath) || !existsSync(resolvedUserPath)) {
     return false
   }
 
   try {
-    const state = JSON.parse(readFileSync(AUTH_STATE_PATH, 'utf8')) as StorageStateShape
+    const state = JSON.parse(readFileSync(resolvedStatePath, 'utf8')) as StorageStateShape
     const cookie = state.cookies?.find(entry => entry.name === SESSION_COOKIE_NAME)
     if (!cookie) return false
 
@@ -120,6 +167,36 @@ export async function primeAuthenticatedSession(page: Page) {
   await page.goto('/sites')
   if (/\/login(?:\?|$)/.test(page.url())) {
     await login(page)
+  }
+}
+
+export async function primeRoleSession(page: Page, role: RoleName) {
+  const userPath = authUserPath(role)
+  let rawUser: string
+  try {
+    rawUser = readFileSync(userPath, 'utf8')
+  } catch (error) {
+    const details = error instanceof Error ? `: ${error.message}` : ''
+    throw new Error(
+      `Missing Playwright auth user fixture at ${userPath}${details}. ` +
+      'Run the Playwright global setup first, or delete frontend/e2e/.auth and rerun the suite.',
+    )
+  }
+  const user = JSON.parse(rawUser)
+
+  await page.goto('/login')
+  await page.evaluate((sessionUser) => {
+    window.sessionStorage.setItem('resilience_user', JSON.stringify(sessionUser))
+  }, user)
+
+  if (!(await hasAuthenticatedApiSession(page))) {
+    await loginAs(page, role)
+    return
+  }
+
+  await page.goto('/sites')
+  if (/\/login(?:\?|$)/.test(page.url())) {
+    await loginAs(page, role)
   }
 }
 
