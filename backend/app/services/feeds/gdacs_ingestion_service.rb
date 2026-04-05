@@ -30,6 +30,13 @@ module Feeds
 
     LOG_THROTTLE_SECONDS = 3600
 
+    # Class-level log-throttle state persists across service instantiations so
+    # the 1-hour window actually works. Thread-safe via Concurrent::Map.
+    @last_logged_error = Concurrent::Map.new
+    class << self
+      attr_reader :last_logged_error
+    end
+
     # Maps two-letter GDACS event codes to human-readable names stored in raw_payload.
     EVENT_TYPE_NAMES = {
       "EQ" => "Earthquake",
@@ -42,7 +49,6 @@ module Feeds
 
     def call
       metrics = Feeds::PollMetrics.new(feed: "gdacs")
-      @last_logged_error ||= {}
 
       uri  = build_uri
       http = ssl_http(uri.host, uri.port, timeout: TIMEOUT)
@@ -177,11 +183,11 @@ module Feeds
     end
 
     def throttled_warn(key, message)
-      last = @last_logged_error&.dig(key)
+      last = self.class.last_logged_error[key]
       return if last && Time.current - last < LOG_THROTTLE_SECONDS
 
       Rails.logger.warn "[GDACSFeed] #{message}"
-      (@last_logged_error ||= {})[key] = Time.current
+      self.class.last_logged_error[key] = Time.current
     end
   end
 end

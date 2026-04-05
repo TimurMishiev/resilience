@@ -10,7 +10,7 @@ import {
   Spinner,
   Tag,
 } from '@blueprintjs/core'
-import { useReplayGuardedMutation } from '../../hooks/useReplayGuardedMutation'
+import { useMutation } from '@tanstack/react-query'
 import { dryRunRule } from '../../api/correlation_rules'
 import type { DryRunResult } from '../../api/correlation_rules'
 import type { CorrelationRule } from '../../api/types'
@@ -26,7 +26,7 @@ export function DryRunDrawer({ rule, onClose }: DryRunDrawerProps) {
   const [result, setResult] = useState<DryRunResult | null>(null)
   const [error,  setError]  = useState<string | null>(null)
 
-  const mutation = useReplayGuardedMutation({
+  const mutation = useMutation({
     mutationFn: ({ id, h }: { id: string; h: number }) => dryRunRule(id, h),
     onSuccess: r  => { setResult(r); setError(null) },
     onError:   e  => setError((e as Error).message),

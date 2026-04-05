@@ -30,6 +30,8 @@ class User < ApplicationRecord
   has_many :acknowledged_matches,       class_name: "SignalRuleMatch",  foreign_key: :acknowledged_by_id, dependent: :nullify, inverse_of: :acknowledged_by
   has_many :assigned_incidents,         class_name: "Incident",         foreign_key: :assigned_to_id,     dependent: :nullify, inverse_of: :assigned_to
   has_many :prosecuted_incidents,       class_name: "Incident",         foreign_key: :prosecuted_by_id,   dependent: :nullify, inverse_of: :prosecuted_by
+  has_many :sse_stream_leases,          class_name: "SseStreamLease",   dependent: :destroy
+  has_many :reviewed_recommendations,   class_name: "Recommendation",   foreign_key: :reviewed_by_id,     dependent: :nullify, inverse_of: :reviewer
 
   validates :email, presence: true, uniqueness: { case_sensitive: false },
                     format: { with: URI::MailTo::EMAIL_REGEXP }

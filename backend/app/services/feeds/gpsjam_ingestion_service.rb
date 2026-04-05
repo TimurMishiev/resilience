@@ -28,6 +28,13 @@ module Feeds
 
     LOG_THROTTLE_SECONDS = 3600
 
+    # Class-level log-throttle state persists across service instantiations so
+    # the 1-hour window actually works. Thread-safe via Concurrent::Map.
+    @last_logged_error = Concurrent::Map.new
+    class << self
+      attr_reader :last_logged_error
+    end
+
     # Theater bounding boxes [latmin, latmax, lonmin, lonmax]
     THEATER_BOXES = [
       { name: "Eastern Europe", latmin: 40.0, latmax: 55.0, lonmin: 15.0, lonmax: 45.0 },
@@ -38,7 +45,6 @@ module Feeds
 
     def call
       metrics = Feeds::PollMetrics.new(feed: "gpsjam")
-      @last_logged_error ||= {}
       metrics.increment(:query_box_count, THEATER_BOXES.size)
 
       # GPSJam data lags 1-2 days — try yesterday first, then day before
@@ -149,11 +155,11 @@ module Feeds
     end
 
     def throttled_warn(key, message)
-      last = @last_logged_error&.dig(key)
+      last = self.class.last_logged_error[key]
       return if last && Time.current - last < LOG_THROTTLE_SECONDS
 
       Rails.logger.warn "[GPSJamFeed] #{message}"
-      (@last_logged_error ||= {})[key] = Time.current
+      self.class.last_logged_error[key] = Time.current
     end
 
     def in_any_theater?(lat, lng)

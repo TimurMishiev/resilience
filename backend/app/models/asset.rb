@@ -9,6 +9,6 @@ class Asset < ApplicationRecord
   has_many :telemetry_readings
 
   validates :name, presence: true
-  validates :asset_type, presence: true
+  validates :asset_type, presence: true, inclusion: { in: ASSET_TYPES }
   validates :status, inclusion: { in: STATUSES }
 end

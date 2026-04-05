@@ -35,18 +35,6 @@ module Feeds
       attr_reader :last_logged_error
     end
 
-    # OpenSky SSL verify_callback — waives CRL-unreachable errors (3, 33) only.
-    # Error 23 (CERT_REVOKED) is never waived.
-    #   3  = X509_V_ERR_UNABLE_TO_GET_CRL
-    #   33 = X509_V_ERR_UNABLE_TO_GET_CRL_ISSUER
-    SSL_VERIFY_CALLBACK = proc { |preverify_ok, store_ctx|
-      if !preverify_ok && [3, 33].include?(store_ctx.error)
-        true
-      else
-        preverify_ok
-      end
-    }.freeze
-
     # Bounding boxes covering the 4 seed site theaters.
     BOUNDING_BOXES = [
       { name: "Eastern Europe",  lamin: 44.0, lomin: 22.0, lamax: 52.0, lomax: 40.0 },
@@ -154,11 +142,7 @@ module Feeds
         lamax: box[:lamax], lomax: box[:lomax]
       )
 
-      http                 = Net::HTTP.new(uri.host, uri.port)
-      http.use_ssl         = true
-      http.verify_callback = SSL_VERIFY_CALLBACK
-      http.open_timeout    = TIMEOUT
-      http.read_timeout    = TIMEOUT
+      http = ssl_http(uri.host, uri.port, timeout: TIMEOUT)
 
       request = Net::HTTP::Get.new(uri)
       request.basic_auth(opensky_username, opensky_password) if opensky_username

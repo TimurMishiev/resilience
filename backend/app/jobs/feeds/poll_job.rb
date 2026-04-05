@@ -45,10 +45,13 @@ module Feeds
       },
     }.freeze
 
-    # Retry transient errors (network timeouts, DB blips) up to 5 times with
-    # polynomial backoff (10s, 40s, 90s, 160s, 250s). If all attempts fail the
-    # job is discarded — the next recurring schedule fires a fresh attempt.
-    retry_on StandardError, wait: :polynomially_longer, attempts: 5
+    # Retry transient network errors up to 5 times with polynomial backoff
+    # (10s, 40s, 90s, 160s, 250s). If all attempts fail the job is discarded —
+    # the next recurring schedule fires a fresh attempt.
+    # Programming bugs (NoMethodError, etc.) are NOT retried — they fail immediately.
+    Feeds::TransientErrors::CLASSES.each do |klass|
+      retry_on klass, wait: :polynomially_longer, attempts: 5
+    end
     discard_on ActiveJob::DeserializationError
 
     def perform(feed_name)

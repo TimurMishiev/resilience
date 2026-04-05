@@ -70,6 +70,13 @@ primary_region = "iad"
     hard_limit = 25
     soft_limit = 20
 
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval     = "15s"
+    method       = "GET"
+    path         = "/up"
+    timeout      = "5s"
+
 [[vm]]
   size   = "shared-cpu-1x"
   memory = "1gb"

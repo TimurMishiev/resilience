@@ -27,13 +27,10 @@ module Tasks
       before = task_snapshot(@task)
       correlation_id = SecureRandom.uuid
 
+      @task.assign_attributes(@params)
+      return ServiceResult.failure(errors: @task.errors.full_messages) unless @task.valid?
+
       ActiveRecord::Base.transaction do
-        @task.assign_attributes(@params)
-
-        unless @task.valid?
-          raise ActiveRecord::Rollback
-        end
-
         @task.save!
 
         Audit::EventWriter.write(
@@ -48,11 +45,7 @@ module Tasks
         )
       end
 
-      if @task.errors.any?
-        ServiceResult.failure(errors: @task.errors.full_messages)
-      else
-        ServiceResult.success(task: @task)
-      end
+      ServiceResult.success(task: @task)
     rescue ActiveRecord::RecordInvalid => e
       ServiceResult.failure(errors: e.record.errors.full_messages)
     end
