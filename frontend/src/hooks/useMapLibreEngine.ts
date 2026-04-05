@@ -5,10 +5,11 @@
  * and signal layer visibility.
  *
  * Entity/layer management is delegated to sub-hooks:
- *  - useMapSiteLayers   — site GeoJSON source/layers + selection ring
- *  - useMapAssetLayers  — asset GeoJSON source/layers + selection ring
- *  - useMapOverlays     — AO polygons, geofence, breach, coverage, chokepoints
- *  - useMapTrackLayers  — vessel track + asset trail polylines
+ *  - useMapSiteLayers    — site GeoJSON source/layers + selection ring
+ *  - useMapAssetLayers   — asset GeoJSON source/layers + selection ring
+ *  - useMapOverlays      — AO polygons, geofence, breach, coverage, chokepoints
+ *  - useMapTrackLayers   — vessel track + asset trail polylines
+ *  - useMapSignalLayers  — signal sources, layers, visibility, heatmap
  *
  * Design contract:
  *  - Imperative: all effects are internal; the caller passes data + callbacks.
@@ -34,8 +35,8 @@ import { useMapOverlays } from './map/useMapOverlays'
 import { useMapSiteLayers } from './map/useMapSiteLayers'
 import { useMapAssetLayers } from './map/useMapAssetLayers'
 import { useMapTrackLayers } from './map/useMapTrackLayers'
+import { useMapSignalLayers } from './map/useMapSignalLayers'
 import { expandMapSignalCluster } from '../lib/mapSignalClustering'
-import { ensureSignalLayers, updateSignalSources } from '../lib/mapEngineSignalLayers'
 import { MAP_STYLE_CONFIGS, type MapStyleKey } from '../lib/mapEngineStyles'
 export { MAP_STYLE_CONFIGS, type MapStyleKey }
 import {
@@ -43,7 +44,6 @@ import {
   resolveMapClickCandidate,
   type MapInteractiveKind,
 } from '../lib/mapClickResolution'
-import { buildMapSignalFeatureCollection, buildMapSignalRenderCollections } from '../lib/mapSignalRendering'
 import { preloadMapRuntime } from '../lib/preloadRoutes'
 import type { AssetTrail } from '../lib/telemetry'
 import type { TelemetryMap } from '../lib/telemetry'
@@ -135,8 +135,6 @@ export function useMapLibreEngine({
 }: MapEngineInput): MapEngineReturn {
   const mapRef           = useRef<MapLibreMap | null>(null)
   const maplibreRef      = useRef<MapLibreModule | null>(null)
-  const signalsRef       = useRef<Signal[]>([])
-  const selectedSignalIdRef = useRef<string | null>(selectedSignalId)
   const mapStyleRef      = useRef<MapStyleKey>(mapStyle)
   const appliedStyleRef  = useRef<MapStyleKey | null>(null)
 
@@ -149,7 +147,6 @@ export function useMapLibreEngine({
   useEffect(() => { onSiteClickRef.current   = onSiteClick   }, [onSiteClick])
   useEffect(() => { onAssetClickRef.current  = onAssetClick  }, [onAssetClick])
   useEffect(() => { onSignalClickRef.current = onSignalClick }, [onSignalClick])
-  useEffect(() => { selectedSignalIdRef.current = selectedSignalId }, [selectedSignalId])
   useEffect(() => { mapStyleRef.current = mapStyle }, [mapStyle])
 
   // ---------------------------------------------------------------------------
@@ -220,38 +217,10 @@ export function useMapLibreEngine({
     mapRef, mapLoaded, vesselTracks, assetTrails, showTrails,
   })
 
-  // ---------------------------------------------------------------------------
-  // Keep signalsRef current for click handler
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    signalsRef.current = signals
-  }, [signals])
-
-  // ---------------------------------------------------------------------------
-  // Signal GeoJSON source data
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map || !mapLoaded) return
-    const { clusterable, selected } = buildMapSignalRenderCollections(signals, selectedSignalId)
-    updateSignalSources(map, clusterable, selected, buildMapSignalFeatureCollection(signals))
-  }, [mapLoaded, selectedSignalId, signals])
-
-  // ---------------------------------------------------------------------------
-  // Signal GeoJSON layers + interactions — set up once per style load
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map || !mapLoaded) return
-    const signalCollections = buildMapSignalRenderCollections(signalsRef.current, selectedSignalIdRef.current)
-    return ensureSignalLayers(
-      map,
-      maplibreRef.current?.Popup,
-      signalCollections.clusterable,
-      signalCollections.selected,
-      buildMapSignalFeatureCollection(signalsRef.current),
-    )
-  }, [mapLoaded])
+  useMapSignalLayers({
+    mapRef, maplibreRef, mapLoaded, signals, selectedSignalId,
+    showSignals, showHeatmap, onSignalClickRef,
+  })
 
   // ---------------------------------------------------------------------------
   // Unified click handling
@@ -292,41 +261,6 @@ export function useMapLibreEngine({
     map.on('click', handleMapClick)
     return () => { map.off('click', handleMapClick) }
   }, [mapLoaded])
-
-  // ---------------------------------------------------------------------------
-  // Signal layer visibility
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map || !mapLoaded) return
-    const vis = showSignals ? 'visible' : 'none'
-    const signalLayerIds = [
-      'signal-clusters',
-      'signal-cluster-count',
-      'signal-glow',
-      'signal-circles',
-      'signal-symbols',
-      'selected-signal-ring',
-      'selected-signal-glow',
-      'selected-signal-circle',
-      'selected-signal-symbol',
-    ]
-
-    for (const layerId of signalLayerIds) {
-      if (map.getLayer(layerId)) map.setLayoutProperty(layerId, 'visibility', vis)
-    }
-
-    if (!showSignals) onSignalClickRef.current(null)
-  }, [showSignals, mapLoaded])
-
-  // ---------------------------------------------------------------------------
-  // Heatmap visibility
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map || !mapLoaded || !map.getLayer('signal-heatmap')) return
-    map.setLayoutProperty('signal-heatmap', 'visibility', showSignals && showHeatmap ? 'visible' : 'none')
-  }, [showHeatmap, showSignals, mapLoaded])
 
   // ---------------------------------------------------------------------------
   // Return values

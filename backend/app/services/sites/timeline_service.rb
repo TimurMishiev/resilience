@@ -87,6 +87,7 @@ module Sites
         .where(entity_type: "Site", entity_id: @site.id)
         .where("occurred_at > ? AND occurred_at <= ?", cutoff, @as_of)
         .order(occurred_at: :desc)
+        .limit(MAX_PER_KIND)
         .map { |e| build_audit_event(e, "site_event") }
     end
 

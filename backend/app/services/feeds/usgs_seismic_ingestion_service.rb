@@ -67,7 +67,9 @@ module Feeds
       ServiceResult.success(metrics.success_payload)
     rescue => e
       metrics.increment(:error_count)
-      ServiceResult.failure(errors: [e.message], payload: { feed_health: metrics.finish(status: "error", errors: [e.message]) })
+      metrics.finish(status: "error", errors: [e.message])
+      raise if Feeds::TransientErrors.match?(e) # let PollJob retry network failures
+      ServiceResult.failure(errors: [e.message])
     end
 
     private

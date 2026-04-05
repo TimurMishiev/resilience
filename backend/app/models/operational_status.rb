@@ -1,5 +1,5 @@
 class OperationalStatus < ApplicationRecord
-  CATEGORIES = %w[feed_health job_health relay_health].freeze
+  CATEGORIES = %w[feed_health job_health relay_health metrics].freeze
 
   validates :category, presence: true, inclusion: { in: CATEGORIES }
   validates :key, presence: true, uniqueness: { scope: :category }

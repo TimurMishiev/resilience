@@ -106,6 +106,7 @@ module Ai
         max_retries: ANTHROPIC_MAX_RETRIES,
       )
 
+      ai_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       response = client.messages.create(
         model:       ontology_model,
         max_tokens:  384,
@@ -114,6 +115,7 @@ module Ai
         tool_choice: { type: "tool", name: TOOL_NAME },
         messages:    [{ role: "user", content: @query }],
       )
+      Metrics::Recorder.record_ai_call(service: "ontology_query", duration_ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - ai_start) * 1000).round(1))
 
       tool_block = response.content.find { |block| block.type == "tool_use" && block.name == TOOL_NAME }
       return ServiceResult.failure(errors: ["AI did not return an ontology query plan"]) unless tool_block

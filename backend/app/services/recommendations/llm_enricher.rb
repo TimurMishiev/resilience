@@ -116,12 +116,14 @@ module Recommendations
         timeout: ANTHROPIC_TIMEOUT_SECONDS,
         max_retries: ANTHROPIC_MAX_RETRIES,
       )
+      ai_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       response = client.messages.create(
         model:      llm_model,
         max_tokens: MAX_TOKENS,
         temperature: TEMPERATURE,
         messages:   [{ role: "user", content: prompt }],
       )
+      Metrics::Recorder.record_ai_call(service: "recommendation_llm_enricher", duration_ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - ai_start) * 1000).round(1))
       response.content.first.text
     end
 

@@ -36,6 +36,7 @@ module Ai
         max_retries: ANTHROPIC_MAX_RETRIES,
       )
 
+      ai_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       response = client.messages.create(
         model:       filter_model,
         max_tokens:  256,
@@ -44,6 +45,7 @@ module Ai
         tool_choice: { type: "tool", name: TOOL_NAME },
         messages:    [ { role: "user", content: @query } ]
       )
+      Metrics::Recorder.record_ai_call(service: "signal_filter", duration_ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - ai_start) * 1000).round(1))
 
       tool_block = response.content.find { |b| b.type == "tool_use" && b.name == TOOL_NAME }
       return ServiceResult.failure(errors: ["AI did not return a filter tool call"]) unless tool_block

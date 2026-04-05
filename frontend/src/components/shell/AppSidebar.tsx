@@ -28,7 +28,7 @@ const ignorePreloadFailure = () => {}
 export function AppSidebar() {
   const navigate     = useNavigate()
   const { pathname, search } = useLocation()
-  const { isCommander } = useRole()
+  const { isCommander, isAdmin } = useRole()
   const preserveEntitySelection = pathname.startsWith('/map') || pathname.startsWith('/globe')
 
   const preloadMapPageOnly = () => { void preloadMapPage().catch(ignorePreloadFailure) }
@@ -108,6 +108,9 @@ export function AppSidebar() {
           onClick={() => navigate('/health')}
           labelElement={!isCommander ? <LockLabel /> : undefined}
         />
+        {isAdmin && (
+          <MenuItem icon="office" text="Organizations" active={pathname.startsWith('/organizations')} onClick={() => navigate('/organizations')} />
+        )}
       </Menu>
     </nav>
   )

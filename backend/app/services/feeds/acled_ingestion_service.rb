@@ -98,6 +98,10 @@ module Feeds
     rescue => e
       throttled_warn("exception", e.message)
       metrics.increment(:error_count)
+      if Feeds::TransientErrors.match?(e)
+        metrics.finish(status: "error", errors: [e.message])
+        raise # let PollJob retry network failures
+      end
       ServiceResult.success(metrics.success_payload(status: "degraded", errors: [e.message]))
     end
 

@@ -61,6 +61,10 @@ module Feeds
     rescue => e
       throttled_warn("exception", e.message)
       metrics.increment(:error_count)
+      if Feeds::TransientErrors.match?(e)
+        metrics.finish(status: "error", errors: [e.message])
+        raise # let PollJob retry network failures
+      end
       ServiceResult.success(metrics.success_payload(status: "degraded", errors: [e.message]))
     end
 
@@ -72,7 +76,12 @@ module Feeds
       http = ssl_http(uri.host, uri.port, timeout: TIMEOUT)
       resp = http.get(uri.request_uri, "Accept-Encoding" => "gzip")
 
-      return nil unless resp.code == "200"
+      unless resp.code == "200"
+        throttled_warn("fetch_#{date}", "HTTP #{resp.code}")
+        metrics.increment(:error_count)
+        raise Feeds::TransientHttpError, "HTTP #{resp.code}" if resp.code.start_with?("5")
+        return nil
+      end
 
       body = resp.body
       # Decompress if gzip
@@ -83,6 +92,7 @@ module Feeds
     rescue => e
       throttled_warn("fetch_#{date}", e.message)
       metrics.increment(:error_count)
+      raise if Feeds::TransientErrors.match?(e)
       nil
     end
 

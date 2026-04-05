@@ -89,9 +89,20 @@ RSpec.describe Feeds::UsgsSeismicIngestionService, type: :service do
     end
   end
 
-  describe "#call with no network" do
-    it "returns failure when the HTTP request fails" do
+  describe "#call error handling" do
+    it "re-raises transient network errors so PollJob can retry" do
+      allow_any_instance_of(Net::HTTP).to receive(:get).and_raise(Net::ReadTimeout)
+      expect { described_class.call }.to raise_error(Net::ReadTimeout)
+    end
+
+    it "records health status before re-raising transient errors" do
       allow_any_instance_of(Net::HTTP).to receive(:get).and_raise(Errno::ECONNREFUSED)
+      expect(Feeds::HealthRegistry).to receive(:record).with(hash_including(status: "error"))
+      expect { described_class.call }.to raise_error(Errno::ECONNREFUSED)
+    end
+
+    it "swallows non-transient errors and returns failure" do
+      allow_any_instance_of(Net::HTTP).to receive(:get).and_raise(RuntimeError, "unexpected")
       result = described_class.call
       expect(result.success).to be false
     end

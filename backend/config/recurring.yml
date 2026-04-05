@@ -49,6 +49,11 @@ production:
     queue: background
     schedule: every 30 minutes
 
+  metrics_snapshot:
+    class: Metrics::SnapshotJob
+    queue: background
+    schedule: every minute
+
   sse_lease_cleanup:
     class: Sse::LeaseCleanupJob
     queue: background
@@ -104,6 +109,11 @@ production:
     schedule: every hour
 
 development:
+  metrics_snapshot:
+    class: Metrics::SnapshotJob
+    queue: background
+    schedule: every minute
+
   correlation_evaluate_recent:
     class: Correlations::EvaluateRecentJob
     queue: background

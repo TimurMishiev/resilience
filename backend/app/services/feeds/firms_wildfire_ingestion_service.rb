@@ -69,7 +69,9 @@ module Feeds
       ServiceResult.success(metrics.success_payload)
     rescue => e
       metrics.increment(:error_count)
-      ServiceResult.failure(errors: [e.message], payload: { feed_health: metrics.finish(status: "error", errors: [e.message]) })
+      metrics.finish(status: "error", errors: [e.message])
+      raise if Feeds::TransientErrors.match?(e) # let PollJob retry network failures
+      ServiceResult.failure(errors: [e.message])
     end
 
     private
@@ -83,6 +85,7 @@ module Feeds
       unless response.code == "200"
         Rails.logger.warn "[FIRMSFeed] HTTP #{response.code} for #{box[:name]}"
         metrics.increment(:error_count)
+        raise Feeds::TransientHttpError, "HTTP #{response.code}" if response.code.start_with?("5")
         return nil
       end
 
@@ -90,6 +93,7 @@ module Feeds
     rescue => e
       Rails.logger.warn "[FIRMSFeed] fetch error for #{box[:name]}: #{e.message}"
       metrics.increment(:error_count)
+      raise if Feeds::TransientErrors.match?(e)
       nil
     end
 

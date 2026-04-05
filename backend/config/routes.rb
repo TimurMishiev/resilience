@@ -134,6 +134,8 @@ Rails.application.routes.draw do
     resources :pace_plans, only: %i[create update]
     resources :salute_reports, only: %i[create]
 
+    resources :organizations, only: %i[index show create update destroy]
+
     resources :vessels, only: %i[index show] do
       member do
         get :tracks

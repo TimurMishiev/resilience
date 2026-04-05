@@ -1,6 +1,40 @@
-import { Callout, Classes, HTMLTable, Icon, Tag } from '@blueprintjs/core'
+import { Callout, Classes, HTMLTable, Icon, Tag, ProgressBar } from '@blueprintjs/core'
 import { useFeedHealth, useOperationalHealth } from '../hooks/useOperationalHealth'
 import type { FeedHealthEntry, OperationalStatusEntry } from '../api/operational_health'
+import { timeAgo } from '../lib/formatters'
+
+// ── Platform Metrics types (from Metrics::Recorder snapshot!) ──────────
+interface EndpointLatency {
+  endpoint: string
+  count: number
+  p50_ms: number
+  p95_ms: number
+  p99_ms: number
+  max_ms: number
+}
+
+interface SseConnectionPayload {
+  total: number
+  by_stream: Record<string, number>
+  recorded_at: string
+}
+
+interface FeedLagEntry {
+  feed: string
+  status: string
+  last_poll_at: string | null
+  lag_seconds: number | null
+  ingested_count: number | null
+  error_count: number | null
+}
+
+interface AiServiceTiming {
+  service: string
+  count: number
+  p50_ms: number
+  p95_ms: number
+  max_ms: number
+}
 
 function feedStatusIntent(status: string): 'success' | 'danger' | 'warning' | 'none' {
   if (status === 'ok') return 'success'
@@ -15,16 +49,7 @@ function relayStatusIntent(status: string): 'success' | 'danger' | 'warning' | '
   return 'none'
 }
 
-function ago(iso: string): string {
-  const ms = Date.now() - Date.parse(iso)
-  if (ms < 0) return 'just now'
-  const seconds = Math.floor(ms / 1000)
-  if (seconds < 60) return `${seconds}s ago`
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.floor(minutes / 60)
-  return `${hours}h ${minutes % 60}m ago`
-}
+const ago = timeAgo
 
 function FeedHealthTable({ feeds }: { feeds: FeedHealthEntry[] }) {
   if (feeds.length === 0) {
@@ -130,6 +155,155 @@ function RelayHealthTable({ entries, now }: { entries: OperationalStatusEntry[];
   )
 }
 
+function latencyIntent(ms: number): 'success' | 'warning' | 'danger' {
+  if (ms < 200) return 'success'
+  if (ms < 1000) return 'warning'
+  return 'danger'
+}
+
+function lagIntent(seconds: number | null): 'success' | 'warning' | 'danger' {
+  if (seconds == null) return 'warning'
+  if (seconds < 300) return 'success'
+  if (seconds < 900) return 'warning'
+  return 'danger'
+}
+
+function formatMs(ms: number): string {
+  if (ms < 1000) return `${ms}ms`
+  return `${(ms / 1000).toFixed(2)}s`
+}
+
+function RequestLatencyTable({ endpoints }: { endpoints: EndpointLatency[] }) {
+  if (endpoints.length === 0) {
+    return <p className="bp6-text-muted" style={{ fontSize: 12 }}>No request latency data yet.</p>
+  }
+
+  const maxP95 = Math.max(...endpoints.map(e => e.p95_ms), 1)
+
+  return (
+    <HTMLTable compact striped style={{ width: '100%' }}>
+      <thead>
+        <tr>
+          <th>Endpoint</th>
+          <th>Requests</th>
+          <th>p50</th>
+          <th>p95</th>
+          <th>p99</th>
+          <th>Max</th>
+          <th style={{ width: 120 }}>p95 Bar</th>
+        </tr>
+      </thead>
+      <tbody>
+        {endpoints.map(e => (
+          <tr key={e.endpoint}>
+            <td style={{ fontFamily: 'monospace', fontSize: 11 }}>{e.endpoint}</td>
+            <td>{e.count}</td>
+            <td><Tag minimal intent={latencyIntent(e.p50_ms)} style={{ fontSize: 10 }}>{formatMs(e.p50_ms)}</Tag></td>
+            <td><Tag minimal intent={latencyIntent(e.p95_ms)} style={{ fontSize: 10 }}>{formatMs(e.p95_ms)}</Tag></td>
+            <td><Tag minimal intent={latencyIntent(e.p99_ms)} style={{ fontSize: 10 }}>{formatMs(e.p99_ms)}</Tag></td>
+            <td style={{ fontSize: 11 }}>{formatMs(e.max_ms)}</td>
+            <td><ProgressBar value={e.p95_ms / maxP95} intent={latencyIntent(e.p95_ms)} stripes={false} animate={false} /></td>
+          </tr>
+        ))}
+      </tbody>
+    </HTMLTable>
+  )
+}
+
+function SseConnectionsCard({ payload }: { payload: SseConnectionPayload | null }) {
+  if (!payload) {
+    return <p className="bp6-text-muted" style={{ fontSize: 12 }}>No SSE connection data yet.</p>
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 24, alignItems: 'baseline', flexWrap: 'wrap' }}>
+      <div>
+        <span className="bp6-text-muted" style={{ fontSize: 11 }}>Total Active</span>
+        <div style={{ fontSize: 28, fontWeight: 700, color: payload.total > 0 ? '#3dcc91' : '#a7b6c2' }}>{payload.total}</div>
+      </div>
+      {Object.entries(payload.by_stream).map(([stream, count]) => (
+        <div key={stream}>
+          <span className="bp6-text-muted" style={{ fontSize: 11 }}>{stream}</span>
+          <div style={{ fontSize: 20, fontWeight: 600 }}>{count}</div>
+        </div>
+      ))}
+      <span className="bp6-text-muted" style={{ fontSize: 11, marginLeft: 'auto' }}>
+        {ago(payload.recorded_at)}
+      </span>
+    </div>
+  )
+}
+
+function FeedLagTable({ feeds }: { feeds: FeedLagEntry[] }) {
+  if (feeds.length === 0) {
+    return <p className="bp6-text-muted" style={{ fontSize: 12 }}>No feed lag data yet.</p>
+  }
+
+  return (
+    <HTMLTable compact striped style={{ width: '100%' }}>
+      <thead>
+        <tr>
+          <th>Feed</th>
+          <th>Status</th>
+          <th>Lag</th>
+          <th>Last Poll</th>
+        </tr>
+      </thead>
+      <tbody>
+        {feeds.map(f => (
+          <tr key={f.feed}>
+            <td style={{ fontWeight: 600 }}>{f.feed}</td>
+            <td>
+              <Tag minimal intent={feedStatusIntent(f.status)} style={{ fontSize: 10, fontWeight: 600 }}>
+                {f.status.toUpperCase()}
+              </Tag>
+            </td>
+            <td>
+              <Tag minimal intent={lagIntent(f.lag_seconds)} style={{ fontSize: 10 }}>
+                {f.lag_seconds != null ? `${f.lag_seconds}s` : '—'}
+              </Tag>
+            </td>
+            <td className="bp6-text-muted" style={{ fontSize: 12 }}>
+              {f.last_poll_at ? ago(f.last_poll_at) : '—'}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </HTMLTable>
+  )
+}
+
+function AiResponseTimesTable({ services }: { services: AiServiceTiming[] }) {
+  if (services.length === 0) {
+    return <p className="bp6-text-muted" style={{ fontSize: 12 }}>No AI service timing data yet.</p>
+  }
+
+  return (
+    <HTMLTable compact striped style={{ width: '100%' }}>
+      <thead>
+        <tr>
+          <th>Service</th>
+          <th>Calls</th>
+          <th>p50</th>
+          <th>p95</th>
+          <th>Max</th>
+        </tr>
+      </thead>
+      <tbody>
+        {services.map(s => (
+          <tr key={s.service}>
+            <td style={{ fontFamily: 'monospace', fontSize: 11 }}>{s.service}</td>
+            <td>{s.count}</td>
+            <td><Tag minimal intent={latencyIntent(s.p50_ms)} style={{ fontSize: 10 }}>{formatMs(s.p50_ms)}</Tag></td>
+            <td><Tag minimal intent={latencyIntent(s.p95_ms)} style={{ fontSize: 10 }}>{formatMs(s.p95_ms)}</Tag></td>
+            <td style={{ fontSize: 11 }}>{formatMs(s.max_ms)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </HTMLTable>
+  )
+}
+
 export default function OperationalHealthPage() {
   const { data: feedData, isPending: feedPending, error: feedError } = useFeedHealth()
   const { data: opsData, isPending: opsPending, error: opsError, dataUpdatedAt } = useOperationalHealth()
@@ -149,6 +323,18 @@ export default function OperationalHealthPage() {
     const expires = e.payload.heartbeat_expires_at as string | undefined
     return expires ? Date.parse(expires) < now : false
   }).length
+
+  // ── Platform Metrics (from Metrics::Recorder snapshots) ────────────
+  const metricsEntries = opsEntries.filter(e => e.category === 'metrics')
+  const latencyEntry = metricsEntries.find(e => e.key === 'request_latency')
+  const sseEntry = metricsEntries.find(e => e.key === 'sse_connections')
+  const feedLagEntry = metricsEntries.find(e => e.key === 'feed_lag')
+  const aiTimingEntry = metricsEntries.find(e => e.key === 'ai_response_times')
+
+  const requestEndpoints = (latencyEntry?.payload?.endpoints ?? []) as unknown as EndpointLatency[]
+  const ssePayload = sseEntry?.payload ? sseEntry.payload as unknown as SseConnectionPayload : null
+  const feedLagFeeds = (feedLagEntry?.payload?.feeds ?? []) as unknown as FeedLagEntry[]
+  const aiServices = (aiTimingEntry?.payload?.services ?? []) as unknown as AiServiceTiming[]
 
   return (
     <div className="page-content">
@@ -215,6 +401,57 @@ export default function OperationalHealthPage() {
           <div className={Classes.SKELETON} style={{ width: '100%', height: 120 }}>&nbsp;</div>
         ) : (
           <RelayHealthTable entries={opsEntries} now={now} />
+        )}
+      </div>
+
+      {/* Platform Metrics */}
+      <div className="dashboard-card" style={{ marginBottom: 20 }}>
+        <h4 className="dashboard-card-title bp6-heading">
+          <Icon icon="timeline-bar-chart" size={14} style={{ marginRight: 6 }} />
+          Request Latency
+        </h4>
+        {opsPending ? (
+          <div className={Classes.SKELETON} style={{ width: '100%', height: 120 }}>&nbsp;</div>
+        ) : (
+          <RequestLatencyTable endpoints={requestEndpoints} />
+        )}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+        <div className="dashboard-card">
+          <h4 className="dashboard-card-title bp6-heading">
+            <Icon icon="cell-tower" size={14} style={{ marginRight: 6 }} />
+            SSE Connections
+          </h4>
+          {opsPending ? (
+            <div className={Classes.SKELETON} style={{ width: '100%', height: 60 }}>&nbsp;</div>
+          ) : (
+            <SseConnectionsCard payload={ssePayload} />
+          )}
+        </div>
+
+        <div className="dashboard-card">
+          <h4 className="dashboard-card-title bp6-heading">
+            <Icon icon="predictive-analysis" size={14} style={{ marginRight: 6 }} />
+            AI Service Response Times
+          </h4>
+          {opsPending ? (
+            <div className={Classes.SKELETON} style={{ width: '100%', height: 60 }}>&nbsp;</div>
+          ) : (
+            <AiResponseTimesTable services={aiServices} />
+          )}
+        </div>
+      </div>
+
+      <div className="dashboard-card" style={{ marginBottom: 20 }}>
+        <h4 className="dashboard-card-title bp6-heading">
+          <Icon icon="time" size={14} style={{ marginRight: 6 }} />
+          Feed Ingestion Lag
+        </h4>
+        {opsPending ? (
+          <div className={Classes.SKELETON} style={{ width: '100%', height: 120 }}>&nbsp;</div>
+        ) : (
+          <FeedLagTable feeds={feedLagFeeds} />
         )}
       </div>
 

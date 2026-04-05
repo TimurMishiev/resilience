@@ -6,7 +6,7 @@ type: findings
 
 # Resilience — Open Findings
 
-Last reconciled with code: 2026-04-02
+Last reconciled with code: 2026-04-04
 
 ## P1 / High-Leverage Programs
 
@@ -18,9 +18,9 @@ _(No open P1 items. All prior P1 replay parity gaps have been closed.)_
   - Organization model + org/AO scoping exist, but domain-wide data isolation, workspace management, and admin tenant UI are not built.
   - This is acknowledged as a major track, not a quick patch.
 
-- Frontend maintenance concentration reduced:
-  - `useGlobeEngine.ts` (1156→732 lines): overlays extracted to `hooks/globe/useGlobeOverlays.ts`, tracks to `hooks/globe/useGlobeTrackLayers.ts`
-  - `useMapLibreEngine.ts` (876→655 lines): overlays extracted to `hooks/map/useMapOverlays.ts`
+- Frontend maintenance concentration substantially reduced:
+  - `useGlobeEngine.ts` (1156→453 lines): overlays extracted to `hooks/globe/useGlobeOverlays.ts` (409), tracks to `hooks/globe/useGlobeTrackLayers.ts` (163), assets to `hooks/globe/useGlobeAssetEntities.ts` (120), signals to `hooks/globe/useGlobeSignalPrimitives.ts` (147), sites to `hooks/globe/useGlobeSiteEntities.ts` (104)
+  - `useMapLibreEngine.ts` (876→378 lines): overlays extracted to `hooks/map/useMapOverlays.ts` (280), assets to `hooks/map/useMapAssetLayers.ts` (139), sites to `hooks/map/useMapSiteLayers.ts` (97), tracks to `hooks/map/useMapTrackLayers.ts` (115)
   - `GlobePage.tsx` (487 lines) — reasonable size after prior toolbar/legend/inspector extraction
   - `CorrelationRulesPage.tsx` and `PlanningPage.tsx` already decomposed
 
@@ -38,8 +38,8 @@ _(No open P1 items. All prior P1 replay parity gaps have been closed.)_
 
 - Keep `backend/db/structure.sql` and the local test environment aligned with the supported PostGIS baseline.
 - Keep `memory/project_resilience.md`, roadmap file, and actual code aligned.
-- Fix pre-existing ESLint violations (3 errors: `RuleFormDrawer.tsx` setState-in-effect, `PlanningChokepointsSection.tsx` unused var, `PlanningPage.tsx` unused import).
-- Fix pre-existing TypeScript build errors (19 errors across 8 files — `PlanningPage.tsx` type mismatches, `useMapLibreEngine.ts` missing types, test files with null assignability).
+- ~~Fix pre-existing ESLint violations (3 errors: `RuleFormDrawer.tsx` setState-in-effect, `PlanningChokepointsSection.tsx` unused var, `PlanningPage.tsx` unused import).~~ — DONE: `eslint src` exits clean (0 errors).
+- ~~Fix pre-existing TypeScript build errors (19 errors across 8 files — `PlanningPage.tsx` type mismatches, `useMapLibreEngine.ts` missing types, test files with null assignability).~~ — DONE: `tsc --noEmit` exits clean (0 errors).
 
 ## Closed Since Last Reconciliation
 

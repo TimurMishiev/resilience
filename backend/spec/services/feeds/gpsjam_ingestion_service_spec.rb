@@ -103,11 +103,15 @@ RSpec.describe Feeds::GpsjamIngestionService, type: :service do
       expect(result.payload[:ingested]).to eq(0)
     end
 
-    it "returns success with 0 ingested on network exception" do
+    it "re-raises transient network errors so PollJob can retry" do
       allow(service).to receive(:fetch_csv_for).and_raise(Errno::ECONNREFUSED)
+      expect { service.call }.to raise_error(Errno::ECONNREFUSED)
+    end
+
+    it "swallows non-transient errors and returns degraded success" do
+      allow(service).to receive(:fetch_csv_for).and_raise(RuntimeError, "unexpected")
       result = service.call
       expect(result.success).to be true
-      expect(result.payload[:ingested]).to eq(0)
     end
   end
 end
