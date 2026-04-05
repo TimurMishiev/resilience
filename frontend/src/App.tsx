@@ -36,6 +36,7 @@ const OntologyQueryPage   = lazy(() => import('./pages/OntologyQueryPage'))
 const SwimlanePage        = lazy(() => import('./pages/SwimlanePage'))
 const OperationalHealthPage = lazy(() => import('./pages/OperationalHealthPage'))
 const OrganizationsPage    = lazy(() => import('./pages/OrganizationsPage'))
+const UsersPage            = lazy(() => import('./pages/UsersPage'))
 
 export default function App() {
   return (
@@ -68,6 +69,7 @@ export default function App() {
               <Route path="swimlane" element={<PageErrorBoundary pageName="Swimlane"><SwimlanePage /></PageErrorBoundary>} />
               <Route path="health" element={<PageErrorBoundary pageName="Operational Health"><OperationalHealthPage /></PageErrorBoundary>} />
               <Route path="organizations" element={<PageErrorBoundary pageName="Organizations"><OrganizationsPage /></PageErrorBoundary>} />
+              <Route path="users" element={<PageErrorBoundary pageName="Users"><UsersPage /></PageErrorBoundary>} />
               <Route path="*" element={<NonIdealState icon="error" title="Page not found" description="The URL you entered does not match any page in this application." />} />
             </Route>
           </Route>

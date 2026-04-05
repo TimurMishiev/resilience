@@ -3,11 +3,12 @@
 module Metrics
   # Collects and persists platform metrics to OperationalStatus (category: "metrics").
   #
-  # Tracks four metric families:
-  #   1. request_latency  — p50/p95/p99 latency per controller action (rolling 5-min window)
-  #   2. sse_connections   — current active SSE stream count (from SseStreamLease)
-  #   3. feed_lag          — seconds since each feed's last successful poll
-  #   4. ai_response_times — rolling p50/p95 for AI service calls
+  # Tracks five metric families:
+  #   1. request_latency    — p50/p95/p99 latency per controller action (rolling 5-min window)
+  #   2. sse_connections     — current active SSE stream count (from SseStreamLease)
+  #   3. feed_lag            — seconds since each feed's last successful poll
+  #   4. ai_response_times   — rolling p50/p95 for AI service calls
+  #   5. ai_circuit_breakers — open/closed status for each AI service breaker
   #
   # Called periodically by Metrics::SnapshotJob (every 60s) and writes to
   # OperationalStatus so the Operational Health page can render it.
@@ -43,6 +44,7 @@ module Metrics
         persist_sse_connections!
         persist_feed_lag!
         persist_ai_response_times!
+        persist_circuit_breaker_status!
       end
 
       def reset!
@@ -141,6 +143,21 @@ module Metrics
           category: "metrics",
           key: "ai_response_times",
           payload: { services: services, recorded_at: Time.current.iso8601 }
+        )
+      end
+
+      def persist_circuit_breaker_status!
+        snapshot = Ai::CircuitBreaker.status_snapshot
+        any_open = snapshot.values.any? { |s| s[:status] == "open" }
+
+        OperationalStatus.record!(
+          category: "metrics",
+          key: "ai_circuit_breakers",
+          payload: {
+            services: snapshot,
+            any_open: any_open,
+            recorded_at: Time.current.iso8601,
+          }
         )
       end
 

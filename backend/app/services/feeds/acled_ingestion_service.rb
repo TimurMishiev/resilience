@@ -30,6 +30,7 @@ module Feeds
 
     LOG_THROTTLE_SECONDS = 3600
     SITE_SCOPE_RADIUS_KM = 250.0
+    MAX_QUERY_BOXES      = 50 # cap merged boxes to bound API calls per poll
 
     def call
       metrics = Feeds::PollMetrics.new(feed: "acled")
@@ -177,7 +178,15 @@ module Feeds
         boxes << geometry_box(ao.geometry)
       end
 
-      merge_boxes(boxes.compact)
+      merged = merge_boxes(boxes.compact)
+
+      if merged.size > MAX_QUERY_BOXES
+        Rails.logger.warn "[ACLEDFeed] #{merged.size} query boxes exceed cap (#{MAX_QUERY_BOXES}) — truncating by area"
+        merged = merged.sort_by { |b| -((b[:latmax] - b[:latmin]) * (b[:lonmax] - b[:lonmin])) }
+                       .first(MAX_QUERY_BOXES)
+      end
+
+      merged
     end
 
     def site_scope_box(site)

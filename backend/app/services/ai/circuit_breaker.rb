@@ -5,7 +5,27 @@ module Ai
     CACHE_TTL         = 10.minutes
     CACHE_KEY_PREFIX  = "ai/circuit_breaker"
 
+    KNOWN_SERVICES = %w[
+      task_filter signal_filter summary ontology_query recommendation_llm_enricher
+    ].freeze
+
     class << self
+      # Returns a hash of { service_name => { status:, failures: } } for all
+      # known AI breaker services, suitable for metrics/health dashboards.
+      def status_snapshot
+        KNOWN_SERVICES.each_with_object({}) do |service, map|
+          state = read_state(service:) || {}
+          failures = (state[:failures] || state["failures"] || 0).to_i
+          opened_at = parse_time(state[:opened_at] || state["opened_at"])
+          is_open = opened_at.present? && opened_at >= OPEN_WINDOW.ago
+
+          map[service] = {
+            status: is_open ? "open" : "closed",
+            failures: failures,
+          }
+        end
+      end
+
       def open?(service:)
         state = read_state(service:)
         return false if state.blank?

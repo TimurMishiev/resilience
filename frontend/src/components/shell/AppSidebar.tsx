@@ -109,7 +109,10 @@ export function AppSidebar() {
           labelElement={!isCommander ? <LockLabel /> : undefined}
         />
         {isAdmin && (
-          <MenuItem icon="office" text="Organizations" active={pathname.startsWith('/organizations')} onClick={() => navigate('/organizations')} />
+          <>
+            <MenuItem icon="office" text="Organizations" active={pathname.startsWith('/organizations')} onClick={() => navigate('/organizations')} />
+            <MenuItem icon="people" text="Users" active={pathname.startsWith('/users')} onClick={() => navigate('/users')} />
+          </>
         )}
       </Menu>
     </nav>

@@ -135,6 +135,7 @@ Rails.application.routes.draw do
     resources :salute_reports, only: %i[create]
 
     resources :organizations, only: %i[index show create update destroy]
+    resources :users, only: %i[index update]
 
     resources :vessels, only: %i[index show] do
       member do
