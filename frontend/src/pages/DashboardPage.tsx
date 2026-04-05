@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Button, Callout, Classes, Icon, Tag, Tooltip } from '@blueprintjs/core'
+import ExportDialog from '../components/ExportDialog'
 import AlertsPanel from '../components/dashboard/AlertsPanel'
 import LoiteringWatchlist from '../components/dashboard/LoiteringWatchlist'
 import RecommendationCard from '../components/RecommendationCard'
@@ -79,6 +80,7 @@ export default function DashboardPage() {
   const navigate  = useNavigate()
   const { isCommander } = useRole()
   const [evidenceRec, setEvidenceRec] = useState<Recommendation | null>(null)
+  const [exportOpen, setExportOpen] = useState(false)
 
   const { data: recData, error: recError } = useRecommendations(undefined, { enabled: !isReplaying, refetchInterval: isReplaying ? false : 60_000 })
   const topRecs = (recData?.data ?? []).slice(0, 3)
@@ -148,6 +150,9 @@ export default function DashboardPage() {
     <div className="dashboard-page">
       <div className="page-header">
         <h2 className="bp6-heading">Dashboard</h2>
+        {isCommander && (
+          <Button small icon="export" text="Export Data" onClick={() => setExportOpen(true)} />
+        )}
       </div>
 
       {isReplaying && (
@@ -416,6 +421,7 @@ export default function DashboardPage() {
       </div>
 
       {!isReplaying && <EvidenceDrawer rec={evidenceRec} onClose={() => setEvidenceRec(null)} />}
+      {isCommander && <ExportDialog isOpen={exportOpen} onClose={() => setExportOpen(false)} />}
     </div>
   )
 }

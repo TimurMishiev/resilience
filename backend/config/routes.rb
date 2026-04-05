@@ -136,6 +136,7 @@ Rails.application.routes.draw do
 
     resources :organizations, only: %i[index show create update destroy]
     resources :users, only: %i[index update]
+    resources :exports, only: %i[create]
 
     resources :vessels, only: %i[index show] do
       member do
