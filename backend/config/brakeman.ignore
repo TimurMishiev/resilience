@@ -1,0 +1,13 @@
+{
+  "ignored_warnings": [
+    {
+      "fingerprint": "a84b21c7d4dd7504755be00e2c44131d33a951170442b980ee98298415ff3395",
+      "code": "params.require(:user).permit(:role, :organization_id, :area_of_operation_id)",
+      "file": "app/controllers/api/users_controller.rb",
+      "line": 48,
+      "note": "Intentional: UsersController is admin-only (require_commander! + UserPolicy#update? requires admin?). Role assignment is the purpose of this endpoint."
+    }
+  ],
+  "updated": "2026-04-04",
+  "brakeman_version": "8.0.4"
+}
