@@ -1,4 +1,9 @@
 class Rack::Attack
+  # Use an in-memory store for rate-limiting counters so throttle checks
+  # never hit the database. Safe on a single-machine deploy; for multi-machine,
+  # switch to a shared Redis or Memcached store.
+  Rack::Attack.cache.store = ActiveSupport::Cache::MemoryStore.new
+
   SSE_TOKEN_REQUESTS_PER_MINUTE = 30
   SSE_TOKEN_REQUESTS_PER_HOUR = 300
   SSE_STREAM_OPENS_PER_MINUTE = 30
@@ -55,7 +60,7 @@ class Rack::Attack
   # This catches automated scanners that keep hitting rate limits.
   blocklist("block-repeat-offenders") do |req|
     Rack::Attack::Allow2Ban.filter(req.ip, maxretry: 10, findtime: 600, bantime: 3600) do
-      req.env["rack.attack.matched"] == "throttle"
+      req.env["rack.attack.match_type"] == :throttle
     end
   end
 
