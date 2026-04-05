@@ -30,15 +30,20 @@
 # entire lifetime — they never return the thread to the pool while connected.
 # This makes the thread pool the hard capacity ceiling for concurrent SSE clients.
 #
-# Constraint chain (production, fly.toml):
-#   RAILS_MAX_THREADS = 20       → 20 total threads per process
-#   SSE_MAX_STREAMS_PER_USER = 4 → max 4 streams per authenticated user
+# Constraint chain:
+#   Code default: RAILS_MAX_THREADS = 32 (see ENV.fetch below)
+#   Production (fly.toml): RAILS_MAX_THREADS = 20
+#   SSE_MAX_STREAMS_PER_USER = 4  → max 4 streams per authenticated user
 #   SSE_MAX_STREAMS_PER_IP   = 12 → max 12 streams per source IP
 #   Fly hard_limit = 30 connections (HTTP), enforced at the load balancer
 #
-# At full SSE occupancy (12 streams) → 8 threads remain for API calls.
-# The Fly hard_limit of 30 exceeds 20 threads intentionally, as most API
-# requests complete in <10 ms, keeping average thread utilization low.
+# Production budget (RAILS_MAX_THREADS=20):
+#   At full SSE occupancy (12 streams) → 8 threads remain for API calls.
+#   The Fly hard_limit of 30 exceeds 20 threads intentionally, as most API
+#   requests complete in <10 ms, keeping average thread utilization low.
+#
+# Local/default budget (RAILS_MAX_THREADS=32):
+#   At full SSE occupancy (12 streams) → 20 threads remain for API calls.
 #
 # Enforcement: Sse::StreamAdmission uses a PostgreSQL advisory lock + lease
 # table (sse_stream_leases) to atomically admit or deny stream requests.

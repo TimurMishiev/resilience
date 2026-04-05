@@ -1,5 +1,7 @@
 module Api
   class ExportsController < BaseController
+    include AuditEventScoping
+
     before_action :require_commander!
 
     ENTITY_SCOPES = {
@@ -23,7 +25,11 @@ module Api
         return
       end
 
-      scope = entity_type == "audit_events" ? model.all : policy_scope(model)
+      scope = if entity_type == "audit_events"
+                scope_audit_events_by_org(model.all)
+              else
+                policy_scope(model)
+              end
       authorize :export, :create?
 
       result = Exports::BatchService.call(
