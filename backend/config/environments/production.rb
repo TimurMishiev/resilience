@@ -67,7 +67,6 @@ Rails.application.configure do
   # The health check path is excluded so Fly's uptime probe is never blocked.
   config.hosts = [
     "resilience-ops.fly.dev",
-    /.*\.fly\.dev/,
     "localhost",
     "127.0.0.1",
   ]

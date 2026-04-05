@@ -7,7 +7,7 @@ module Api
       def index
         incident = scoped_record(Incident, params[:incident_id])
         authorize incident, :list_notes?
-        notes    = incident.incident_notes.includes(:author)
+        notes    = incident.incident_notes.chronological.includes(:author)
         notes    = notes.where("created_at <= ?", as_of) if as_of.present?
         render json: notes.map { |n| serialize_note(n) }
       end

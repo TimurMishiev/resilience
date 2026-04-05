@@ -4,6 +4,14 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FeedHealthEntry, OperationalStatusEntry } from '../api/operational_health'
 
+const mockRole = vi.hoisted(() => ({
+  role: 'commander' as string,
+  isAdmin: false,
+  isCommander: true,
+  isOperator: false,
+  isViewer: false,
+}))
+
 const mockState = vi.hoisted(() => ({
   feeds: [] as FeedHealthEntry[],
   feedPending: false,
@@ -11,6 +19,22 @@ const mockState = vi.hoisted(() => ({
   opsEntries: [] as OperationalStatusEntry[],
   opsPending: false,
   opsError: null as Error | null,
+}))
+
+vi.mock('../context/AuthContext', () => ({
+  useAuth: () => ({
+    currentUser: {
+      id: 'cmd-1',
+      email: 'commander@resilience.test',
+      role: mockRole.role,
+      organization_id: null,
+      area_of_operation_id: null,
+    },
+  }),
+}))
+
+vi.mock('../hooks/useRole', () => ({
+  useRole: () => mockRole,
 }))
 
 vi.mock('../hooks/useOperationalHealth', () => ({
@@ -41,12 +65,34 @@ async function renderPage() {
 
 describe('OperationalHealthPage', () => {
   beforeEach(() => {
+    Object.assign(mockRole, {
+      role: 'commander',
+      isAdmin: false,
+      isCommander: true,
+      isOperator: false,
+      isViewer: false,
+    })
     mockState.feeds = []
     mockState.feedPending = false
     mockState.feedError = null
     mockState.opsEntries = []
     mockState.opsPending = false
     mockState.opsError = null
+  })
+
+  it('shows commander-access-required callout for non-commander users', async () => {
+    Object.assign(mockRole, {
+      role: 'operator',
+      isAdmin: false,
+      isCommander: false,
+      isOperator: true,
+      isViewer: false,
+    })
+
+    await renderPage()
+
+    expect(screen.getByText(/commander access required/i)).toBeInTheDocument()
+    expect(screen.queryByText('Operational Health')).not.toBeInTheDocument()
   })
 
   it('renders empty state when no data is recorded', async () => {

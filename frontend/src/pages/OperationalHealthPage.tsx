@@ -1,6 +1,7 @@
 import { Callout, Classes, HTMLTable, Icon, Tag, ProgressBar } from '@blueprintjs/core'
 import { useFeedHealth, useOperationalHealth } from '../hooks/useOperationalHealth'
 import type { FeedHealthEntry, OperationalStatusEntry } from '../api/operational_health'
+import { useRole } from '../hooks/useRole'
 import { timeAgo } from '../lib/formatters'
 
 // ── Platform Metrics types (from Metrics::Recorder snapshot!) ──────────
@@ -305,8 +306,19 @@ function AiResponseTimesTable({ services }: { services: AiServiceTiming[] }) {
 }
 
 export default function OperationalHealthPage() {
+  const { isCommander } = useRole()
   const { data: feedData, isPending: feedPending, error: feedError } = useFeedHealth()
   const { data: opsData, isPending: opsPending, error: opsError, dataUpdatedAt } = useOperationalHealth()
+
+  if (!isCommander) {
+    return (
+      <div className="page-content">
+        <Callout intent="warning" icon="lock" title="Commander access required">
+          Operational health monitoring is restricted to commanders and administrators.
+        </Callout>
+      </div>
+    )
+  }
 
   const feeds = feedData?.data ?? []
   const opsEntries = opsData?.data ?? []

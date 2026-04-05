@@ -7,6 +7,8 @@ class AreaOfOperation < ApplicationRecord
   belongs_to :organization, optional: true
   belongs_to :created_by, class_name: "User"
   has_many :sites,             dependent: :nullify
+  has_many :users,             dependent: :nullify
+  has_many :incidents,         dependent: :nullify
   has_many :correlation_rules, dependent: :nullify
   has_many :chokepoints,       dependent: :restrict_with_exception
   has_one  :commander_intent,  dependent: :destroy

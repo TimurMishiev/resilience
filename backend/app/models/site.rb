@@ -6,6 +6,10 @@ class Site < ApplicationRecord
 
   has_many :tasks, dependent: :restrict_with_error
   has_many :assets, foreign_key: :home_site_id, dependent: :nullify, inverse_of: :home_site
+  has_many :incidents,           dependent: :nullify
+  has_many :signal_rule_matches, dependent: :nullify
+  has_many :salute_reports,      dependent: :nullify
+  has_many :site_risk_snapshots, dependent: :destroy
 
   validates :name, presence: true
   validates :latitude, presence: true, numericality: { greater_than_or_equal_to: -90, less_than_or_equal_to: 90 }

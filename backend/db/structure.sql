@@ -1,6 +1,7 @@
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -429,7 +430,9 @@ CREATE TABLE public.signal_rule_matches (
     acknowledged_at timestamp(6) without time zone,
     notes text,
     acknowledged_by_id uuid,
-    incident_id uuid
+    incident_id uuid,
+    created_at timestamp(6) without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp(6) without time zone DEFAULT now() NOT NULL
 );
 
 
@@ -749,6 +752,261 @@ CREATE TABLE public.telemetry_readings_p20260404 (
 
 
 --
+-- Name: telemetry_readings_p20260405; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.telemetry_readings_p20260405 (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    asset_id uuid NOT NULL,
+    lat double precision NOT NULL,
+    lng double precision NOT NULL,
+    speed double precision,
+    heading double precision,
+    battery double precision,
+    occurred_at timestamp(6) without time zone NOT NULL,
+    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: telemetry_readings_p20260406; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.telemetry_readings_p20260406 (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    asset_id uuid NOT NULL,
+    lat double precision NOT NULL,
+    lng double precision NOT NULL,
+    speed double precision,
+    heading double precision,
+    battery double precision,
+    occurred_at timestamp(6) without time zone NOT NULL,
+    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: telemetry_readings_p20260407; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.telemetry_readings_p20260407 (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    asset_id uuid NOT NULL,
+    lat double precision NOT NULL,
+    lng double precision NOT NULL,
+    speed double precision,
+    heading double precision,
+    battery double precision,
+    occurred_at timestamp(6) without time zone NOT NULL,
+    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: telemetry_readings_p20260408; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.telemetry_readings_p20260408 (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    asset_id uuid NOT NULL,
+    lat double precision NOT NULL,
+    lng double precision NOT NULL,
+    speed double precision,
+    heading double precision,
+    battery double precision,
+    occurred_at timestamp(6) without time zone NOT NULL,
+    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: telemetry_readings_p20260409; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.telemetry_readings_p20260409 (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    asset_id uuid NOT NULL,
+    lat double precision NOT NULL,
+    lng double precision NOT NULL,
+    speed double precision,
+    heading double precision,
+    battery double precision,
+    occurred_at timestamp(6) without time zone NOT NULL,
+    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: telemetry_readings_p20260410; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.telemetry_readings_p20260410 (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    asset_id uuid NOT NULL,
+    lat double precision NOT NULL,
+    lng double precision NOT NULL,
+    speed double precision,
+    heading double precision,
+    battery double precision,
+    occurred_at timestamp(6) without time zone NOT NULL,
+    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: telemetry_readings_p20260411; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.telemetry_readings_p20260411 (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    asset_id uuid NOT NULL,
+    lat double precision NOT NULL,
+    lng double precision NOT NULL,
+    speed double precision,
+    heading double precision,
+    battery double precision,
+    occurred_at timestamp(6) without time zone NOT NULL,
+    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: telemetry_readings_p20260412; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.telemetry_readings_p20260412 (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    asset_id uuid NOT NULL,
+    lat double precision NOT NULL,
+    lng double precision NOT NULL,
+    speed double precision,
+    heading double precision,
+    battery double precision,
+    occurred_at timestamp(6) without time zone NOT NULL,
+    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: telemetry_readings_p20260413; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.telemetry_readings_p20260413 (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    asset_id uuid NOT NULL,
+    lat double precision NOT NULL,
+    lng double precision NOT NULL,
+    speed double precision,
+    heading double precision,
+    battery double precision,
+    occurred_at timestamp(6) without time zone NOT NULL,
+    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: telemetry_readings_p20260414; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.telemetry_readings_p20260414 (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    asset_id uuid NOT NULL,
+    lat double precision NOT NULL,
+    lng double precision NOT NULL,
+    speed double precision,
+    heading double precision,
+    battery double precision,
+    occurred_at timestamp(6) without time zone NOT NULL,
+    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: telemetry_readings_p20260415; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.telemetry_readings_p20260415 (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    asset_id uuid NOT NULL,
+    lat double precision NOT NULL,
+    lng double precision NOT NULL,
+    speed double precision,
+    heading double precision,
+    battery double precision,
+    occurred_at timestamp(6) without time zone NOT NULL,
+    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: telemetry_readings_p20260416; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.telemetry_readings_p20260416 (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    asset_id uuid NOT NULL,
+    lat double precision NOT NULL,
+    lng double precision NOT NULL,
+    speed double precision,
+    heading double precision,
+    battery double precision,
+    occurred_at timestamp(6) without time zone NOT NULL,
+    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: telemetry_readings_p20260417; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.telemetry_readings_p20260417 (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    asset_id uuid NOT NULL,
+    lat double precision NOT NULL,
+    lng double precision NOT NULL,
+    speed double precision,
+    heading double precision,
+    battery double precision,
+    occurred_at timestamp(6) without time zone NOT NULL,
+    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: telemetry_readings_p20260418; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.telemetry_readings_p20260418 (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    asset_id uuid NOT NULL,
+    lat double precision NOT NULL,
+    lng double precision NOT NULL,
+    speed double precision,
+    heading double precision,
+    battery double precision,
+    occurred_at timestamp(6) without time zone NOT NULL,
+    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: telemetry_readings_p20260419; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.telemetry_readings_p20260419 (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    asset_id uuid NOT NULL,
+    lat double precision NOT NULL,
+    lng double precision NOT NULL,
+    speed double precision,
+    heading double precision,
+    battery double precision,
+    occurred_at timestamp(6) without time zone NOT NULL,
+    created_at timestamp(6) without time zone DEFAULT now() NOT NULL
+);
+
+
+--
 -- Name: user_sessions; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -915,6 +1173,111 @@ ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_rea
 --
 
 ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260404 FOR VALUES FROM ('2026-04-04 00:00:00') TO ('2026-04-05 00:00:00');
+
+
+--
+-- Name: telemetry_readings_p20260405; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260405 FOR VALUES FROM ('2026-04-05 00:00:00') TO ('2026-04-06 00:00:00');
+
+
+--
+-- Name: telemetry_readings_p20260406; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260406 FOR VALUES FROM ('2026-04-06 00:00:00') TO ('2026-04-07 00:00:00');
+
+
+--
+-- Name: telemetry_readings_p20260407; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260407 FOR VALUES FROM ('2026-04-07 00:00:00') TO ('2026-04-08 00:00:00');
+
+
+--
+-- Name: telemetry_readings_p20260408; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260408 FOR VALUES FROM ('2026-04-08 00:00:00') TO ('2026-04-09 00:00:00');
+
+
+--
+-- Name: telemetry_readings_p20260409; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260409 FOR VALUES FROM ('2026-04-09 00:00:00') TO ('2026-04-10 00:00:00');
+
+
+--
+-- Name: telemetry_readings_p20260410; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260410 FOR VALUES FROM ('2026-04-10 00:00:00') TO ('2026-04-11 00:00:00');
+
+
+--
+-- Name: telemetry_readings_p20260411; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260411 FOR VALUES FROM ('2026-04-11 00:00:00') TO ('2026-04-12 00:00:00');
+
+
+--
+-- Name: telemetry_readings_p20260412; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260412 FOR VALUES FROM ('2026-04-12 00:00:00') TO ('2026-04-13 00:00:00');
+
+
+--
+-- Name: telemetry_readings_p20260413; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260413 FOR VALUES FROM ('2026-04-13 00:00:00') TO ('2026-04-14 00:00:00');
+
+
+--
+-- Name: telemetry_readings_p20260414; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260414 FOR VALUES FROM ('2026-04-14 00:00:00') TO ('2026-04-15 00:00:00');
+
+
+--
+-- Name: telemetry_readings_p20260415; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260415 FOR VALUES FROM ('2026-04-15 00:00:00') TO ('2026-04-16 00:00:00');
+
+
+--
+-- Name: telemetry_readings_p20260416; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260416 FOR VALUES FROM ('2026-04-16 00:00:00') TO ('2026-04-17 00:00:00');
+
+
+--
+-- Name: telemetry_readings_p20260417; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260417 FOR VALUES FROM ('2026-04-17 00:00:00') TO ('2026-04-18 00:00:00');
+
+
+--
+-- Name: telemetry_readings_p20260418; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260418 FOR VALUES FROM ('2026-04-18 00:00:00') TO ('2026-04-19 00:00:00');
+
+
+--
+-- Name: telemetry_readings_p20260419; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.telemetry_readings ATTACH PARTITION public.telemetry_readings_p20260419 FOR VALUES FROM ('2026-04-19 00:00:00') TO ('2026-04-20 00:00:00');
 
 
 --
@@ -2023,6 +2386,216 @@ CREATE INDEX telemetry_readings_p20260404_occurred_at_idx ON public.telemetry_re
 
 
 --
+-- Name: telemetry_readings_p20260405_asset_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260405_asset_id_occurred_at_idx ON public.telemetry_readings_p20260405 USING btree (asset_id, occurred_at DESC);
+
+
+--
+-- Name: telemetry_readings_p20260405_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260405_occurred_at_idx ON public.telemetry_readings_p20260405 USING brin (occurred_at);
+
+
+--
+-- Name: telemetry_readings_p20260406_asset_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260406_asset_id_occurred_at_idx ON public.telemetry_readings_p20260406 USING btree (asset_id, occurred_at DESC);
+
+
+--
+-- Name: telemetry_readings_p20260406_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260406_occurred_at_idx ON public.telemetry_readings_p20260406 USING brin (occurred_at);
+
+
+--
+-- Name: telemetry_readings_p20260407_asset_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260407_asset_id_occurred_at_idx ON public.telemetry_readings_p20260407 USING btree (asset_id, occurred_at DESC);
+
+
+--
+-- Name: telemetry_readings_p20260407_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260407_occurred_at_idx ON public.telemetry_readings_p20260407 USING brin (occurred_at);
+
+
+--
+-- Name: telemetry_readings_p20260408_asset_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260408_asset_id_occurred_at_idx ON public.telemetry_readings_p20260408 USING btree (asset_id, occurred_at DESC);
+
+
+--
+-- Name: telemetry_readings_p20260408_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260408_occurred_at_idx ON public.telemetry_readings_p20260408 USING brin (occurred_at);
+
+
+--
+-- Name: telemetry_readings_p20260409_asset_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260409_asset_id_occurred_at_idx ON public.telemetry_readings_p20260409 USING btree (asset_id, occurred_at DESC);
+
+
+--
+-- Name: telemetry_readings_p20260409_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260409_occurred_at_idx ON public.telemetry_readings_p20260409 USING brin (occurred_at);
+
+
+--
+-- Name: telemetry_readings_p20260410_asset_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260410_asset_id_occurred_at_idx ON public.telemetry_readings_p20260410 USING btree (asset_id, occurred_at DESC);
+
+
+--
+-- Name: telemetry_readings_p20260410_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260410_occurred_at_idx ON public.telemetry_readings_p20260410 USING brin (occurred_at);
+
+
+--
+-- Name: telemetry_readings_p20260411_asset_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260411_asset_id_occurred_at_idx ON public.telemetry_readings_p20260411 USING btree (asset_id, occurred_at DESC);
+
+
+--
+-- Name: telemetry_readings_p20260411_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260411_occurred_at_idx ON public.telemetry_readings_p20260411 USING brin (occurred_at);
+
+
+--
+-- Name: telemetry_readings_p20260412_asset_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260412_asset_id_occurred_at_idx ON public.telemetry_readings_p20260412 USING btree (asset_id, occurred_at DESC);
+
+
+--
+-- Name: telemetry_readings_p20260412_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260412_occurred_at_idx ON public.telemetry_readings_p20260412 USING brin (occurred_at);
+
+
+--
+-- Name: telemetry_readings_p20260413_asset_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260413_asset_id_occurred_at_idx ON public.telemetry_readings_p20260413 USING btree (asset_id, occurred_at DESC);
+
+
+--
+-- Name: telemetry_readings_p20260413_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260413_occurred_at_idx ON public.telemetry_readings_p20260413 USING brin (occurred_at);
+
+
+--
+-- Name: telemetry_readings_p20260414_asset_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260414_asset_id_occurred_at_idx ON public.telemetry_readings_p20260414 USING btree (asset_id, occurred_at DESC);
+
+
+--
+-- Name: telemetry_readings_p20260414_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260414_occurred_at_idx ON public.telemetry_readings_p20260414 USING brin (occurred_at);
+
+
+--
+-- Name: telemetry_readings_p20260415_asset_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260415_asset_id_occurred_at_idx ON public.telemetry_readings_p20260415 USING btree (asset_id, occurred_at DESC);
+
+
+--
+-- Name: telemetry_readings_p20260415_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260415_occurred_at_idx ON public.telemetry_readings_p20260415 USING brin (occurred_at);
+
+
+--
+-- Name: telemetry_readings_p20260416_asset_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260416_asset_id_occurred_at_idx ON public.telemetry_readings_p20260416 USING btree (asset_id, occurred_at DESC);
+
+
+--
+-- Name: telemetry_readings_p20260416_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260416_occurred_at_idx ON public.telemetry_readings_p20260416 USING brin (occurred_at);
+
+
+--
+-- Name: telemetry_readings_p20260417_asset_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260417_asset_id_occurred_at_idx ON public.telemetry_readings_p20260417 USING btree (asset_id, occurred_at DESC);
+
+
+--
+-- Name: telemetry_readings_p20260417_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260417_occurred_at_idx ON public.telemetry_readings_p20260417 USING brin (occurred_at);
+
+
+--
+-- Name: telemetry_readings_p20260418_asset_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260418_asset_id_occurred_at_idx ON public.telemetry_readings_p20260418 USING btree (asset_id, occurred_at DESC);
+
+
+--
+-- Name: telemetry_readings_p20260418_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260418_occurred_at_idx ON public.telemetry_readings_p20260418 USING brin (occurred_at);
+
+
+--
+-- Name: telemetry_readings_p20260419_asset_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260419_asset_id_occurred_at_idx ON public.telemetry_readings_p20260419 USING btree (asset_id, occurred_at DESC);
+
+
+--
+-- Name: telemetry_readings_p20260419_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX telemetry_readings_p20260419_occurred_at_idx ON public.telemetry_readings_p20260419 USING brin (occurred_at);
+
+
+--
 -- Name: telemetry_readings_p20260323_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
 --
 
@@ -2202,6 +2775,216 @@ ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH P
 --
 
 ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260404_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260405_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH PARTITION public.telemetry_readings_p20260405_asset_id_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260405_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260405_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260406_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH PARTITION public.telemetry_readings_p20260406_asset_id_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260406_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260406_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260407_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH PARTITION public.telemetry_readings_p20260407_asset_id_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260407_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260407_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260408_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH PARTITION public.telemetry_readings_p20260408_asset_id_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260408_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260408_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260409_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH PARTITION public.telemetry_readings_p20260409_asset_id_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260409_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260409_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260410_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH PARTITION public.telemetry_readings_p20260410_asset_id_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260410_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260410_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260411_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH PARTITION public.telemetry_readings_p20260411_asset_id_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260411_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260411_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260412_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH PARTITION public.telemetry_readings_p20260412_asset_id_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260412_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260412_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260413_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH PARTITION public.telemetry_readings_p20260413_asset_id_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260413_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260413_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260414_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH PARTITION public.telemetry_readings_p20260414_asset_id_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260414_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260414_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260415_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH PARTITION public.telemetry_readings_p20260415_asset_id_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260415_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260415_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260416_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH PARTITION public.telemetry_readings_p20260416_asset_id_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260416_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260416_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260417_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH PARTITION public.telemetry_readings_p20260417_asset_id_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260417_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260417_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260418_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH PARTITION public.telemetry_readings_p20260418_asset_id_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260418_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260418_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260419_asset_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_asset_id_and_occurred_at ATTACH PARTITION public.telemetry_readings_p20260419_asset_id_occurred_at_idx;
+
+
+--
+-- Name: telemetry_readings_p20260419_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION public.telemetry_readings_p20260419_occurred_at_idx;
 
 
 --
@@ -2585,6 +3368,7 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260405100000'),
 ('20260402070000'),
 ('20260402060000'),
 ('20260402050000'),
@@ -2646,3 +3430,4 @@ INSERT INTO "schema_migrations" (version) VALUES
 ('20260313104949'),
 ('20260313104948'),
 ('20260313104919');
+

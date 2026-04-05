@@ -172,10 +172,10 @@ async function request<T>(
 // Bypasses the JSON parsing in request() and returns the raw Response Blob.
 // ---------------------------------------------------------------------------
 
-export async function postBlob(path: string, body: unknown): Promise<Blob> {
+export async function postBlob(path: string, body: unknown, accept = '*/*'): Promise<Blob> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    Accept: 'application/pdf',
+    Accept: accept,
   }
 
   const controller = new AbortController()

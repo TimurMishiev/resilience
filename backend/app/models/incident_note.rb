@@ -9,8 +9,7 @@ class IncidentNote < ApplicationRecord
 
   validates :body, presence: true, length: { maximum: MAX_BODY_LENGTH }
 
-  # Chronological order — oldest first so the log reads top-to-bottom
-  default_scope { order(created_at: :asc) }
+  scope :chronological, -> { order(created_at: :asc) }
 
   # ── Immutability enforcement ──────────────────────────────────────────────
   # Rails raises ActiveRecord::ReadOnlyRecord on any save/update attempt
