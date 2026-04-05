@@ -63,11 +63,12 @@ primary_region = "iad"
 
   [http_service.concurrency]
     # Fly routes up to hard_limit connections to this machine before spinning
-    # a second one. With RAILS_MAX_THREADS=20 and 12 max SSE streams, 30
-    # connections gives 18 API slots + 12 SSE slots with buffer to spare.
+    # a second one. With RAILS_MAX_THREADS=20 and 12 max SSE streams, the
+    # remaining 8 API threads should not be overwhelmed. hard_limit=25 keeps
+    # at most 13 API connections queuing (25 - 12 SSE), matching real capacity.
     type       = "connections"
-    hard_limit = 30
-    soft_limit = 25
+    hard_limit = 25
+    soft_limit = 20
 
 [[vm]]
   size   = "shared-cpu-1x"

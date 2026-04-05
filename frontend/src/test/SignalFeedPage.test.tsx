@@ -82,6 +82,10 @@ vi.mock('../hooks/useReplayParams', () => ({
   }),
 }))
 
+vi.mock('../context/ReplayContext', () => ({
+  useReplay: () => ({ isReplaying: false, asOf: null, start: vi.fn(), stop: vi.fn(), tick: vi.fn() }),
+}))
+
 vi.mock('../hooks/useRole', () => ({
   useRole: () => ({
     isCommander: false,

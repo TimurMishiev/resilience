@@ -23,7 +23,7 @@ module Telemetry
         cutoff_date = utc_date(reference_time) - retention_days.to_i
         stale_partition_names(before_date: cutoff_date).each do |partition_name|
           connection.execute("DROP TABLE IF EXISTS #{connection.quote_table_name(partition_name)}")
-          cached_partitions.delete(partition_name)
+          cached_partitions.delete(partition_name) # Concurrent::Map#delete is thread-safe
         end
       end
 
@@ -40,7 +40,7 @@ module Telemetry
 
       def ensure_partition!(date)
         partition_name = partition_name_for(date)
-        return if cached_partitions.include?(partition_name)
+        return if cached_partitions.key?(partition_name)
 
         with_advisory_lock(lock_key_for(date)) do
           unless partition_exists?(partition_name)
@@ -55,7 +55,7 @@ module Telemetry
           end
         end
 
-        cached_partitions << partition_name
+        cached_partitions[partition_name] = true
       end
 
       def partition_exists?(partition_name)
@@ -110,7 +110,7 @@ module Telemetry
       end
 
       def cached_partitions
-        @cached_partitions ||= Set.new
+        @cached_partitions ||= Concurrent::Map.new
       end
 
       def parent_table_exists?

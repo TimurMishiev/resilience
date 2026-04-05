@@ -3,7 +3,8 @@ import {
   Button, Callout, Dialog, DialogBody, DialogFooter,
   FormGroup, HTMLSelect, InputGroup,
 } from '@blueprintjs/core'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
+import { useReplayGuardedMutation } from '../../hooks/useReplayGuardedMutation'
 import { injectSignal } from '../../api/signals'
 import type { SignalType } from '../../api/types'
 
@@ -33,7 +34,7 @@ export default function InjectDialog({ isOpen, onClose }: { isOpen: boolean; onC
   const [note,       setNote]       = useState('')
   const [error,      setError]      = useState<string | null>(null)
 
-  const { mutate, isPending } = useMutation({
+  const { mutate, isPending } = useReplayGuardedMutation({
     mutationFn: injectSignal,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['signals'] })

@@ -7,6 +7,11 @@ module Replay
   #
   # This is a pure read operation with no side effects.
   class ProjectionService < ApplicationService
+    # Safety cap: no single projection should need to replay more events than this.
+    # Bounded in practice by controller-layer entity_ids, but this prevents a
+    # runaway query if the caller is ever misused.
+    MAX_EVENTS = 100_000
+
     def initialize(entity_type:, entity_ids:, as_of:)
       @entity_type = entity_type
       @entity_ids  = Array(entity_ids)
@@ -20,6 +25,7 @@ module Replay
         .where(entity_type: @entity_type, entity_id: @entity_ids)
         .where("occurred_at <= ?", @as_of)
         .order(:occurred_at)
+        .limit(MAX_EVENTS)
 
       # For each entity, keep the after_snapshot from its latest event up to as_of.
       # entity_ids is always a bounded array from request context (never a full-table

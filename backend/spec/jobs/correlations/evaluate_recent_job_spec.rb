@@ -140,7 +140,7 @@ RSpec.describe Correlations::EvaluateRecentJob, type: :job do
         entry = config.dig(env, "correlation_evaluate_recent")
         expect(entry).to be_present, "missing recurring entry for #{env}"
         expect(entry["class"]).to eq("Correlations::EvaluateRecentJob")
-        expect(entry["schedule"]).to eq("every 10 seconds")
+        expect(entry["schedule"]).to eq("every 30 seconds")
       end
     end
   end

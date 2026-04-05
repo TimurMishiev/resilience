@@ -2,11 +2,18 @@ module Api
   module Auth
     class SessionsController < ApplicationController
       include JwtAuthenticatable
+      include Pundit::Authorization
+      after_action :verify_authorized
+
+      rescue_from Pundit::NotAuthorizedError do |_e|
+        render json: { errors: ["Not authorized"] }, status: :forbidden
+      end
 
       skip_before_action :authenticate_request!, only: :create
 
       # POST /api/auth/login
       def create
+        authorize :session, :create?
         user = User.find_by(email: params.dig(:session, :email)&.downcase)
 
         if user&.authenticate(params.dig(:session, :password))
@@ -34,6 +41,7 @@ module Api
       # GET /api/auth/sessions
       # Admins may target another account via user_id or user_email.
       def index
+        authorize :session, :index?
         target_user = target_user_for_session_management
         return unless target_user
 
@@ -57,6 +65,7 @@ module Api
       # Params:
       #   all_sessions: true — revoke every active session for the authenticated user
       def destroy
+        authorize :session, :destroy?
         token = extract_logout_token
         payload = token.present? ? JwtAuthenticatable.decode_payload(token) : nil
 
@@ -81,6 +90,7 @@ module Api
 
       # DELETE /api/auth/sessions/:id
       def revoke
+        authorize :session, :revoke?
         session = session_scope.find(params[:id])
         session.revoke!(actor: current_user, reason: "manual_revoke")
         head :no_content
@@ -92,6 +102,7 @@ module Api
       #   keep_current=true      — keep the current session active (self only)
       #   user_id / user_email   — admin-only target selector
       def revoke_all
+        authorize :session, :revoke_all?
         unless ActiveModel::Type::Boolean.new.cast(params[:all])
           render json: { errors: ["all=true is required"] }, status: :bad_request
           return

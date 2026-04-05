@@ -3,6 +3,11 @@ module Api
     include ActionController::Live
     include JwtAuthenticatable
     include Pundit::Authorization
+    after_action :verify_authorized
+
+    rescue_from Pundit::NotAuthorizedError do |_e|
+      render json: { errors: ["Not authorized"] }, status: :forbidden
+    end
 
     # GET /api/events
     # Opens a persistent SSE stream for the authenticated client.

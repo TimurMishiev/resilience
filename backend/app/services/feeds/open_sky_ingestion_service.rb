@@ -30,9 +30,9 @@ module Feeds
     # Class-level so the window persists across service instantiations/poll cycles.
     LOG_THROTTLE_SECONDS = 3600
 
-    @last_logged_error = {}
+    @last_logged_error = Concurrent::Map.new
     class << self
-      attr_accessor :last_logged_error
+      attr_reader :last_logged_error
     end
 
     # OpenSky SSL verify_callback — waives CRL-unreachable errors (3, 33) only.

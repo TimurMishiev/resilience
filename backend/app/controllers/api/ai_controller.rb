@@ -82,12 +82,5 @@ module Api
     def authorize_ai_action!
       authorize :ai, :"#{action_name}?"
     end
-
-    def safe_parse_datetime(value)
-      return nil if value.blank?
-      Time.zone.parse(value.to_s)
-    rescue ArgumentError, TypeError
-      nil
-    end
   end
 end

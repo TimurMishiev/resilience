@@ -13,6 +13,24 @@ class User < ApplicationRecord
   has_many :user_sessions, dependent: :destroy
   has_many :revoked_user_sessions, class_name: "UserSession", foreign_key: :revoked_by_id, dependent: :nullify
 
+  # Inverse has_many for all creator/actor/assignee FK references.
+  # Users must never be hard-deleted (Organization enforces :restrict_with_exception),
+  # so :restrict_with_exception here is a structural guard, not a runtime concern.
+  has_many :created_areas_of_operation, class_name: "AreaOfOperation", foreign_key: :created_by_id, dependent: :restrict_with_exception, inverse_of: :created_by
+  has_many :created_commander_intents,  class_name: "CommanderIntent",  foreign_key: :created_by_id, dependent: :restrict_with_exception, inverse_of: :created_by
+  has_many :updated_commander_intents,  class_name: "CommanderIntent",  foreign_key: :updated_by_id, dependent: :restrict_with_exception, inverse_of: :updated_by
+  has_many :created_pace_plans,         class_name: "PacePlan",         foreign_key: :created_by_id, dependent: :restrict_with_exception, inverse_of: :created_by
+  has_many :updated_pace_plans,         class_name: "PacePlan",         foreign_key: :updated_by_id, dependent: :restrict_with_exception, inverse_of: :updated_by
+  has_many :created_chokepoints,        class_name: "Chokepoint",       foreign_key: :created_by_id, dependent: :restrict_with_exception, inverse_of: :created_by
+  has_many :updated_chokepoints,        class_name: "Chokepoint",       foreign_key: :updated_by_id, dependent: :restrict_with_exception, inverse_of: :updated_by
+  has_many :created_salute_reports,     class_name: "SaluteReport",     foreign_key: :created_by_id, dependent: :restrict_with_exception, inverse_of: :created_by
+  has_many :created_correlation_rules,  class_name: "CorrelationRule",  foreign_key: :created_by_id, dependent: :restrict_with_exception, inverse_of: :created_by
+  has_many :authored_incident_notes,    class_name: "IncidentNote",     foreign_key: :author_id,     dependent: :restrict_with_exception, inverse_of: :author
+  has_many :prosecution_steps,          class_name: "ProsecutionStep",  foreign_key: :actor_id,      dependent: :restrict_with_exception, inverse_of: :actor
+  has_many :acknowledged_matches,       class_name: "SignalRuleMatch",  foreign_key: :acknowledged_by_id, dependent: :nullify, inverse_of: :acknowledged_by
+  has_many :assigned_incidents,         class_name: "Incident",         foreign_key: :assigned_to_id,     dependent: :nullify, inverse_of: :assigned_to
+  has_many :prosecuted_incidents,       class_name: "Incident",         foreign_key: :prosecuted_by_id,   dependent: :nullify, inverse_of: :prosecuted_by
+
   validates :email, presence: true, uniqueness: { case_sensitive: false },
                     format: { with: URI::MailTo::EMAIL_REGEXP }
   validates :role, inclusion: { in: ROLES }

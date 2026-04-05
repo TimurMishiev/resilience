@@ -26,12 +26,10 @@ Rails.application.configure do
   config.assume_ssl = ENV.fetch("ASSUME_SSL", "true") != "false"
 
   # Force all access to the app over SSL, use Strict-Transport-Security, and use secure cookies.
-  # Fly handles the HTTP→HTTPS redirect at the proxy layer, so we leave this off
-  # to avoid a double-redirect loop.
-  # config.force_ssl = true
-
-  # Skip http-to-https redirect for the default health check endpoint.
-  # config.ssl_options = { redirect: { exclude: ->(request) { request.path == "/up" } } }
+  # Fly handles the HTTP→HTTPS redirect at the proxy layer; the ssl_options exclusion
+  # prevents a double-redirect loop on the health check endpoint.
+  config.force_ssl = true
+  config.ssl_options = { redirect: { exclude: ->(request) { request.path == "/up" } } }
 
   # Log to STDOUT with the current request id as a default log tag.
   config.log_tags = [ :request_id ]
