@@ -21,8 +21,8 @@ module Api
       render json: { errors: ["Not authorized"] }, status: :forbidden
     end
 
-    rescue_from ActiveRecord::RecordNotFound do |e|
-      render json: { errors: ["#{e.model} not found"] }, status: :not_found
+    rescue_from ActiveRecord::RecordNotFound do |_e|
+      render json: { errors: ["Resource not found"] }, status: :not_found
     end
 
     rescue_from ActionController::ParameterMissing do |e|

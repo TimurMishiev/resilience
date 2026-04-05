@@ -263,22 +263,24 @@ module Ai
           base = "  #{s[:signal_type].humanize} | #{s[:source].upcase} | #{s[:distance_km]}km away | #{s[:occurred_at]}"
           base += " | mag #{s[:magnitude].to_f.round(2)}" if s[:magnitude].present?
 
-          # Enrich with type-specific payload fields
+          # Enrich with type-specific payload fields.
+          # All payload values are sanitized before interpolation to prevent
+          # prompt injection via adversarial feed data (e.g. ACLED notes).
           p = s[:raw_payload] || {}
           case s[:signal_type]
           when "conflict_event"
             details = [
-              p["country"].presence && "country: #{p['country']}",
-              p["actor1"].presence  && "actor: #{p['actor1']}",
-              p["fatalities"].present? && p["fatalities"].to_i > 0 && "fatalities: #{p['fatalities']}",
-              p["event_type"].presence && "type: #{p['event_type']}"
+              p["country"].presence && "country: #{sanitize_for_prompt(p['country'])}",
+              p["actor1"].presence  && "actor: #{sanitize_for_prompt(p['actor1'])}",
+              p["fatalities"].present? && p["fatalities"].to_i > 0 && "fatalities: #{p['fatalities'].to_i}",
+              p["event_type"].presence && "type: #{sanitize_for_prompt(p['event_type'])}"
             ].compact
             base += " | #{details.join(' · ')}" if details.any?
           when "disaster_alert"
             details = [
-              p["alert_level"].presence   && "alert: #{p['alert_level']}",
-              p["event_type_name"].presence && "type: #{p['event_type_name']}",
-              p["severity_text"].presence  && "severity: #{p['severity_text'].to_s.truncate(80)}"
+              p["alert_level"].presence   && "alert: #{sanitize_for_prompt(p['alert_level'])}",
+              p["event_type_name"].presence && "type: #{sanitize_for_prompt(p['event_type_name'])}",
+              p["severity_text"].presence  && "severity: #{sanitize_for_prompt(p['severity_text'])}"
             ].compact
             base += " | #{details.join(' · ')}" if details.any?
           when "seismic_event"
@@ -338,6 +340,21 @@ module Ai
         signal.lat.to_f, signal.lng.to_f,
         @site.latitude.to_f, @site.longitude.to_f
       )
+    end
+
+    # Strips control characters, collapses whitespace, and truncates external
+    # feed data before interpolation into the LLM prompt. Prevents prompt
+    # injection via adversarial payloads in ACLED notes, actor names, etc.
+    PROMPT_FIELD_MAX_LENGTH = 120
+
+    def sanitize_for_prompt(value)
+      return "" if value.blank?
+
+      value.to_s
+           .gsub(/[\x00-\x1f\x7f]/, " ")  # strip control chars (newlines, tabs, null bytes)
+           .gsub(/\s+/, " ")               # collapse runs of whitespace
+           .strip
+           .truncate(PROMPT_FIELD_MAX_LENGTH)
     end
 
     def summary_model

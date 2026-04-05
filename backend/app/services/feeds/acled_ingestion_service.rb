@@ -32,9 +32,15 @@ module Feeds
     SITE_SCOPE_RADIUS_KM = 250.0
     MAX_QUERY_BOXES      = 50 # cap merged boxes to bound API calls per poll
 
+    # Class-level so the throttle window persists across service instantiations.
+    # Concurrent::Map is thread-safe for multi-threaded Puma / Solid Queue workers.
+    @last_logged_error = Concurrent::Map.new
+    class << self
+      attr_reader :last_logged_error
+    end
+
     def call
       metrics = Feeds::PollMetrics.new(feed: "acled")
-      @last_logged_error ||= {}
 
       api_key = ENV["ACLED_API_KEY"].to_s.strip
       email   = ENV["ACLED_EMAIL"].to_s.strip
@@ -314,11 +320,12 @@ module Feeds
     end
 
     def throttled_warn(key, message)
-      last = @last_logged_error&.dig(key)
+      store = self.class.last_logged_error
+      last  = store[key]
       return if last && Time.current - last < LOG_THROTTLE_SECONDS
 
       Rails.logger.warn "[ACLEDFeed] #{message}"
-      (@last_logged_error ||= {})[key] = Time.current
+      store[key] = Time.current
     end
   end
 end

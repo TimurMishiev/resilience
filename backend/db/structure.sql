@@ -3246,7 +3246,7 @@ ALTER TABLE ONLY public.correlation_rules
 --
 
 ALTER TABLE ONLY public.incidents
-    ADD CONSTRAINT fk_rails_b8b5a0282f FOREIGN KEY (prosecuted_by_id) REFERENCES public.users(id);
+    ADD CONSTRAINT fk_rails_b8b5a0282f FOREIGN KEY (prosecuted_by_id) REFERENCES public.users(id) ON DELETE SET NULL;
 
 
 --
@@ -3278,7 +3278,7 @@ ALTER TABLE ONLY public.signal_rule_matches
 --
 
 ALTER TABLE ONLY public.incidents
-    ADD CONSTRAINT fk_rails_d2436dcc2e FOREIGN KEY (assigned_to_id) REFERENCES public.users(id);
+    ADD CONSTRAINT fk_rails_d2436dcc2e FOREIGN KEY (assigned_to_id) REFERENCES public.users(id) ON DELETE SET NULL;
 
 
 --
@@ -3368,6 +3368,7 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260405120000'),
 ('20260405100000'),
 ('20260402070000'),
 ('20260402060000'),
