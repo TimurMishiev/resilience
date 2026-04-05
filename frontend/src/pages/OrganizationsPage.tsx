@@ -3,13 +3,14 @@ import {
   Button, Callout, Classes, Dialog, DialogBody, DialogFooter,
   FormGroup, HTMLTable, Icon, InputGroup, Tag,
 } from '@blueprintjs/core'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   getOrganizations, createOrganization, updateOrganization, deleteOrganization,
   type Organization, type OrganizationParams,
 } from '../api/organizations'
 import { getApiErrorMessage } from '../api/client'
 import { useRole } from '../hooks/useRole'
+import { useReplayGuardedMutation } from '../hooks/useReplayGuardedMutation'
 import { timeAgo } from '../lib/formatters'
 
 function slugify(name: string): string {
@@ -39,18 +40,18 @@ export default function OrganizationsPage() {
   const [formSlug, setFormSlug] = useState('')
   const [autoSlug, setAutoSlug] = useState(true)
 
-  const createMutation = useMutation({
+  const createMutation = useReplayGuardedMutation({
     mutationFn: (params: OrganizationParams) => createOrganization(params),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['organizations'] }); closeDialog() },
   })
 
-  const updateMutation = useMutation({
+  const updateMutation = useReplayGuardedMutation({
     mutationFn: ({ id, params }: { id: string; params: Partial<OrganizationParams> }) =>
       updateOrganization(id, params),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['organizations'] }); closeDialog() },
   })
 
-  const deleteMutation = useMutation({
+  const deleteMutation = useReplayGuardedMutation({
     mutationFn: (id: string) => deleteOrganization(id),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['organizations'] }); setDeleteTarget(null) },
   })

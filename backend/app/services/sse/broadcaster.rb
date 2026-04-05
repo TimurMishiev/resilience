@@ -22,7 +22,7 @@ module Sse
     # Register a new client queue. Returns the queue.
     def subscribe
       ensure_relay_listener!
-      queue = Queue.new
+      queue = SizedQueue.new(MAX_QUEUE_SIZE)
       subscriber_count = @mutex.synchronize do
         @clients << queue
         @clients.size
@@ -95,26 +95,24 @@ module Sse
 
       dropped = []
       snapshot.each do |q|
-        if q.size >= MAX_QUEUE_SIZE
+        begin
+          q.push(payload, true)
+        rescue ThreadError
           Rails.logger.warn(
             "[SSE] evict_slow_client client=#{q.object_id} event=#{event} queue_size=#{q.size} " \
             "queue_capacity=#{MAX_QUEUE_SIZE} snapshot_subscribers=#{snapshot.size}"
           )
           q.close unless q.closed?
           dropped << q
-        else
-          begin
-            q << payload
-          rescue ClosedQueueError
-            dropped << q
-          rescue => e
-            Rails.logger.error(
-              "[SSE] publish_error client=#{q.object_id} event=#{event} error=#{e.class} " \
-              "message=#{e.message}"
-            )
-            q.close unless q.closed?
-            dropped << q
-          end
+        rescue ClosedQueueError
+          dropped << q
+        rescue StandardError => e
+          Rails.logger.error(
+            "[SSE] publish_error client=#{q.object_id} event=#{event} error=#{e.class} " \
+            "message=#{e.message}"
+          )
+          q.close unless q.closed?
+          dropped << q
         end
       end
 

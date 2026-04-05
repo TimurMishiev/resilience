@@ -120,7 +120,7 @@ module Api
 
     def serialize_task(task)
       task.as_json(only: %i[id site_id asset_id title description priority
-                             workflow_status blocked_reason resolved_at created_at])
+                             workflow_status blocked_reason resolved_at created_at updated_at])
           .merge(
             "site_name"  => task.site&.name,
             "ao_id"      => task.site&.area_of_operation_id,

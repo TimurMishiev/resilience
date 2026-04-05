@@ -33,6 +33,7 @@ class Vessel < ApplicationRecord
   # first_seen_at is only set on creation — never overwritten.
   # last_seen_at is always updated to the signal's occurred_at.
   def self.upsert_from_signal!(signal)
+    retries = 0
     payload = signal.raw_payload || {}
     created = false
 
@@ -64,8 +65,10 @@ class Vessel < ApplicationRecord
     end
 
     [ vessel, created ]
-  rescue ActiveRecord::RecordNotUnique
+  rescue ActiveRecord::RecordNotUnique => e
     # Concurrent insert for the same MMSI — retry with the now-persisted record.
+    retries += 1
+    raise e if retries > 3
     retry
   end
 

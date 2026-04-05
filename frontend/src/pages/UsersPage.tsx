@@ -3,11 +3,12 @@ import {
   Button, Callout, Classes, Dialog, DialogBody, DialogFooter,
   FormGroup, HTMLSelect, HTMLTable, Icon, Tag,
 } from '@blueprintjs/core'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getUsers, updateUser, type UserRecord, type UserUpdateParams } from '../api/users'
 import { getOrganizations, type Organization } from '../api/organizations'
 import { getApiErrorMessage } from '../api/client'
 import { useRole } from '../hooks/useRole'
+import { useReplayGuardedMutation } from '../hooks/useReplayGuardedMutation'
 import { timeAgo } from '../lib/formatters'
 
 const ROLES = ['viewer', 'operator', 'commander', 'admin'] as const
@@ -33,7 +34,7 @@ export default function UsersPage() {
   const [formRole, setFormRole] = useState('')
   const [formOrgId, setFormOrgId] = useState<string>('')
 
-  const updateMutation = useMutation({
+  const updateMutation = useReplayGuardedMutation({
     mutationFn: ({ id, params }: { id: string; params: UserUpdateParams }) => updateUser(id, params),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] })

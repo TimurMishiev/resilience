@@ -70,6 +70,10 @@ vi.mock('../hooks/useRole', () => ({
   useRole: () => mockRole,
 }))
 
+vi.mock('../context/ReplayContext', () => ({
+  useReplay: () => ({ asOf: null, isReplaying: false }),
+}))
+
 vi.mock('../api/users', () => ({
   getUsers: (...args: unknown[]) => apiMocks.getUsers(...args),
   updateUser: (...args: unknown[]) => apiMocks.updateUser(...args),
