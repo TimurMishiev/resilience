@@ -91,7 +91,7 @@ module Feeds
 
       CSV.parse(response.body, headers: true, skip_blanks: true)
     rescue => e
-      Rails.logger.warn "[FIRMSFeed] fetch error for #{box[:name]}: #{e.message}"
+      Rails.logger.warn "[FIRMSFeed] fetch error for #{box[:name]}: #{e.class}: #{e.message}"
       metrics.increment(:error_count)
       raise if Feeds::TransientErrors.match?(e)
       nil
@@ -168,7 +168,7 @@ module Feeds
         }
       )
     rescue => e
-      Rails.logger.warn "[FIRMSFeed] failed to ingest row: #{e.message}"
+      Rails.logger.warn "[FIRMSFeed] failed to ingest row: #{e.class}: #{e.message}"
       nil
     end
   end

@@ -5,6 +5,8 @@ module Api
     SIGNAL_STREAM_BASELINE_BATCH_SIZE = 200
     SIGNAL_STREAM_BASELINE_MAX_AGE = 24.hours
 
+    after_action :verify_authorized
+    after_action :verify_policy_scoped, only: :index
     before_action :require_commander!, only: %i[create]
 
     # GET /api/signals
@@ -18,7 +20,7 @@ module Api
         render json: { errors: ["Invalid 'to' datetime"] }, status: :bad_request and return
       end
 
-      signals = ExternalSignal.all.order(occurred_at: :desc)
+      signals = policy_scope(ExternalSignal).order(occurred_at: :desc)
       upper_bound = [safe_parse_datetime(params[:to]), as_of].compact.min
 
       signals = signals.by_source(params[:source])      if params[:source].present?
@@ -40,7 +42,7 @@ module Api
 
     # GET /api/signals/:id
     def show
-      signal = ExternalSignal.find(params[:id])
+      signal = scoped_record(ExternalSignal, params[:id])
       authorize signal
       render json: Signals::PayloadSerializer.call(signal)
     end

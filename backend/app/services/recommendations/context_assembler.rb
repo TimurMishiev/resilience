@@ -102,7 +102,7 @@ module Recommendations
         { id: s.id, name: s.name, risk_score: (scores[s.id].to_f / 100.0) }
       end
     rescue => e
-      Rails.logger.debug "[ContextAssembler] flaggable_sites error: #{e.message}"
+      Rails.logger.warn "[ContextAssembler] flaggable_sites error: #{e.class}: #{e.message}"
       []
     end
 
@@ -125,7 +125,7 @@ module Recommendations
         .limit(5)
         .map { |r| { site_id: r.site_id, score: r.score, recorded_at: r.recorded_at.iso8601 } }
     rescue => e
-      Rails.logger.debug "[ContextAssembler] risk_snapshots error: #{e.message}"
+      Rails.logger.warn "[ContextAssembler] risk_snapshots error: #{e.class}: #{e.message}"
       []
     end
 
@@ -142,7 +142,7 @@ module Recommendations
           h[site.id] = { ao_id: ao.id, ao_name: ao.name, posture: ao.posture }
         end
     rescue => e
-      Rails.logger.debug "[ContextAssembler] posture_by_site_id error: #{e.message}"
+      Rails.logger.warn "[ContextAssembler] posture_by_site_id error: #{e.class}: #{e.message}"
       {}
     end
 
@@ -157,7 +157,7 @@ module Recommendations
         offline:   counts["offline"].to_i,
       }
     rescue => e
-      Rails.logger.debug "[ContextAssembler] asset_availability error: #{e.message}"
+      Rails.logger.warn "[ContextAssembler] asset_availability error: #{e.class}: #{e.message}"
       { available: 0, assigned: 0, degraded: 0, offline: 0 }
     end
 
@@ -167,7 +167,7 @@ module Recommendations
         { id: a.id, name: a.name, asset_type: a.asset_type }
       end
     rescue => e
-      Rails.logger.debug "[ContextAssembler] available_assets error: #{e.message}"
+      Rails.logger.warn "[ContextAssembler] available_assets error: #{e.class}: #{e.message}"
       []
     end
 
@@ -181,7 +181,7 @@ module Recommendations
         .limit(10)
         .map { |t| serialize_task(t) }
     rescue => e
-      Rails.logger.debug "[ContextAssembler] unassigned_high_priority_tasks error: #{e.message}"
+      Rails.logger.warn "[ContextAssembler] unassigned_high_priority_tasks error: #{e.class}: #{e.message}"
       []
     end
 

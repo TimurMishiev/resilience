@@ -131,7 +131,7 @@ module Feeds
         }
       )
     rescue => e
-      Rails.logger.warn "[OpenSkyFeed] failed to ingest state #{state&.first}: #{e.message}"
+      Rails.logger.warn "[OpenSkyFeed] failed to ingest state #{state&.first}: #{e.class}: #{e.message}"
       nil
     end
 

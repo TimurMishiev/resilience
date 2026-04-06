@@ -110,7 +110,7 @@ module Feeds
         }
       )
     rescue => e
-      Rails.logger.warn "[USGSFeed] failed to ingest #{feature['id']}: #{e.message}"
+      Rails.logger.warn "[USGSFeed] failed to ingest #{feature['id']}: #{e.class}: #{e.message}"
       nil
     end
   end

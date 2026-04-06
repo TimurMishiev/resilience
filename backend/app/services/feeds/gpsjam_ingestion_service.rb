@@ -180,7 +180,7 @@ module Feeds
         raw_payload: { signal_level: signal_level, hex_id: hex_str }
       )
     rescue => e
-      Rails.logger.warn "[GPSJamFeed] failed to ingest hexagon #{hex_str}: #{e.message}"
+      Rails.logger.warn "[GPSJamFeed] failed to ingest hexagon #{hex_str}: #{e.class}: #{e.message}"
       nil
     end
   end

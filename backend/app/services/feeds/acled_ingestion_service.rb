@@ -315,7 +315,7 @@ module Feeds
         }
       )
     rescue => e
-      Rails.logger.warn "[ACLEDFeed] failed to ingest event #{external_id}: #{e.message}"
+      Rails.logger.warn "[ACLEDFeed] failed to ingest event #{external_id}: #{e.class}: #{e.message}"
       nil
     end
 

@@ -116,7 +116,7 @@ module Feeds
 
       parsed[1..]  # Drop the metadata entry; remaining elements are vessel records
     rescue => e
-      Rails.logger.warn "[AISFeed] fetch error for #{box[:name]}: #{e.message}"
+      Rails.logger.warn "[AISFeed] fetch error for #{box[:name]}: #{e.class}: #{e.message}"
       metrics.increment(:error_count)
       raise if Feeds::TransientErrors.match?(e)
       nil
@@ -217,7 +217,7 @@ module Feeds
 
       result
     rescue => e
-      Rails.logger.warn "[AISFeed] failed to ingest vessel #{vessel&.dig('MMSI')}: #{e.message}"
+      Rails.logger.warn "[AISFeed] failed to ingest vessel #{vessel&.dig('MMSI')}: #{e.class}: #{e.message}"
       nil
     end
   end
