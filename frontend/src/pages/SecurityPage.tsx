@@ -12,6 +12,7 @@ import {
 } from '@blueprintjs/core'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useReplay } from '../context/ReplayContext'
 import { useRole } from '../hooks/useRole'
 import { useRevokeAllUserSessions, useRevokeUserSession, useUserSessions } from '../hooks/useUserSessions'
 import { logout } from '../api/auth'
@@ -28,6 +29,7 @@ export default function SecurityPage() {
   const navigate = useNavigate()
   const { currentUser } = useAuth()
   const { isAdmin } = useRole()
+  const { isReplaying } = useReplay()
   const [targetEmailDraft, setTargetEmailDraft] = useState('')
   const [targetEmail, setTargetEmail] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -91,6 +93,12 @@ export default function SecurityPage() {
         <h2 className="bp6-heading">Security</h2>
       </div>
 
+      {isReplaying && (
+        <Callout intent="warning" icon="history" style={{ marginBottom: 16 }}>
+          Replay mode — session management is disabled. Session data reflects current state, not the replay timestamp.
+        </Callout>
+      )}
+
       <Callout intent="primary" icon="shield" style={{ marginBottom: 16 }}>
         Manage active browser/API sessions, revoke stale tokens, and inspect your current access scope.
       </Callout>
@@ -126,10 +134,10 @@ export default function SecurityPage() {
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {!viewingOtherUser && (
                 <>
-                  <Button small icon="ban-circle" onClick={handleRevokeOthers} loading={revokeAll.isPending}>
+                  <Button small icon="ban-circle" onClick={handleRevokeOthers} loading={revokeAll.isPending} disabled={isReplaying}>
                     Sign Out Other Sessions
                   </Button>
-                  <Button small intent="danger" icon="log-out" onClick={handleSignOutAllSessions}>
+                  <Button small intent="danger" icon="log-out" onClick={handleSignOutAllSessions} disabled={isReplaying}>
                     Sign Out All Sessions
                   </Button>
                 </>
@@ -154,7 +162,7 @@ export default function SecurityPage() {
                   <Button small icon="cross" onClick={() => { setTargetEmail(''); setTargetEmailDraft('') }}>
                     Reset
                   </Button>
-                  <Button small intent="danger" icon="ban-circle" onClick={handleAdminRevokeAll} loading={revokeAll.isPending}>
+                  <Button small intent="danger" icon="ban-circle" onClick={handleAdminRevokeAll} loading={revokeAll.isPending} disabled={isReplaying}>
                     Revoke All For Target
                   </Button>
                 </>
@@ -226,6 +234,7 @@ export default function SecurityPage() {
                           intent="danger"
                           icon="cross"
                           loading={revokeSession.isPending}
+                          disabled={isReplaying}
                           onClick={async () => {
                             setError(null)
                             try {

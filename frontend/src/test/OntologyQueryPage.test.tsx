@@ -5,6 +5,10 @@ const roleState = vi.hoisted(() => ({
   isCommander: true,
 }))
 
+vi.mock('../context/ReplayContext', () => ({
+  useReplay: () => ({ asOf: null, isReplaying: false }),
+}))
+
 vi.mock('../hooks/useRole', () => ({
   useRole: () => ({
     isCommander: roleState.isCommander,

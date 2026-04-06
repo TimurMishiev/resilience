@@ -21,6 +21,10 @@ const mockState = vi.hoisted(() => ({
   opsError: null as Error | null,
 }))
 
+vi.mock('../context/ReplayContext', () => ({
+  useReplay: () => ({ asOf: null, isReplaying: false }),
+}))
+
 vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({
     currentUser: {

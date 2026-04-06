@@ -48,6 +48,10 @@ const mockState = vi.hoisted(() => ({
 }))
 const logoutMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 
+vi.mock('../context/ReplayContext', () => ({
+  useReplay: () => ({ asOf: null, isReplaying: false }),
+}))
+
 vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({
     currentUser: mockState.currentUser,

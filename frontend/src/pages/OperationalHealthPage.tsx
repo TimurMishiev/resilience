@@ -1,6 +1,7 @@
 import { Callout, Classes, HTMLTable, Icon, Tag, ProgressBar } from '@blueprintjs/core'
 import { useFeedHealth, useOperationalHealth } from '../hooks/useOperationalHealth'
 import type { FeedHealthEntry, OperationalStatusEntry } from '../api/operational_health'
+import { useReplay } from '../context/ReplayContext'
 import { useRole } from '../hooks/useRole'
 import { timeAgo } from '../lib/formatters'
 
@@ -307,6 +308,7 @@ function AiResponseTimesTable({ services }: { services: AiServiceTiming[] }) {
 
 export default function OperationalHealthPage() {
   const { isCommander } = useRole()
+  const { isReplaying } = useReplay()
   const { data: feedData, isPending: feedPending, error: feedError } = useFeedHealth()
   const { data: opsData, isPending: opsPending, error: opsError, dataUpdatedAt } = useOperationalHealth()
 
@@ -359,6 +361,12 @@ export default function OperationalHealthPage() {
           Auto-refreshes every 30s
         </span>
       </div>
+
+      {isReplaying && (
+        <Callout intent="warning" icon="history" style={{ marginBottom: 16 }}>
+          Replay mode — health metrics reflect current platform state, not the replay timestamp.
+        </Callout>
+      )}
 
       {/* KPI row */}
       <div className="dashboard-kpi-row" style={{ marginBottom: 20 }}>

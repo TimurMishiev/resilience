@@ -1831,6 +1831,13 @@ CREATE INDEX index_incidents_fusion_lookup ON public.incidents USING btree (site
 
 
 --
+-- Name: index_incidents_on_area_of_operation_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_incidents_on_area_of_operation_id ON public.incidents USING btree (area_of_operation_id);
+
+
+--
 -- Name: index_incidents_on_assigned_to_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1842,6 +1849,13 @@ CREATE INDEX index_incidents_on_assigned_to_id ON public.incidents USING btree (
 --
 
 CREATE INDEX index_incidents_on_opened_at ON public.incidents USING btree (opened_at);
+
+
+--
+-- Name: index_incidents_on_prosecuted_by_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_incidents_on_prosecuted_by_id ON public.incidents USING btree (prosecuted_by_id);
 
 
 --
@@ -1919,6 +1933,13 @@ CREATE INDEX index_recommendations_on_expires_at ON public.recommendations USING
 --
 
 CREATE INDEX index_recommendations_on_recommendation_type ON public.recommendations USING btree (recommendation_type);
+
+
+--
+-- Name: index_recommendations_on_reviewed_by_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_recommendations_on_reviewed_by_id ON public.recommendations USING btree (reviewed_by_id);
 
 
 --
@@ -3408,6 +3429,7 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260406130000'),
 ('20260406120000'),
 ('20260406110000'),
 ('20260406100000'),
