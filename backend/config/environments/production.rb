@@ -22,13 +22,16 @@ Rails.application.configure do
 
   # Fly.io terminates TLS at the edge and forwards plain HTTP internally.
   # Telling Rails to assume SSL ensures cookies and redirects use https://.
-  # Set ASSUME_SSL=false for local Docker testing over plain HTTP.
+  # Set ASSUME_SSL=false for local Docker / CI testing over plain HTTP —
+  # this disables both assume_ssl AND force_ssl so the app serves plain HTTP
+  # without redirecting to https://.
   config.assume_ssl = ENV.fetch("ASSUME_SSL", "true") != "false"
 
   # Force all access to the app over SSL, use Strict-Transport-Security, and use secure cookies.
   # Fly handles the HTTP→HTTPS redirect at the proxy layer; the ssl_options exclusion
   # prevents a double-redirect loop on the health check endpoint.
-  config.force_ssl = true
+  # Gated on assume_ssl so Docker Compose / CI can run over plain HTTP.
+  config.force_ssl = config.assume_ssl
   config.ssl_options = { redirect: { exclude: ->(request) { request.path == "/up" } } }
 
   # Log to STDOUT with the current request id as a default log tag.
