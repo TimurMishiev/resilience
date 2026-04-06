@@ -38,6 +38,11 @@ function percentile(values: number[], percentileRank: number): number {
 }
 
 test('benchmark focused-to-global globe signal reconcile', async ({ page }, testInfo) => {
+  // Cesium cold-start with software WebGL (swiftshader) + seeded data fetch
+  // can exceed 60 s on shared CI runners.  The extra budget covers setup only;
+  // the reconciliation timings measured below are sub-millisecond.
+  test.setTimeout(180_000)
+
   await primeAuthenticatedSession(page)
   await page.addInitScript(() => {
     window.localStorage.setItem('resilience.perf', '1')
