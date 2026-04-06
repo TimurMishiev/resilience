@@ -102,6 +102,7 @@ module Incidents
       ServiceResult.failure(errors: msgs)
     rescue StandardError => e
       Rails.logger.error "[ProsecutionService#initiate] incident=#{@incident.id} error=#{e.class}: #{e.message}"
+      Observability.capture_exception(e, tags: { component: "prosecution_initiate" }, throttle_key: "prosecution_initiate:error:#{e.class}", throttle_seconds: 300)
       ServiceResult.failure(errors: [e.message])
     end
 
@@ -181,6 +182,7 @@ module Incidents
       ServiceResult.failure(errors: msgs)
     rescue StandardError => e
       Rails.logger.error "[ProsecutionService#add_step] incident=#{@incident.id} error=#{e.class}: #{e.message}"
+      Observability.capture_exception(e, tags: { component: "prosecution_add_step" }, throttle_key: "prosecution_add_step:error:#{e.class}", throttle_seconds: 300)
       ServiceResult.failure(errors: [e.message])
     end
 

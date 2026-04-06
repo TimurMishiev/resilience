@@ -50,6 +50,7 @@ module Incidents
       ServiceResult.failure(errors: e.record.errors.full_messages)
     rescue StandardError => e
       Rails.logger.error "[Incidents::NoteService] incident=#{@incident.id} error=#{e.class}: #{e.message}"
+      Observability.capture_exception(e, tags: { component: "incidents_note" }, throttle_key: "incidents_note:error:#{e.class}", throttle_seconds: 300)
       ServiceResult.failure(errors: [e.message])
     end
   end

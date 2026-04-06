@@ -88,6 +88,7 @@ module Alerts
       ServiceResult.failure(errors: e.record.errors.full_messages)
     rescue StandardError => e
       Rails.logger.error "[Alerts::TransitionService] match=#{@match.id} error=#{e.class}: #{e.message}"
+      Observability.capture_exception(e, tags: { component: "alerts_transition" }, throttle_key: "alerts_transition:error:#{e.class}", throttle_seconds: 300)
       ServiceResult.failure(errors: [e.message])
     end
 

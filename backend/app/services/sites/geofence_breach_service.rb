@@ -82,6 +82,7 @@ module Sites
         "[GeofenceBreachService] incident fusion failed match=#{match.id} " \
         "site=#{match.site_id} signal=#{match.signal_id} error=#{e.class}: #{e.message}"
       )
+      Observability.capture_exception(e, tags: { component: "geofence_breach_fusion" }, throttle_key: "geofence_breach_fusion:error:#{e.class}", throttle_seconds: 300)
     end
 
     def publish_breach(site:, match:, distance_km:)

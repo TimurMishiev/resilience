@@ -129,6 +129,7 @@ module Correlations
         actions_taken: actions_taken,
         error: e,
       )
+      Observability.capture_exception(e, tags: { component: "rule_firing" }, throttle_key: "rule_firing:error:#{e.class}", throttle_seconds: 300)
       ServiceResult.failure(errors: [e.message])
     end
 
