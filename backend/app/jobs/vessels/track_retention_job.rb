@@ -14,6 +14,11 @@ module Vessels
   class TrackRetentionJob < ApplicationJob
     queue_as :background
 
+    # Retry on transient DB errors (connection blips, deadlocks) with backoff.
+    # After 3 attempts the job is discarded — next recurring schedule fires fresh.
+    retry_on ActiveRecord::StatementInvalid, PG::Error,
+             wait: :polynomially_longer, attempts: 3
+
     RETAIN_FOR  = 7.days
     BATCH_SIZE  = 1_000
 

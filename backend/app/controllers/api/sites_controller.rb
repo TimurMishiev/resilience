@@ -186,6 +186,7 @@ module Api
         flag_reason: snapshot_or_current(snapshot, "flag_reason", site.flag_reason),
         geofence_radius_km: snapshot_or_current(snapshot, "geofence_radius_km", site.geofence_radius_km),
         created_at: site.created_at,
+        updated_at: site.updated_at,
       }
     end
   end

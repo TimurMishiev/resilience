@@ -1,9 +1,12 @@
 module Api
   class VesselsController < BaseController
+    after_action :verify_authorized
+    after_action :verify_policy_scoped, only: :index
+
     # GET /api/vessels?mmsi=N&loitering=true&dark_hours=N&per_page=N&page=N
     def index
       authorize Vessel
-      vessels = Vessel.all.order(last_seen_at: :desc)
+      vessels = policy_scope(Vessel).order(last_seen_at: :desc)
       vessels = vessels.where(mmsi: params[:mmsi])                 if params[:mmsi].present?
       vessels = vessels.loitering                                   if params[:loitering].present?
       vessels = vessels.dark_since(params[:dark_hours].to_i.hours) if params[:dark_hours].present?
@@ -13,14 +16,14 @@ module Api
 
     # GET /api/vessels/:id
     def show
-      vessel = Vessel.find(params[:id])
+      vessel = scoped_record(Vessel, params[:id])
       authorize vessel
       render json: serialize_vessel(vessel)
     end
 
     # GET /api/vessels/:id/tracks?from=ISO&to=ISO&limit=500
     def tracks
-      vessel = Vessel.find(params[:id])
+      vessel = scoped_record(Vessel, params[:id])
       authorize vessel, :tracks?
       scope  = vessel.vessel_tracks
       scope  = scope.where("occurred_at >= ?", safe_parse_datetime(params[:from])) if params[:from].present?
