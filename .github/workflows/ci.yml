@@ -119,6 +119,7 @@ jobs:
         run: |
           bundle exec rails db:migrate
           psql "$DATABASE_URL" -c "DROP EXTENSION IF EXISTS postgis_tiger_geocoder CASCADE; DROP EXTENSION IF EXISTS postgis_topology CASCADE; DROP EXTENSION IF EXISTS fuzzystrmatch CASCADE; DROP SCHEMA IF EXISTS tiger_data CASCADE; DROP SCHEMA IF EXISTS tiger CASCADE; DROP SCHEMA IF EXISTS topology CASCADE;"
+          psql "$DATABASE_URL" -c 'ALTER DATABASE resilience_test SET search_path TO "$user", public;'
           bundle exec rails db:schema:dump
           git diff --exit-code db/structure.sql
 
