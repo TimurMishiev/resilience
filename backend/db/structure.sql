@@ -1586,6 +1586,13 @@ CREATE UNIQUE INDEX idx_recommendations_pending_dedup ON public.recommendations 
 
 
 --
+-- Name: idx_rule_match_signal_rule_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_rule_match_signal_rule_unique ON public.signal_rule_matches USING btree (signal_id, correlation_rule_id) WHERE (correlation_rule_id IS NOT NULL);
+
+
+--
 -- Name: idx_sse_stream_leases_ip_expiry; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -3401,6 +3408,7 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260406110000'),
 ('20260406100000'),
 ('20260405120000'),
 ('20260405100000'),

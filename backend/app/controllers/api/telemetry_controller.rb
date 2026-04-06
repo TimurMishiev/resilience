@@ -103,15 +103,15 @@ module Api
 
       # Heartbeat thread — keeps the connection alive through proxies / load balancers
       heartbeat = start_sse_heartbeat(stream_name: "telemetry") do
-        refresh_sse_stream_lease(lease, stream_name: "telemetry")
-        sse_write(response.stream, event: "heartbeat", data: { ts: Time.current.to_i })
+        refresh_sse_stream_lease(lease, stream_name: "telemetry") &&
+          sse_write(response.stream, event: "heartbeat", data: { ts: Time.current.to_i })
       end
 
       # Main loop — pop telemetry payloads and forward to the client
       loop do
         payload = queue.pop
         break if payload.nil?
-        refresh_sse_stream_lease(lease, stream_name: "telemetry")
+        break unless refresh_sse_stream_lease(lease, stream_name: "telemetry")
         response.stream.write("event: telemetry\ndata: #{payload}\n\n")
       rescue IOError, ActionController::Live::ClientDisconnected
         break

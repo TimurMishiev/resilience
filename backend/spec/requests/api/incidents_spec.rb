@@ -499,9 +499,10 @@ RSpec.describe "Api::Incidents", type: :request do
 
     it "deduplicates shared signal nodes across multiple alerts" do
       signal = create(:external_signal)
-      rule   = create(:correlation_rule)
-      match1 = create(:signal_rule_match, :without_task, signal: signal, correlation_rule: rule, site: site)
-      match2 = create(:signal_rule_match, :without_task, signal: signal, correlation_rule: rule, site: site)
+      rule1  = create(:correlation_rule)
+      rule2  = create(:correlation_rule)
+      match1 = create(:signal_rule_match, :without_task, signal: signal, correlation_rule: rule1, site: site)
+      match2 = create(:signal_rule_match, :without_task, signal: signal, correlation_rule: rule2, site: site)
       incident.signal_rule_matches << match1
       incident.signal_rule_matches << match2
 
@@ -512,7 +513,7 @@ RSpec.describe "Api::Incidents", type: :request do
       rule_nodes   = body["nodes"].select { |n| n["type"] == "rule"   }
 
       expect(signal_nodes.length).to eq 1
-      expect(rule_nodes.length).to  eq 1
+      expect(rule_nodes.length).to  eq 2
     end
 
     it "returns 404 for a non-existent incident" do

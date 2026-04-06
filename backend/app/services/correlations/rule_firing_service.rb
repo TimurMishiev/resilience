@@ -117,6 +117,9 @@ module Correlations
     rescue CooldownActive
       log_outcome(:info, outcome: "cooldown_skipped")
       ServiceResult.failure(errors: ["cooldown"])
+    rescue ActiveRecord::RecordNotUnique
+      log_outcome(:info, outcome: "duplicate_skipped")
+      ServiceResult.failure(errors: ["duplicate"])
     rescue StandardError => e
       log_outcome(
         :error,

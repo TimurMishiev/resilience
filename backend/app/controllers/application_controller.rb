@@ -30,7 +30,7 @@ class ApplicationController < ActionController::API
       throttle_key: "sse_stream_lease_refresh:#{stream_name}:#{e.class}",
       throttle_seconds: 300,
     )
-    true
+    false
   end
 
   def release_sse_stream_lease(lease, stream_name:)

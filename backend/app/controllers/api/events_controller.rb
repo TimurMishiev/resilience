@@ -30,8 +30,8 @@ module Api
 
       # Heartbeat thread — keeps the TCP connection alive
       heartbeat = start_sse_heartbeat(stream_name: "events") do
-        refresh_sse_stream_lease(lease, stream_name: "events")
-        sse_write(response.stream, event: "heartbeat", data: { ts: Time.current.to_i })
+        refresh_sse_stream_lease(lease, stream_name: "events") &&
+          sse_write(response.stream, event: "heartbeat", data: { ts: Time.current.to_i })
       end
 
       # Block here, draining the queue until the client disconnects.
@@ -45,7 +45,7 @@ module Api
       loop do
         payload = queue.pop          # blocks until a message arrives
         break if payload.nil?
-        refresh_sse_stream_lease(lease, stream_name: "events")
+        break unless refresh_sse_stream_lease(lease, stream_name: "events")
         parsed  = JSON.parse(payload)
 
         # Org-scoped filtering: skip events from a different organization.

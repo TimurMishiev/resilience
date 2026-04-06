@@ -494,4 +494,39 @@ RSpec.describe Correlations::RuleFiringService do
       expect(SignalRuleMatch.count).to eq(1)
     end
   end
+
+  # ── Duplicate signal+rule deduplication ────────────────────────────────────
+
+  describe "duplicate signal+rule deduplication" do
+    it "returns duplicate failure when the same signal+rule match already exists" do
+      # First firing succeeds
+      first = described_class.call(rule: rule, signal: signal, site: site)
+      expect(first.success).to be true
+
+      # Create a second rule instance with 0 cooldown so cooldown doesn't block it
+      rule.update_column(:cooldown_minutes, 0)
+
+      second = described_class.call(rule: rule, signal: signal, site: site)
+      expect(second.success).to be false
+      expect(second.errors).to eq(["duplicate"])
+    end
+
+    it "does not create a second SignalRuleMatch row" do
+      described_class.call(rule: rule, signal: signal, site: site)
+      rule.update_column(:cooldown_minutes, 0)
+
+      expect {
+        described_class.call(rule: rule, signal: signal, site: site)
+      }.not_to change(SignalRuleMatch, :count)
+    end
+
+    it "does not create a duplicate Task" do
+      described_class.call(rule: rule, signal: signal, site: site)
+      rule.update_column(:cooldown_minutes, 0)
+
+      expect {
+        described_class.call(rule: rule, signal: signal, site: site)
+      }.not_to change(Task, :count)
+    end
+  end
 end

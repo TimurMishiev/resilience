@@ -93,15 +93,15 @@ module Api
       end
 
       heartbeat = start_sse_heartbeat(stream_name: "signals") do
-        refresh_sse_stream_lease(lease, stream_name: "signals")
-        sse_write(response.stream, event: "heartbeat", data: { ts: Time.current.to_i })
+        refresh_sse_stream_lease(lease, stream_name: "signals") &&
+          sse_write(response.stream, event: "heartbeat", data: { ts: Time.current.to_i })
       end
 
       loop do
         payload = queue.pop
         break if payload.nil?
         next unless signal_payload_after_cursor?(payload, last_streamed_cursor)
-        refresh_sse_stream_lease(lease, stream_name: "signals")
+        break unless refresh_sse_stream_lease(lease, stream_name: "signals")
         response.stream.write("event: signal\ndata: #{payload}\n\n")
       rescue IOError, ActionController::Live::ClientDisconnected
         break
@@ -189,11 +189,13 @@ module Api
         break if batch.empty?
 
         batch.each do |signal|
-          refresh_sse_stream_lease(lease, stream_name: "signals")
-          return {
-            cursor: signal_stream_cursor(cursor_ingested_at, cursor_id),
-            disconnected: true,
-          } unless sse_write(stream, event: "signal", data: Signals::PayloadSerializer.call(signal))
+          unless refresh_sse_stream_lease(lease, stream_name: "signals") &&
+                 sse_write(stream, event: "signal", data: Signals::PayloadSerializer.call(signal))
+            return {
+              cursor: signal_stream_cursor(cursor_ingested_at, cursor_id),
+              disconnected: true,
+            }
+          end
 
           cursor_ingested_at = signal.ingested_at
           cursor_id = signal.id
