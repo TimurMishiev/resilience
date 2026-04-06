@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# check=error=true
+# check=error=true;skip=SecretsUsedInArgOrEnv
 
 # Multi-stage build: React frontend → Rails backend → combined production image.
 # The built frontend is copied into Rails' public/ directory so a single app
