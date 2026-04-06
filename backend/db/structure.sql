@@ -64,6 +64,24 @@ END;
 $$;
 
 
+--
+-- Name: sync_external_signal_location(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.sync_external_signal_location() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF NEW.lat IS NOT NULL AND NEW.lng IS NOT NULL THEN
+    NEW.location := ST_SetSRID(
+      ST_MakePoint(NEW.lng::double precision, NEW.lat::double precision), 4326
+    );
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
@@ -216,6 +234,7 @@ CREATE TABLE public.external_signals (
     raw_payload jsonb DEFAULT '{}'::jsonb NOT NULL,
     occurred_at timestamp(6) without time zone NOT NULL,
     ingested_at timestamp(6) without time zone DEFAULT now() NOT NULL,
+    location public.geography(Point,4326),
     CONSTRAINT signals_signal_type_check CHECK ((signal_type = ANY (ARRAY['aircraft_position'::text, 'vessel_position'::text, 'seismic_event'::text, 'gps_jamming'::text, 'wildfire'::text, 'manual'::text, 'ais_gap'::text, 'conflict_event'::text, 'disaster_alert'::text]))),
     CONSTRAINT signals_source_check CHECK ((source = ANY (ARRAY['opensky'::text, 'ais'::text, 'usgs_seismic'::text, 'gpsjam'::text, 'firms_wildfire'::text, 'manual'::text, 'derived'::text, 'acled'::text, 'gdacs'::text])))
 );
@@ -1501,6 +1520,13 @@ ALTER TABLE ONLY public.vessel_tracks
 
 ALTER TABLE ONLY public.vessels
     ADD CONSTRAINT vessels_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: idx_external_signals_location_gist; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_external_signals_location_gist ON public.external_signals USING gist (location);
 
 
 --
@@ -3002,6 +3028,13 @@ CREATE TRIGGER incident_notes_no_delete BEFORE DELETE ON public.incident_notes F
 
 
 --
+-- Name: external_signals trg_sync_external_signal_location; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER trg_sync_external_signal_location BEFORE INSERT OR UPDATE OF lat, lng ON public.external_signals FOR EACH ROW EXECUTE FUNCTION public.sync_external_signal_location();
+
+
+--
 -- Name: chokepoints fk_rails_05fec8fd98; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3368,6 +3401,7 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260406100000'),
 ('20260405120000'),
 ('20260405100000'),
 ('20260402070000'),

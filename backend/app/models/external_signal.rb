@@ -38,8 +38,10 @@ class ExternalSignal < ApplicationRecord
       # Uses connection.extension_enabled? (live DB query) rather than column_names
       # (cached at class load time) so long-running processes pick up the column
       # after it is added without requiring a restart.
-      point = "ST_SetSRID(ST_MakePoint(#{lng.to_f}, #{lat.to_f}), 4326)::geography"
-      where("ST_DWithin(location, #{point}, ?)", km.to_f * 1000)
+      where(
+        "ST_DWithin(location, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, ?)",
+        lng.to_f, lat.to_f, km.to_f * 1000
+      )
     else
       # Bounding-box pre-filter — kept as a fallback so all callers continue to
       # work on Postgres instances without PostGIS. Exact Haversine is still
