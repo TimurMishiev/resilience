@@ -184,6 +184,7 @@ export interface ChainEdge {
 export interface IncidentChainResponse {
   nodes: ChainNode[]
   edges: ChainEdge[]
+  meta: { truncated: boolean; node_count: number }
 }
 
 export function getIncidentChain(id: string, params?: { as_of?: string | null }): Promise<IncidentChainResponse> {

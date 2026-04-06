@@ -114,7 +114,7 @@ RSpec.describe Recommendations::LlmEnricher, type: :service do
   end
 
   it "degrades gracefully and captures observability on unexpected errors" do
-    error = StandardError.new("anthropic exploded")
+    error = Anthropic::Errors::APIConnectionError.new(message: "anthropic exploded", url: URI("https://api.anthropic.com"))
     allow(messages_resource).to receive(:create).and_raise(error)
 
     expect(Rails.logger).to receive(:error).with(a_string_including("Recommendation enrichment error: anthropic exploded"))

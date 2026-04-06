@@ -40,7 +40,7 @@ module Briefings
       risk_data = fetch_risk_data
       pdf_bytes = render_pdf(risk_data)
       ServiceResult.success(pdf: pdf_bytes)
-    rescue => e
+    rescue StandardError => e # PDF rendering can fail in varied ways (Prawn, fonts, memory)
       ServiceResult.failure(errors: ["PDF generation failed: #{e.message}"])
     end
 

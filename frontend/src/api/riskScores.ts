@@ -1,6 +1,7 @@
 import { api } from './client'
 import type { SiteRiskScore } from './types'
 
-export function getRiskScores(): Promise<SiteRiskScore[]> {
-  return api.get('/api/risk_scores')
+export async function getRiskScores(): Promise<SiteRiskScore[]> {
+  const res = await api.get<{ data: SiteRiskScore[] }>('/api/risk_scores')
+  return res.data
 }

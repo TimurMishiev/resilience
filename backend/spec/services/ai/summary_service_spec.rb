@@ -99,10 +99,10 @@ RSpec.describe Ai::SummaryService, type: :service do
     end
 
     it "logs and captures unexpected failures" do
-      error = StandardError.new("summary exploded")
+      error = Anthropic::Errors::APIConnectionError.new(message: "summary exploded", url: URI("https://api.anthropic.com"))
       allow(fake_messages).to receive(:create).and_raise(error)
 
-      expect(Rails.logger).to receive(:error).with(a_string_including("AI service error: summary exploded", "StandardError"))
+      expect(Rails.logger).to receive(:error).with(a_string_including("AI service error: summary exploded", "Anthropic::Errors::APIConnectionError"))
       expect(Observability).to receive(:capture_exception).with(
         error,
         hash_including(

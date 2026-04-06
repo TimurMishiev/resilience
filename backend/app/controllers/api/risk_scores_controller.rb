@@ -16,11 +16,8 @@ module Api
     def index
       authorize :risk_score, :index?
 
-      if as_of
-        render json: replay_risk_scores
-      else
-        render json: live_risk_scores
-      end
+      scores = as_of ? replay_risk_scores : live_risk_scores
+      render json: { data: scores, meta: { count: scores.size, as_of: as_of&.iso8601 } }
     end
 
     private

@@ -98,7 +98,7 @@ module Ai
       Ai::CircuitBreaker.record_failure(service: BREAKER_SERVICE)
       report_exception(e, message: "Summary generation timed out", failure: "timeout")
       ServiceResult.failure(errors: ["Summary generation timed out"])
-    rescue => e
+    rescue Anthropic::Errors::Error => e
       Ai::CircuitBreaker.record_failure(service: BREAKER_SERVICE)
       report_exception(e, message: "AI service error: #{e.message}", failure: "error")
       ServiceResult.failure(errors: ["AI service error: #{e.message}"])

@@ -217,6 +217,11 @@ export default function IntelChainPanel({ incidentId, asOf }: IntelChainPanelPro
             Showing the incident chain as it existed at the replay timestamp.
           </Callout>
         )}
+        {data.meta.truncated && (
+          <Callout intent="warning" compact style={{ position: 'absolute', top: asOf ? 52 : 12, left: 12, zIndex: 5 }}>
+            Chain truncated to {data.meta.node_count} nodes. Some related entities are not shown.
+          </Callout>
+        )}
         <ReactFlow
           nodes={rfNodes}
           edges={rfEdges}

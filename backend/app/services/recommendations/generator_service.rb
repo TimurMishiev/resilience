@@ -25,7 +25,7 @@ module Recommendations
 
       Rails.logger.info "[GeneratorService] created=#{created} invalid=#{val_result.invalid.size} total_candidates=#{all_recs.size}"
       ServiceResult.success(created: created, invalid_count: val_result.invalid.size)
-    rescue => e
+    rescue ActiveRecord::ActiveRecordError, ActiveRecord::RecordNotUnique => e
       Rails.logger.error "[GeneratorService] #{e.message}\n#{e.backtrace.first(5).join("\n")}"
       ServiceResult.failure(errors: [e.message])
     end

@@ -3158,7 +3158,7 @@ ALTER TABLE ONLY public.prosecution_steps
 --
 
 ALTER TABLE ONLY public.tasks
-    ADD CONSTRAINT fk_rails_546c3973b4 FOREIGN KEY (asset_id) REFERENCES public.assets(id);
+    ADD CONSTRAINT fk_rails_546c3973b4 FOREIGN KEY (asset_id) REFERENCES public.assets(id) ON DELETE SET NULL;
 
 
 --
@@ -3398,7 +3398,7 @@ ALTER TABLE ONLY public.chokepoints
 --
 
 ALTER TABLE ONLY public.signal_rule_matches
-    ADD CONSTRAINT fk_rails_f6fa1e442c FOREIGN KEY (site_id) REFERENCES public.sites(id);
+    ADD CONSTRAINT fk_rails_f6fa1e442c FOREIGN KEY (site_id) REFERENCES public.sites(id) ON DELETE SET NULL;
 
 
 --
@@ -3408,6 +3408,7 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260406120000'),
 ('20260406110000'),
 ('20260406100000'),
 ('20260405120000'),

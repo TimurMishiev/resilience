@@ -37,7 +37,7 @@ module Recommendations
       Ai::CircuitBreaker.record_failure(service: BREAKER_SERVICE)
       report_exception(e, message: "Recommendation enrichment timed out", failure: "timeout")
       ServiceResult.success(recommendations: [])
-    rescue => e
+    rescue Anthropic::Errors::Error => e
       Ai::CircuitBreaker.record_failure(service: BREAKER_SERVICE)
       report_exception(e, message: "Recommendation enrichment error: #{e.message}", failure: "error")
       ServiceResult.success(recommendations: [])  # degrade gracefully — Tier 1 still runs

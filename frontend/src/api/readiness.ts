@@ -2,8 +2,9 @@ import { api } from './client'
 import type { QueryParams } from './client'
 import type { SiteReadiness, ThroughputPoint, AsOfParam, SwimlaneParams, SwimlaneResponse } from './types'
 
-export function getReadiness(params?: AsOfParam): Promise<SiteReadiness[]> {
-  return api.get('/api/readiness', params as QueryParams)
+export async function getReadiness(params?: AsOfParam): Promise<SiteReadiness[]> {
+  const res = await api.get<{ data: SiteReadiness[] }>('/api/readiness', params as QueryParams)
+  return res.data
 }
 
 export function getThroughput(): Promise<{ data: ThroughputPoint[] }> {

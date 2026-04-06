@@ -557,6 +557,29 @@ RSpec.describe "Api::Incidents", type: :request do
       alert_node = body.fetch("nodes").find { |node| node.fetch("type") == "alert" }
       expect(alert_node.dig("data", "status")).to eq("unacknowledged")
     end
+
+    it "returns meta.truncated false for small chains" do
+      get "/api/incidents/#{incident.id}/chain", headers: auth_headers(operator)
+
+      body = JSON.parse(response.body)
+      expect(body["meta"]["truncated"]).to eq false
+      expect(body["meta"]["node_count"]).to eq 1
+    end
+
+    it "caps nodes at 200 and sets meta.truncated true" do
+      # Create enough matches to exceed 200 nodes (each match adds up to 4 nodes: signal, rule, alert, task)
+      51.times do
+        match = create(:signal_rule_match, site: site)
+        incident.signal_rule_matches << match
+      end
+
+      get "/api/incidents/#{incident.id}/chain", headers: auth_headers(operator)
+
+      body = JSON.parse(response.body)
+      expect(body["meta"]["truncated"]).to eq true
+      # Cap is checked per-match; one batch of sub-nodes may push slightly past 200
+      expect(body["nodes"].size).to be < 210
+    end
   end
 
   describe "GET /api/incidents/:id/notes" do

@@ -155,9 +155,11 @@ module Api
         task_snapshots = load_replay_task_snapshots(matches.filter_map(&:task_id).uniq, as_of: as_of)
       end
 
+      node_limit = 200
       nodes = []
       edges = []
       seen  = Set.new
+      truncated = false
 
       nodes << {
         id:   incident.id,
@@ -171,6 +173,11 @@ module Api
       seen.add(incident.id)
 
       matches.each do |match|
+        if nodes.size >= node_limit
+          truncated = true
+          break
+        end
+
         unless seen.include?("match-#{match.id}")
           seen.add("match-#{match.id}")
           nodes << {
@@ -260,7 +267,7 @@ module Api
         end
       end
 
-      render json: { nodes: nodes, edges: edges }
+      render json: { nodes: nodes, edges: edges, meta: { truncated: truncated, node_count: nodes.size } }
     end
 
     private

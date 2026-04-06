@@ -85,10 +85,10 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
     end
 
     it "logs and captures unexpected planner failures" do
-      error = StandardError.new("planner exploded")
+      error = Anthropic::Errors::APIConnectionError.new(message: "planner exploded", url: URI("https://api.anthropic.com"))
       allow(fake_messages).to receive(:create).and_raise(error)
 
-      expect(Rails.logger).to receive(:error).with(a_string_including("AI service error: planner exploded", "StandardError"))
+      expect(Rails.logger).to receive(:error).with(a_string_including("AI service error: planner exploded", "Anthropic::Errors::APIConnectionError"))
       expect(Observability).to receive(:capture_exception).with(
         error,
         hash_including(

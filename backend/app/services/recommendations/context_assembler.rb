@@ -14,7 +14,7 @@ module Recommendations
 
     def call
       ServiceResult.success(context: build_context)
-    rescue => e
+    rescue ActiveRecord::ActiveRecordError => e
       Rails.logger.error "[ContextAssembler] #{e.message}"
       ServiceResult.failure(errors: [e.message])
     end

@@ -30,7 +30,7 @@ module Api
         }
       end
 
-      render json: result
+      render json: { data: result, meta: { count: result.size, as_of: as_of&.iso8601 } }
     end
 
     # Lightweight duck-type proxy so CalculationService can work with replay snapshots.

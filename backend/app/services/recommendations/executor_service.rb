@@ -27,7 +27,7 @@ module Recommendations
         Rails.logger.warn "[ExecutorService] dispatch failed rec=#{@rec.id}: #{result.errors.join(', ')}"
       end
       result
-    rescue => e
+    rescue ActiveRecord::ActiveRecordError => e
       Rails.logger.error "[ExecutorService] #{e.message}"
       ServiceResult.failure(errors: [e.message])
     end

@@ -297,11 +297,11 @@ RSpec.describe "API scoped access", type: :request do
     it "limits readiness and risk scores to visible sites" do
       get "/api/readiness", headers: auth_headers(scoped_operator)
       expect(response).to have_http_status(:ok)
-      expect(json_body.map { |row| row.fetch("site_id") }).to eq([site_a.id])
+      expect(json_body["data"].map { |row| row.fetch("site_id") }).to eq([site_a.id])
 
       get "/api/risk_scores", headers: auth_headers(scoped_operator)
       expect(response).to have_http_status(:ok)
-      expect(json_body.map { |row| row.fetch("site_id") }).to eq([site_a.id])
+      expect(json_body["data"].map { |row| row.fetch("site_id") }).to eq([site_a.id])
     end
 
     it "limits analytics to visible tasks and sites" do

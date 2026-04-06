@@ -18,13 +18,13 @@ RSpec.describe "Api::RiskScores", type: :request do
 
     it "returns one entry per site" do
       get "/api/risk_scores", headers: auth_headers(user)
-      body = JSON.parse(response.body)
-      expect(body.length).to eq(2)
+      data = JSON.parse(response.body)["data"]
+      expect(data.length).to eq(2)
     end
 
     it "returns required fields for each site" do
       get "/api/risk_scores", headers: auth_headers(user)
-      entry = JSON.parse(response.body).first
+      entry = JSON.parse(response.body)["data"].first
       expect(entry.keys).to include(
         "site_id", "site_name", "score", "risk_level", "components", "computed_at"
       )
@@ -32,7 +32,7 @@ RSpec.describe "Api::RiskScores", type: :request do
 
     it "returns component breakdown" do
       get "/api/risk_scores", headers: auth_headers(user)
-      components = JSON.parse(response.body).first["components"]
+      components = JSON.parse(response.body)["data"].first["components"]
       expect(components.keys).to include(
         "alert_pressure", "task_health", "signal_density"
       )
@@ -40,13 +40,13 @@ RSpec.describe "Api::RiskScores", type: :request do
 
     it "returns valid risk levels" do
       get "/api/risk_scores", headers: auth_headers(user)
-      levels = JSON.parse(response.body).map { |r| r["risk_level"] }
+      levels = JSON.parse(response.body)["data"].map { |r| r["risk_level"] }
       expect(levels).to all(be_in(%w[low moderate high critical]))
     end
 
     it "returns score 0 for a clean site with no alerts or tasks" do
       get "/api/risk_scores", headers: auth_headers(user)
-      bravo = JSON.parse(response.body).find { |r| r["site_id"] == site_b.id }
+      bravo = JSON.parse(response.body)["data"].find { |r| r["site_id"] == site_b.id }
       expect(bravo["score"]).to eq(0)
       expect(bravo["risk_level"]).to eq("low")
     end
@@ -66,7 +66,7 @@ RSpec.describe "Api::RiskScores", type: :request do
 
       it "reflects alert pressure in the score" do
         get "/api/risk_scores", headers: auth_headers(user)
-        alpha = JSON.parse(response.body).find { |r| r["site_id"] == site_a.id }
+        alpha = JSON.parse(response.body)["data"].find { |r| r["site_id"] == site_a.id }
         expect(alpha["components"]["alert_pressure"]).to be > 0
         expect(alpha["score"]).to be > 0
       end
@@ -114,9 +114,9 @@ RSpec.describe "Api::RiskScores", type: :request do
       it "returns historical snapshots at the cutoff" do
         get "/api/risk_scores", params: { as_of: cutoff.iso8601 }, headers: auth_headers(user)
         expect(response).to have_http_status(:ok)
-        body = JSON.parse(response.body)
+        data = JSON.parse(response.body)["data"]
 
-        alpha = body.find { |r| r["site_id"] == site_a.id }
+        alpha = data.find { |r| r["site_id"] == site_a.id }
         expect(alpha["score"]).to eq(72)
         expect(alpha["risk_level"]).to eq("high")
         expect(alpha["components"]["alert_pressure"]).to eq(30.0)
@@ -125,8 +125,8 @@ RSpec.describe "Api::RiskScores", type: :request do
 
       it "excludes snapshots recorded after the cutoff" do
         get "/api/risk_scores", params: { as_of: cutoff.iso8601 }, headers: auth_headers(user)
-        body = JSON.parse(response.body)
-        alpha = body.find { |r| r["site_id"] == site_a.id }
+        data = JSON.parse(response.body)["data"]
+        alpha = data.find { |r| r["site_id"] == site_a.id }
         expect(alpha["score"]).to eq(72) # not 90 from future snapshot
       end
 
@@ -141,8 +141,8 @@ RSpec.describe "Api::RiskScores", type: :request do
                recorded_at: cutoff - 2.hours)
 
         get "/api/risk_scores", params: { as_of: cutoff.iso8601 }, headers: auth_headers(user)
-        body = JSON.parse(response.body)
-        alpha = body.find { |r| r["site_id"] == site_a.id }
+        data = JSON.parse(response.body)["data"]
+        alpha = data.find { |r| r["site_id"] == site_a.id }
         expect(alpha["score"]).to eq(72) # latest before cutoff, not older
       end
     end
