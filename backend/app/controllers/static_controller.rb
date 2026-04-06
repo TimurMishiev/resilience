@@ -26,7 +26,7 @@ class StaticController < ApplicationController
     end
     response.set_header("Content-Security-Policy",
       "default-src 'self'; " \
-      "script-src 'self' blob:; " \
+      "script-src 'self' blob: 'wasm-unsafe-eval' 'unsafe-eval'; " \
       "style-src 'self' 'unsafe-inline'; " \
       "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://ion.cesium.com; " \
       "connect-src 'self' https://ion.cesium.com https://assets.ion.cesium.com https://api.cesium.com wss:; " \
