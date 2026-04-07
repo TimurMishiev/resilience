@@ -39,6 +39,24 @@ function expectStatus(result: { status: number; body: string }, expected: number
   expect(result.status, `${label}: expected ${expected}, got ${result.status}. Body: ${result.body.slice(0, 300)}`).toBe(expected)
 }
 
+/**
+ * Intercept SSE and streaming endpoints so page navigations never open
+ * long-lived connections that permanently hold Puma threads. Without this,
+ * two Playwright workers can exhaust the 32-thread pool within seconds,
+ * causing every subsequent API call to queue and timeout with an empty 500.
+ */
+async function mockSseEndpoints(page: Page) {
+  const emptyStream = { status: 200, headers: { 'content-type': 'text/event-stream' }, body: '' }
+  await page.route('**/api/events**', route => route.fulfill(emptyStream))
+  await page.route('**/api/telemetry/stream**', route => route.fulfill(emptyStream))
+  await page.route('**/api/signals/stream**', route => route.fulfill(emptyStream))
+  await page.route('**/api/sse_token', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ token: 'e2e-mock', expires_in: 60 }),
+  }))
+}
+
 // ==========================================================================
 // VIEWER ROLE BOUNDARIES
 // ==========================================================================
@@ -47,6 +65,7 @@ test.describe('Viewer role boundaries', () => {
   test.use({ storageState: authStatePath('viewer') })
 
   test.beforeEach(async ({ page }) => {
+    await mockSseEndpoints(page)
     await primeRoleSession(page, 'viewer')
   })
 
@@ -161,6 +180,7 @@ test.describe('Operator role boundaries', () => {
   test.use({ storageState: authStatePath('operator') })
 
   test.beforeEach(async ({ page }) => {
+    await mockSseEndpoints(page)
     await primeRoleSession(page, 'operator')
   })
 

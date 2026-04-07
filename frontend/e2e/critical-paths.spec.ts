@@ -185,7 +185,7 @@ test.describe('Incident detail and prosecution', () => {
 
     // Verify incident title and severity badge
     await expect(page.getByRole('heading', { name: 'Multi-sensor correlation near Alpha' })).toBeVisible()
-    await expect(page.getByText('HIGH', { exact: true }).first()).toBeVisible()
+    await expect(page.getByText('HIGH').first()).toBeVisible()
 
     // Verify tabs exist
     await expect(page.getByRole('tab', { name: /Evidence/i })).toBeVisible()

@@ -13,6 +13,12 @@ test('signals page smoke: route loads without runtime errors', async ({ page }) 
     }
   })
 
+  // Mock non-signal SSE endpoints to prevent Puma thread exhaustion in CI.
+  // The signals REST endpoint and SSE stream remain real.
+  const emptyStream = { status: 200, headers: { 'content-type': 'text/event-stream' }, body: '' }
+  await page.route('**/api/events**', route => route.fulfill(emptyStream))
+  await page.route('**/api/telemetry/stream**', route => route.fulfill(emptyStream))
+
   await primeAuthenticatedSession(page)
   await page.goto('/signals')
 
