@@ -185,7 +185,7 @@ test.describe('Incident detail and prosecution', () => {
 
     // Verify incident title and severity badge
     await expect(page.getByRole('heading', { name: 'Multi-sensor correlation near Alpha' })).toBeVisible()
-    await expect(page.getByText('HIGH')).toBeVisible()
+    await expect(page.getByText('HIGH', { exact: true }).first()).toBeVisible()
 
     // Verify tabs exist
     await expect(page.getByRole('tab', { name: /Evidence/i })).toBeVisible()
@@ -239,7 +239,7 @@ test.describe('Replay mode', () => {
     })
 
     await page.goto('/incidents')
-    await expect(page.getByRole('heading', { name: 'Incidents' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Incidents', exact: true })).toBeVisible()
 
     // Open replay selector and set a past time
     const replayInput = page.locator('input[type="datetime-local"]')
@@ -324,7 +324,7 @@ test.describe('Commander-only page gating', () => {
     await primeAuthenticatedSession(page)
 
     await page.goto('/ontology')
-    await expect(page.getByRole('heading', { name: /Ontology/i })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Ontology Query', exact: true })).toBeVisible()
     expect(pageErrors).toEqual([])
   })
 

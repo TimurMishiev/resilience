@@ -33,6 +33,15 @@ test('signals page smoke: route loads without runtime errors', async ({ page }) 
   })
 
   await expect(page.locator('.shell-sidebar')).toBeVisible()
+
+  // Wait for at least one /api/signals response (REST or SSE) before asserting
+  if (signalResponseStatuses.length === 0) {
+    await page.waitForResponse(
+      response => response.url().includes('/api/signals'),
+      { timeout: 15_000 },
+    ).catch(() => { /* may already have been captured */ })
+  }
+
   expect(signalResponseStatuses.some(status => status === 200)).toBe(true)
   await expect(page.getByText('Failed to load signals')).toHaveCount(0)
   expect(pageErrors).toEqual([])

@@ -9,13 +9,13 @@ import {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Fire a fetch and return the HTTP status */
-async function fetchStatus(
+/** Fire a fetch and return { status, body } for diagnostic logging */
+async function fetchWithBody(
   page: Page,
   method: string,
   url: string,
   body?: Record<string, unknown>,
-): Promise<number> {
+): Promise<{ status: number; body: string }> {
   return page.evaluate(
     async ({ url: u, method: m, body: b }) => {
       const res = await fetch(u, {
@@ -24,10 +24,20 @@ async function fetchStatus(
         headers: { 'Content-Type': 'application/json' },
         body: b ? JSON.stringify(b) : undefined,
       })
-      return res.status
+      const text = await res.text()
+      return { status: res.status, body: text }
     },
     { url, method, body },
   )
+}
+
+/** Assert expected status; logs response body on mismatch for CI debugging */
+function expectStatus(result: { status: number; body: string }, expected: number, label: string) {
+  if (result.status !== expected) {
+    // eslint-disable-next-line no-console
+    console.error(`[${label}] Expected ${expected} but got ${result.status}. Body: ${result.body.slice(0, 500)}`)
+  }
+  expect(result.status, `${label}: expected ${expected}, got ${result.status}. Body: ${result.body.slice(0, 300)}`).toBe(expected)
 }
 
 // ==========================================================================
@@ -93,40 +103,40 @@ test.describe('Viewer role boundaries', () => {
 
   test('backend rejects task creation', async ({ page }) => {
     await page.goto('/tasks')
-    const status = await fetchStatus(page, 'POST', '/api/tasks', {
+    const result = await fetchWithBody(page, 'POST', '/api/tasks', {
       task: { title: 'Should fail', priority: 'medium', site_id: '00000000-0000-0000-0000-000000000000' },
     })
-    expect(status).toBe(403)
+    expectStatus(result, 403, 'viewer POST /api/tasks')
   })
 
   test('backend rejects correlation rule creation', async ({ page }) => {
     await page.goto('/rules')
-    const status = await fetchStatus(page, 'POST', '/api/correlation_rules', {
+    const result = await fetchWithBody(page, 'POST', '/api/correlation_rules', {
       correlation_rule: { name: 'Test', rule_type: 'flat', conditions: [] },
     })
-    expect(status).toBe(403)
+    expectStatus(result, 403, 'viewer POST /api/correlation_rules')
   })
 
   test('backend rejects AI summary', async ({ page }) => {
     await page.goto('/dashboard')
-    const status = await fetchStatus(page, 'POST', '/api/ai/summary', {
+    const result = await fetchWithBody(page, 'POST', '/api/ai/summary', {
       mode: 'operational',
     })
-    expect(status).toBe(403)
+    expectStatus(result, 403, 'viewer POST /api/ai/summary')
   })
 
   test('backend rejects recommendation generation', async ({ page }) => {
     await page.goto('/dashboard')
-    const status = await fetchStatus(page, 'POST', '/api/recommendations/generate')
-    expect(status).toBe(403)
+    const result = await fetchWithBody(page, 'POST', '/api/recommendations/generate')
+    expectStatus(result, 403, 'viewer POST /api/recommendations/generate')
   })
 
   test('backend rejects area of operation creation', async ({ page }) => {
     await page.goto('/areas')
-    const status = await fetchStatus(page, 'POST', '/api/areas_of_operation', {
+    const result = await fetchWithBody(page, 'POST', '/api/areas_of_operation', {
       area_of_operation: { name: 'Test AO', geometry: { type: 'Polygon', coordinates: [[[0,0],[1,0],[1,1],[0,0]]] } },
     })
-    expect(status).toBe(403)
+    expectStatus(result, 403, 'viewer POST /api/areas_of_operation')
   })
 
   // ── Sidebar shows lock icons for restricted items ───────────────────────
@@ -187,15 +197,19 @@ test.describe('Operator role boundaries', () => {
     })
 
     if (Array.isArray(sites) && sites.length > 0) {
-      const status = await fetchStatus(page, 'POST', '/api/tasks', {
+      const result = await fetchWithBody(page, 'POST', '/api/tasks', {
         task: {
           title: 'Operator task test',
           priority: 'medium',
           site_id: sites[0].id,
         },
       })
+      if (result.status === 403 || result.status === 500) {
+        // eslint-disable-next-line no-console
+        console.error(`[operator POST /api/tasks] Unexpected ${result.status}. Body: ${result.body.slice(0, 500)}`)
+      }
       // Should be 201 (created) or 422 (validation) but NOT 403
-      expect(status).not.toBe(403)
+      expect(result.status).not.toBe(403)
     }
   })
 
@@ -220,41 +234,44 @@ test.describe('Operator role boundaries', () => {
 
   test('backend rejects correlation rule creation', async ({ page }) => {
     await page.goto('/rules')
-    const status = await fetchStatus(page, 'POST', '/api/correlation_rules', {
+    const result = await fetchWithBody(page, 'POST', '/api/correlation_rules', {
       correlation_rule: { name: 'Test', rule_type: 'flat', conditions: [] },
     })
-    expect(status).toBe(403)
+    expectStatus(result, 403, 'operator POST /api/correlation_rules')
   })
 
   test('backend rejects AI summary', async ({ page }) => {
     await page.goto('/dashboard')
-    const status = await fetchStatus(page, 'POST', '/api/ai/summary', {
+    const result = await fetchWithBody(page, 'POST', '/api/ai/summary', {
       mode: 'operational',
     })
-    expect(status).toBe(403)
+    expectStatus(result, 403, 'operator POST /api/ai/summary')
   })
 
   test('backend rejects recommendation generation', async ({ page }) => {
     await page.goto('/dashboard')
-    const status = await fetchStatus(page, 'POST', '/api/recommendations/generate')
-    expect(status).toBe(403)
+    const result = await fetchWithBody(page, 'POST', '/api/recommendations/generate')
+    expectStatus(result, 403, 'operator POST /api/recommendations/generate')
   })
 
   test('backend rejects area of operation creation', async ({ page }) => {
     await page.goto('/areas')
-    const status = await fetchStatus(page, 'POST', '/api/areas_of_operation', {
+    const result = await fetchWithBody(page, 'POST', '/api/areas_of_operation', {
       area_of_operation: { name: 'Test AO', geometry: { type: 'Polygon', coordinates: [[[0,0],[1,0],[1,1],[0,0]]] } },
     })
-    expect(status).toBe(403)
+    expectStatus(result, 403, 'operator POST /api/areas_of_operation')
   })
 
   test('backend rejects prosecution initiation', async ({ page }) => {
     await page.goto('/incidents')
-    // Try to prosecute a fake incident — should 403 (not 404, since auth check comes first via Pundit)
-    const status = await fetchStatus(page, 'POST', '/api/incidents/00000000-0000-0000-0000-000000000000/prosecute', {
+    const result = await fetchWithBody(page, 'POST', '/api/incidents/00000000-0000-0000-0000-000000000000/prosecute', {
       prosecution_phase: 'investigating',
     })
     // Could be 403 (Pundit) or 404 (record not found after scope) — both are acceptable rejections
-    expect([403, 404]).toContain(status)
+    if (result.status === 500) {
+      // eslint-disable-next-line no-console
+      console.error(`[operator POST prosecute] Unexpected 500. Body: ${result.body.slice(0, 500)}`)
+    }
+    expect([403, 404], `operator POST prosecute: got ${result.status}. Body: ${result.body.slice(0, 300)}`).toContain(result.status)
   })
 })

@@ -277,6 +277,7 @@ async function waitForMapBridge(page: Page) {
 }
 
 test('map site selection persists after a real canvas click', async ({ page }) => {
+  test.skip(!!process.env.CI, 'MapLibre canvas requires GPU — not available in CI swiftshader')
   test.setTimeout(120_000)
   const site: SiteFixture = {
     id: 'site-center',
@@ -357,6 +358,7 @@ test('map site selection persists after a real canvas click', async ({ page }) =
 })
 
 test('overlapping site and signal clicks still select the site', async ({ page }) => {
+  test.skip(!!process.env.CI, 'MapLibre canvas requires GPU — not available in CI swiftshader')
   test.setTimeout(120_000)
   const site: SiteFixture = {
     id: 'site-overlap',

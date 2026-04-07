@@ -13,6 +13,7 @@ type MapE2EState = {
 }
 
 test('live map SSE streams stay healthy past the prior proxy timeout window', async ({ page }) => {
+  test.skip(!!process.env.CI, 'MapLibre canvas requires GPU — not available in CI swiftshader')
   test.setTimeout(120_000)
 
   const pageErrors = capturePageErrors(page)

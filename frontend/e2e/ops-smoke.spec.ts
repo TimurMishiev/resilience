@@ -16,7 +16,7 @@ for (const pageSmoke of PAGE_SMOKES) {
     await page.goto(pageSmoke.path)
 
     await expect(page.locator('.shell-sidebar')).toBeVisible()
-    await expect(page.getByRole('heading', { name: pageSmoke.heading })).toBeVisible()
+    await expect(page.getByRole('heading', { name: pageSmoke.heading, exact: true })).toBeVisible()
     await expect(page.getByText(/^Failed to load/i)).toHaveCount(0)
     expect(pageErrors).toEqual([])
   })

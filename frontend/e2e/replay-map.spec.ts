@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test'
 import { captureFailedRequests, capturePageErrors, formatDateTimeLocal, primeAuthenticatedSession } from './helpers'
 
 test('map replay smoke: login, enter replay, and show replay-safe map warnings', async ({ page }) => {
+  test.skip(!!process.env.CI, 'MapLibre canvas requires GPU — not available in CI swiftshader')
   test.setTimeout(120_000)
   const pageErrors = capturePageErrors(page)
   const failedGlyphRequests = captureFailedRequests(
