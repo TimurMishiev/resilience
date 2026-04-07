@@ -87,7 +87,7 @@ test.describe('Viewer role boundaries', () => {
 
   test('can view incidents list', async ({ page }) => {
     await page.goto('/incidents')
-    await expect(page.getByRole('heading', { name: 'Incidents' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Incidents', exact: true })).toBeVisible()
   })
 
   test('can view tasks list', async ({ page }) => {
@@ -195,7 +195,7 @@ test.describe('Operator role boundaries', () => {
 
   test('can view incidents', async ({ page }) => {
     await page.goto('/incidents')
-    await expect(page.getByRole('heading', { name: 'Incidents' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Incidents', exact: true })).toBeVisible()
   })
 
   // ── Operator-allowed writes ─────────────────────────────────────────────
