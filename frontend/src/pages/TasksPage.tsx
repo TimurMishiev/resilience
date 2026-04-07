@@ -15,6 +15,7 @@ import { useTasks } from '../hooks/useTasks'
 import { useSites } from '../hooks/useSites'
 import { useAssets } from '../hooks/useAssets'
 import { getAiFilter } from '../api/ai'
+import ExportButton from '../components/ExportButton'
 import EntityCard from '../components/EntityCard'
 import { useReplay } from '../context/ReplayContext'
 import { useRole } from '../hooks/useRole'
@@ -203,6 +204,14 @@ export default function TasksPage() {
               dispatchFilter({ type: 'SET_STATUS', value: e.currentTarget.value as WorkflowStatus | '' })
             }}
             options={WORKFLOW_STATUS_OPTIONS.map((o) => ({ label: o.label, value: o.value }))}
+          />
+          <ExportButton
+            entityType="tasks"
+            filters={{
+              workflow_status: statusFilter || undefined,
+              site_id: siteFilter || undefined,
+              priority: priorityFilter || undefined,
+            }}
           />
         </div>
 

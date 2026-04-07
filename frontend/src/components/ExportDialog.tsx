@@ -9,6 +9,7 @@ const ENTITY_TYPES: { value: ExportEntityType; label: string }[] = [
   { value: 'signals', label: 'Signals' },
   { value: 'incidents', label: 'Incidents' },
   { value: 'tasks', label: 'Tasks' },
+  { value: 'signal_rule_matches', label: 'Alerts' },
   { value: 'audit_events', label: 'Audit Events' },
   { value: 'sites', label: 'Sites' },
 ]

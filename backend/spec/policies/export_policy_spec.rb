@@ -22,13 +22,13 @@ RSpec.describe ExportPolicy do
     context "as operator" do
       subject { described_class.new(operator, :export) }
 
-      it { is_expected.not_to be_create }
+      it { is_expected.to be_create }
     end
 
     context "as viewer" do
       subject { described_class.new(viewer, :export) }
 
-      it { is_expected.not_to be_create }
+      it { is_expected.to be_create }
     end
   end
 end

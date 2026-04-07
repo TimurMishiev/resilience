@@ -12,6 +12,7 @@ import {
   Tag,
   Tooltip,
 } from '@blueprintjs/core'
+import ExportButton from '../components/ExportButton'
 import { useSignalRuleMatchesInfinite, useTransitionAlert, useBulkTransitionAlerts } from '../hooks/useSignalRuleMatches'
 import AlertChainDrawer from '../components/AlertChainDrawer'
 import { SIGNAL_ICON_NAME } from '../lib/signalIcons'
@@ -381,7 +382,7 @@ export default function AlertTriagePage() {
             {matches.length} / {totalCount}
           </Tag>
         )}
-        <div style={{ marginLeft: 'auto' }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
           <ButtonGroup minimal>
             {STATUS_FILTERS.map(f => (
               <Button
@@ -395,6 +396,10 @@ export default function AlertTriagePage() {
               </Button>
             ))}
           </ButtonGroup>
+          <ExportButton
+            entityType="signal_rule_matches"
+            filters={{ workflow_status: statusFilter || undefined }}
+          />
         </div>
       </div>
 

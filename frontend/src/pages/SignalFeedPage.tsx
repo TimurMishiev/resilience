@@ -10,6 +10,7 @@ import {
   Tag,
 } from '@blueprintjs/core'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import ExportButton from '../components/ExportButton'
 import InjectDialog from '../components/signals/InjectDialog'
 import { useSignalsInfinite, useSignalsLive } from '../hooks/useSignals'
 import { useReferenceTimeMs } from '../hooks/useReferenceTimeMs'
@@ -265,17 +266,28 @@ export default function SignalFeedPage() {
               ? `${allSignals.length.toLocaleString()} of ${total.toLocaleString()} loaded`
               : `${total} signals`}
         </span>
-        {isCommander && !isReplaying && (
-          <Button
-            icon="lightning"
-            intent="warning"
-            small
-            style={{ marginLeft: 'auto' }}
-            onClick={() => setInjectOpen(true)}
-          >
-            Inject Signal
-          </Button>
-        )}
+        <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          <ExportButton
+            entityType="signals"
+            filters={{
+              source: sourceFilter || undefined,
+              signal_type: typeFilter || undefined,
+              site_id: nlSiteId || undefined,
+              from: nlFrom || undefined,
+              to: nlTo || undefined,
+            }}
+          />
+          {isCommander && !isReplaying && (
+            <Button
+              icon="lightning"
+              intent="warning"
+              small
+              onClick={() => setInjectOpen(true)}
+            >
+              Inject Signal
+            </Button>
+          )}
+        </span>
       </div>
 
       {/* Filters */}

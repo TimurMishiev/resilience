@@ -48,14 +48,21 @@ module Exports
         headers: %w[ID Name Latitude Longitude Status GeofenceRadiusKm OrganizationID AreaOfOperationID CreatedAt UpdatedAt],
         time_column: :created_at,
       },
+      "signal_rule_matches" => {
+        order: :fired_at,
+        columns: %w[id fired_at confidence workflow_status signal_id correlation_rule_id site_id incident_id task_id notes acknowledged_at],
+        headers: %w[ID FiredAt Confidence WorkflowStatus SignalID CorrelationRuleID SiteID IncidentID TaskID Notes AcknowledgedAt],
+        time_column: :fired_at,
+      },
     }.freeze
 
-    def initialize(scope:, entity_type:, format:, from: nil, to: nil)
+    def initialize(scope:, entity_type:, format:, from: nil, to: nil, filters: {})
       @scope = scope
       @entity_type = entity_type
       @format = format
       @from = from
       @to = to
+      @filters = filters.to_h.symbolize_keys
     end
 
     def call
@@ -88,7 +95,29 @@ module Exports
         relation = relation.where(col => ..@to)
       end
 
+      relation = apply_filters(relation)
       relation.limit(MAX_ROWS)
+    end
+
+    def apply_filters(relation)
+      case @entity_type
+      when "signals"
+        relation = relation.by_source(@filters[:source])        if @filters[:source].present?
+        relation = relation.by_type(@filters[:signal_type])      if @filters[:signal_type].present?
+      when "incidents"
+        relation = relation.by_status(@filters[:status])         if @filters[:status].present?
+        relation = relation.where(severity: @filters[:severity]) if @filters[:severity].present?
+        relation = relation.for_site(@filters[:site_id])         if @filters[:site_id].present?
+      when "tasks"
+        relation = relation.by_status(@filters[:workflow_status])       if @filters[:workflow_status].present?
+        relation = relation.where(site_id: @filters[:site_id])          if @filters[:site_id].present?
+        relation = relation.where(priority: @filters[:priority])        if @filters[:priority].present?
+      when "signal_rule_matches"
+        relation = relation.by_status(@filters[:workflow_status])       if @filters[:workflow_status].present?
+        relation = relation.for_site(@filters[:site_id])                if @filters[:site_id].present?
+        relation = relation.for_rule(@filters[:rule_id])                if @filters[:rule_id].present?
+      end
+      relation
     end
 
     def to_csv(records, config)

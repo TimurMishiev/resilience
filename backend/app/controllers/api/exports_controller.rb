@@ -2,18 +2,19 @@ module Api
   class ExportsController < BaseController
     include AuditEventScoping
 
-    before_action :require_commander!
-
     ENTITY_SCOPES = {
       "signals" => ExternalSignal,
       "incidents" => Incident,
       "tasks" => Task,
       "audit_events" => AuditEvent,
       "sites" => Site,
+      "signal_rule_matches" => SignalRuleMatch,
     }.freeze
 
+    FILTER_KEYS = %i[source signal_type status severity workflow_status site_id rule_id priority].freeze
+
     # POST /api/exports
-    # Body: { entity_type: "signals", format: "csv", from?: ISO8601, to?: ISO8601 }
+    # Body: { entity_type, format, from?, to?, source?, signal_type?, status?, severity?, workflow_status?, site_id?, rule_id?, priority? }
     def create
       entity_type = params.require(:entity_type)
       format = params.require(:format)
@@ -32,12 +33,15 @@ module Api
               end
       authorize :export, :create?
 
+      filters = params.permit(*FILTER_KEYS).to_h.select { |_, v| v.present? }
+
       result = Exports::BatchService.call(
         scope: scope,
         entity_type: entity_type,
         format: format,
         from: safe_parse_datetime(params[:from]),
         to: safe_parse_datetime(params[:to]),
+        filters: filters,
       )
 
       if result.success?
@@ -53,7 +57,8 @@ module Api
             count: result.count,
             from: params[:from],
             to: params[:to],
-          },
+            filters: filters.presence,
+          }.compact,
           correlation_id: SecureRandom.uuid,
           metadata: { entity_type: entity_type, format: format, count: result.count },
         )

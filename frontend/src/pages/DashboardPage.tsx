@@ -150,9 +150,7 @@ export default function DashboardPage() {
     <div className="dashboard-page">
       <div className="page-header">
         <h2 className="bp6-heading">Dashboard</h2>
-        {isCommander && (
-          <Button small icon="export" text="Export Data" onClick={() => setExportOpen(true)} />
-        )}
+        <Button small icon="export" text="Export Data" onClick={() => setExportOpen(true)} />
       </div>
 
       {isReplaying && (
@@ -421,7 +419,7 @@ export default function DashboardPage() {
       </div>
 
       {!isReplaying && <EvidenceDrawer rec={evidenceRec} onClose={() => setEvidenceRec(null)} />}
-      {isCommander && <ExportDialog isOpen={exportOpen} onClose={() => setExportOpen(false)} />}
+      <ExportDialog isOpen={exportOpen} onClose={() => setExportOpen(false)} />
     </div>
   )
 }

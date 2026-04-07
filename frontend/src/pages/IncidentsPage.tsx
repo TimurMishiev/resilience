@@ -5,6 +5,7 @@ import {
   Button, Callout, Checkbox, HTMLSelect, HTMLTable,
   NonIdealState, Spinner, Tag,
 } from '@blueprintjs/core'
+import ExportButton from '../components/ExportButton'
 import { useIncidents, useTransitionIncident, useAssignIncident } from '../hooks/useIncidents'
 import { useAuth } from '../context/AuthContext'
 import { useReplay } from '../context/ReplayContext'
@@ -122,6 +123,13 @@ export default function IncidentsPage() {
           <span className="bp6-text-muted" style={{ fontSize: 13 }}>
             {data?.meta?.total ?? '—'} {isReplaying ? 'visible' : 'total'}
           </span>
+          <ExportButton
+            entityType="incidents"
+            filters={{
+              status: statusFilter || undefined,
+              severity: severityFilter || undefined,
+            }}
+          />
         </div>
       </div>
 
