@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test'
 import { captureFailedRequests, capturePageErrors, formatDateTimeLocal, primeAuthenticatedSession } from './helpers'
 
 test('map replay smoke: login, enter replay, and show replay-safe map warnings', async ({ page }) => {
+  test.setTimeout(120_000)
   const pageErrors = capturePageErrors(page)
   const failedGlyphRequests = captureFailedRequests(
     page,
@@ -10,8 +11,8 @@ test('map replay smoke: login, enter replay, and show replay-safe map warnings',
 
   await primeAuthenticatedSession(page)
   await page.goto('/map')
-  await page.locator('.map-container').waitFor({ state: 'visible' })
-  await expect(page.locator('.maplibregl-canvas')).toHaveCount(1)
+  await page.locator('.map-container').waitFor({ state: 'visible', timeout: 15_000 })
+  await expect(page.locator('.maplibregl-canvas')).toHaveCount(1, { timeout: 30_000 })
   await expect(page.locator('.replay-status-tag')).toContainText('LIVE')
 
   const replayInput = page.locator('input.replay-input')

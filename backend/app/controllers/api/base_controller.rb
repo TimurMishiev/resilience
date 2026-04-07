@@ -29,6 +29,14 @@ module Api
       render json: { errors: [e.message] }, status: :bad_request
     end
 
+    rescue_from ActiveRecord::StatementInvalid do |e|
+      if e.cause.is_a?(PG::InvalidTextRepresentation)
+        render json: { errors: ["Invalid parameter format"] }, status: :bad_request
+      else
+        raise
+      end
+    end
+
     private
 
     # Parses the ?as_of= query param into a Time. Returns nil if absent or invalid.

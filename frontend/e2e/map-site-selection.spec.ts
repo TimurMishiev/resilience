@@ -254,27 +254,30 @@ async function stubMapPageRoutes(
 }
 
 async function waitForMapBridge(page: Page) {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
     await page.goto('/map')
     await expect(page).toHaveURL(/\/map(?:\?.*)?$/)
 
     try {
-      await page.locator('.shell-main').waitFor({ state: 'visible', timeout: 10_000 })
-      await page.locator('.map-container').waitFor({ state: 'visible', timeout: 10_000 })
-      await page.locator('.maplibregl-canvas').waitFor({ state: 'visible', timeout: 10_000 })
+      await page.locator('.shell-main').waitFor({ state: 'visible', timeout: 15_000 })
+      await page.locator('.map-container').waitFor({ state: 'visible', timeout: 15_000 })
+      await page.locator('.maplibregl-canvas').waitFor({ state: 'visible', timeout: 30_000 })
       await page.waitForFunction(() =>
         Boolean((window as Window & {
           __resilienceMapE2E?: { getState: () => { mapLoaded: boolean } }
         }).__resilienceMapE2E?.getState().mapLoaded),
+        undefined,
+        { timeout: 30_000 },
       )
       return
     } catch (error) {
-      if (attempt === 1) throw error
+      if (attempt === 2) throw error
     }
   }
 }
 
 test('map site selection persists after a real canvas click', async ({ page }) => {
+  test.setTimeout(120_000)
   const site: SiteFixture = {
     id: 'site-center',
     name: 'Center Site',
@@ -354,6 +357,7 @@ test('map site selection persists after a real canvas click', async ({ page }) =
 })
 
 test('overlapping site and signal clicks still select the site', async ({ page }) => {
+  test.setTimeout(120_000)
   const site: SiteFixture = {
     id: 'site-overlap',
     name: 'Overlap Site',

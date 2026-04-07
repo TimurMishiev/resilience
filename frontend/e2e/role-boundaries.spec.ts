@@ -94,7 +94,7 @@ test.describe('Viewer role boundaries', () => {
   test('backend rejects task creation', async ({ page }) => {
     await page.goto('/tasks')
     const status = await fetchStatus(page, 'POST', '/api/tasks', {
-      task: { title: 'Should fail', priority: 'medium', site_id: 'fake' },
+      task: { title: 'Should fail', priority: 'medium', site_id: '00000000-0000-0000-0000-000000000000' },
     })
     expect(status).toBe(403)
   })
