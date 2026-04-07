@@ -34,7 +34,6 @@ async function fetchWithBody(
 /** Assert expected status; logs response body on mismatch for CI debugging */
 function expectStatus(result: { status: number; body: string }, expected: number, label: string) {
   if (result.status !== expected) {
-    // eslint-disable-next-line no-console
     console.error(`[${label}] Expected ${expected} but got ${result.status}. Body: ${result.body.slice(0, 500)}`)
   }
   expect(result.status, `${label}: expected ${expected}, got ${result.status}. Body: ${result.body.slice(0, 300)}`).toBe(expected)
@@ -205,7 +204,6 @@ test.describe('Operator role boundaries', () => {
         },
       })
       if (result.status === 403 || result.status === 500) {
-        // eslint-disable-next-line no-console
         console.error(`[operator POST /api/tasks] Unexpected ${result.status}. Body: ${result.body.slice(0, 500)}`)
       }
       // Should be 201 (created) or 422 (validation) but NOT 403
@@ -269,7 +267,6 @@ test.describe('Operator role boundaries', () => {
     })
     // Could be 403 (Pundit) or 404 (record not found after scope) — both are acceptable rejections
     if (result.status === 500) {
-      // eslint-disable-next-line no-console
       console.error(`[operator POST prosecute] Unexpected 500. Body: ${result.body.slice(0, 500)}`)
     }
     expect([403, 404], `operator POST prosecute: got ${result.status}. Body: ${result.body.slice(0, 300)}`).toContain(result.status)
