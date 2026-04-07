@@ -6,18 +6,20 @@ test('signals page smoke: route loads without runtime errors', async ({ page }) 
   test.setTimeout(120_000)
 
   const pageErrors = capturePageErrors(page)
-  const signalResponseStatuses: number[] = []
+  const signalRestStatuses: number[] = []
   page.on('response', response => {
-    if (response.url().includes('/api/signals')) {
-      signalResponseStatuses.push(response.status())
+    const url = response.url()
+    // Only capture the REST endpoint, not the SSE stream (/api/signals/stream)
+    if (url.includes('/api/signals') && !url.includes('/stream')) {
+      signalRestStatuses.push(response.status())
     }
   })
 
-  // Mock non-signal SSE endpoints to prevent Puma thread exhaustion in CI.
-  // The signals REST endpoint and SSE stream remain real.
+  // Mock all SSE endpoints to prevent Puma thread exhaustion in CI.
   const emptyStream = { status: 200, headers: { 'content-type': 'text/event-stream' }, body: '' }
   await page.route('**/api/events**', route => route.fulfill(emptyStream))
   await page.route('**/api/telemetry/stream**', route => route.fulfill(emptyStream))
+  await page.route('**/api/signals/stream**', route => route.fulfill(emptyStream))
 
   await primeAuthenticatedSession(page)
   await page.goto('/signals')
@@ -40,19 +42,18 @@ test('signals page smoke: route loads without runtime errors', async ({ page }) 
 
   await expect(page.locator('.shell-sidebar')).toBeVisible()
 
-  // Wait for at least one /api/signals response (REST or SSE) before asserting
-  if (signalResponseStatuses.length === 0) {
+  // Wait for the REST /api/signals response before asserting
+  if (signalRestStatuses.length === 0) {
     await page.waitForResponse(
-      response => response.url().includes('/api/signals'),
+      response => response.url().includes('/api/signals') && !response.url().includes('/stream'),
       { timeout: 15_000 },
     ).catch(() => { /* may already have been captured */ })
   }
 
-  // If we captured signal responses, verify none were errors.
-  // In CI the SSE stream may not deliver before the timeout — that's OK as long as
-  // the page itself rendered without an error callout.
-  if (signalResponseStatuses.length > 0) {
-    expect(signalResponseStatuses.some(status => status === 200)).toBe(true)
+  // Verify the REST endpoint returned 200 (if we captured it).
+  // The SSE stream is mocked, so only the REST index endpoint matters here.
+  if (signalRestStatuses.length > 0) {
+    expect(signalRestStatuses.some(status => status === 200)).toBe(true)
   }
   await expect(page.getByText('Failed to load signals')).toHaveCount(0)
   expect(pageErrors).toEqual([])
