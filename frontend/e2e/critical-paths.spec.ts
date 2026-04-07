@@ -24,8 +24,8 @@ test.describe('Login → Dashboard', () => {
     await page.goto('/dashboard')
     await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
 
-    // Verify KPI row renders (at least one stat card)
-    await expect(page.locator('.dashboard-kpi-row .bp6-card').first()).toBeVisible()
+    // Verify KPI row renders (at least one stat value)
+    await expect(page.locator('.dashboard-kpi-row .dashboard-kpi').first()).toBeVisible()
 
     expect(pageErrors).toEqual([])
   })
@@ -184,7 +184,7 @@ test.describe('Incident detail and prosecution', () => {
     await page.goto('/incidents/inc-1')
 
     // Verify incident title and severity badge
-    await expect(page.getByText('Multi-sensor correlation near Alpha')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Multi-sensor correlation near Alpha' })).toBeVisible()
     await expect(page.getByText('HIGH')).toBeVisible()
 
     // Verify tabs exist
@@ -324,7 +324,7 @@ test.describe('Commander-only page gating', () => {
     await primeAuthenticatedSession(page)
 
     await page.goto('/ontology')
-    await expect(page.getByText(/Ontology/i)).toBeVisible()
+    await expect(page.getByRole('heading', { name: /Ontology/i })).toBeVisible()
     expect(pageErrors).toEqual([])
   })
 

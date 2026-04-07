@@ -28,8 +28,8 @@ class StaticController < ApplicationController
       "default-src 'self'; " \
       "script-src 'self' blob: 'wasm-unsafe-eval' 'unsafe-eval'; " \
       "style-src 'self' 'unsafe-inline'; " \
-      "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://ion.cesium.com; " \
-      "connect-src 'self' https://ion.cesium.com https://assets.ion.cesium.com https://api.cesium.com wss:; " \
+      "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://ion.cesium.com https://server.arcgisonline.com https://*.basemaps.cartocdn.com; " \
+      "connect-src 'self' https://ion.cesium.com https://assets.ion.cesium.com https://api.cesium.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://server.arcgisonline.com wss:; " \
       "worker-src 'self' blob:; " \
       "child-src 'self' blob:; " \
       "font-src 'self'; " \

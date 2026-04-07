@@ -2,6 +2,9 @@ import { test, expect } from '@playwright/test'
 import { capturePageErrors, primeAuthenticatedSession } from './helpers'
 
 test('signals page smoke: route loads without runtime errors', async ({ page }) => {
+  // Signal ingestion runs on first boot; Docker Compose may take time to populate.
+  test.setTimeout(120_000)
+
   const pageErrors = capturePageErrors(page)
   const signalResponseStatuses: number[] = []
   page.on('response', response => {
