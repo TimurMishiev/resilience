@@ -1,12 +1,12 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useReplayGuardedMutation } from './useReplayGuardedMutation'
 import { getSite, unflagSite, toggleSiteStatus, getSiteTimeline, getSiteRiskHistory, updateSiteGeofence } from '../api/sites'
-import type { SiteTimelineParams, SiteRiskHistoryParams } from '../api/types'
+import type { AsOfParam, SiteTimelineParams, SiteRiskHistoryParams } from '../api/types'
 
-export function useSite(id: string | undefined) {
+export function useSite(id: string | undefined, params?: AsOfParam) {
   return useQuery({
-    queryKey: ['sites', id],
-    queryFn: () => getSite(id!),
+    queryKey: ['sites', id, params],
+    queryFn: () => getSite(id!, params),
     enabled: Boolean(id),
   })
 }

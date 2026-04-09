@@ -44,7 +44,7 @@ export interface UpdateAreaOfOperationBody {
   geometry?: GeoJsonPolygon
 }
 
-export interface AreasOfOperationParams extends PaginationParams {
+export interface AreasOfOperationParams extends PaginationParams, AsOfParam {
   threat_level?: ThreatLevel
 }
 export type AssetStatus = 'available' | 'assigned' | 'degraded' | 'offline'

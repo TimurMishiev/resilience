@@ -55,11 +55,20 @@ function fmt(iso: string) {
   })
 }
 
-function staleness(last_reported_at: string | null, updated_at: string) {
-  const ageH = (Date.now() - new Date(last_reported_at ?? updated_at).getTime()) / 3_600_000
+function staleness(last_reported_at: string | null, updated_at: string, referenceTimeMs = Date.now()) {
+  const ageH = (referenceTimeMs - new Date(last_reported_at ?? updated_at).getTime()) / 3_600_000
+  if (ageH < 0) return null
   if (ageH < 6)  return null
   if (ageH < 24) return { label: `${Math.round(ageH)}h ago`, intent: 'warning' as Intent }
   return { label: `${Math.round(ageH / 24)}d ago`, intent: 'danger' as Intent }
+}
+
+function replayParams(asOf?: string | null) {
+  return asOf ? { as_of: asOf } : undefined
+}
+
+function metaLine(asOf: string | null | undefined, liveText: string) {
+  return asOf ? `Historical view as of ${fmt(asOf)}` : liveText
 }
 
 const THREAT_INTENT: Record<string, Intent> = {
@@ -70,14 +79,16 @@ const THREAT_INTENT: Record<string, Intent> = {
 // Task Overview
 // ---------------------------------------------------------------------------
 
-function TaskOverview({ taskId }: { taskId: string }) {
+function TaskOverview({ taskId, asOf }: { taskId: string; asOf?: string | null }) {
   const { isCommander, isOperator } = useRole()
   const { isReplaying } = useReplay()
   const canMutateTask = isCommander || isOperator
-  const { data: task, isPending } = useTask(taskId)
-  const { data: taskRes } = useTasks({ per_page: 200 })
+  const detailParams = replayParams(asOf)
+  const listParams = { per_page: 200, ...(detailParams ?? {}) }
+  const { data: task, isPending } = useTask(taskId, detailParams)
+  const { data: taskRes } = useTasks(listParams)
   const { data: transitionsData } = useAllowedTransitions(!isReplaying && canMutateTask ? taskId : null)
-  const { data: assetRes } = useAssets({ per_page: 200 })
+  const { data: assetRes } = useAssets(listParams)
   const transitionMutation = useTransitionTask()
   const updateMutation     = useUpdateTask()
 
@@ -205,7 +216,7 @@ function TaskOverview({ taskId }: { taskId: string }) {
       )}
 
       <div className="entity-meta">
-        <span className="bp6-text-muted">Created {fmt(task.created_at)}</span>
+        <span className="bp6-text-muted">{metaLine(asOf, `Created ${fmt(task.created_at)}`)}</span>
       </div>
     </div>
   )
@@ -215,11 +226,12 @@ function TaskOverview({ taskId }: { taskId: string }) {
 // Asset Overview
 // ---------------------------------------------------------------------------
 
-function AssetOverview({ assetId }: { assetId: string }) {
+function AssetOverview({ assetId, asOf }: { assetId: string; asOf?: string | null }) {
   const { isCommander } = useRole()
   const { isReplaying } = useReplay()
-  const { data: asset, isPending } = useAsset(assetId)
-  const { data: siteRes } = useSites({ per_page: 200 })
+  const detailParams = replayParams(asOf)
+  const { data: asset, isPending } = useAsset(assetId, detailParams)
+  const { data: siteRes } = useSites({ per_page: 200, ...(detailParams ?? {}) })
   const updateStatus = useUpdateAssetStatus()
 
   const [pendingStatus, setPendingStatus] = useState<AssetStatus | null>(null)
@@ -231,7 +243,11 @@ function AssetOverview({ assetId }: { assetId: string }) {
   const siteMap: Record<string, string> = {}
   for (const s of siteRes?.data ?? []) siteMap[s.id] = s.name
 
-  const stale = staleness(asset.last_reported_at, asset.updated_at)
+  const stale = staleness(
+    asset.last_reported_at,
+    asset.updated_at,
+    asOf ? new Date(asOf).getTime() : Date.now(),
+  )
 
   async function handleStatusChange() {
     if (!pendingStatus) return
@@ -295,7 +311,7 @@ function AssetOverview({ assetId }: { assetId: string }) {
       )}
 
       <div className="entity-meta">
-        <span className="bp6-text-muted">Updated {fmt(asset.updated_at)}</span>
+        <span className="bp6-text-muted">{metaLine(asOf, `Updated ${fmt(asset.updated_at)}`)}</span>
       </div>
     </div>
   )
@@ -305,8 +321,8 @@ function AssetOverview({ assetId }: { assetId: string }) {
 // Site Overview
 // ---------------------------------------------------------------------------
 
-function SiteOverview({ siteId }: { siteId: string }) {
-  const { data: site, isPending } = useSite(siteId)
+function SiteOverview({ siteId, asOf }: { siteId: string; asOf?: string | null }) {
+  const { data: site, isPending } = useSite(siteId, replayParams(asOf))
 
   if (isPending) return <Spinner size={20} style={{ marginTop: 24 }} />
   if (!site)     return null
@@ -338,7 +354,7 @@ function SiteOverview({ siteId }: { siteId: string }) {
       </div>
 
       <div className="entity-meta">
-        <span className="bp6-text-muted">Updated {fmt(site.updated_at)}</span>
+        <span className="bp6-text-muted">{metaLine(asOf, `Updated ${fmt(site.updated_at)}`)}</span>
       </div>
     </div>
   )
@@ -348,8 +364,8 @@ function SiteOverview({ siteId }: { siteId: string }) {
 // AO Overview
 // ---------------------------------------------------------------------------
 
-function AoOverview({ aoId }: { aoId: string }) {
-  const { data: ao, isPending } = useAreaOfOperation(aoId)
+function AoOverview({ aoId, asOf }: { aoId: string; asOf?: string | null }) {
+  const { data: ao, isPending } = useAreaOfOperation(aoId, replayParams(asOf))
 
   if (isPending) return <Spinner size={20} style={{ marginTop: 24 }} />
   if (!ao)       return null
@@ -386,7 +402,7 @@ function AoOverview({ aoId }: { aoId: string }) {
       </div>
 
       <div className="entity-meta">
-        <span className="bp6-text-muted">Updated {fmt(ao.updated_at)}</span>
+        <span className="bp6-text-muted">{metaLine(asOf, `Updated ${fmt(ao.updated_at)}`)}</span>
       </div>
     </div>
   )
@@ -396,9 +412,10 @@ function AoOverview({ aoId }: { aoId: string }) {
 // Relations tabs
 // ---------------------------------------------------------------------------
 
-function TaskRelations({ taskId }: { taskId: string }) {
-  const { data: task, isPending } = useTask(taskId)
-  const { data: assetRes }        = useAssets({ per_page: 200 })
+function TaskRelations({ taskId, asOf }: { taskId: string; asOf?: string | null }) {
+  const detailParams = replayParams(asOf)
+  const { data: task, isPending } = useTask(taskId, detailParams)
+  const { data: assetRes }        = useAssets({ per_page: 200, ...(detailParams ?? {}) })
 
   if (isPending) return <Spinner size={20} style={{ marginTop: 24 }} />
   if (!task)     return null
@@ -428,9 +445,10 @@ function TaskRelations({ taskId }: { taskId: string }) {
   )
 }
 
-function AssetRelations({ assetId }: { assetId: string }) {
-  const { data: asset, isPending } = useAsset(assetId)
-  const { data: siteRes }          = useSites({ per_page: 200 })
+function AssetRelations({ assetId, asOf }: { assetId: string; asOf?: string | null }) {
+  const detailParams = replayParams(asOf)
+  const { data: asset, isPending } = useAsset(assetId, detailParams)
+  const { data: siteRes }          = useSites({ per_page: 200, ...(detailParams ?? {}) })
 
   if (isPending) return <Spinner size={20} style={{ marginTop: 24 }} />
   if (!asset)    return null
@@ -456,9 +474,10 @@ function AssetRelations({ assetId }: { assetId: string }) {
   )
 }
 
-function SiteRelations({ siteId }: { siteId: string }) {
-  const { data: site, isPending } = useSite(siteId)
-  const { data: aoRes }           = useAreasOfOperation({ per_page: 200 })
+function SiteRelations({ siteId, asOf }: { siteId: string; asOf?: string | null }) {
+  const detailParams = replayParams(asOf)
+  const { data: site, isPending } = useSite(siteId, detailParams)
+  const { data: aoRes }           = useAreasOfOperation({ per_page: 200, ...(detailParams ?? {}) })
 
   if (isPending) return <Spinner size={20} style={{ marginTop: 24 }} />
   if (!site)     return null
@@ -480,8 +499,8 @@ function SiteRelations({ siteId }: { siteId: string }) {
   )
 }
 
-function AoRelations({ aoId }: { aoId: string }) {
-  const { data: siteRes, isPending } = useSites({ per_page: 200 })
+function AoRelations({ aoId, asOf }: { aoId: string; asOf?: string | null }) {
+  const { data: siteRes, isPending } = useSites({ per_page: 200, ...(replayParams(asOf) ?? {}) })
 
   if (isPending) return <Spinner size={20} style={{ marginTop: 24 }} />
 
@@ -506,11 +525,12 @@ function AoRelations({ aoId }: { aoId: string }) {
 // Raw tab — entity JSON dump; only renders when the tab is active
 // ---------------------------------------------------------------------------
 
-function RawPanel({ entityType, entityId }: { entityType: EntityType; entityId: string }) {
-  const taskQuery  = useTask(entityType === 'task'  ? entityId : undefined)
-  const assetQuery = useAsset(entityType === 'asset' ? entityId : undefined)
-  const siteQuery  = useSite(entityType === 'site'  ? entityId : undefined)
-  const aoQuery    = useAreaOfOperation(entityType === 'ao' ? entityId : undefined)
+function RawPanel({ entityType, entityId, asOf }: { entityType: EntityType; entityId: string; asOf?: string | null }) {
+  const detailParams = replayParams(asOf)
+  const taskQuery  = useTask(entityType === 'task'  ? entityId : undefined, detailParams)
+  const assetQuery = useAsset(entityType === 'asset' ? entityId : undefined, detailParams)
+  const siteQuery  = useSite(entityType === 'site'  ? entityId : undefined, detailParams)
+  const aoQuery    = useAreaOfOperation(entityType === 'ao' ? entityId : undefined, detailParams)
 
   const data = entityType === 'task'  ? taskQuery.data
              : entityType === 'asset' ? assetQuery.data
@@ -532,37 +552,34 @@ export interface EntityCardProps {
 }
 
 export default function EntityCard({ entityType, entityId }: EntityCardProps) {
-  const { isReplaying } = useReplay()
+  const { isReplaying, asOf } = useReplay()
   const auditType = AUDIT_ENTITY_TYPE[entityType]
-
-  if (isReplaying) {
-    return (
-      <Callout intent="warning" icon="history">
-        Entity detail drawers are unavailable during replay because they still depend on live detail endpoints and would otherwise mix present-time entity state into a historical view.
-      </Callout>
-    )
-  }
 
   function overviewPanel() {
     switch (entityType) {
-      case 'task':  return <TaskOverview  key={entityId} taskId={entityId}  />
-      case 'asset': return <AssetOverview key={entityId} assetId={entityId} />
-      case 'site':  return <SiteOverview  key={entityId} siteId={entityId}  />
-      case 'ao':    return <AoOverview    key={entityId} aoId={entityId}    />
+      case 'task':  return <TaskOverview  key={entityId} taskId={entityId}  asOf={asOf} />
+      case 'asset': return <AssetOverview key={entityId} assetId={entityId} asOf={asOf} />
+      case 'site':  return <SiteOverview  key={entityId} siteId={entityId}  asOf={asOf} />
+      case 'ao':    return <AoOverview    key={entityId} aoId={entityId}    asOf={asOf} />
     }
   }
 
   function relationsPanel() {
     switch (entityType) {
-      case 'task':  return <TaskRelations  key={entityId} taskId={entityId}  />
-      case 'asset': return <AssetRelations key={entityId} assetId={entityId} />
-      case 'site':  return <SiteRelations  key={entityId} siteId={entityId}  />
-      case 'ao':    return <AoRelations    key={entityId} aoId={entityId}    />
+      case 'task':  return <TaskRelations  key={entityId} taskId={entityId}  asOf={asOf} />
+      case 'asset': return <AssetRelations key={entityId} assetId={entityId} asOf={asOf} />
+      case 'site':  return <SiteRelations  key={entityId} siteId={entityId}  asOf={asOf} />
+      case 'ao':    return <AoRelations    key={entityId} aoId={entityId}    asOf={asOf} />
     }
   }
 
   return (
     <div className="entity-card">
+      {isReplaying && asOf && (
+        <Callout intent="warning" icon="history" compact className="entity-replay-callout">
+          Viewing entity state as it existed at the replay timestamp. Mutations remain disabled in replay.
+        </Callout>
+      )}
       <Tabs id={`entity-card-${entityId}`} renderActiveTabPanelOnly>
         <Tab
           id="overview"
@@ -574,7 +591,7 @@ export default function EntityCard({ entityType, entityId }: EntityCardProps) {
           title="Activity"
           panel={
             <div className="entity-tab-panel">
-              <AuditTimeline entityType={auditType} entityId={entityId} />
+              <AuditTimeline entityType={auditType} entityId={entityId} asOf={asOf} />
             </div>
           }
         />
@@ -588,7 +605,7 @@ export default function EntityCard({ entityType, entityId }: EntityCardProps) {
           title="Raw"
           panel={
             <div className="entity-tab-panel">
-              <RawPanel entityType={entityType} entityId={entityId} />
+              <RawPanel entityType={entityType} entityId={entityId} asOf={asOf} />
             </div>
           }
         />

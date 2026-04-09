@@ -8,6 +8,25 @@ module Api
     def index
       authorize AreaOfOperation
       areas = policy_scope(AreaOfOperation).order(:name)
+
+      if as_of
+        records, meta = paginate_transformed_relation(areas) do |batch|
+          snapshots = latest_audit_snapshots(entity_type: "AreaOfOperation", entity_ids: batch.map(&:id), as_of: as_of)
+
+          batch.filter_map do |area|
+            next if area.created_at > as_of
+
+            serialized = serialize_area(area, snapshot: snapshots[area.id], as_of: as_of)
+            next if params[:threat_level].present? && serialized[:threat_level].to_s != params[:threat_level].to_s
+
+            serialized
+          end
+        end
+
+        render json: { data: records, meta: meta }
+        return
+      end
+
       areas = areas.by_threat(params[:threat_level]) if params[:threat_level].present?
       records, meta = paginate(areas)
       render json: { data: records.map { |a| serialize_area(a) }, meta: meta }
@@ -17,7 +36,15 @@ module Api
     def show
       area = scoped_record(AreaOfOperation, params[:id])
       authorize area
-      render json: serialize_area(area)
+
+      if as_of
+        return render json: { errors: ["Area of operation not found"] }, status: :not_found if area.created_at > as_of
+
+        snapshot = latest_audit_snapshots(entity_type: "AreaOfOperation", entity_ids: [area.id], as_of: as_of)[area.id]
+        render json: serialize_area(area, snapshot: snapshot, as_of: as_of)
+      else
+        render json: serialize_area(area)
+      end
     end
 
     # POST /api/areas_of_operation
@@ -168,14 +195,21 @@ module Api
       }
     end
 
-    def serialize_area(area)
-      area.as_json(only: %i[
-        id name description threat_level color posture posture_changed_at organization_id
-        created_at updated_at
-      ]).merge(
-        geometry:   area.geometry,
-        created_by: area.created_by_id
-      )
+    def serialize_area(area, snapshot: nil, as_of: nil)
+      {
+        id: area.id,
+        name: snapshot_or_current(snapshot, "name", area.name),
+        description: snapshot_or_current(snapshot, "description", area.description),
+        threat_level: snapshot_or_current(snapshot, "threat_level", area.threat_level),
+        color: snapshot_or_current(snapshot, "color", area.color),
+        posture: snapshot_or_current(snapshot, "posture", area.posture),
+        posture_changed_at: snapshot_value(snapshot, "posture_changed_at", fallback: as_of.present? ? nil : area.posture_changed_at),
+        organization_id: snapshot_or_current(snapshot, "organization_id", area.organization_id),
+        created_at: area.created_at,
+        updated_at: as_of.present? ? [area.updated_at, as_of].min : area.updated_at,
+        geometry: snapshot_or_current(snapshot, "geometry", area.geometry),
+        created_by: area.created_by_id,
+      }
     end
   end
 end

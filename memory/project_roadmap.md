@@ -9,10 +9,16 @@ type: roadmap
 ## Source of Truth
 
 1. Actual code in the repo
-2. This roadmap
-3. `memory/project_resilience.md`
+2. `memory/project_production_readiness_plan.md`
+3. This roadmap
+4. `memory/project_resilience.md`
 
 If this roadmap disagrees with code, prefer code and then update memory.
+
+## Current Working Rule
+
+No new feature development should start until `memory/project_production_readiness_plan.md` is complete or explicitly narrowed.
+This roadmap remains the place for future build direction, but it is not the active execution queue right now.
 
 ## Shipped
 
@@ -39,15 +45,18 @@ If this roadmap disagrees with code, prefer code and then update memory.
 
 These are the real remaining programs. They are not “small hardening patches.”
 
-1. Security/identity maturity
+1. Production readiness execution
+   - tracked in `memory/project_production_readiness_plan.md`
+   - takes precedence over all roadmap feature work
+2. Security/identity maturity
    - richer role modeling beyond `viewer` / `operator` / `commander`
    - session lifecycle beyond single-token logout revocation
-2. Tenant/workspace isolation
+3. Tenant/workspace isolation
    - domain-wide data scoping
    - policy/query isolation
-3. Frontend decomposition
+4. Frontend decomposition
    - split the largest engine/page files into smaller maintained units
-4. Spatial baseline/documentation cleanup
+5. Spatial baseline/documentation cleanup
    - keep PostGIS-backed schema reality, local test setup, and comments/docs aligned
 
 ## Explicit Non-Goals For The Current Tracks

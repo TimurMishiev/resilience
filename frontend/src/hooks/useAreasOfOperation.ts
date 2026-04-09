@@ -10,15 +10,16 @@ import {
 } from '../api/areas_of_operation'
 import type {
   AreasOfOperationParams,
+  AsOfParam,
   CreateAreaOfOperationBody,
   UpdateAreaOfOperationBody,
   Posture,
 } from '../api/types'
 
-export function useAreaOfOperation(id: string | undefined) {
+export function useAreaOfOperation(id: string | undefined, params?: AsOfParam) {
   return useQuery({
-    queryKey: ['areas_of_operation', id],
-    queryFn:  () => getAreaOfOperation(id!),
+    queryKey: ['areas_of_operation', id, params],
+    queryFn:  () => getAreaOfOperation(id!, params),
     enabled:  Boolean(id),
   })
 }

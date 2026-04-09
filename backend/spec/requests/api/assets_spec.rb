@@ -61,6 +61,76 @@ RSpec.describe "Api::Assets", type: :request do
     end
   end
 
+  describe "GET /api/assets with ?as_of= (replay)" do
+    let(:as_of_past) { 1.hour.ago.iso8601 }
+    let(:created_at) { 2.hours.ago.change(usec: 0) }
+    let(:updated_at) { 30.minutes.ago.change(usec: 0) }
+    let(:historical_asset) { @historical_asset }
+
+    before do
+      @historical_asset = create(
+        :asset,
+        name: "Replay Truck",
+        asset_type: "vehicle",
+        status: "available",
+        home_site: site_a,
+        last_reported_at: created_at
+      )
+      @historical_asset.update_columns(created_at: created_at, updated_at: created_at)
+
+      AuditEvent.create!(
+        schema_version: 1,
+        actor: "test",
+        entity_type: "Asset",
+        entity_id: @historical_asset.id,
+        event_type: "asset.created",
+        action: "create",
+        before_snapshot: nil,
+        after_snapshot: @historical_asset.attributes.except("updated_at"),
+        correlation_id: SecureRandom.uuid,
+        occurred_at: created_at
+      )
+
+      before_snapshot = historical_asset.attributes.except("updated_at")
+      historical_asset.update_columns(
+        status: "offline",
+        home_site_id: site_b.id,
+        last_reported_at: updated_at,
+        updated_at: updated_at
+      )
+
+      AuditEvent.create!(
+        schema_version: 1,
+        actor: "test",
+        entity_type: "Asset",
+        entity_id: historical_asset.id,
+        event_type: "asset.status_changed",
+        action: "update",
+        before_snapshot: before_snapshot,
+        after_snapshot: historical_asset.attributes.except("updated_at"),
+        correlation_id: SecureRandom.uuid,
+        occurred_at: updated_at
+      )
+    end
+
+    it "returns the historical asset state for show" do
+      get "/api/assets/#{historical_asset.id}", params: { as_of: as_of_past }, headers: auth_headers(current_user)
+
+      expect(response).to have_http_status(:ok)
+      body = JSON.parse(response.body)
+      expect(body["status"]).to eq("available")
+      expect(body["home_site_id"]).to eq(site_a.id)
+    end
+
+    it "filters list responses using the historical asset state" do
+      get "/api/assets", params: { as_of: as_of_past, status: "available" }, headers: auth_headers(current_user)
+
+      expect(response).to have_http_status(:ok)
+      ids = JSON.parse(response.body)["data"].map { |asset| asset["id"] }
+      expect(ids).to include(historical_asset.id)
+    end
+  end
+
   describe "PATCH /api/assets/:id" do
     let(:operator) { create(:user, :operator) }
 

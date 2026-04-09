@@ -6,6 +6,7 @@ import type {
   PaginatedResponse,
   CreateAreaOfOperationBody,
   UpdateAreaOfOperationBody,
+  AsOfParam,
   AreasOfOperationParams,
 } from './types'
 
@@ -15,8 +16,8 @@ export function getAreasOfOperation(
   return api.get('/api/areas_of_operation', params as QueryParams)
 }
 
-export function getAreaOfOperation(id: string): Promise<AreaOfOperation> {
-  return api.get(`/api/areas_of_operation/${id}`)
+export function getAreaOfOperation(id: string, params?: AsOfParam): Promise<AreaOfOperation> {
+  return api.get(`/api/areas_of_operation/${id}`, params as QueryParams)
 }
 
 export function createAreaOfOperation(

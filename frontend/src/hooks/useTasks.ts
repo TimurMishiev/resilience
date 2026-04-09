@@ -10,10 +10,10 @@ type Params = PaginationParams &
     priority?: string | null
   }
 
-export function useTask(id: string | undefined) {
+export function useTask(id: string | undefined, params?: AsOfParam) {
   return useQuery({
-    queryKey: ['tasks', id],
-    queryFn: () => getTask(id!),
+    queryKey: ['tasks', id, params],
+    queryFn: () => getTask(id!, params),
     enabled: Boolean(id),
   })
 }

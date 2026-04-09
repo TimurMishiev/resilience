@@ -17,10 +17,10 @@ export function useAssets(params?: Params, enabled = true) {
   })
 }
 
-export function useAsset(id: string | undefined) {
+export function useAsset(id: string | undefined, params?: AsOfParam) {
   return useQuery({
-    queryKey: ['assets', id],
-    queryFn: () => getAsset(id!),
+    queryKey: ['assets', id, params],
+    queryFn: () => getAsset(id!, params),
     enabled: Boolean(id),
   })
 }

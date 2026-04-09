@@ -61,6 +61,83 @@ RSpec.describe "Api::AreasOfOperation", type: :request do
     end
   end
 
+  describe "GET /api/areas_of_operation with ?as_of= (replay)" do
+    let(:as_of_past) { 1.hour.ago.iso8601 }
+    let(:created_at) { 2.hours.ago.change(usec: 0) }
+    let(:updated_at) { 30.minutes.ago.change(usec: 0) }
+    let(:historical_area) { @historical_area }
+
+    before do
+      @historical_area = create(
+        :area_of_operation,
+        name: "Replay AO",
+        description: "Historical AO",
+        threat_level: "amber",
+        color: "#ffb347"
+      )
+      @historical_area.update_columns(created_at: created_at, updated_at: created_at)
+
+      AuditEvent.create!(
+        schema_version: 1,
+        actor: "test",
+        entity_type: "AreaOfOperation",
+        entity_id: @historical_area.id,
+        event_type: "area_of_operation_created",
+        action: "create",
+        before_snapshot: nil,
+        after_snapshot: {
+          name: @historical_area.name,
+          description: @historical_area.description,
+          threat_level: @historical_area.threat_level,
+          posture: @historical_area.posture,
+          color: @historical_area.color,
+          geometry: @historical_area.geometry,
+          organization_id: @historical_area.organization_id,
+        },
+        correlation_id: SecureRandom.uuid,
+        occurred_at: created_at
+      )
+
+      historical_area.update_columns(threat_level: "red", color: "#ff4757", updated_at: updated_at)
+
+      AuditEvent.create!(
+        schema_version: 1,
+        actor: "test",
+        entity_type: "AreaOfOperation",
+        entity_id: historical_area.id,
+        event_type: "area_of_operation_updated",
+        action: "update",
+        before_snapshot: {
+          threat_level: "amber",
+          color: "#ffb347",
+        },
+        after_snapshot: {
+          threat_level: "red",
+          color: "#ff4757",
+        },
+        correlation_id: SecureRandom.uuid,
+        occurred_at: updated_at
+      )
+    end
+
+    it "returns the historical area state for show" do
+      get "/api/areas_of_operation/#{historical_area.id}", params: { as_of: as_of_past }, headers: auth_headers(commander)
+
+      expect(response).to have_http_status(:ok)
+      body = JSON.parse(response.body)
+      expect(body["threat_level"]).to eq("amber")
+      expect(body["color"]).to eq("#ffb347")
+    end
+
+    it "filters list responses using the historical threat level" do
+      get "/api/areas_of_operation", params: { as_of: as_of_past, threat_level: "amber" }, headers: auth_headers(commander)
+
+      expect(response).to have_http_status(:ok)
+      ids = JSON.parse(response.body)["data"].map { |area| area["id"] }
+      expect(ids).to include(historical_area.id)
+    end
+  end
+
   describe "POST /api/areas_of_operation" do
     let(:valid_params) do
       {

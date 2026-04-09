@@ -8,6 +8,9 @@ type: findings
 
 Last reconciled with code: 2026-04-04
 
+Active execution of these findings is tracked in `memory/project_production_readiness_plan.md`.
+No new feature work should take precedence over that file until the production-readiness program is complete.
+
 ## P1 / High-Leverage Programs
 
 _(No open P1 items. All prior P1 replay parity gaps have been closed.)_
