@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockState = vi.hoisted(() => ({
   isReplaying: false,
+  asOf: '2026-04-09T12:00:00Z',
   isCommander: true,
   areas: {
     data: {
@@ -38,7 +39,7 @@ vi.mock('../hooks/useRole', () => ({
   useRole: () => ({ isCommander: mockState.isCommander }),
 }))
 vi.mock('../context/ReplayContext', () => ({
-  useReplay: () => ({ isReplaying: mockState.isReplaying }),
+  useReplay: () => ({ isReplaying: mockState.isReplaying, asOf: mockState.asOf }),
 }))
 vi.mock('../components/PostureSelector', () => ({
   PostureSelector: () => <span>PostureSelector</span>,
@@ -89,6 +90,11 @@ describe('AreasPage', () => {
 
     renderPage()
 
-    expect(screen.getByText('Areas of Operation unavailable in replay')).toBeInTheDocument()
+    expect(screen.getByText(/Viewing historical AO posture/i)).toBeInTheDocument()
+    expect(screen.getByText('EUCOM')).toBeInTheDocument()
+    expect(screen.queryByText('Areas of Operation unavailable in replay')).not.toBeInTheDocument()
+    expect(screen.queryByText('New Area')).not.toBeInTheDocument()
+    expect(screen.queryByText('PostureSelector')).not.toBeInTheDocument()
+    expect(screen.getByText('PostureBadge')).toBeInTheDocument()
   })
 })

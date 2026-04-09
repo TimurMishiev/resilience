@@ -14,6 +14,7 @@ const mockState = vi.hoisted(() => ({
 
 const postAiSummary = vi.hoisted(() => vi.fn())
 const exportBriefing = vi.hoisted(() => vi.fn())
+const useSites = vi.hoisted(() => vi.fn())
 
 vi.mock('../context/ReplayContext', () => ({
   useReplay: () => ({
@@ -23,9 +24,12 @@ vi.mock('../context/ReplayContext', () => ({
 }))
 
 vi.mock('../hooks/useSites', () => ({
-  useSites: () => ({
+  useSites: (...args: unknown[]) => {
+    useSites(...args)
+    return {
     data: { data: mockState.sites },
-  }),
+    }
+  },
 }))
 
 vi.mock('../api/ai', () => ({
@@ -41,6 +45,7 @@ describe('BriefingPanel', () => {
     mockState.asOf = null
     postAiSummary.mockReset()
     exportBriefing.mockReset()
+    useSites.mockReset()
   })
 
   it('shows a replay warning and keeps the generate controls available during replay', () => {
@@ -83,6 +88,18 @@ describe('BriefingPanel', () => {
     expect(screen.getByText(/Grounded in 4 records/i)).toBeInTheDocument()
     expect(screen.getByText(/Audit citations \(1\)/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Export PDF/i })).toBeInTheDocument()
+  })
+
+  it('loads the site selector from the replay cutoff during replay', () => {
+    mockState.isReplaying = true
+    mockState.asOf = '2026-03-26T21:30:00.000Z'
+
+    render(<BriefingPanel />)
+
+    expect(useSites).toHaveBeenCalledWith(
+      { per_page: 100, as_of: '2026-03-26T21:30:00.000Z' },
+      true,
+    )
   })
 
   it('surfaces backend summary errors cleanly', async () => {

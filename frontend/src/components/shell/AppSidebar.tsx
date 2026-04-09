@@ -28,7 +28,15 @@ const ignorePreloadFailure = () => {}
 export function AppSidebar() {
   const navigate     = useNavigate()
   const { pathname, search } = useLocation()
-  const { isCommander, isAdmin } = useRole()
+  const role = useRole()
+  const canAccessBriefing = role.canAccessBriefing ?? role.isCommander
+  const canAccessOntologyQuery = role.canAccessOntologyQuery ?? role.isCommander
+  const canManageRules = role.canManageCorrelationRules ?? role.isCommander
+  const canManageAreas = role.canManageAreas ?? role.isCommander
+  const canAccessPlanning = role.canAccessPlanning ?? role.isCommander
+  const canViewOperationalHealth = role.canViewOperationalHealth ?? role.isCommander
+  const canManageOrganizations = role.canManageOrganizations ?? role.isAdmin
+  const canManageUsers = role.canManageUsers ?? role.isAdmin
   const preserveEntitySelection = pathname.startsWith('/map') || pathname.startsWith('/globe')
 
   const preloadMapPageOnly = () => { void preloadMapPage().catch(ignorePreloadFailure) }
@@ -72,14 +80,14 @@ export function AppSidebar() {
           text="Briefing"
           active={pathname.startsWith('/briefing')}
           onClick={() => navigate('/briefing')}
-          labelElement={!isCommander ? <LockLabel /> : undefined}
+          labelElement={!canAccessBriefing ? <LockLabel /> : undefined}
         />
         <MenuItem
           icon="search"
           text="Ontology Query"
           active={pathname.startsWith('/ontology')}
           onClick={() => navigate('/ontology')}
-          labelElement={!isCommander ? <LockLabel /> : undefined}
+          labelElement={!canAccessOntologyQuery ? <LockLabel /> : undefined}
         />
         <MenuItem icon="feed"      text="Signals" active={pathname.startsWith('/signals')} onClick={() => navigate('/signals')} />
         <MenuItem icon="shield"    text="Security" active={pathname.startsWith('/security')} onClick={() => navigate('/security')} />
@@ -88,16 +96,16 @@ export function AppSidebar() {
           text="Rules"
           active={pathname.startsWith('/rules')}
           onClick={() => navigate('/rules')}
-          labelElement={!isCommander ? <LockLabel /> : undefined}
+          labelElement={!canManageRules ? <LockLabel /> : undefined}
         />
         <MenuItem
           icon="polygon-filter"
           text="Areas"
           active={pathname.startsWith('/areas')}
           onClick={() => navigate('/areas')}
-          labelElement={!isCommander ? <LockLabel /> : undefined}
+          labelElement={!canManageAreas ? <LockLabel /> : undefined}
         />
-        {isCommander && (
+        {canAccessPlanning && (
           <MenuItem icon="gantt-chart" text="Planning" active={pathname.startsWith('/planning')} onClick={() => navigate('/planning')} />
         )}
         <MenuItem icon="timeline-events" text="Swimlane" active={pathname.startsWith('/swimlane')} onClick={() => navigate('/swimlane')} />
@@ -106,12 +114,14 @@ export function AppSidebar() {
           text="Health"
           active={pathname.startsWith('/health')}
           onClick={() => navigate('/health')}
-          labelElement={!isCommander ? <LockLabel /> : undefined}
+          labelElement={!canViewOperationalHealth ? <LockLabel /> : undefined}
         />
-        {isAdmin && (
+        {canManageOrganizations && (
           <>
             <MenuItem icon="office" text="Organizations" active={pathname.startsWith('/organizations')} onClick={() => navigate('/organizations')} />
-            <MenuItem icon="people" text="Users" active={pathname.startsWith('/users')} onClick={() => navigate('/users')} />
+            {canManageUsers && (
+              <MenuItem icon="people" text="Users" active={pathname.startsWith('/users')} onClick={() => navigate('/users')} />
+            )}
           </>
         )}
       </Menu>

@@ -1,6 +1,7 @@
 import { api } from './client'
 import type { QueryParams } from './client'
 import type {
+  AsOfParam,
   SignalRuleMatch,
   PaginatedResponse,
   SignalRuleMatchesParams,
@@ -39,6 +40,6 @@ export function bulkTransitionAlerts(body: BulkTransitionBody): Promise<BulkTran
   return api.post('/api/signal_rule_matches/bulk_transition', body)
 }
 
-export function getActiveBreachSiteIds(): Promise<{ site_ids: string[] }> {
-  return api.get<{ site_ids: string[] }>('/api/signal_rule_matches/active_breach_sites')
+export function getActiveBreachSiteIds(params?: AsOfParam): Promise<{ site_ids: string[] }> {
+  return api.get<{ site_ids: string[] }>('/api/signal_rule_matches/active_breach_sites', params as QueryParams | undefined)
 }

@@ -7,13 +7,15 @@ import {
   deleteCorrelationRule,
   getRuleEffectiveness,
 } from '../api/correlation_rules'
-import type { CreateCorrelationRuleBody, UpdateCorrelationRuleBody } from '../api/types'
+import type { AsOfParam, CreateCorrelationRuleBody, UpdateCorrelationRuleBody } from '../api/types'
 
 interface QueryOptions {
   enabled?: boolean
 }
 
-export function useCorrelationRules(params?: { active_only?: boolean }, options?: QueryOptions) {
+type CorrelationRulesParams = AsOfParam & { active_only?: boolean }
+
+export function useCorrelationRules(params?: CorrelationRulesParams, options?: QueryOptions) {
   return useQuery({
     queryKey: ['correlation_rules', params],
     queryFn: () => getCorrelationRules(params),

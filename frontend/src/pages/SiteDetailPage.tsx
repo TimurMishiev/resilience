@@ -66,10 +66,10 @@ export default function SiteDetailPage() {
   // Active geofence breach count — use meta.total (the true server-side count)
   // rather than data.length so the badge is accurate even when total > per_page.
   const { data: breachMatchesRes } = useSignalRuleMatches(
-    id ? { site_id: id, geofence_breach: true, workflow_status: 'unacknowledged', per_page: 50 } : undefined,
-    { enabled: !isReplaying, refetchInterval: isReplaying ? false : 10_000 },
+    id ? { site_id: id, geofence_breach: true, workflow_status: 'unacknowledged', per_page: 50, ...(asOf ? { as_of: asOf } : {}) } : undefined,
+    { enabled: Boolean(id), refetchInterval: isReplaying ? false : 10_000 },
   )
-  const activeBreachCount = isReplaying ? 0 : (breachMatchesRes?.meta?.total ?? 0)
+  const activeBreachCount = breachMatchesRes?.meta?.total ?? 0
   const visibleCreateTaskOpen = canOperate && !isReplaying && createTaskOpen
   const visibleEditingGeofence = !isReplaying && editingGeofence
   const visibleChainMatch = !isReplaying ? chainMatch : null
@@ -205,7 +205,7 @@ export default function SiteDetailPage() {
 
       {isReplaying && (
         <Callout intent="warning" icon="history" compact style={{ marginBottom: 12 }}>
-          Risk trends and site mutations remain live-only. Historical tasks, signals, rule fires, and audit history are clipped to the replay timestamp.
+          Site mutations remain live-only. Historical risk trends, breaches, tasks, signals, rule fires, timeline events, and audit history are clipped to the replay timestamp.
         </Callout>
       )}
 
@@ -296,7 +296,7 @@ export default function SiteDetailPage() {
       </div>
 
       {/* ── risk trend chart ── */}
-      {!isReplaying && <RiskScoreChart siteId={site.id} />}
+      <RiskScoreChart siteId={site.id} asOf={asOf} />
 
       {/* ── tabs ── */}
       <Tabs
@@ -321,7 +321,7 @@ export default function SiteDetailPage() {
         <Tab id="signals" title="Signals" panel={<SiteSignalsTab siteId={site.id} asOf={asOf} />} />
         <Tab id="rule_fires" title="Rule Fires" panel={<SiteRuleFiresTab siteId={site.id} isReplaying={isReplaying} asOf={asOf} onChain={setChainMatch} />} />
         <Tab id="assets" title="Assets" panel={<SiteAssetsTab siteId={site.id} asOf={asOf} onSelect={(a) => setEntityCard({ type: 'asset', id: a.id, title: a.name })} />} />
-        {!isReplaying && <Tab id="timeline" title={
+        <Tab id="timeline" title={
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <span>Timeline</span>
             <span style={{
@@ -329,7 +329,7 @@ export default function SiteDetailPage() {
               borderRadius: 3, padding: '1px 4px', fontWeight: 700, letterSpacing: '0.03em'
             }}>NEW</span>
           </span>
-        } panel={<SiteTimeline siteId={site.id} />} />}
+        } panel={<SiteTimeline siteId={site.id} asOf={asOf} />} />
         <Tab id="audit" title="Audit Trail" panel={
           <div style={{ paddingTop: 12 }}>
             <AuditTimeline entityType="Site" entityId={site.id} asOf={asOf} />

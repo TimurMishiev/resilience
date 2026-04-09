@@ -81,17 +81,18 @@ export default function DashboardPage() {
   const { isCommander } = useRole()
   const [evidenceRec, setEvidenceRec] = useState<Recommendation | null>(null)
   const [exportOpen, setExportOpen] = useState(false)
+  const replayParams = asOf ? { as_of: asOf } : undefined
 
-  const { data: recData, error: recError } = useRecommendations(undefined, { enabled: !isReplaying, refetchInterval: isReplaying ? false : 60_000 })
+  const { data: recData, error: recError } = useRecommendations(replayParams, { refetchInterval: isReplaying ? false : 60_000 })
   const topRecs = (recData?.data ?? []).slice(0, 3)
 
-  const { data: matchesRes, error: matchesError } = useSignalRuleMatches({ per_page: 15 }, { enabled: !isReplaying, refetchInterval: isReplaying ? false : 10_000 })
+  const { data: matchesRes, error: matchesError } = useSignalRuleMatches({ per_page: 15, ...(replayParams ?? {}) }, { refetchInterval: isReplaying ? false : 10_000 })
   const recentMatches = matchesRes?.data ?? []
 
-  const { data: riskData } = useRiskScores({ enabled: !isReplaying, refetchInterval: isReplaying ? false : 60_000 })
+  const { data: riskData } = useRiskScores(replayParams, { refetchInterval: isReplaying ? false : 60_000 })
   const riskBySite = useMemo(
-    () => (isReplaying ? {} : Object.fromEntries((riskData ?? []).map((r) => [r.site_id, r]))),
-    [isReplaying, riskData]
+    () => Object.fromEntries((riskData ?? []).map((r) => [r.site_id, r])),
+    [riskData]
   )
 
   const { data: readinessData, isPending: readinessPending, error: readinessError } = useReadiness(
@@ -155,7 +156,7 @@ export default function DashboardPage() {
 
       {isReplaying && (
         <Callout intent="warning" icon="history" compact style={{ marginBottom: 16 }}>
-          Recent alerts, recommendations, throughput analytics, and risk-score badges are hidden during replay because those widgets are only available as live state.
+          Viewing historical dashboard state at the replay timestamp. Throughput analytics and the loitering watchlist remain live-only.
         </Callout>
       )}
 
@@ -321,46 +322,52 @@ export default function DashboardPage() {
           )}
         </div>
 
+        <>
+          {/* Recent alerts — rule fires */}
+          <div className="dashboard-card dashboard-card--wide">
+            <div className="dashboard-card-header">
+              <h4 className="dashboard-card-title bp6-heading">Recent Alerts</h4>
+              <span className="bp6-text-muted" style={{ fontSize: 11 }}>
+                {isReplaying ? 'historical snapshot' : 'auto-refreshes · click to open site'}
+              </span>
+            </div>
+            {matchesError && <Callout intent="danger" compact>{matchesError.message}</Callout>}
+            <AlertsPanel matches={recentMatches} isReadOnly={isReplaying} />
+          </div>
+
+          {/* Recommendations panel */}
+          <div className="dashboard-card dashboard-card--wide">
+            <div className="dashboard-card-header">
+              <h4 className="dashboard-card-title bp6-heading">
+                <Icon icon="lightbulb" size={14} style={{ marginRight: 6 }} />
+                Recommendations
+              </h4>
+              <Button minimal small onClick={() => navigate('/recommendations')} style={{ fontSize: 11 }}>
+                View all →
+              </Button>
+            </div>
+            {recError && <Callout intent="danger" compact>{recError.message}</Callout>}
+            {topRecs.length === 0 ? (
+              <p className="bp6-text-muted" style={{ fontSize: 12, margin: 0 }}>
+                {isReplaying
+                  ? 'No recommendations existed at the replay timestamp.'
+                  : 'No active recommendations. System analyses operational state every 30 minutes.'}
+              </p>
+            ) : (
+              topRecs.map(rec => (
+                <RecommendationCard
+                  key={rec.id}
+                  rec={rec}
+                  onViewEvidence={setEvidenceRec}
+                  isCommander={isCommander}
+                  isReadOnly={isReplaying}
+                />
+              ))
+            )}
+          </div>
+
         {!isReplaying && (
           <>
-            {/* Recent alerts — rule fires */}
-            <div className="dashboard-card dashboard-card--wide">
-              <div className="dashboard-card-header">
-                <h4 className="dashboard-card-title bp6-heading">Recent Alerts</h4>
-                <span className="bp6-text-muted" style={{ fontSize: 11 }}>auto-refreshes · click to open site</span>
-              </div>
-              {matchesError && <Callout intent="danger" compact>{matchesError.message}</Callout>}
-              <AlertsPanel matches={recentMatches} />
-            </div>
-
-            {/* Recommendations panel */}
-            <div className="dashboard-card dashboard-card--wide">
-              <div className="dashboard-card-header">
-                <h4 className="dashboard-card-title bp6-heading">
-                  <Icon icon="lightbulb" size={14} style={{ marginRight: 6 }} />
-                  Recommendations
-                </h4>
-                <Button minimal small onClick={() => navigate('/recommendations')} style={{ fontSize: 11 }}>
-                  View all →
-                </Button>
-              </div>
-              {recError && <Callout intent="danger" compact>{recError.message}</Callout>}
-              {topRecs.length === 0 ? (
-                <p className="bp6-text-muted" style={{ fontSize: 12, margin: 0 }}>
-                  No active recommendations. System analyses operational state every 30 minutes.
-                </p>
-              ) : (
-                topRecs.map(rec => (
-                  <RecommendationCard
-                    key={rec.id}
-                    rec={rec}
-                    onViewEvidence={setEvidenceRec}
-                    isCommander={isCommander}
-                  />
-                ))
-              )}
-            </div>
-
             <div className="dashboard-card dashboard-card--wide">
               <div className="dashboard-card-header">
                 <h4 className="dashboard-card-title bp6-heading">
@@ -416,9 +423,10 @@ export default function DashboardPage() {
             </div>
           </>
         )}
+        </>
       </div>
 
-      {!isReplaying && <EvidenceDrawer rec={evidenceRec} onClose={() => setEvidenceRec(null)} />}
+      <EvidenceDrawer rec={evidenceRec} onClose={() => setEvidenceRec(null)} />
       <ExportDialog isOpen={exportOpen} onClose={() => setExportOpen(false)} />
     </div>
   )

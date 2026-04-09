@@ -41,6 +41,8 @@ module Api
       # Raw JSON written directly would arrive as a 'message' event and silently
       # miss every named listener registered in useEventSource.ts.
       user_org_id = current_user.organization_id
+      user_ao_id  = current_user.area_of_operation_id
+      site_area_cache = {}
 
       loop do
         payload = queue.pop          # blocks until a message arrives
@@ -48,11 +50,7 @@ module Api
         break unless refresh_sse_stream_lease(lease, stream_name: "events")
         parsed  = JSON.parse(payload)
 
-        # Org-scoped filtering: skip events from a different organization.
-        # Events without an organization_id pass through (global events).
-        # Users without an organization_id see everything (unrestricted).
-        event_org_id = parsed["organization_id"]
-        next if user_org_id.present? && event_org_id.present? && event_org_id != user_org_id
+        next unless event_visible_to_scope?(parsed, user_org_id: user_org_id, user_ao_id: user_ao_id, site_area_cache: site_area_cache)
 
         break unless sse_write(response.stream, event: parsed["event"], data: parsed["data"])
       rescue JSON::ParserError => e
@@ -83,6 +81,34 @@ module Api
       true
     rescue IOError, ActionController::Live::ClientDisconnected
       false
+    end
+
+    def event_visible_to_scope?(parsed, user_org_id:, user_ao_id:, site_area_cache:)
+      # Org-scoped filtering: skip events from a different organization.
+      # Events without an organization_id pass through (global events).
+      # Users without an organization_id see everything (unrestricted).
+      event_org_id = parsed["organization_id"]
+      return false if user_org_id.present? && event_org_id.present? && event_org_id != user_org_id
+      return true unless user_ao_id.present?
+
+      event_ao_id = event_area_of_operation_id(parsed, site_area_cache: site_area_cache)
+      return false if event_ao_id == :unknown
+      return true if event_ao_id.blank?
+
+      event_ao_id == user_ao_id
+    end
+
+    def event_area_of_operation_id(parsed, site_area_cache:)
+      data = parsed["data"].is_a?(Hash) ? parsed["data"] : {}
+      explicit_ao_id = data["area_of_operation_id"] || data["ao_id"]
+      return explicit_ao_id if explicit_ao_id.present?
+
+      site_id = data["site_id"]
+      return nil if site_id.blank?
+
+      site_area_cache.fetch(site_id) do
+        site_area_cache[site_id] = Site.where(id: site_id).pick(:area_of_operation_id) || :unknown
+      end
     end
   end
 end

@@ -78,6 +78,6 @@ describe('SitesPage', () => {
 
     renderPage()
 
-    expect(screen.getByText(/risk badges are hidden during replay/i)).toBeInTheDocument()
+    expect(screen.getByText(/latest recorded snapshot at the replay timestamp/i)).toBeInTheDocument()
   })
 })

@@ -6,7 +6,7 @@ type: findings
 
 # Resilience — Open Findings
 
-Last reconciled with code: 2026-04-04
+Last reconciled with code: 2026-04-09
 
 Active execution of these findings is tracked in `memory/project_production_readiness_plan.md`.
 No new feature work should take precedence over that file until the production-readiness program is complete.
@@ -17,8 +17,9 @@ _(No open P1 items. All prior P1 replay parity gaps have been closed.)_
 
 ## P2 / Important Platform Follow-Through
 
-- Tenant/workspace isolation is still missing.
+- Tenant/workspace isolation is still incomplete.
   - Organization model + org/AO scoping exist, but domain-wide data isolation, workspace management, and admin tenant UI are not built.
+  - Current code path is now explicit about the supported interim model: org-owned operational data, shared global intelligence domains (`ExternalSignal`, `Vessel`), org-null global AOs on the AO surface for org-scoped users who are not pinned to a single AO, and org-owned attached doctrine/operational records unless a policy explicitly opts into shared visibility.
   - This is acknowledged as a major track, not a quick patch.
 
 - Frontend maintenance concentration substantially reduced:
@@ -47,6 +48,11 @@ _(No open P1 items. All prior P1 replay parity gaps have been closed.)_
 ## Closed Since Last Reconciliation
 
 - ~~Replay parity on RecommendationsPage, OntologyQueryPanel, IncidentDetailPage, AlertTriagePage~~ — all four now pass `as_of` and gate mutations during replay.
+- ~~Replay parity on EntityCard / AreasPage / CorrelationRulesPage / SiteDetailPage / DashboardPage / MapPage / GlobePage~~ — historical read-only state now renders across the main operational surfaces, including AO overlays, chokepoints, breach overlays, and replay-safe AIS vessel context on map/globe.
+- ~~Replay messaging drift on BriefingPage / OntologyQueryPage / AppShell~~ — fixed: page copy and shell mission posture now match the replay-capable backend and panel behavior.
+- ~~AO global-scope enforcement drift between `Scope` and `show?`~~ — fixed: org-null global AOs are now enforced consistently for org-scoped users, while AO-pinned users remain narrowed to their selected AO.
+- ~~AO-scoped SSE users can receive same-org events from other AOs~~ — fixed: `EventsController` now filters by `area_of_operation_id` (or resolves it from `site_id`) for AO-pinned users.
+- ~~Admin users lose commander-level task transitions in the map/site task panel~~ — fixed: `TaskRow` now treats `admin` with commander-equivalent task transition affordances, matching backend policy.
 - ~~Session security maturity (sign out all devices)~~ — shipped: `SecurityPage.tsx` + `sessions_controller.rb` support bulk revocation with `?all_sessions=true`, `keep_current`, and admin cross-user management.
 - ~~16 controllers skip_after_action :verify_authorized~~ — all removed; Pundit is fully enforced across every controller.
 - ~~Security/identity maturity (session lifecycle)~~ — shipped: `UserSession` model with jti tracking, per-session revocation, admin session management, `tokens_valid_after` for global logout.

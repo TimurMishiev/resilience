@@ -39,11 +39,12 @@ import type { Site } from '../api/types'
 import type { EntityType } from '../components/EntityCard'
 
 export default function PlanningPage() {
-  const { isCommander } = useRole()
+  const role = useRole()
+  const canAccessPlanning = role.canAccessPlanning ?? role.isCommander
   const { isReplaying, asOf } = useReplay()
   const navigate = useNavigate()
-  const { data, isLoading, isError } = usePlanning(isCommander)
-  const sitesQuery = useSites({ per_page: 200, ...(isReplaying && asOf ? { as_of: asOf } : {}) }, isCommander)
+  const { data, isLoading, isError } = usePlanning(canAccessPlanning)
+  const sitesQuery = useSites({ per_page: 200, ...(isReplaying && asOf ? { as_of: asOf } : {}) }, canAccessPlanning)
   const updateTask = useUpdateTask()
   const createCommanderIntent = useCreateCommanderIntent()
   const updateCommanderIntent = useUpdateCommanderIntent()
@@ -53,7 +54,7 @@ export default function PlanningPage() {
   const createChokepoint = useCreateChokepoint()
   const updateChokepoint = useUpdateChokepoint()
   const deleteChokepoint = useDeleteChokepoint()
-  const { readings } = useTelemetry(isCommander, asOf)
+  const { readings } = useTelemetry(canAccessPlanning, asOf)
 
   const [pendingAssets, setPendingAssets] = useState<Record<string, string | null | undefined>>({})
   const [entityCard, setEntityCard] = useState<{ type: EntityType; id: string } | null>(null)
@@ -165,7 +166,7 @@ export default function PlanningPage() {
     .sort((a, b) => Number(b.criticalGap) - Number(a.criticalGap) || a.site.name.localeCompare(b.site.name))
 
   // ── Early returns (after all hooks) ────────────────────────────────────────
-  if (!isCommander) {
+  if (!canAccessPlanning) {
     return (
       <NonIdealState
         icon="lock"

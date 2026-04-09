@@ -1,6 +1,7 @@
 import { api } from './client'
 import type { QueryParams } from './client'
 import type {
+  AsOfParam,
   CorrelationRule,
   PaginatedResponse,
   PaginationParams,
@@ -8,14 +9,14 @@ import type {
   UpdateCorrelationRuleBody,
 } from './types'
 
-type RulesParams = PaginationParams & { active_only?: boolean }
+type RulesParams = PaginationParams & AsOfParam & { active_only?: boolean }
 
 export function getCorrelationRules(params?: RulesParams): Promise<PaginatedResponse<CorrelationRule>> {
   return api.get('/api/correlation_rules', params as QueryParams)
 }
 
-export function getCorrelationRule(id: string): Promise<CorrelationRule> {
-  return api.get(`/api/correlation_rules/${id}`)
+export function getCorrelationRule(id: string, params?: AsOfParam): Promise<CorrelationRule> {
+  return api.get(`/api/correlation_rules/${id}`, params as QueryParams)
 }
 
 export function createCorrelationRule(body: CreateCorrelationRuleBody): Promise<CorrelationRule> {

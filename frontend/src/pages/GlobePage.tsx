@@ -20,6 +20,7 @@ import type { Vessel } from '../api/vessels'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { assetDisplayPosition, getLiveTelemetryReading } from '../lib/assetPresentation'
 import { computeReadiness } from '../lib/formatters'
+import { buildReplayVessel } from '../lib/replayVessel'
 import { buildCoverageCircles, haversineKm } from '../lib/coverage'
 import {
   buildEntitySelectionPath,
@@ -92,23 +93,23 @@ export default function GlobePage() {
   const sitesQuery  = useSites({ per_page: 200, ...asOfParam })
   const tasksQuery  = useTasks({ per_page: 200, ...asOfParam })
   const assetsQuery = useAssets({ per_page: 200, ...asOfParam })
-  const { data: areasRes } = useAreasOfOperation({ per_page: 200 }, { enabled: !isReplaying })
+  const { data: areasRes } = useAreasOfOperation({ per_page: 200, ...asOfParam })
 
   const sites  = useMemo(() => sitesQuery.data?.data  ?? [], [sitesQuery.data?.data])
   const tasks  = useMemo(() => tasksQuery.data?.data  ?? [], [tasksQuery.data?.data])
   const assets = useMemo(() => assetsQuery.data?.data ?? [], [assetsQuery.data?.data])
   const areaOfOperations = useMemo(
-    () => (isReplaying ? [] : (areasRes?.data ?? [])),
-    [areasRes?.data, isReplaying],
+    () => areasRes?.data ?? [],
+    [areasRes?.data],
   )
 
-  const { data: activeBreachRes } = useActiveBreachSiteIds({
-    enabled: !isReplaying,
+  const { data: activeBreachRes } = useActiveBreachSiteIds(asOfParam, {
+    enabled: true,
     refetchInterval: isReplaying ? false : 10_000,
   })
   const breachedSiteIds = useMemo(
-    () => new Set<string>(isReplaying ? [] : (activeBreachRes?.site_ids ?? [])),
-    [activeBreachRes?.site_ids, isReplaying],
+    () => new Set<string>(activeBreachRes?.site_ids ?? []),
+    [activeBreachRes?.site_ids],
   )
 
   const { signals, connected: signalsConnected, error: signalError } = useSignalsLive({
@@ -149,10 +150,10 @@ export default function GlobePage() {
     assets, tasks, sites, readings, allowHistoricalTelemetry: isReplaying,
   }), [assets, isReplaying, readings, sites, tasks])
 
-  const { data: chokepointsRes } = useChokepoints({ per_page: 200 }, { enabled: !isReplaying })
+  const { data: chokepointsRes } = useChokepoints({ per_page: 200, ...asOfParam }, { enabled: true })
   const chokepoints = useMemo(
-    () => (isReplaying ? [] : (chokepointsRes?.data ?? [])),
-    [chokepointsRes?.data, isReplaying],
+    () => chokepointsRes?.data ?? [],
+    [chokepointsRes?.data],
   )
 
   // ── Derived selection ────────────────────────────────────────────────────────
@@ -176,12 +177,17 @@ export default function GlobePage() {
     { enabled: !!selectedVesselMmsi, refetchInterval: isReplaying ? false : 30_000 },
   )
   const selectedVesselRecord = vesselLookup?.data?.[0] ?? null
-  const selectedVessel = isReplaying ? null : selectedVesselRecord
   const { data: vesselTrackRes } = useVesselTracks(selectedVesselRecord?.id ?? null, {
     limit: 300,
     ...(isReplaying && asOf ? { to: asOf } : {}),
   })
   const vesselTracks = useMemo(() => vesselTrackRes?.data ?? [], [vesselTrackRes?.data])
+  const selectedVessel = useMemo(
+    () => (isReplaying
+      ? buildReplayVessel(selectedSignal, selectedVesselRecord?.id ?? null, vesselTracks, asOf)
+      : selectedVesselRecord),
+    [asOf, isReplaying, selectedSignal, selectedVesselRecord, vesselTracks],
+  )
   const assetTrails  = useAssetTrails(isReplaying ? asOf : null, trailWindowMinutes)
 
   // ── Engine init ───────────────────────────────────────────────────────────────

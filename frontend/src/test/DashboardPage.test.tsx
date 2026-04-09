@@ -6,7 +6,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const dashboardState = vi.hoisted(() => ({
   isReplaying: false,
+  asOf: '2026-04-09T12:00:00Z',
   loiteringError: null as Error | null,
+  recommendations: [] as Array<{ id: string }>,
+  matches: [] as Array<{ id: string }>,
   loiteringVessels: [
     {
       id: 'vessel-1',
@@ -71,7 +74,7 @@ vi.mock('../hooks/useTasks', () => ({
 
 vi.mock('../hooks/useSignalRuleMatches', () => ({
   useSignalRuleMatches: () => ({
-    data: { data: [] },
+    data: { data: dashboardState.matches },
   }),
   useTransitionAlert: () => ({
     mutate: vi.fn(),
@@ -93,7 +96,7 @@ vi.mock('../hooks/useVessels', () => ({
 
 vi.mock('../context/ReplayContext', () => ({
   useReplay: () => ({
-    asOf: null,
+    asOf: dashboardState.asOf,
     isReplaying: dashboardState.isReplaying,
   }),
 }))
@@ -106,7 +109,7 @@ vi.mock('../hooks/useRole', () => ({
 
 vi.mock('../hooks/useRecommendations', () => ({
   useRecommendations: () => ({
-    data: { data: [] },
+    data: { data: dashboardState.recommendations },
   }),
 }))
 
@@ -143,6 +146,8 @@ function renderDashboard() {
 describe('DashboardPage loitering watchlist', () => {
   beforeEach(() => {
     dashboardState.isReplaying = false
+    dashboardState.recommendations = []
+    dashboardState.matches = []
     dashboardState.loiteringError = null
   })
 
@@ -162,6 +167,34 @@ describe('DashboardPage loitering watchlist', () => {
     renderDashboard()
 
     expect(screen.queryByText('Loitering Watchlist')).not.toBeInTheDocument()
+  })
+
+  it('keeps alerts and recommendations visible during replay', () => {
+    dashboardState.isReplaying = true
+    dashboardState.matches = [
+      {
+        id: 'match-1',
+        fired_at: '2026-04-09T11:00:00Z',
+        workflow_status: 'unacknowledged',
+        confidence: 0.92,
+        metadata: {},
+        signal: null,
+        correlation_rule: { id: 'rule-1', name: 'Historical Rule' },
+        site: { id: 'site-1', name: 'Forward Site Alpha' },
+        task: null,
+      },
+    ]
+    dashboardState.recommendations = [
+      { id: 'rec-1' } as never,
+    ]
+
+    renderDashboard()
+
+    expect(screen.getByText(/Viewing historical dashboard state/i)).toBeInTheDocument()
+    expect(screen.getByText('Recent Alerts')).toBeInTheDocument()
+    expect(screen.getByText('Historical Rule')).toBeInTheDocument()
+    expect(screen.getByText('Recommendations')).toBeInTheDocument()
+    expect(screen.getByText('Recommendation card')).toBeInTheDocument()
   })
 
   it('renders an explicit error state when loitering data fails to load', () => {

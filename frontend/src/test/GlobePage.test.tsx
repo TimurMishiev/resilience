@@ -126,7 +126,7 @@ vi.mock('../hooks/useVessels', () => ({
 
 vi.mock('../hooks/useSignalRuleMatches', () => ({
   useActiveBreachSiteIds: () => ({
-    data: { site_ids: [] },
+    data: { site_ids: ['site-1'] },
   }),
 }))
 
@@ -146,6 +146,7 @@ const globeEngineState = vi.hoisted(() => ({
     showHeatmap: boolean
     showChokepoints: boolean
     chokepoints: Array<{ id: string }>
+    breachedSiteIds: Set<string>
   },
 }))
 
@@ -161,6 +162,7 @@ vi.mock('../hooks/useGlobeEngine', () => ({
     showHeatmap?: boolean
     showChokepoints?: boolean
     chokepoints?: Array<{ id: string }>
+    breachedSiteIds?: Set<string>
   }) => {
     globeEngineState.onSiteClick = input.onSiteClick ?? null
     globeEngineState.onAssetClick = input.onAssetClick ?? null
@@ -169,6 +171,7 @@ vi.mock('../hooks/useGlobeEngine', () => ({
       showHeatmap: input.showHeatmap ?? false,
       showChokepoints: input.showChokepoints ?? false,
       chokepoints: input.chokepoints ?? [],
+      breachedSiteIds: input.breachedSiteIds ?? new Set(),
     }
     return {
       viewerReady: true,
@@ -184,8 +187,11 @@ vi.mock('../hooks/useGlobeEngine', () => ({
 }))
 
 vi.mock('../components/GlobeInspectorPanel', () => ({
-  GlobeInspectorPanel: ({ inspectorTitle }: { inspectorTitle: string }) => (
-    <div data-testid="globe-inspector-panel">{inspectorTitle}</div>
+  GlobeInspectorPanel: ({ inspectorTitle, selectedVessel }: { inspectorTitle: string; selectedVessel?: { mmsi?: string | null } | null }) => (
+    <div data-testid="globe-inspector-panel">
+      <span>{inspectorTitle}</span>
+      {selectedVessel?.mmsi ? <span data-testid="globe-vessel-mmsi">{selectedVessel.mmsi}</span> : null}
+    </div>
   ),
 }))
 
@@ -528,10 +534,11 @@ describe('GlobePage selection routing', () => {
 
     renderGlobePage('/globe')
 
-    expect(screen.queryByText(/CHOKEPOINTS (ON|OFF)/)).not.toBeInTheDocument()
-    expect(screen.queryByText('Monitor')).not.toBeInTheDocument()
-    expect(globeEngineState.latestInput?.chokepoints).toEqual([])
-    expect(screen.getByText(/Replay mode hides live-only/)).toHaveTextContent('chokepoint overlays')
+    expect(screen.getByText(/CHOKEPOINTS (ON|OFF)/)).toBeInTheDocument()
+    expect(screen.getByText('Monitor')).toBeInTheDocument()
+    expect(globeEngineState.latestInput?.chokepoints).toHaveLength(1)
+    expect(globeEngineState.latestInput?.breachedSiteIds.has('site-1')).toBe(true)
+    expect(screen.getByText(/Replay mode keeps historical AO overlays, chokepoint overlays, breach overlays, and AIS vessel context visible/i)).toHaveTextContent('Live-only vessel enrichments remain limited')
   })
 
   it('keeps selected-vessel trail queries replay-aware', () => {
@@ -565,6 +572,7 @@ describe('GlobePage selection routing', () => {
       'vessel-1',
       { limit: 300, to: '2026-03-29T10:00:00.000Z' },
     )
+    expect(screen.getByTestId('globe-vessel-mmsi')).toHaveTextContent('111000001')
   })
 
   it('keeps a stable globe benchmark bridge across live array replacement while exposing updated state', async () => {

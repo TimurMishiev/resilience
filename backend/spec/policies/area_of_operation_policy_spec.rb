@@ -50,7 +50,9 @@ RSpec.describe AreaOfOperationPolicy do
   describe "AO scoping" do
     let(:org)         { create(:organization) }
     let(:own_ao)      { create(:area_of_operation, organization: org) }
-    let(:other_ao)    { create(:area_of_operation) }
+    let(:other_org)   { create(:organization) }
+    let(:other_ao)    { create(:area_of_operation, organization: other_org) }
+    let(:global_ao)   { create(:area_of_operation) }
     let(:scoped_user) { create(:user, :commander, organization: org) }
 
     it "allows show for AO in same org" do
@@ -59,6 +61,13 @@ RSpec.describe AreaOfOperationPolicy do
 
     it "denies show for AO in different org" do
       expect(described_class.new(scoped_user, other_ao).show?).to be false
+    end
+
+    it "allows show but denies update for org-null global AOs" do
+      policy = described_class.new(scoped_user, global_ao)
+
+      expect(policy.show?).to be true
+      expect(policy.update?).to be false
     end
   end
 

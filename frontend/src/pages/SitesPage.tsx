@@ -17,10 +17,11 @@ const RISK_COLOR: Record<RiskLevel, string> = {
 export default function SitesPage() {
   const navigate = useNavigate()
   const { asOf, isReplaying } = useReplay()
+  const replayParams = asOf ? { as_of: asOf } : undefined
   const { data, error, isPending } = useSites({ per_page: 100, ...(asOf ? { as_of: asOf } : {}) })
-  const { data: riskData } = useRiskScores({ enabled: !isReplaying, refetchInterval: isReplaying ? false : 60_000 })
+  const { data: riskData } = useRiskScores(replayParams, { refetchInterval: isReplaying ? false : 60_000 })
 
-  const riskBySiteId = isReplaying ? {} : Object.fromEntries((riskData ?? []).map(r => [String(r.site_id), r]))
+  const riskBySiteId = Object.fromEntries((riskData ?? []).map(r => [String(r.site_id), r]))
 
   if (error) {
     return (
@@ -58,7 +59,7 @@ export default function SitesPage() {
 
       {isReplaying && (
         <Callout intent="warning" icon="history" compact style={{ marginBottom: 16 }}>
-          Risk badges are hidden during replay because site risk scores are only computed for live operational state.
+          Risk badges reflect the latest recorded snapshot at the replay timestamp.
         </Callout>
       )}
 

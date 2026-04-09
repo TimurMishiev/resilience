@@ -25,6 +25,7 @@ import { assetDisplayPosition, getLiveTelemetryReading } from '../lib/assetPrese
 import { buildCoverageCircles } from '../lib/coverage'
 import { parseEntitySelectionRoute } from '../lib/entitySelectionRoute'
 import { computeReadiness } from '../lib/formatters'
+import { buildReplayVessel } from '../lib/replayVessel'
 import { SIGNAL_COLORS, SIGNAL_LABELS } from '../lib/signalConfig'
 import { MapSitePanel } from '../components/MapSitePanel'
 import { MapAssetPanel } from '../components/MapAssetPanel'
@@ -97,19 +98,19 @@ export default function MapPage() {
   // ---------------------------------------------------------------------------
   // Data queries
   // ---------------------------------------------------------------------------
-  const { data: riskData } = useRiskScores({ enabled: !isReplaying, refetchInterval: isReplaying ? false : 60_000 })
+  const { data: riskData } = useRiskScores(asOfParam, { refetchInterval: isReplaying ? false : 60_000 })
   const riskBySiteId = useMemo(
-    () => (isReplaying ? {} : Object.fromEntries((riskData ?? []).map(r => [String(r.site_id), r]))),
-    [isReplaying, riskData],
+    () => Object.fromEntries((riskData ?? []).map(r => [String(r.site_id), r])),
+    [riskData],
   )
 
   const sitesQuery  = useSites({ per_page: 200, ...asOfParam })
   const tasksQuery  = useTasks({ per_page: 200, ...asOfParam })
   const assetsQuery = useAssets({ per_page: 200, ...asOfParam })
-  const { data: areasRes } = useAreasOfOperation({ per_page: 200 }, { enabled: !isReplaying })
+  const { data: areasRes } = useAreasOfOperation({ per_page: 200, ...asOfParam })
   const areaOfOperations = useMemo(
-    () => (isReplaying ? [] : (areasRes?.data ?? [])),
-    [areasRes?.data, isReplaying],
+    () => areasRes?.data ?? [],
+    [areasRes?.data],
   )
 
   const sites    = useMemo(() => sitesQuery.data?.data  ?? [], [sitesQuery.data?.data])
@@ -151,7 +152,6 @@ export default function MapPage() {
     { enabled: !!selectedVesselMmsi, refetchInterval: isReplaying ? false : 30_000 },
   )
   const selectedVesselRecord = vesselLookup?.data?.[0] ?? null
-  const selectedVessel = isReplaying ? null : selectedVesselRecord
 
   // Track history for the selected vessel
   const { data: vesselTrackRes } = useVesselTracks(selectedVesselRecord?.id ?? null, {
@@ -159,18 +159,24 @@ export default function MapPage() {
     ...(isReplaying && asOf ? { to: asOf } : {}),
   })
   const vesselTracks = useMemo(() => vesselTrackRes?.data ?? [], [vesselTrackRes?.data])
+  const selectedVessel = useMemo(
+    () => (isReplaying
+      ? buildReplayVessel(selectedSignal, selectedVesselRecord?.id ?? null, vesselTracks, asOf)
+      : selectedVesselRecord),
+    [asOf, isReplaying, selectedSignal, selectedVesselRecord, vesselTracks],
+  )
 
   // Replay-only multi-asset trails
   const assetTrails = useAssetTrails(isReplaying ? asOf : null, trailWindowMinutes)
 
   // Active geofence breach site IDs — backed by an unpaginated backend query
-  const { data: activeBreachRes } = useActiveBreachSiteIds({
-    enabled: !isReplaying,
+  const { data: activeBreachRes } = useActiveBreachSiteIds(asOfParam, {
+    enabled: true,
     refetchInterval: isReplaying ? false : 10_000,
   })
   const breachedSiteIds = useMemo(
-    () => new Set<string>(isReplaying ? [] : (activeBreachRes?.site_ids ?? [])),
-    [activeBreachRes?.site_ids, isReplaying],
+    () => new Set<string>(activeBreachRes?.site_ids ?? []),
+    [activeBreachRes?.site_ids],
   )
 
   const { readings, connected: telemetryConnected } = useTelemetry(true, isReplaying ? asOf : null)
@@ -184,10 +190,10 @@ export default function MapPage() {
     return map
   }, [allTasks])
 
-  const { data: chokepointsRes } = useChokepoints({ per_page: 200 }, { enabled: !isReplaying })
+  const { data: chokepointsRes } = useChokepoints({ per_page: 200, ...asOfParam }, { enabled: true })
   const chokepoints = useMemo(
-    () => (isReplaying ? [] : (chokepointsRes?.data ?? [])),
-    [chokepointsRes?.data, isReplaying],
+    () => chokepointsRes?.data ?? [],
+    [chokepointsRes?.data],
   )
 
   const coverageCircles = useMemo(() => buildCoverageCircles({
@@ -365,7 +371,7 @@ export default function MapPage() {
       {isReplaying && (
         <div className="map-overlay map-overlay--error" style={{ top: 56, left: 16, right: 'auto', bottom: 'auto', maxWidth: 420 }}>
           <Callout intent="warning" title="Replay limitations" compact>
-            AO overlays, chokepoint overlays, geofence breach rings, and live vessel enrichment are hidden during replay because those layers are only available as live state. Historical vessel trails remain available up to the replay timestamp.
+            Historical AO overlays, risk shading, chokepoint overlays, geofence breach rings, and AIS vessel context remain available during replay. Live-only vessel enrichments remain limited. Historical vessel trails stay available up to the replay timestamp.
           </Callout>
         </div>
       )}
@@ -418,7 +424,7 @@ export default function MapPage() {
       </div>
 
       {/* Chokepoint layer legend + toggle */}
-      {!isReplaying && showChokepoints && (
+      {showChokepoints && (
         <div className="map-chokepoint-legend">
           <div className="map-chokepoint-legend-item">
             <span className="map-coverage-legend-swatch" style={{ background: 'rgba(255,212,59,0.22)', borderColor: '#ffd43b' }} />
@@ -438,17 +444,15 @@ export default function MapPage() {
           </div>
         </div>
       )}
-      {!isReplaying && (
-        <div
-          className={`map-coverage-toggle${showChokepoints ? ' map-coverage-toggle--active' : ''}`}
-          onClick={() => setShowChokepoints(v => !v)}
-          role="button"
-          aria-label="Toggle chokepoint overlay"
-        >
-          <span className="map-coverage-toggle-dot" />
-          CHOKEPOINTS {showChokepoints ? 'ON' : 'OFF'}
-        </div>
-      )}
+      <div
+        className={`map-coverage-toggle${showChokepoints ? ' map-coverage-toggle--active' : ''}`}
+        onClick={() => setShowChokepoints(v => !v)}
+        role="button"
+        aria-label="Toggle chokepoint overlay"
+      >
+        <span className="map-coverage-toggle-dot" />
+        CHOKEPOINTS {showChokepoints ? 'ON' : 'OFF'}
+      </div>
 
       {/* Asset trail layer toggle + window selector — replay-only */}
       {isReplaying && showTrails && (

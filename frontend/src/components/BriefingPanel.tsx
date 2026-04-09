@@ -60,7 +60,8 @@ function GroundingBadge({ counts }: { counts: AiSummaryResult['context_counts'] 
 
 export default function BriefingPanel() {
   const { asOf, isReplaying } = useReplay()
-  const { data: sitesData } = useSites({ per_page: 100 }, true)
+  const replaySiteParams = isReplaying && asOf ? { per_page: 100, as_of: asOf } : { per_page: 100 }
+  const { data: sitesData } = useSites(replaySiteParams, true)
   const sites = sitesData?.data ?? []
 
   const [summaryType, setSummaryType] = useState<AiSummaryType>('leadership_briefing')

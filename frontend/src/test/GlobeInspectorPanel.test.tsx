@@ -196,4 +196,34 @@ describe('GlobeInspectorPanel', () => {
     expect(screen.getByText('Philippines')).toBeInTheDocument()
     expect(screen.getByText('2.5')).toBeInTheDocument()
   })
+
+  it('shows replay vessel context notice for vessel-position signals', () => {
+    const vesselSignal: Signal = {
+      ...disasterSignal,
+      id: 'sig-vessel',
+      source: 'ais',
+      signal_type: 'vessel_position',
+      external_id: '123456789',
+      speed: 12,
+      heading: 180,
+      raw_payload: {
+        mmsi: '123456789',
+        vessel_type: 'Cargo',
+        flag: 'PA',
+        dest: 'Tangier',
+      },
+    }
+
+    render(
+      <GlobeInspectorPanel
+        {...baseProps}
+        isReplaying
+        selectedSignal={vesselSignal}
+        selectedVessel={vessel}
+      />,
+    )
+
+    expect(screen.getByText(/reflect AIS history up to the replay timestamp/i)).toBeInTheDocument()
+    expect(screen.getByText('123456789')).toBeInTheDocument()
+  })
 })

@@ -28,16 +28,21 @@ import type { RuleFormState } from '../components/correlationRules/types'
 const SKELETON_ROWS = 7
 
 export default function CorrelationRulesPage() {
-  const { isCommander } = useRole()
-  const { isReplaying } = useReplay()
+  const role = useRole()
+  const canManageCorrelationRules = role.canManageCorrelationRules ?? role.isCommander
+  const { isReplaying, asOf } = useReplay()
+  const replayParams = asOf ? { as_of: asOf } : undefined
 
-  const { data, error, isPending } = useCorrelationRules(undefined, { enabled: !isReplaying })
-  const { data: matchesData }      = useSignalRuleMatches({ per_page: 5 }, { enabled: !isReplaying })
+  const { data, error, isPending } = useCorrelationRules(replayParams)
+  const { data: matchesData } = useSignalRuleMatches(
+    { per_page: 5, ...(replayParams ?? {}) },
+    { refetchInterval: isReplaying ? false : 10000 },
+  )
   const { data: effectivenessData } = useRuleEffectiveness({ enabled: !isReplaying })
 
   const deleteMutation = useDeleteCorrelationRule()
 
-  const { data: aosData } = useAreasOfOperation(undefined, { enabled: !isReplaying })
+  const { data: aosData } = useAreasOfOperation(replayParams ?? undefined)
   const aoList    = aosData?.data ?? []
   const aoByIdMap = useMemo(
     () => new Map((aosData?.data ?? []).map(ao => [ao.id, ao.name])),
@@ -55,21 +60,6 @@ export default function CorrelationRulesPage() {
   const rules   = data?.data ?? []
   const matches = matchesData?.data ?? []
 
-  if (isReplaying) {
-    return (
-      <div className="page-content">
-        <Callout intent="warning" icon="history" style={{ marginBottom: 16 }}>
-          Correlation rules are unavailable during replay because rule definitions, recent matches, and effectiveness analytics are only available as live alert-engine state.
-        </Callout>
-        <NonIdealState
-          icon="flows"
-          title="Correlation rules unavailable in replay"
-          description="Historical alert-engine configuration and analytics are not replay-scoped, so this console is fail-closed during replay."
-        />
-      </div>
-    )
-  }
-
   if (error) {
     return (
       <div className="page-content">
@@ -80,7 +70,7 @@ export default function CorrelationRulesPage() {
     )
   }
 
-  if (!isCommander && !isPending && rules.length === 0) {
+  if (!canManageCorrelationRules && !isPending && rules.length === 0) {
     return (
       <div className="page-content">
         <NonIdealState
@@ -136,7 +126,7 @@ export default function CorrelationRulesPage() {
               ? <span className={Classes.SKELETON} style={{ width: 64, display: 'inline-block' }}>&nbsp;</span>
               : `${rules.length} rules`}
           </span>
-          {isCommander && (
+          {canManageCorrelationRules && !isReplaying && (
             <>
               <Button icon="duplicate" small onClick={() => setTemplateDialogOpen(true)}>
                 From Template
@@ -149,7 +139,13 @@ export default function CorrelationRulesPage() {
         </div>
       </div>
 
-      {!isCommander && (
+      {isReplaying && (
+        <Callout intent="warning" icon="history" style={{ marginBottom: 16 }}>
+          Viewing historical rule definitions and recent firings at the replay timestamp. Analytics and all rule mutations remain live-only.
+        </Callout>
+      )}
+
+      {!canManageCorrelationRules && (
         <Callout intent="warning" icon="lock" style={{ marginBottom: 16 }}>
           Commander role required to create or modify correlation rules.
         </Callout>
@@ -193,8 +189,8 @@ export default function CorrelationRulesPage() {
               <th>Trend</th>
               <th title="Task rate — fraction of fires that produced a task (proxy for signal actionability)">Task Rate</th>
               <th>Cooldown</th>
-              <th></th>
-              {isCommander && <th>Actions</th>}
+              {!isReplaying && <th></th>}
+              {canManageCorrelationRules && !isReplaying && <th>Actions</th>}
             </tr>
           </thead>
           <tbody>
@@ -210,10 +206,10 @@ export default function CorrelationRulesPage() {
                 ))
               : rules.map(rule => {
                   const actionPriority = (rule.actions.create_task?.priority ?? 'normal') as TaskPriority
-                  const eff = effectivenessData?.[rule.id]
+                  const eff = isReplaying ? undefined : effectivenessData?.[rule.id]
                   return (
-                    <tr key={rule.id} onClick={() => isCommander && openEdit(rule)}
-                        style={{ cursor: isCommander ? 'pointer' : 'default' }}>
+                    <tr key={rule.id} onClick={() => canManageCorrelationRules && !isReplaying && openEdit(rule)}
+                        style={{ cursor: canManageCorrelationRules && !isReplaying ? 'pointer' : 'default' }}>
                       <td>
                         <div>{rule.name}</div>
                         {rule.description && (
@@ -291,15 +287,17 @@ export default function CorrelationRulesPage() {
                         ) : <span className="bp6-text-muted">—</span>}
                       </td>
                       <td className="mono">{rule.cooldown_minutes}m</td>
-                      <td onClick={e => e.stopPropagation()}>
-                        <Button
-                          icon="lab-test"
-                          minimal small intent="primary"
-                          title="Dry run — test against recent signals"
-                          onClick={() => setDryRunTarget(rule)}
-                        />
-                      </td>
-                      {isCommander && (
+                      {!isReplaying && (
+                        <td onClick={e => e.stopPropagation()}>
+                          <Button
+                            icon="lab-test"
+                            minimal small intent="primary"
+                            title="Dry run — test against recent signals"
+                            onClick={() => setDryRunTarget(rule)}
+                          />
+                        </td>
+                      )}
+                      {canManageCorrelationRules && !isReplaying && (
                         <td onClick={e => e.stopPropagation()}>
                           <Button
                             icon="trash" minimal small intent="danger"
@@ -317,25 +315,29 @@ export default function CorrelationRulesPage() {
       )}
 
       {/* Dialogs / Drawers */}
-      <RuleTemplateDialog
-        isOpen={templateDialogOpen}
-        onClose={() => setTemplateDialogOpen(false)}
-        onSelectTemplate={handleTemplateSelected}
-      />
+      {!isReplaying && (
+        <>
+          <RuleTemplateDialog
+            isOpen={templateDialogOpen}
+            onClose={() => setTemplateDialogOpen(false)}
+            onSelectTemplate={handleTemplateSelected}
+          />
 
-      <DryRunDrawer
-        rule={dryRunTarget}
-        onClose={() => setDryRunTarget(null)}
-      />
+          <DryRunDrawer
+            rule={dryRunTarget}
+            onClose={() => setDryRunTarget(null)}
+          />
 
-      <RuleFormDrawer
-        isOpen={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        editingRule={editingRule}
-        initialForm={formSeed}
-        aoList={aoList}
-        effectivenessData={effectivenessData}
-      />
+          <RuleFormDrawer
+            isOpen={drawerOpen}
+            onClose={() => setDrawerOpen(false)}
+            editingRule={editingRule}
+            initialForm={formSeed}
+            aoList={aoList}
+            effectivenessData={effectivenessData}
+          />
+        </>
+      )}
     </div>
   )
 }

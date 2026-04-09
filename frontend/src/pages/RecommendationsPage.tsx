@@ -28,7 +28,9 @@ const STATUS_OPTIONS = [
 // ── page ─────────────────────────────────────────────────────────────────────
 
 export default function RecommendationsPage() {
-  const { isCommander } = useRole()
+  const role = useRole()
+  const canReviewRecommendations = role.canReviewRecommendations ?? role.isCommander
+  const canGenerateRecommendations = role.canGenerateRecommendations ?? role.isCommander
   const { isReplaying, asOf } = useReplay()
   const [statusFilter, setStatusFilter] = useState('')
   const [evidenceRec, setEvidenceRec]   = useState<Recommendation | null>(null)
@@ -53,7 +55,7 @@ export default function RecommendationsPage() {
         <span className="bp6-text-muted" style={{ fontSize: 13, marginLeft: 8 }}>
           {data?.meta.total ?? '—'} {isReplaying ? 'visible' : 'active'}
         </span>
-        {isCommander && !isReplaying && (
+        {canGenerateRecommendations && !isReplaying && (
           <Button
             small
             icon="predictive-analysis"
@@ -123,7 +125,7 @@ export default function RecommendationsPage() {
               ? 'No recommendations existed at the selected replay timestamp.'
               : statusFilter
                 ? `No ${statusFilter} recommendations.`
-                : isCommander
+                : canGenerateRecommendations
                   ? 'No active recommendations. Click "Generate Now" to run a fresh analysis.'
                   : 'No active recommendations at this time. The system analyses your operational state every 30 minutes.'
           }
@@ -142,7 +144,7 @@ export default function RecommendationsPage() {
                     key={rec.id}
                     rec={rec}
                     onViewEvidence={setEvidenceRec}
-                    isCommander={isCommander}
+                    isCommander={canReviewRecommendations}
                     isReadOnly={isReplaying}
                   />
                 ))}
@@ -170,7 +172,7 @@ export default function RecommendationsPage() {
                     key={rec.id}
                     rec={rec}
                     onViewEvidence={setEvidenceRec}
-                    isCommander={isCommander}
+                    isCommander={canReviewRecommendations}
                     isReadOnly={isReplaying}
                   />
                 ))}

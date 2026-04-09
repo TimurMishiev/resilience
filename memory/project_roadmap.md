@@ -40,6 +40,7 @@ This roadmap remains the place for future build direction, but it is not the act
 - Scoped API authorization enforcement across collections, member lookups, aggregate endpoints, and entity-scoped audit history
 - Viewer-role schema parity plus scoped request-matrix proof
 - Replay parity for recommendations, ontology query, incident detail, and alert triage
+- Replay parity across entity drawers, areas, correlation rules, site detail, dashboard, and map/globe operational overlays
 
 ## Current Major Tracks
 

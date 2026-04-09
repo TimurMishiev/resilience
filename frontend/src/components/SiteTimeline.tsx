@@ -228,9 +228,10 @@ function KindFilter({
 
 interface Props {
   siteId: string
+  asOf?: string | null
 }
 
-export default function SiteTimeline({ siteId }: Props) {
+export default function SiteTimeline({ siteId, asOf }: Props) {
   const [activeKinds, setActiveKinds] = useState<TimelineEventKind[]>(ALL_KINDS)
   const [days, setDays]               = useState(7)
 
@@ -239,6 +240,7 @@ export default function SiteTimeline({ siteId }: Props) {
   const { data, isPending, error, dataUpdatedAt } = useSiteTimeline(siteId, {
     days,
     kinds,
+    ...(asOf ? { as_of: asOf } : {}),
   })
 
   const events = data?.data ?? []

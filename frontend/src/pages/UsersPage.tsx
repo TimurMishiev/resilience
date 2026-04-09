@@ -14,7 +14,8 @@ import { timeAgo } from '../lib/formatters'
 const ROLES = ['viewer', 'operator', 'commander', 'admin'] as const
 
 export default function UsersPage() {
-  const { isAdmin } = useRole()
+  const role = useRole()
+  const canManageUsers = role.canManageUsers ?? role.isAdmin
   const queryClient = useQueryClient()
 
   const { data, isPending, error } = useQuery({
@@ -64,7 +65,7 @@ export default function UsersPage() {
     updateMutation.mutate({ id: editingUser.id, params })
   }
 
-  if (!isAdmin) {
+  if (!canManageUsers) {
     return (
       <div className="page-content">
         <Callout intent="warning" icon="lock" title="Admin access required">

@@ -53,15 +53,21 @@ class ApplicationPolicy
     true
   end
 
-  def area_of_operation_accessible?(area_or_id)
+  def area_of_operation_accessible?(area_or_id, include_global: false)
     return true unless scope_restricted?
 
     area_id = area_or_id.respond_to?(:id) ? area_or_id.id : area_or_id
-    area_org_id = area_or_id.respond_to?(:organization_id) ? area_or_id.organization_id : nil
     return false if area_id.blank?
     return false if user.area_of_operation_id.present? && area_id != user.area_of_operation_id
     return true unless user.organization_id.present?
-    return area_org_id == user.organization_id if area_org_id.present?
+
+    area_scope = AreaOfOperation.where(id: area_id)
+    if area_scope.klass.column_names.include?("organization_id")
+      # Global/org-null AOs are readable on the AO surface, but attached
+      # doctrine/operational data stays org-owned unless a policy opts in.
+      organization_ids = include_global ? [user.organization_id, nil] : user.organization_id
+      return area_scope.where(organization_id: organization_ids).exists?
+    end
 
     AreaOfOperation.joins(:sites).where(id: area_id, sites: { organization_id: user.organization_id }).exists?
   end
@@ -109,13 +115,13 @@ class ApplicationPolicy
       scoped
     end
 
-    def area_of_operation_scope(base = AreaOfOperation.all)
+    def area_of_operation_scope(base = AreaOfOperation.all, include_global: false)
       scoped = base
       if user.organization_id.present?
         klass = scoped.respond_to?(:klass) ? scoped.klass : scoped
         if klass.column_names.include?("organization_id")
-          # Include org-null records — they are treated as global AOs visible to all orgs.
-          scoped = scoped.where(organization_id: [user.organization_id, nil])
+          organization_ids = include_global ? [user.organization_id, nil] : user.organization_id
+          scoped = scoped.where(organization_id: organization_ids)
         else
           scoped = scoped.joins(:sites).where(sites: { organization_id: user.organization_id }).distinct
         end

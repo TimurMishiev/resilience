@@ -19,6 +19,25 @@ module Api
     def index
       authorize CorrelationRule
       rules = policy_scope(CorrelationRule).order(created_at: :desc)
+
+      if as_of
+        records, meta = paginate_transformed_relation(rules) do |batch|
+          snapshots = latest_audit_snapshots(entity_type: "CorrelationRule", entity_ids: batch.map(&:id), as_of: as_of)
+
+          batch.filter_map do |rule|
+            next if rule.created_at > as_of
+
+            serialized = serialize_rule(rule, snapshot: snapshots[rule.id], as_of: as_of)
+            next if params[:active_only] == "true" && !serialized[:is_active]
+
+            serialized
+          end
+        end
+
+        render json: { data: records, meta: meta }
+        return
+      end
+
       rules = rules.active if params[:active_only] == "true"
       records, meta = paginate(rules)
       render json: { data: records.map { |r| serialize_rule(r) }, meta: meta }
@@ -28,7 +47,15 @@ module Api
     def show
       rule = scoped_record(CorrelationRule, params[:id])
       authorize rule
-      render json: serialize_rule(rule)
+
+      if as_of
+        return render json: { errors: ["Correlation rule not found"] }, status: :not_found if rule.created_at > as_of
+
+        snapshot = latest_audit_snapshots(entity_type: "CorrelationRule", entity_ids: [rule.id], as_of: as_of)[rule.id]
+        render json: serialize_rule(rule, snapshot: snapshot, as_of: as_of)
+      else
+        render json: serialize_rule(rule)
+      end
     end
 
     # POST /api/correlation_rules
@@ -298,16 +325,29 @@ module Api
       }
     end
 
-    def serialize_rule(rule)
-      rule.as_json(only: %i[
-        id name description is_active cooldown_minutes
-        area_of_operation_id last_fired_at created_at updated_at
-      ]).merge(
-        conditions:  rule.conditions,
-        actions:     rule.actions,
-        created_by:  rule.created_by_id,
-        mitre_tags:  rule.mitre_tags || []
-      )
+    def serialize_rule(rule, snapshot: nil, as_of: nil)
+      clipped_last_fired_at =
+        if as_of.present? && rule.last_fired_at.present? && rule.last_fired_at > as_of
+          nil
+        else
+          rule.last_fired_at
+        end
+
+      {
+        id: rule.id,
+        name: snapshot_or_current(snapshot, "name", rule.name),
+        description: snapshot_or_current(snapshot, "description", rule.description),
+        is_active: snapshot_or_current(snapshot, "is_active", rule.is_active),
+        cooldown_minutes: snapshot_or_current(snapshot, "cooldown_minutes", rule.cooldown_minutes),
+        area_of_operation_id: snapshot_or_current(snapshot, "area_of_operation_id", rule.area_of_operation_id),
+        last_fired_at: clipped_last_fired_at,
+        created_at: rule.created_at,
+        updated_at: as_of.present? ? [rule.updated_at, as_of].min : rule.updated_at,
+        conditions: snapshot_or_current(snapshot, "conditions", rule.conditions),
+        actions: snapshot_or_current(snapshot, "actions", rule.actions),
+        created_by: rule.created_by_id,
+        mitre_tags: snapshot_or_current(snapshot, "mitre_tags", rule.mitre_tags || []),
+      }
     end
   end
 end

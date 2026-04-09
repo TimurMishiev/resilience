@@ -43,16 +43,17 @@ module Api
       site = scoped_record(Site, params[:id])
       authorize site, :risk_history?
       days = (params[:days] || 7).to_i.clamp(1, 30)
+      cutoff = as_of || Time.current
 
       snapshots = SiteRiskSnapshot
         .for_site(site.id)
-        .within_days(days)
+        .where(recorded_at: (cutoff - days.days)..cutoff)
         .chronological
         .map { |s| serialize_snapshot(s) }
 
       render json: {
         data: snapshots,
-        meta: { total: snapshots.size, site_id: site.id, days: days }
+        meta: { total: snapshots.size, site_id: site.id, days: days, as_of: as_of&.iso8601 }
       }
     end
 

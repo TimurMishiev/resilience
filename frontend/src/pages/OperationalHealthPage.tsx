@@ -307,12 +307,13 @@ function AiResponseTimesTable({ services }: { services: AiServiceTiming[] }) {
 }
 
 export default function OperationalHealthPage() {
-  const { isCommander } = useRole()
+  const role = useRole()
+  const canViewOperationalHealth = role.canViewOperationalHealth ?? role.isCommander
   const { isReplaying } = useReplay()
   const { data: feedData, isPending: feedPending, error: feedError } = useFeedHealth()
   const { data: opsData, isPending: opsPending, error: opsError, dataUpdatedAt } = useOperationalHealth()
 
-  if (!isCommander) {
+  if (!canViewOperationalHealth) {
     return (
       <div className="page-content">
         <Callout intent="warning" icon="lock" title="Commander access required">

@@ -64,20 +64,34 @@ Completed in the current local working tree:
   - task / asset / site / AO detail hooks now thread `as_of`
   - asset and AO backend detail endpoints now support `as_of` on `index` / `show`
   - replay activity/raw tabs remain available
+- `frontend/src/pages/AreasPage.tsx`
+  - AO rows now render historical read-only state in replay
+  - correlation-rule membership counts now support `as_of`
+- `frontend/src/pages/CorrelationRulesPage.tsx`
+  - historical rule definitions and recent firings now render read-only in replay
+- `frontend/src/pages/SiteDetailPage.tsx`
+  - risk history, breach count, and timeline now replay-clip correctly
+- `frontend/src/pages/DashboardPage.tsx`
+  - recent alerts, recommendations, and risk badges remain visible during replay
+- `frontend/src/pages/MapPage.tsx`
+- `frontend/src/pages/GlobePage.tsx`
+  - historical AO overlays, chokepoint overlays, and geofence breach overlays now remain visible in replay
+  - chokepoint controls and legends are now available in replay where relevant
+  - AIS vessel context is now reconstructed from historical signal payloads and tracks during replay; live-only enrichments remain limited
+- replay consistency follow-through
+  - `frontend/src/components/AppShell.tsx` now derives mission posture from replay-scoped AO state instead of dropping posture entirely during replay
+  - `frontend/src/components/BriefingPanel.tsx` now scopes its site selector to the replay cutoff
+  - `frontend/src/pages/BriefingPage.tsx` and `frontend/src/pages/OntologyQueryPage.tsx` no longer display stale “current state only” replay banners that contradicted the replay-capable panel/backend behavior
 
 Still open:
 
-- `frontend/src/pages/AreasPage.tsx`
-  - AO configuration, posture, geometry, and rule membership are still fail-closed during replay.
-- `frontend/src/pages/CorrelationRulesPage.tsx`
-  - rule definitions, recent matches, and effectiveness are still fail-closed during replay.
-- `frontend/src/pages/DashboardPage.tsx`
-  - several widgets still hide during replay because they rely on live-only aggregates.
-- `frontend/src/pages/SiteDetailPage.tsx`
-  - risk trends and some site mutation/history surfaces remain live-only.
-- `frontend/src/pages/MapPage.tsx`
-- `frontend/src/pages/GlobePage.tsx`
-  - AO/chokepoint/breach/live-vessel overlays still hide in replay.
+- no hidden replay-correctness blockers remain on user-facing operational surfaces
+- explicitly live-only-by-design surfaces remain documented as such:
+  - security/session inventory
+  - operational health metrics
+  - throughput analytics and loitering watchlist on the dashboard
+  - rule-effectiveness analytics and mutation affordances
+  - configuration mutations during replay
 
 Exit criteria:
 
@@ -87,11 +101,18 @@ Exit criteria:
 
 Priority order:
 
-1. `AreasPage.tsx`
-2. `CorrelationRulesPage.tsx`
-3. `SiteDetailPage.tsx`
-4. `DashboardPage.tsx`
-5. Map/Globe overlay parity decisions
+1. Keep only the deliberate live-only replay exceptions documented
+2. Move to tenant / workspace boundary hardening
+
+Current validation for this workstream:
+
+- backend:
+  - `TEST_DATABASE_PORT=5434 bundle exec rspec spec/requests/api/chokepoints_spec.rb spec/requests/api/signal_rule_matches_spec.rb`
+- frontend:
+  - `npx vitest run src/test/MapPage.test.tsx src/test/GlobePage.test.tsx`
+- repo hygiene:
+  - `npx tsc --noEmit`
+  - `git diff --check`
 
 ### 2. Tenant / Workspace Boundary Hardening
 
@@ -103,7 +124,9 @@ Current reality:
 - Some domains remain intentionally global:
   - external signals
   - vessels
-- Org-null areas are currently treated as globally visible.
+- Org-null areas are currently treated as globally visible on the AO surface for org-scoped users who are not pinned to a single AO.
+- Attached doctrine and operational records remain org-owned unless a policy explicitly opts them into shared/global visibility.
+- AO-pinned users remain restricted to their selected AO even when org-null areas exist.
 
 Open questions that must be resolved:
 
@@ -256,16 +279,74 @@ Completed:
   - replay time is threaded through entity detail hooks
   - replay activity/raw tabs stay available
   - focused backend and frontend proof was added
+- Replay parity for `frontend/src/pages/AreasPage.tsx`
+  - AO rows, posture, site counts, and rule counts now render as historical read-only state during replay
+  - `frontend/src/pages/AreasPage.tsx` no longer fail-closes in replay
+  - correlation rule backend `index` / `show` now support `as_of` for historical rule membership state
+  - focused backend and frontend proof was added
+- Replay parity for `frontend/src/pages/CorrelationRulesPage.tsx`
+  - historical rule definitions and recent firings now render during replay instead of fail-closing
+  - effectiveness analytics and mutation affordances stay explicitly live-only
+  - focused backend and frontend proof was added
+- Replay parity for `frontend/src/pages/SiteDetailPage.tsx`
+  - historical risk trend snapshots now respect `as_of`
+  - replay shows historical breach counts instead of zeroing them out
+  - replay timeline tab is available and clipped to the replay timestamp
+  - mutation affordances remain disabled during replay
+  - focused backend and frontend proof was added
+- Replay parity for `frontend/src/pages/DashboardPage.tsx`
+  - historical recommendations, recent alerts, and risk badges now render during replay
+  - recommendation evidence remains available in replay
+  - throughput analytics and loitering watchlist stay explicitly live-only
+  - focused frontend proof was added
+- Replay parity follow-through for map-adjacent surfaces
+  - `frontend/src/pages/MapPage.tsx` and `frontend/src/pages/GlobePage.tsx` now keep historical AO overlays visible in replay
+  - `frontend/src/pages/MapPage.tsx` now keeps historical risk shading in replay
+  - `frontend/src/pages/SitesPage.tsx` now keeps risk badges visible from historical snapshots in replay
+  - chokepoints and breach overlays are now replay-visible
+  - AIS vessel identity and trail context are reconstructed from historical signal payloads and tracks during replay
+  - live-only vessel enrichments remain explicitly limited
+  - focused frontend proof was added for `MapPage` and `SitesPage`
+- Replay consistency follow-through for non-map surfaces
+  - `frontend/src/components/AppShell.tsx` now keeps mission posture visible from replay-scoped AO state
+  - `frontend/src/components/BriefingPanel.tsx` now scopes site selection to the replay cutoff
+  - `frontend/src/pages/BriefingPage.tsx` and `frontend/src/pages/OntologyQueryPage.tsx` no longer claim replay uses current state
+  - focused frontend proof was added for `AppShell` and `BriefingPanel`
+- Tenant/workspace boundary clarification follow-through
+  - `backend/app/policies/application_policy.rb` now distinguishes between shared/global AO read visibility and org-owned mutation authority
+  - current tenant model is now explicit in code comments: org-owned operational data, shared global intelligence domains, org-null global AOs on the AO surface, and org-owned attached doctrine/operational records
+  - request/policy proof now covers org-scoped access to org-null global AOs without widening AO-pinned users or cross-org doctrine mutation
+  - `backend/app/controllers/api/events_controller.rb` now filters same-org SSE traffic by `area_of_operation_id` for AO-pinned users, using explicit AO payload fields or a site→AO lookup when needed
+  - request proof now covers intentional shared-global domains (`signals`, `vessels`) so future scope work does not over-tighten them
+- Security/frontend capability follow-through
+  - `frontend/src/components/TaskRow.tsx` now treats `admin` with the same commander-level task transition affordances that the backend already permits
+  - focused frontend proof was added for the admin/operator transition split
+- Security/frontend capability cleanup
+  - `frontend/src/hooks/useRole.ts` now exposes named capabilities alongside raw role booleans
+  - commander/admin pages now gate on capability semantics instead of scattered direct role assumptions:
+    - `frontend/src/pages/BriefingPage.tsx`
+    - `frontend/src/pages/OntologyQueryPage.tsx`
+    - `frontend/src/pages/AreasPage.tsx`
+    - `frontend/src/pages/CorrelationRulesPage.tsx`
+    - `frontend/src/pages/PlanningPage.tsx`
+    - `frontend/src/pages/RecommendationsPage.tsx`
+    - `frontend/src/pages/OperationalHealthPage.tsx`
+    - `frontend/src/pages/OrganizationsPage.tsx`
+    - `frontend/src/pages/UsersPage.tsx`
+    - `frontend/src/components/shell/AppSidebar.tsx`
+  - focused hook/page proof was added for the capability layer without breaking the existing page mocks
 
 In progress:
 
-- Replay parity completion workstream
+- Frontend capability cleanup and remaining maintainability workstream
 
 Next:
 
-1. `frontend/src/pages/AreasPage.tsx`
-2. `frontend/src/pages/CorrelationRulesPage.tsx`
-3. `frontend/src/pages/SiteDetailPage.tsx`
+1. Decompose `frontend/src/pages/MapPage.tsx` into smaller orchestration + overlay-control units
+2. Reconcile the tenant/workspace model into one explicit, documented boundary rule
+3. Audit remaining global-vs-tenant ambiguities in policy/controller/query code
+4. Decide whether org-null AOs should remain global or be retired in favor of explicit org ownership
+5. Keep memory aligned with the now-closed replay parity tranche
 
 Blocked / environment notes:
 
@@ -275,11 +356,32 @@ Blocked / environment notes:
   - `cd backend`
   - `TEST_DATABASE_PORT=5434 bundle exec rspec ...`
 
-Validation run for the current local EntityCard tranche:
+Validation run for the current local replay tranches:
 
 - `TEST_DATABASE_PORT=5434 bundle exec rspec spec/requests/api/assets_spec.rb spec/requests/api/areas_of_operation_spec.rb`
+- `TEST_DATABASE_PORT=5434 bundle exec rspec spec/requests/api/areas_of_operation_spec.rb spec/requests/api/correlation_rules_spec.rb`
+- `TEST_DATABASE_PORT=5434 bundle exec rspec spec/requests/api/correlation_rules_spec.rb spec/requests/api/signal_rule_matches_spec.rb`
+- `TEST_DATABASE_PORT=5434 bundle exec rspec spec/requests/api/site_risk_history_spec.rb`
+- `TEST_DATABASE_PORT=5434 bundle exec rspec spec/policies/org_isolation_spec.rb spec/requests/api/scoped_access_spec.rb`
+- `TEST_DATABASE_PORT=5434 bundle exec rspec spec/requests/api/events_spec.rb`
+- `TEST_DATABASE_PORT=5434 bundle exec rspec spec/requests/api/signals_spec.rb spec/requests/api/vessels_spec.rb`
+- `TEST_DATABASE_PORT=5434 bundle exec rspec --format progress`
 - `npx vitest run frontend/src/test/EntityCard.test.tsx`
+- `npx vitest run frontend/src/test/AreasPage.test.tsx`
+- `npx vitest run frontend/src/test/CorrelationRulesPage.test.tsx`
+- `npx vitest run frontend/src/test/SiteDetailPage.test.tsx`
+- `npx vitest run frontend/src/test/DashboardPage.test.tsx`
+- `npx vitest run frontend/src/test/SitesPage.test.tsx src/test/MapPage.test.tsx`
+- `npx vitest run frontend/src/test/GlobePage.test.tsx src/test/MapPanels.test.tsx src/test/GlobeInspectorPanel.test.tsx`
+- `npx vitest run frontend/src/test/AppShell.test.tsx src/test/BriefingPanel.test.tsx src/test/BriefingPage.test.tsx src/test/OntologyQueryPanel.test.tsx src/test/OntologyQueryPage.test.tsx`
+- `npx vitest run frontend/src/test/useRole.test.tsx src/test/AreasPage.test.tsx src/test/CorrelationRulesPage.test.tsx src/test/BriefingPage.test.tsx src/test/OntologyQueryPage.test.tsx src/test/PlanningPage.test.tsx src/test/OperationalHealthPage.test.tsx src/test/OrganizationsPage.test.tsx src/test/UsersPage.test.tsx src/test/RecommendationsPage.test.tsx src/test/AppShell.test.tsx`
+- `npx tsc --noEmit`
+- `git diff --check`
+- `npx vitest run frontend/src/test/TaskRow.test.tsx`
 - `npx tsc --noEmit`
 - `ruby -c backend/app/controllers/api/assets_controller.rb`
 - `ruby -c backend/app/controllers/api/areas_of_operation_controller.rb`
+- `ruby -c backend/app/controllers/api/correlation_rules_controller.rb`
+- `ruby -c backend/app/controllers/api/chokepoints_controller.rb`
+- `ruby -c backend/app/controllers/api/signal_rule_matches_controller.rb`
 - `git diff --check`

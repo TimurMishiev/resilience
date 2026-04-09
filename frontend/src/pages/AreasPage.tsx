@@ -80,12 +80,14 @@ function formFromArea(area: AreaOfOperation): AreaFormState {
 
 // ── AreasPage ─────────────────────────────────────────────────────────────────
 export default function AreasPage() {
-  const { isCommander } = useRole()
-  const { isReplaying } = useReplay()
+  const role = useRole()
+  const canManageAreas = role.canManageAreas ?? role.isCommander
+  const { isReplaying, asOf } = useReplay()
+  const replayParams = asOf ? { as_of: asOf } : undefined
 
-  const areasQuery = useAreasOfOperation({ per_page: 200 }, { enabled: !isReplaying })
-  const sitesQuery = useSites({ per_page: 200 }, !isReplaying)
-  const rulesQuery = useCorrelationRules(undefined, { enabled: !isReplaying })
+  const areasQuery = useAreasOfOperation({ per_page: 200, ...(replayParams ?? {}) })
+  const sitesQuery = useSites({ per_page: 200, ...(replayParams ?? {}) })
+  const rulesQuery = useCorrelationRules(replayParams)
 
   const createArea = useCreateAreaOfOperation()
   const updateArea = useUpdateAreaOfOperation()
@@ -95,8 +97,8 @@ export default function AreasPage() {
   const sites = sitesQuery.data?.data ?? []
   const rules = rulesQuery.data?.data ?? []
 
-  const loading = areasQuery.isLoading
-  const error   = areasQuery.error?.message ?? null
+  const loading = areasQuery.isLoading || sitesQuery.isLoading || rulesQuery.isLoading
+  const error   = areasQuery.error?.message ?? sitesQuery.error?.message ?? rulesQuery.error?.message ?? null
 
   // Count sites and rules per AO
   const sitesPerAo: Record<string, number> = {}
@@ -188,35 +190,23 @@ export default function AreasPage() {
   const isPending = createArea.isPending || updateArea.isPending
 
   // ── Render ──────────────────────────────────────────────────────────────────
-  if (isReplaying) {
-    return (
-      <div className="page-content">
-        <div className="page-header">
-          <h2 className="bp6-heading">Areas of Operation</h2>
-        </div>
-        <Callout intent="warning" icon="history" style={{ marginBottom: 16 }}>
-          Areas of operation are unavailable during replay because AO posture, geometry, and rule membership are only represented as live control-plane state.
-        </Callout>
-        <NonIdealState
-          icon="polygon-filter"
-          title="Areas of Operation unavailable in replay"
-          description="Historical AO configuration is not replay-scoped, so the console is fail-closed to avoid mixing live posture and configuration into historical views."
-        />
-      </div>
-    )
-  }
-
   return (
     <div className="page-content">
       {/* Header */}
       <div className="page-header">
         <h2 className="bp6-heading">Areas of Operation</h2>
-        {isCommander && (
+        {canManageAreas && !isReplaying && (
           <Button intent="primary" icon="add" onClick={openCreate}>
             New Area
           </Button>
         )}
       </div>
+
+      {isReplaying && (
+        <Callout intent="warning" icon="history" style={{ marginBottom: 16 }}>
+          Viewing historical AO posture, site membership, and rule coverage at the replay timestamp. Configuration remains read-only during replay.
+        </Callout>
+      )}
 
       {error && (
         <Callout intent="danger" title="Failed to load areas" className="page-error-callout">
@@ -229,12 +219,12 @@ export default function AreasPage() {
           icon="polygon-filter"
           title="No areas defined"
           description={
-            isCommander
+            canManageAreas && !isReplaying
               ? 'Create a named geofenced area to scope sites and correlation rules.'
               : 'No areas of operation have been configured yet.'
           }
           action={
-            isCommander
+            canManageAreas && !isReplaying
               ? <Button intent="primary" icon="add" onClick={openCreate}>New Area</Button>
               : undefined
           }
@@ -251,14 +241,14 @@ export default function AreasPage() {
               <th>Color</th>
               <th>Sites</th>
               <th>Rules</th>
-              {isCommander && <th style={{ width: 80 }}>Actions</th>}
+              {canManageAreas && !isReplaying && <th style={{ width: 80 }}>Actions</th>}
             </tr>
           </thead>
           <tbody>
             {loading
               ? Array.from({ length: SKELETON_ROWS }).map((_, i) => (
                   <tr key={i}>
-                    {Array.from({ length: isCommander ? 7 : 6 }).map((__, j) => (
+                    {Array.from({ length: canManageAreas && !isReplaying ? 7 : 6 }).map((__, j) => (
                       <td key={j}><span className={Classes.SKELETON}>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span></td>
                     ))}
                   </tr>
@@ -279,7 +269,7 @@ export default function AreasPage() {
                       </Tag>
                     </td>
                     <td style={{ minWidth: 180 }}>
-                      {isCommander
+                      {canManageAreas && !isReplaying
                         ? <PostureSelector area={area} />
                         : <PostureBadge posture={area.posture} />
                       }
@@ -302,7 +292,7 @@ export default function AreasPage() {
                     </td>
                     <td>{sitesPerAo[area.id] ?? 0}</td>
                     <td>{rulesPerAo[area.id] ?? 0}</td>
-                    {isCommander && (
+                    {canManageAreas && !isReplaying && (
                       <td>
                         <div style={{ display: 'flex', gap: 4 }}>
                           <Button

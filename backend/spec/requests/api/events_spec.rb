@@ -69,8 +69,8 @@ RSpec.describe "Api::Events", type: :request do
 
       let(:other_org) { create(:organization) }
 
-      def enqueue_event(event:, organization_id: nil)
-        { event: event, data: { test: true }, organization_id: organization_id }.to_json
+      def enqueue_event(event:, organization_id: nil, data: { test: true })
+        { event: event, data: data, organization_id: organization_id }.to_json
       end
 
       it "delivers events matching the user's organization" do
@@ -129,6 +129,70 @@ RSpec.describe "Api::Events", type: :request do
         expect(response).to have_http_status(:ok)
         expect(response.body).to include("event: rule_fired")
         expect(response.body).to include("event: task_created")
+      end
+
+      context "AO-scoped event filtering" do
+        let(:ao_a_owner) { create(:user, :commander, organization: org) }
+        let(:ao_b_owner) { create(:user, :commander, organization: org) }
+        let(:ao_a) { create(:area_of_operation, organization: org, created_by: ao_a_owner) }
+        let(:ao_b) { create(:area_of_operation, organization: org, created_by: ao_b_owner) }
+        let!(:site_a) { create(:site, organization: org, area_of_operation: ao_a) }
+        let!(:site_b) { create(:site, organization: org, area_of_operation: ao_b) }
+        let(:ao_scoped_user) { create(:user, organization: org, area_of_operation: ao_a) }
+        let(:ao_scoped_token) { JwtAuthenticatable.encode_sse(ao_scoped_user.id) }
+
+        it "filters out same-org events from another AO when area_of_operation_id is explicit" do
+          q = Queue.new
+          q << enqueue_event(
+            event: "planning_updated",
+            organization_id: org.id,
+            data: { area_of_operation_id: ao_b.id, kind: "pace_plan" },
+          )
+          q.close
+
+          allow(broadcaster).to receive(:subscribe).and_return(q)
+
+          get "/api/events", params: { token: ao_scoped_token }
+
+          expect(response).to have_http_status(:ok)
+          expect(response.body).to include("event: connected")
+          expect(response.body).not_to include("event: planning_updated")
+        end
+
+        it "filters out same-org events from another AO when only site_id is present" do
+          q = Queue.new
+          q << enqueue_event(
+            event: "task_updated",
+            organization_id: org.id,
+            data: { site_id: site_b.id, title: "Other AO task" },
+          )
+          q.close
+
+          allow(broadcaster).to receive(:subscribe).and_return(q)
+
+          get "/api/events", params: { token: ao_scoped_token }
+
+          expect(response).to have_http_status(:ok)
+          expect(response.body).to include("event: connected")
+          expect(response.body).not_to include("event: task_updated")
+        end
+
+        it "delivers same-org events from the user's AO" do
+          q = Queue.new
+          q << enqueue_event(
+            event: "task_updated",
+            organization_id: org.id,
+            data: { site_id: site_a.id, title: "Same AO task" },
+          )
+          q.close
+
+          allow(broadcaster).to receive(:subscribe).and_return(q)
+
+          get "/api/events", params: { token: ao_scoped_token }
+
+          expect(response).to have_http_status(:ok)
+          expect(response.body).to include("event: task_updated")
+        end
       end
     end
   end

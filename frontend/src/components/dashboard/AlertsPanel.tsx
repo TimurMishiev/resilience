@@ -65,7 +65,7 @@ const BULK_ACTIONS = [
   { to_status: 'closed',        label: 'Close',       intent: 'danger'   },
 ] as const
 
-export default function AlertsPanel({ matches }: { matches: SignalRuleMatch[] }) {
+export default function AlertsPanel({ matches, isReadOnly = false }: { matches: SignalRuleMatch[]; isReadOnly?: boolean }) {
   const navigate    = useNavigate()
   const transition  = useTransitionAlert()
   const bulkMutate  = useBulkTransitionAlerts()
@@ -103,13 +103,15 @@ export default function AlertsPanel({ matches }: { matches: SignalRuleMatch[] })
     <div className="alerts-list">
       {/* Bulk action toolbar — shown when any alerts are selected */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, minHeight: 28 }}>
-        <Checkbox
-          checked={allSelected}
-          indeterminate={someSelected && !allSelected}
-          onChange={toggleAll}
-          style={{ margin: 0 }}
-        />
-        {someSelected ? (
+        {!isReadOnly && (
+          <Checkbox
+            checked={allSelected}
+            indeterminate={someSelected && !allSelected}
+            onChange={toggleAll}
+            style={{ margin: 0 }}
+          />
+        )}
+        {!isReadOnly && someSelected ? (
           <>
             <span style={{ fontSize: 12, color: COLORS.muted }}>{selected.size} selected</span>
             {BULK_ACTIONS.map(action => (
@@ -129,7 +131,9 @@ export default function AlertsPanel({ matches }: { matches: SignalRuleMatch[] })
             </Button>
           </>
         ) : (
-          <span style={{ fontSize: 12, color: COLORS.subtle }}>Select alerts to bulk-triage</span>
+          <span style={{ fontSize: 12, color: COLORS.subtle }}>
+            {isReadOnly ? 'Historical snapshot — triage disabled' : 'Select alerts to bulk-triage'}
+          </span>
         )}
       </div>
 
@@ -152,9 +156,11 @@ export default function AlertsPanel({ matches }: { matches: SignalRuleMatch[] })
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
             >
               {/* Checkbox — stops click propagation so it doesn't trigger navigation */}
-              <div onClick={e => e.stopPropagation()} style={{ paddingRight: 6 }}>
-                <Checkbox checked={isChecked} onChange={() => toggleOne(m.id)} style={{ margin: 0 }} />
-              </div>
+              {!isReadOnly && (
+                <div onClick={e => e.stopPropagation()} style={{ paddingRight: 6 }}>
+                  <Checkbox checked={isChecked} onChange={() => toggleOne(m.id)} style={{ margin: 0 }} />
+                </div>
+              )}
 
               <div
                 style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -219,7 +225,7 @@ export default function AlertsPanel({ matches }: { matches: SignalRuleMatch[] })
             </div>
 
             {/* Inline single-alert transition row — hidden when bulk selection is active */}
-            {txBtns.length > 0 && !someSelected && (
+            {txBtns.length > 0 && !someSelected && !isReadOnly && (
               <div className="alert-row-transitions" onClick={e => e.stopPropagation()}
                    style={{ display: 'flex', gap: 4, padding: '4px 8px 6px 46px' }}>
                 {txBtns.map((btn) => (

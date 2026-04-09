@@ -23,7 +23,8 @@ function slugify(name: string): string {
 }
 
 export default function OrganizationsPage() {
-  const { isAdmin } = useRole()
+  const role = useRole()
+  const canManageOrganizations = role.canManageOrganizations ?? role.isAdmin
   const queryClient = useQueryClient()
 
   const { data, isPending, error } = useQuery({
@@ -99,7 +100,7 @@ export default function OrganizationsPage() {
     }
   }
 
-  if (!isAdmin) {
+  if (!canManageOrganizations) {
     return (
       <div className="page-content">
         <Callout intent="warning" icon="lock" title="Admin access required">

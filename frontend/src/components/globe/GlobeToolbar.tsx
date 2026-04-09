@@ -30,7 +30,7 @@ export function GlobeToolbar({
   const hint = signalError && !isReplaying
     ? 'Live signal baseline sync is incomplete. Signals may be temporarily missing while the client retries.'
     : isReplaying
-    ? 'Replay mode hides live-only AO posture, chokepoint overlays, breach overlays, and live vessel enrichment data. Historical vessel trails remain visible up to the replay timestamp.'
+    ? 'Replay mode keeps historical AO overlays, chokepoint overlays, breach overlays, and AIS vessel context visible. Live-only vessel enrichments remain limited. Historical vessel trails remain visible up to the replay timestamp.'
     : isCloseView
     ? 'Signal overlays hidden at close range. Use the 2D map for tactical inspection.'
     : 'Click any site, asset, or signal to inspect it'
@@ -60,15 +60,13 @@ export function GlobeToolbar({
       >
         COVERAGE {showCoverage ? 'ON' : 'OFF'}
       </div>
-      {!isReplaying && (
-        <div
-          className={`globe-signal-toggle${showChokepoints ? ' globe-signal-toggle--active' : ''}`}
-          onClick={onToggleChokepoints}
-          role="button"
-        >
-          CHOKEPOINTS {showChokepoints ? 'ON' : 'OFF'}
-        </div>
-      )}
+      <div
+        className={`globe-signal-toggle${showChokepoints ? ' globe-signal-toggle--active' : ''}`}
+        onClick={onToggleChokepoints}
+        role="button"
+      >
+        CHOKEPOINTS {showChokepoints ? 'ON' : 'OFF'}
+      </div>
       {isReplaying && (
         <>
           <div

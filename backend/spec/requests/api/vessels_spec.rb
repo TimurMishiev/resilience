@@ -2,6 +2,7 @@ require "rails_helper"
 
 RSpec.describe "Api::Vessels", type: :request do
   let(:user) { create(:user) }
+  let(:org_scoped_user) { create(:user, organization: create(:organization)) }
 
   let!(:vessel1) { create(:vessel, name: "MV ALPHA", mmsi: "111000001") }
   let!(:vessel2) { create(:vessel, :loitering, name: "MV BRAVO", mmsi: "111000002") }
@@ -52,6 +53,13 @@ RSpec.describe "Api::Vessels", type: :request do
       get "/api/vessels"
       expect(response).to have_http_status(:unauthorized)
     end
+
+    it "still exposes global vessels to org-scoped users" do
+      get "/api/vessels", headers: auth_headers(org_scoped_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body).dig("meta", "total")).to eq(2)
+    end
   end
 
   describe "GET /api/vessels/:id" do
@@ -72,6 +80,13 @@ RSpec.describe "Api::Vessels", type: :request do
     it "requires authentication" do
       get "/api/vessels/#{vessel1.id}"
       expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "still allows org-scoped users to read a global vessel" do
+      get "/api/vessels/#{vessel1.id}", headers: auth_headers(org_scoped_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body).fetch("id")).to eq(vessel1.id)
     end
   end
 
@@ -136,6 +151,13 @@ RSpec.describe "Api::Vessels", type: :request do
     it "requires authentication" do
       get "/api/vessels/#{vessel1.id}/tracks"
       expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "still allows org-scoped users to read global vessel tracks" do
+      get "/api/vessels/#{vessel1.id}/tracks", headers: auth_headers(org_scoped_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body).fetch("data").length).to eq(2)
     end
   end
 end

@@ -1,4 +1,4 @@
-import { Button, Divider, Tag } from '@blueprintjs/core'
+import { Button, Callout, Divider, Tag } from '@blueprintjs/core'
 import type { Asset, Site, Task, Signal, AreaOfOperation } from '../api/types'
 import type { Vessel } from '../api/vessels'
 import type { TelemetryReading } from '../lib/telemetry'
@@ -306,6 +306,15 @@ export function GlobeInspectorPanel({
           </p>
 
           <Divider />
+
+          {isReplaying && selectedSignal.signal_type === 'vessel_position' && (
+            <>
+              <Callout intent="warning" compact className="map-replay-notice">
+                Vessel identity and trail data reflect AIS history up to the replay timestamp. Live-only enrichment fields remain limited during replay.
+              </Callout>
+              <Divider />
+            </>
+          )}
 
           <div className="globe-telemetry-readings">
             {selectedVessel?.mmsi && (

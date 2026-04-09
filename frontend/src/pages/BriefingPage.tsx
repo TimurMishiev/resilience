@@ -1,11 +1,10 @@
 import { Callout } from '@blueprintjs/core'
 import BriefingPanel from '../components/BriefingPanel'
-import { useReplay } from '../context/ReplayContext'
 import { useRole } from '../hooks/useRole'
 
 export default function BriefingPage() {
-  const { isCommander } = useRole()
-  const { isReplaying } = useReplay()
+  const role = useRole()
+  const canAccessBriefing = role.canAccessBriefing ?? role.isCommander
 
   return (
     <div className="page-content">
@@ -14,13 +13,7 @@ export default function BriefingPage() {
         <span className="bp6-text-muted">AI-generated summaries grounded in audit events, intelligence signals, and rule fires</span>
       </div>
 
-      {isReplaying && (
-        <Callout intent="warning" icon="history" style={{ marginBottom: 16 }}>
-          Replay mode — AI briefings reflect current operational state, not the replay timestamp.
-        </Callout>
-      )}
-
-      {!isCommander ? (
+      {!canAccessBriefing ? (
         <Callout
           intent="warning"
           icon="lock"

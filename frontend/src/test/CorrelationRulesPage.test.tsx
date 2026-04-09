@@ -7,6 +7,7 @@ import type { CorrelationRule } from '../api/types'
 const mockState = vi.hoisted(() => ({
   isCommander: true,
   isReplaying: false,
+  asOf: '2026-04-09T12:00:00Z',
   rules: [] as CorrelationRule[],
   createRule: { mutateAsync: vi.fn(async () => ({})), isPending: false },
   updateRule: { mutateAsync: vi.fn(async () => ({})), isPending: false },
@@ -21,7 +22,7 @@ vi.mock('../hooks/useRole', () => ({
 }))
 
 vi.mock('../context/ReplayContext', () => ({
-  useReplay: () => ({ isReplaying: mockState.isReplaying, asOf: null }),
+  useReplay: () => ({ isReplaying: mockState.isReplaying, asOf: mockState.asOf }),
 }))
 
 vi.mock('../hooks/useCorrelationRules', () => ({
@@ -115,12 +116,32 @@ describe('CorrelationRulesPage', () => {
     })
   })
 
-  it('shows replay warning when replaying', async () => {
+  it('shows historical read-only rules during replay', async () => {
     mockState.isReplaying = true
+    mockState.rules = [
+      {
+        id:                  'rule-1',
+        name:                'Historical Seismic Watch',
+        description:         'Historical rule',
+        is_active:           true,
+        conditions:          { signal_type: 'seismic_event', proximity_km: 100, count_threshold: 1, time_window_minutes: 30 },
+        actions:             { create_task: { title: 'Seismic task', description: 'Check infrastructure', priority: 'high' } },
+        created_by:          'user-1',
+        cooldown_minutes:    60,
+        last_fired_at:       null,
+        mitre_tags:          [],
+        area_of_operation_id: null,
+        created_at:          '2026-03-01T00:00:00Z',
+        updated_at:          '2026-03-01T00:00:00Z',
+      },
+    ]
     await renderPage()
     await waitFor(() => {
-      expect(screen.getByText(/correlation rules unavailable in replay/i)).toBeTruthy()
+      expect(screen.getByText(/Viewing historical rule definitions and recent firings/i)).toBeTruthy()
     })
+    expect(screen.getByText('Historical Seismic Watch')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /new rule/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /from template/i })).toBeNull()
   })
 
   it('hides create button for non-commanders', async () => {

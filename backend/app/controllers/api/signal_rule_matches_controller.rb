@@ -66,12 +66,28 @@ module Api
     # any risk of a page cap silently omitting an active breach site.
     def active_breach_sites
       authorize SignalRuleMatch, :active_breach_sites?
-      site_ids = policy_scope(SignalRuleMatch)
-                   .where("(metadata->>'geofence_breach')::boolean = true")
-                   .where(workflow_status: :unacknowledged)
-                   .where.not(site_id: nil)
-                   .distinct
-                   .pluck(:site_id)
+      breach_matches = policy_scope(SignalRuleMatch)
+                         .where("(metadata->>'geofence_breach')::boolean = true")
+                         .where.not(site_id: nil)
+      site_ids =
+        if as_of
+          replay_matches = breach_matches
+                             .select(:id, :site_id, :fired_at)
+                             .where("fired_at <= ?", as_of)
+                             .order(fired_at: :desc)
+                             .to_a
+          replay_states = Replay::StateSerializer.match_states(replay_matches, as_of: as_of)
+
+          replay_matches.filter_map do |match|
+            match.site_id if replay_states.fetch(match.id)[:workflow_status] == "unacknowledged"
+          end.uniq
+        else
+          breach_matches
+            .where(workflow_status: :unacknowledged)
+            .distinct
+            .pluck(:site_id)
+        end
+
       render json: { site_ids: site_ids }
     end
 

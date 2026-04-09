@@ -24,6 +24,142 @@ RSpec.describe "Api::Chokepoints", type: :request do
       names = JSON.parse(response.body)["data"].map { |record| record["name"] }
       expect(names).to eq(["Hormuz East"])
     end
+
+    it "reconstructs historical chokepoints as_of and excludes future updates" do
+      cutoff = 30.minutes.ago.change(usec: 0)
+      ao_chokepoint.update_columns(created_at: 3.hours.ago, updated_at: 3.hours.ago)
+
+      create(
+        :audit_event,
+        actor: "system",
+        entity_type: "AreaOfOperation",
+        entity_id: ao.id,
+        event_type: "area_of_operation_created",
+        before_snapshot: nil,
+        after_snapshot: {
+          name: "Northern Gulf",
+          description: ao.description,
+          threat_level: ao.threat_level,
+          posture: ao.posture,
+          color: ao.color,
+          geometry: ao.geometry,
+        },
+        occurred_at: cutoff - 2.hours,
+      )
+      create(
+        :audit_event,
+        actor: "system",
+        entity_type: "Chokepoint",
+        entity_id: ao_chokepoint.id,
+        event_type: "chokepoint.created",
+        before_snapshot: {},
+        after_snapshot: {
+          area_of_operation_id: ao.id,
+          name: "Hormuz East",
+          category: ao_chokepoint.category,
+          status: "monitor",
+          latitude: ao_chokepoint.latitude,
+          longitude: ao_chokepoint.longitude,
+          watch_radius_km: ao_chokepoint.watch_radius_km,
+          notes: "Initial watch posture",
+        },
+        occurred_at: cutoff - 90.minutes,
+      )
+      create(
+        :audit_event,
+        actor: "system",
+        entity_type: "Chokepoint",
+        entity_id: ao_chokepoint.id,
+        event_type: "chokepoint.updated",
+        before_snapshot: {
+          status: "monitor",
+          notes: "Initial watch posture",
+        },
+        after_snapshot: {
+          status: "closed",
+          notes: "Future closure",
+        },
+        occurred_at: cutoff + 5.minutes,
+      )
+
+      get "/api/chokepoints", params: { as_of: cutoff.iso8601 }, headers: auth_headers(operator)
+
+      expect(response).to have_http_status(:ok)
+      record = JSON.parse(response.body)["data"].find { |row| row["id"] == ao_chokepoint.id }
+      expect(record).to include(
+        "name" => "Hormuz East",
+        "status" => "monitor",
+        "notes" => "Initial watch posture",
+        "area_of_operation_name" => "Northern Gulf",
+      )
+    end
+  end
+
+  describe "GET /api/chokepoints/:id" do
+    let!(:chokepoint) { create(:chokepoint, area_of_operation: ao, name: "Replay Strait") }
+
+    it "returns historical chokepoint state as_of" do
+      cutoff = 20.minutes.ago.change(usec: 0)
+      chokepoint.update_columns(created_at: 3.hours.ago, updated_at: 3.hours.ago)
+
+      create(
+        :audit_event,
+        actor: "system",
+        entity_type: "AreaOfOperation",
+        entity_id: ao.id,
+        event_type: "area_of_operation_created",
+        before_snapshot: nil,
+        after_snapshot: {
+          name: "Northern Gulf",
+          description: ao.description,
+          threat_level: ao.threat_level,
+          posture: ao.posture,
+          color: ao.color,
+          geometry: ao.geometry,
+        },
+        occurred_at: cutoff - 2.hours,
+      )
+      create(
+        :audit_event,
+        actor: "system",
+        entity_type: "Chokepoint",
+        entity_id: chokepoint.id,
+        event_type: "chokepoint.created",
+        before_snapshot: {},
+        after_snapshot: {
+          area_of_operation_id: ao.id,
+          name: "Replay Strait",
+          category: chokepoint.category,
+          status: "constrained",
+          latitude: chokepoint.latitude,
+          longitude: chokepoint.longitude,
+          watch_radius_km: chokepoint.watch_radius_km,
+          notes: "Historical note",
+        },
+        occurred_at: cutoff - 90.minutes,
+      )
+      create(
+        :audit_event,
+        actor: "system",
+        entity_type: "Chokepoint",
+        entity_id: chokepoint.id,
+        event_type: "chokepoint.updated",
+        before_snapshot: { status: "constrained" },
+        after_snapshot: { status: "closed" },
+        occurred_at: cutoff + 1.minute,
+      )
+
+      get "/api/chokepoints/#{chokepoint.id}", params: { as_of: cutoff.iso8601 }, headers: auth_headers(operator)
+
+      expect(response).to have_http_status(:ok)
+      body = JSON.parse(response.body)
+      expect(body).to include(
+        "id" => chokepoint.id,
+        "status" => "constrained",
+        "notes" => "Historical note",
+        "area_of_operation_name" => "Northern Gulf",
+      )
+    end
   end
 
   describe "POST /api/chokepoints" do

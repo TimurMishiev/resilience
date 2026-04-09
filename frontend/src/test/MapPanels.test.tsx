@@ -235,6 +235,6 @@ describe('map data panels', () => {
     expect(screen.getByText('Cargo')).toBeInTheDocument()
     expect(screen.getByText('Tangier')).toBeInTheDocument()
     expect(screen.getByText(/2 pts/)).toBeInTheDocument()
-    expect(screen.getByText(/unavailable in replay mode/i)).toBeInTheDocument()
+    expect(screen.getByText(/reflect AIS history up to the replay timestamp/i)).toBeInTheDocument()
   })
 })

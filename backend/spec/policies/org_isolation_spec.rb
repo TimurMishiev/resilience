@@ -12,6 +12,7 @@ RSpec.describe "Organization tenant isolation", type: :model do
 
   let(:ao_a) { create(:area_of_operation, organization: org_a, created_by: commander_a) }
   let(:ao_b) { create(:area_of_operation, organization: org_b, created_by: commander_b) }
+  let(:global_ao) { create(:area_of_operation) }
 
   let(:site_a) { create(:site, organization: org_a, area_of_operation: ao_a) }
   let(:site_b) { create(:site, organization: org_b, area_of_operation: ao_b) }
@@ -100,10 +101,15 @@ RSpec.describe "Organization tenant isolation", type: :model do
   # ── AreaOfOperation ───────────────────────────────────────────────────────────
 
   describe "AreaOfOperationPolicy::Scope" do
-    it "returns only the user's org AOs (plus org-null globals)" do
+    it "returns only the user's org AOs plus org-null globals" do
       resolved = AreaOfOperationPolicy::Scope.new(commander_a, AreaOfOperation.all).resolve
       expect(resolved).to include(ao_a)
+      expect(resolved).to include(global_ao)
       expect(resolved).not_to include(ao_b)
+    end
+
+    it "allows direct access to org-null global AOs" do
+      expect(AreaOfOperationPolicy.new(commander_a, global_ao).show?).to be(true)
     end
   end
 

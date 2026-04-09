@@ -185,6 +185,33 @@ RSpec.describe "Api::SignalRuleMatches", type: :request do
       get "/api/signal_rule_matches/active_breach_sites"
       expect(response).to have_http_status(:unauthorized)
     end
+
+    it "reconstructs active breach site IDs historically as_of" do
+      replay_breach = create(
+        :signal_rule_match,
+        site: site_b,
+        correlation_rule: nil,
+        fired_at: 40.minutes.ago,
+        metadata: { geofence_breach: true, distance_km: 5.0,
+                    signal_type: "vessel_position", signal_source: "ais" }
+      )
+
+      travel_to 20.minutes.ago do
+        Alerts::TransitionService.call(
+          match: replay_breach,
+          to_status: "acknowledged",
+          actor: user,
+        )
+      end
+
+      get "/api/signal_rule_matches/active_breach_sites",
+          params: { as_of: 30.minutes.ago.iso8601 },
+          headers: auth_headers(user)
+
+      expect(response).to have_http_status(:ok)
+      ids = JSON.parse(response.body)["site_ids"]
+      expect(ids).to include(site_b.id)
+    end
   end
 
   describe "GET /api/signal_rule_matches/:id" do

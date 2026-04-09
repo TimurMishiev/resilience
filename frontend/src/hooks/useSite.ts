@@ -27,7 +27,7 @@ export function useSiteRiskHistory(id: string | undefined, params?: SiteRiskHist
     queryKey: ['site-risk-history', id, params],
     queryFn:  () => getSiteRiskHistory(id!, params),
     enabled:  Boolean(id),
-    refetchInterval: 60_000, // refresh every minute — new snapshots arrive hourly
+    refetchInterval: params?.as_of ? false : 60_000, // historical snapshots are immutable
   })
 }
 
@@ -36,7 +36,7 @@ export function useSiteTimeline(id: string | undefined, params?: SiteTimelinePar
     queryKey: ['site-timeline', id, params],
     queryFn:  () => getSiteTimeline(id!, params),
     enabled:  Boolean(id),
-    refetchInterval: 30_000, // refresh every 30s — new signals/rule fires appear
+    refetchInterval: params?.as_of ? false : 30_000, // historical timelines are immutable
   })
 }
 

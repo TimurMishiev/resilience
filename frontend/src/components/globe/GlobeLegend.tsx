@@ -26,7 +26,7 @@ export function GlobeLegend({
       <div className="globe-legend-item">
         <span className="globe-legend-dot" style={{ background: '#00ffff' }} />Asset (live)
       </div>
-      {!isReplaying && showChokepoints && (
+      {showChokepoints && (
         <>
           <div className="globe-legend-section-title" style={{ marginTop: 10 }}>CHOKEPOINTS</div>
           <div className="globe-legend-item">

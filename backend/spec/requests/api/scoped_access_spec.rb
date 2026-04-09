@@ -3,8 +3,10 @@ require "rails_helper"
 RSpec.describe "API scoped access", type: :request do
   let(:org_a) { create(:organization) }
   let(:org_b) { create(:organization) }
-  let(:ao_a)  { create(:area_of_operation, name: "AO Alpha") }
-  let(:ao_b)  { create(:area_of_operation, name: "AO Bravo") }
+  let(:ao_owner_a) { create(:user, :commander, organization: org_a) }
+  let(:ao_owner_b) { create(:user, :commander, organization: org_b) }
+  let(:ao_a)  { create(:area_of_operation, name: "AO Alpha", organization: org_a, created_by: ao_owner_a) }
+  let(:ao_b)  { create(:area_of_operation, name: "AO Bravo", organization: org_b, created_by: ao_owner_b) }
 
   let!(:site_a) { create(:site, organization: org_a, area_of_operation: ao_a, name: "Alpha") }
   let!(:site_b) { create(:site, organization: org_b, area_of_operation: ao_b, name: "Bravo") }
@@ -114,6 +116,10 @@ RSpec.describe "API scoped access", type: :request do
     create(:user, :viewer, organization: org_a, area_of_operation: ao_a)
   end
 
+  let(:org_scoped_viewer) do
+    create(:user, :viewer, organization: org_a, area_of_operation: nil)
+  end
+
   let(:scoped_operator) do
     create(:user, :operator, organization: org_a, area_of_operation: ao_a)
   end
@@ -131,6 +137,19 @@ RSpec.describe "API scoped access", type: :request do
 
       get "/api/sites/#{site_b.id}", headers: auth_headers(scoped_viewer)
       expect(response).to have_http_status(:not_found)
+    end
+
+    it "allows org-scoped users to read org-null global areas of operation" do
+      global_ao = create(:area_of_operation, name: "AO Global Shared")
+
+      get "/api/areas_of_operation", headers: auth_headers(org_scoped_viewer)
+
+      expect(response).to have_http_status(:ok)
+      expect(json_body.fetch("data").map { |area| area.fetch("id") }).to contain_exactly(ao_a.id, global_ao.id)
+
+      get "/api/areas_of_operation/#{global_ao.id}", headers: auth_headers(org_scoped_viewer)
+      expect(response).to have_http_status(:ok)
+      expect(json_body.fetch("id")).to eq(global_ao.id)
     end
 
     it "limits tasks to scoped sites" do
@@ -352,6 +371,91 @@ RSpec.describe "API scoped access", type: :request do
            headers: auth_headers(scoped_commander),
            as: :json
 
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "forbids mutating existing org-null global AOs and attached doctrine" do
+      global_ao = create(:area_of_operation, name: "AO Global Shared")
+      org_scoped_commander = create(:user, :commander, organization: org_a, area_of_operation: nil)
+
+      patch "/api/areas_of_operation/#{global_ao.id}",
+            params: {
+              area_of_operation: {
+                name: "Updated Global AO",
+              },
+            },
+            headers: auth_headers(org_scoped_commander),
+            as: :json
+      expect(response).to have_http_status(:forbidden)
+
+      post "/api/correlation_rules",
+           params: {
+             correlation_rule: {
+               name: "Global Rule",
+               cooldown_minutes: 30,
+               area_of_operation_id: global_ao.id,
+               conditions: { signal_type: "seismic_event", proximity_km: 25 },
+               actions: { create_task: { title: "Respond", priority: "high" } },
+             },
+           },
+           headers: auth_headers(org_scoped_commander),
+           as: :json
+      expect(response).to have_http_status(:forbidden)
+
+      post "/api/chokepoints",
+           params: {
+             chokepoint: {
+               area_of_operation_id: global_ao.id,
+               name: "Global Strait",
+               category: "strait",
+               status: "monitor",
+               latitude: 25.0,
+               longitude: 56.0,
+               watch_radius_km: 12.5,
+             },
+           },
+           headers: auth_headers(org_scoped_commander),
+           as: :json
+      expect(response).to have_http_status(:forbidden)
+
+      post "/api/commander_intents",
+           params: {
+             commander_intent: {
+               area_of_operation_id: global_ao.id,
+               title: "Global Intent",
+               objective: "Hold Global",
+               end_state: "Global secure",
+             },
+           },
+           headers: auth_headers(org_scoped_commander),
+           as: :json
+      expect(response).to have_http_status(:forbidden)
+
+      post "/api/pace_plans",
+           params: {
+             pace_plan: {
+               area_of_operation_id: global_ao.id,
+               primary_plan: "P",
+               alternate_plan: "A",
+               contingency_plan: "C",
+               emergency_plan: "E",
+             },
+           },
+           headers: auth_headers(org_scoped_commander),
+           as: :json
+      expect(response).to have_http_status(:forbidden)
+
+      post "/api/salute_reports",
+           params: {
+             salute_report: {
+               area_of_operation_id: global_ao.id,
+               activity: "Observed activity",
+               location: "Grid 123",
+               observed_at: Time.current.iso8601,
+             },
+           },
+           headers: auth_headers(org_scoped_commander),
+           as: :json
       expect(response).to have_http_status(:forbidden)
     end
 

@@ -4,6 +4,7 @@ RSpec.describe "Api::Signals", type: :request do
   include ActiveSupport::Testing::TimeHelpers
 
   let(:user) { create(:user) }
+  let(:org_scoped_user) { create(:user, organization: create(:organization)) }
 
   let!(:seismic1) do
     create(:external_signal,
@@ -129,6 +130,13 @@ RSpec.describe "Api::Signals", type: :request do
       get "/api/signals"
       expect(response).to have_http_status(:unauthorized)
     end
+
+    it "still exposes global signals to org-scoped users" do
+      get "/api/signals", headers: auth_headers(org_scoped_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body).dig("meta", "total")).to eq(4)
+    end
   end
 
   describe "GET /api/signals/:id" do
@@ -145,6 +153,13 @@ RSpec.describe "Api::Signals", type: :request do
     it "returns 404 for unknown UUID" do
       get "/api/signals/#{SecureRandom.uuid}", headers: auth_headers(user)
       expect(response).to have_http_status(:not_found)
+    end
+
+    it "still allows org-scoped users to read a global signal" do
+      get "/api/signals/#{seismic1.id}", headers: auth_headers(org_scoped_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body).fetch("id")).to eq(seismic1.id)
     end
   end
 

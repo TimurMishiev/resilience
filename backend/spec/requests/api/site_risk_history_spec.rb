@@ -75,6 +75,21 @@ RSpec.describe "Api::Sites#risk_history", type: :request do
         expect(body["data"]).to be_empty
         expect(body["meta"]["total"]).to eq(0)
       end
+
+      it "clips replay risk history to the as_of timestamp" do
+        create(:site_risk_snapshot, site: site, recorded_at: 4.hours.ago, score: 25)
+        create(:site_risk_snapshot, site: site, recorded_at: 90.minutes.ago, score: 55)
+        create(:site_risk_snapshot, site: site, recorded_at: 20.minutes.ago, score: 80)
+
+        get "/api/sites/#{site.id}/risk_history",
+            params: { as_of: 1.hour.ago.iso8601, days: 1 },
+            headers: auth_headers(current_user)
+
+        body = JSON.parse(response.body)
+        scores = body["data"].map { |snapshot| snapshot["score"] }
+        expect(scores).to eq([25, 55])
+        expect(body["meta"]["as_of"]).to be_present
+      end
     end
 
     context "without authentication" do

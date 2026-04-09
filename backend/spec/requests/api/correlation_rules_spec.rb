@@ -69,6 +69,89 @@ RSpec.describe "Api::CorrelationRules", type: :request do
     end
   end
 
+  describe "GET /api/correlation_rules with ?as_of= (replay)" do
+    let(:as_of_past) { 1.hour.ago.iso8601 }
+    let(:created_at) { 2.hours.ago.change(usec: 0) }
+    let(:updated_at) { 30.minutes.ago.change(usec: 0) }
+    let(:historical_area) { create(:area_of_operation, name: "Replay AO") }
+    let(:historical_rule) { @historical_rule }
+
+    before do
+      @historical_rule = create(
+        :correlation_rule,
+        name: "Replay Rule",
+        is_active: true,
+        area_of_operation: historical_area
+      )
+      @historical_rule.update_columns(created_at: created_at, updated_at: created_at, last_fired_at: created_at)
+
+      create_snapshot = {
+        name: @historical_rule.name,
+        description: @historical_rule.description,
+        is_active: true,
+        cooldown_minutes: @historical_rule.cooldown_minutes,
+        area_of_operation_id: historical_area.id,
+        conditions: @historical_rule.conditions.deep_stringify_keys,
+        actions: @historical_rule.actions.deep_stringify_keys,
+        mitre_tags: @historical_rule.mitre_tags || [],
+      }
+
+      AuditEvent.create!(
+        schema_version: 1,
+        actor: "test",
+        entity_type: "CorrelationRule",
+        entity_id: @historical_rule.id,
+        event_type: "correlation_rule.created",
+        action: "create",
+        before_snapshot: nil,
+        after_snapshot: create_snapshot,
+        correlation_id: SecureRandom.uuid,
+        occurred_at: created_at
+      )
+
+      @historical_rule.update_columns(
+        is_active: false,
+        area_of_operation_id: nil,
+        last_fired_at: updated_at,
+        updated_at: updated_at
+      )
+
+      AuditEvent.create!(
+        schema_version: 1,
+        actor: "test",
+        entity_type: "CorrelationRule",
+        entity_id: @historical_rule.id,
+        event_type: "correlation_rule.updated",
+        action: "update",
+        before_snapshot: create_snapshot,
+        after_snapshot: create_snapshot.merge(
+          "is_active" => false,
+          "area_of_operation_id" => nil
+        ),
+        correlation_id: SecureRandom.uuid,
+        occurred_at: updated_at
+      )
+    end
+
+    it "returns the historical rule state for show" do
+      get "/api/correlation_rules/#{historical_rule.id}", params: { as_of: as_of_past }, headers: auth_headers(commander)
+
+      expect(response).to have_http_status(:ok)
+      body = JSON.parse(response.body)
+      expect(body["is_active"]).to be(true)
+      expect(body["area_of_operation_id"]).to eq(historical_area.id)
+      expect(body["last_fired_at"]).to be_nil
+    end
+
+    it "filters list responses using the historical active flag" do
+      get "/api/correlation_rules", params: { as_of: as_of_past, active_only: "true" }, headers: auth_headers(commander)
+
+      expect(response).to have_http_status(:ok)
+      ids = JSON.parse(response.body)["data"].map { |rule| rule["id"] }
+      expect(ids).to include(historical_rule.id)
+    end
+  end
+
   describe "POST /api/correlation_rules" do
     let(:valid_params) do
       {

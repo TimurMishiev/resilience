@@ -83,6 +83,7 @@ const engineState = vi.hoisted(() => ({
     showHeatmap: boolean
     showChokepoints: boolean
     chokepoints: Array<{ id: string }>
+    breachedSiteIds: Set<string>
     onSiteClick: (siteId: string | null) => void
     onAssetClick: (assetId: string | null) => void
     onSignalClick: (signalId: string | null) => void
@@ -160,7 +161,7 @@ vi.mock('../hooks/useRiskScores', () => ({
 
 vi.mock('../hooks/useSignalRuleMatches', () => ({
   useActiveBreachSiteIds: () => ({
-    data: { site_ids: [] },
+    data: { site_ids: ['site-1'] },
   }),
 }))
 
@@ -185,6 +186,7 @@ vi.mock('../hooks/useMapLibreEngine', () => ({
     showHeatmap: boolean
     showChokepoints: boolean
     chokepoints: Array<{ id: string }>
+    breachedSiteIds: Set<string>
     onSiteClick: (siteId: string | null) => void
     onAssetClick: (assetId: string | null) => void
     onSignalClick: (signalId: string | null) => void
@@ -213,9 +215,10 @@ vi.mock('../components/MapAssetPanel', () => ({
 }))
 
 vi.mock('../components/MapSignalPanel', () => ({
-  MapSignalPanel: ({ signal }: { signal: { raw_payload: { version: string } } }) => (
+  MapSignalPanel: ({ signal, vessel }: { signal: { raw_payload: { version: string } }; vessel?: { mmsi?: string | null } | null }) => (
     <div data-testid="map-signal-panel">
       <span data-testid="signal-version">{signal.raw_payload.version}</span>
+      {vessel?.mmsi ? <span data-testid="signal-vessel-mmsi">{vessel.mmsi}</span> : null}
     </div>
   ),
 }))
@@ -536,10 +539,11 @@ describe('MapPage selection routing', () => {
 
     renderMapPage('/map')
 
-    expect(screen.queryByRole('button', { name: 'Toggle chokepoint overlay' })).not.toBeInTheDocument()
-    expect(screen.queryByText('Monitor')).not.toBeInTheDocument()
-    expect(engineState.latestInput?.chokepoints).toEqual([])
-    expect(screen.getByText(/AO overlays, chokepoint overlays,/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Toggle chokepoint overlay' })).toBeInTheDocument()
+    expect(screen.getByText('Monitor')).toBeInTheDocument()
+    expect(engineState.latestInput?.chokepoints).toHaveLength(1)
+    expect(engineState.latestInput?.breachedSiteIds.has('site-1')).toBe(true)
+    expect(screen.getByText(/Historical AO overlays, risk shading, chokepoint overlays, geofence breach rings, and AIS vessel context remain available during replay/i)).toBeInTheDocument()
   })
 
   it('keeps selected-vessel trail queries replay-aware', () => {
@@ -573,6 +577,7 @@ describe('MapPage selection routing', () => {
       'vessel-1',
       { limit: 300, to: '2026-03-29T10:00:00.000Z' },
     )
+    expect(screen.getByTestId('signal-vessel-mmsi')).toHaveTextContent('111000001')
   })
 
   it('gives an external same-signal retry a fresh SSE grace window in a long-lived session', async () => {

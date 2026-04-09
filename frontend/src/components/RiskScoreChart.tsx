@@ -139,13 +139,14 @@ function ScoreGradient({ id }: { id: string }) {
 
 interface Props {
   siteId: string
+  asOf?: string | null
 }
 
-export default function RiskScoreChart({ siteId }: Props) {
+export default function RiskScoreChart({ siteId, asOf }: Props) {
   const [days, setDays]           = useState(7)
   const [showComponents, setShowComponents] = useState(true)
 
-  const { data, isPending, error } = useSiteRiskHistory(siteId, { days })
+  const { data, isPending, error } = useSiteRiskHistory(siteId, { days, ...(asOf ? { as_of: asOf } : {}) })
 
   const snapshots = data?.data ?? []
   const chartData = snapshots.map(toChartPoint)

@@ -220,7 +220,7 @@ export interface CreateSaluteReportBody {
   remarks?: string | null
 }
 
-export interface ChokepointsParams extends PaginationParams {
+export interface ChokepointsParams extends PaginationParams, AsOfParam {
   area_of_operation_id?: string
 }
 
@@ -659,10 +659,10 @@ export interface SiteRiskSnapshot {
 
 export interface SiteRiskHistoryResponse {
   data: SiteRiskSnapshot[]
-  meta: { total: number; site_id: string; days: number }
+  meta: { total: number; site_id: string; days: number; as_of?: string | null }
 }
 
-export interface SiteRiskHistoryParams {
+export interface SiteRiskHistoryParams extends AsOfParam {
   days?: number
 }
 

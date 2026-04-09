@@ -1,9 +1,10 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockRole = vi.hoisted(() => ({ role: 'commander' as 'commander' | 'operator' | 'viewer' }))
+const replayState = vi.hoisted(() => ({ isReplaying: false, asOf: '2026-04-09T12:00:00Z' }))
 
 vi.mock('../hooks/useSite', () => ({
   useSite: () => ({
@@ -93,7 +94,27 @@ vi.mock('../hooks/useReadiness', () => ({
 }))
 
 vi.mock('../hooks/useSites', () => ({
-  useSites: () => ({ data: { data: [] }, isPending: false, error: null }),
+  useSites: () => ({
+    data: {
+      data: [
+        {
+          id: 'site-1',
+          name: 'Watchtower Bravo',
+          latitude: 10,
+          longitude: 20,
+          status: 'active',
+          area_of_operation_id: 'ao-1',
+          geofence_radius_km: 10,
+          created_at: '2026-03-27T12:00:00Z',
+          updated_at: '2026-03-27T12:00:00Z',
+          flagged_at: null,
+          flag_reason: null,
+        },
+      ],
+    },
+    isPending: false,
+    error: null,
+  }),
 }))
 
 vi.mock('../hooks/useRole', () => ({
@@ -106,7 +127,7 @@ vi.mock('../hooks/useRole', () => ({
 }))
 
 vi.mock('../context/ReplayContext', () => ({
-  useReplay: () => ({ asOf: null, isReplaying: false }),
+  useReplay: () => ({ asOf: replayState.asOf, isReplaying: replayState.isReplaying }),
 }))
 
 vi.mock('../components/EntityCard', () => ({
@@ -120,7 +141,7 @@ vi.mock('../components/AuditTimeline', () => ({
 }))
 
 vi.mock('../components/SiteTimeline', () => ({
-  default: () => null,
+  default: ({ siteId, asOf }: { siteId: string; asOf?: string | null }) => <div>{`timeline:${siteId}:${asOf ?? 'live'}`}</div>,
 }))
 
 vi.mock('../components/AlertChainDrawer', () => ({
@@ -128,7 +149,7 @@ vi.mock('../components/AlertChainDrawer', () => ({
 }))
 
 vi.mock('../components/RiskScoreChart', () => ({
-  default: () => null,
+  default: ({ siteId, asOf }: { siteId: string; asOf?: string | null }) => <div>{`risk:${siteId}:${asOf ?? 'live'}`}</div>,
 }))
 
 import SiteDetailPage from '../pages/SiteDetailPage'
@@ -150,8 +171,12 @@ function SiteDetailHarness() {
 }
 
 describe('SiteDetailPage task deep links', () => {
-  it('updates the selected task drawer when the same site route changes task query params', async () => {
+  beforeEach(() => {
     mockRole.role = 'commander'
+    replayState.isReplaying = false
+  })
+
+  it('updates the selected task drawer when the same site route changes task query params', async () => {
     const user = userEvent.setup()
 
     render(
@@ -171,5 +196,21 @@ describe('SiteDetailPage task deep links', () => {
     await waitFor(() => {
       expect(screen.queryByText('task:task-2')).not.toBeInTheDocument()
     })
+  })
+
+  it('renders historical risk and timeline surfaces during replay', async () => {
+    replayState.isReplaying = true
+
+    render(
+      <MemoryRouter initialEntries={['/sites/site-1']}>
+        <Routes>
+          <Route path="/sites/:id" element={<SiteDetailHarness />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText(/Historical risk trends, breaches, tasks, signals/i)).toBeInTheDocument()
+    expect(screen.getByText(`risk:site-1:${replayState.asOf}`)).toBeInTheDocument()
+    expect(screen.getByText(`timeline:site-1:${replayState.asOf}`)).toBeInTheDocument()
   })
 })

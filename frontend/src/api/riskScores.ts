@@ -1,7 +1,7 @@
 import { api } from './client'
-import type { SiteRiskScore } from './types'
+import type { AsOfParam, SiteRiskScore } from './types'
 
-export async function getRiskScores(): Promise<SiteRiskScore[]> {
-  const res = await api.get<{ data: SiteRiskScore[] }>('/api/risk_scores')
+export async function getRiskScores(params?: AsOfParam): Promise<SiteRiskScore[]> {
+  const res = await api.get<{ data: SiteRiskScore[] }>('/api/risk_scores', params)
   return res.data
 }
