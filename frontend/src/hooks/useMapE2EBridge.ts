@@ -57,7 +57,7 @@ interface UseMapE2EBridgeProps {
   selectedSignalId: string | null
   sites: Site[]
   projectPosition: (lng: number, lat: number) => MapE2ECanvasPoint | null
-  inspectCanvasPosition: (x: number, y: number) => { kind: string; id: string } | null
+  inspectCanvasPosition: (x: number, y: number) => { kind: string; id: string | null } | null
 }
 
 export function useMapE2EBridge({

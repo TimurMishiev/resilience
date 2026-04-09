@@ -5,11 +5,10 @@ interface GlobeLegendProps {
   showSignals:     boolean
   showHeatmap:     boolean
   showChokepoints: boolean
-  isReplaying:     boolean
 }
 
 export function GlobeLegend({
-  showCoverage, showSignals, showHeatmap, showChokepoints, isReplaying,
+  showCoverage, showSignals, showHeatmap, showChokepoints,
 }: GlobeLegendProps) {
   return (
     <div className="globe-legend bp6-dark">

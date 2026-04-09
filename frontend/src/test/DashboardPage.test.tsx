@@ -9,7 +9,7 @@ const dashboardState = vi.hoisted(() => ({
   asOf: '2026-04-09T12:00:00Z',
   loiteringError: null as Error | null,
   recommendations: [] as Array<{ id: string }>,
-  matches: [] as Array<{ id: string }>,
+  matches: [] as Array<Record<string, unknown>>,
   loiteringVessels: [
     {
       id: 'vessel-1',

@@ -396,7 +396,6 @@ export default function GlobePage() {
         showHeatmap={showHeatmap}
         showCoverage={showCoverage}
         showChokepoints={showChokepoints}
-        isReplaying={isReplaying}
       />
     </div>
   )

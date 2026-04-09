@@ -18,8 +18,12 @@ const baseTask: Task = {
   blocked_reason: null,
   site_id: 'site-1',
   asset_id: null,
+  resolved_at: null,
   created_at: '2026-04-09T10:00:00Z',
   updated_at: '2026-04-09T10:05:00Z',
+  site_name: 'Forward Site Alpha',
+  ao_id: null,
+  ao_posture: null,
 }
 
 describe('TaskRow', () => {

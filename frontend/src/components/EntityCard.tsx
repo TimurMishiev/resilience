@@ -26,6 +26,7 @@ import AuditTimeline from './AuditTimeline'
 import { AssetPicker } from './AssetPicker'
 import { PostureBadge } from './PostureBadge'
 import { useRole } from '../hooks/useRole'
+import { useReferenceTimeMs } from '../hooks/useReferenceTimeMs'
 import { useReplay } from '../context/ReplayContext'
 import { useTask, useTasks, useAllowedTransitions, useTransitionTask, useUpdateTask } from '../hooks/useTasks'
 import { useAsset, useAssets, useUpdateAssetStatus } from '../hooks/useAssets'
@@ -236,6 +237,7 @@ function AssetOverview({ assetId, asOf }: { assetId: string; asOf?: string | nul
 
   const [pendingStatus, setPendingStatus] = useState<AssetStatus | null>(null)
   const [updateError,   setUpdateError]   = useState<string | null>(null)
+  const referenceTimeMs = useReferenceTimeMs(asOf)
 
   if (isPending) return <Spinner size={20} style={{ marginTop: 24 }} />
   if (!asset)    return null
@@ -246,7 +248,7 @@ function AssetOverview({ assetId, asOf }: { assetId: string; asOf?: string | nul
   const stale = staleness(
     asset.last_reported_at,
     asset.updated_at,
-    asOf ? new Date(asOf).getTime() : Date.now(),
+    referenceTimeMs,
   )
 
   async function handleStatusChange() {

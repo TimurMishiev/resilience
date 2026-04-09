@@ -1,6 +1,7 @@
 import type { Asset, Signal, Site, SiteRiskScore, Task } from '../../api/types'
 import type { TelemetryReading } from '../../lib/telemetry'
 import type { Vessel, VesselTrack } from '../../api/vessels'
+import type { UserRole } from '../../hooks/useRole'
 import { MapAssetPanel } from '../MapAssetPanel'
 import { MapSignalPanel } from '../MapSignalPanel'
 import { MapSitePanel } from '../MapSitePanel'
@@ -10,7 +11,7 @@ interface MapSelectionPanelsProps {
   selectedTasks: Task[]
   readiness: number | null
   riskBySiteId: Record<string, SiteRiskScore>
-  role: string
+  role: UserRole
   selectedAsset: Asset | null
   selectedLiveReading: TelemetryReading | null
   selectedSignal: Signal | null
