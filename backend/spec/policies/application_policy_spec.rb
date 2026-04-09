@@ -133,4 +133,25 @@ RSpec.describe ApplicationPolicy do
       expect(policy.send(:incident_accessible?, incident)).to be true
     end
   end
+
+  describe "AO helper semantics" do
+    let(:org)       { create(:organization) }
+    let(:own_ao)    { create(:area_of_operation, organization: org) }
+    let(:global_ao) { create(:area_of_operation) }
+    let(:other_ao)  { create(:area_of_operation, organization: create(:organization)) }
+    let(:user)      { create(:user, :commander, organization: org) }
+    let(:policy)    { described_class.new(user, own_ao) }
+
+    it "allows org-scoped users to read org-null global AOs on the AO surface" do
+      expect(policy.send(:area_of_operation_surface_accessible?, own_ao)).to be true
+      expect(policy.send(:area_of_operation_surface_accessible?, global_ao)).to be true
+      expect(policy.send(:area_of_operation_surface_accessible?, other_ao)).to be false
+    end
+
+    it "keeps attached doctrine and operational data org-owned" do
+      expect(policy.send(:owned_area_of_operation_accessible?, own_ao)).to be true
+      expect(policy.send(:owned_area_of_operation_accessible?, global_ao)).to be false
+      expect(policy.send(:owned_area_of_operation_accessible?, other_ao)).to be false
+    end
+  end
 end

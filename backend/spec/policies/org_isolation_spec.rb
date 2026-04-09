@@ -77,10 +77,12 @@ RSpec.describe "Organization tenant isolation", type: :model do
   describe "CorrelationRulePolicy::Scope" do
     let!(:rule_a) { create(:correlation_rule, area_of_operation: ao_a) }
     let!(:rule_b) { create(:correlation_rule, area_of_operation: ao_b) }
+    let!(:rule_global) { create(:correlation_rule, area_of_operation: global_ao) }
 
-    it "returns only rules in the user's org AOs" do
+    it "returns only rules in the user's org AOs, not global AO doctrine" do
       resolved = CorrelationRulePolicy::Scope.new(commander_a, CorrelationRule.all).resolve
       expect(resolved).to include(rule_a)
+      expect(resolved).not_to include(rule_global)
       expect(resolved).not_to include(rule_b)
     end
   end
@@ -118,10 +120,12 @@ RSpec.describe "Organization tenant isolation", type: :model do
   describe "ChokepointPolicy::Scope" do
     let!(:cp_a) { create(:chokepoint, area_of_operation: ao_a) }
     let!(:cp_b) { create(:chokepoint, area_of_operation: ao_b) }
+    let!(:cp_global) { create(:chokepoint, area_of_operation: global_ao) }
 
-    it "returns only chokepoints in the user's org AOs" do
+    it "returns only chokepoints in the user's org AOs, not global AO doctrine" do
       resolved = ChokepointPolicy::Scope.new(commander_a, Chokepoint.all).resolve
       expect(resolved).to include(cp_a)
+      expect(resolved).not_to include(cp_global)
       expect(resolved).not_to include(cp_b)
     end
   end
@@ -131,10 +135,12 @@ RSpec.describe "Organization tenant isolation", type: :model do
   describe "CommanderIntentPolicy::Scope" do
     let!(:intent_a) { create(:commander_intent, area_of_operation: ao_a) }
     let!(:intent_b) { create(:commander_intent, area_of_operation: ao_b) }
+    let!(:intent_global) { create(:commander_intent, area_of_operation: global_ao) }
 
-    it "returns only intents in the user's org AOs" do
+    it "returns only intents in the user's org AOs, not global AO doctrine" do
       resolved = CommanderIntentPolicy::Scope.new(commander_a, CommanderIntent.all).resolve
       expect(resolved).to include(intent_a)
+      expect(resolved).not_to include(intent_global)
       expect(resolved).not_to include(intent_b)
     end
   end
@@ -144,10 +150,12 @@ RSpec.describe "Organization tenant isolation", type: :model do
   describe "PacePlanPolicy::Scope" do
     let!(:pace_a) { create(:pace_plan, area_of_operation: ao_a) }
     let!(:pace_b) { create(:pace_plan, area_of_operation: ao_b) }
+    let!(:pace_global) { create(:pace_plan, area_of_operation: global_ao) }
 
-    it "returns only pace plans in the user's org AOs" do
+    it "returns only pace plans in the user's org AOs, not global AO doctrine" do
       resolved = PacePlanPolicy::Scope.new(commander_a, PacePlan.all).resolve
       expect(resolved).to include(pace_a)
+      expect(resolved).not_to include(pace_global)
       expect(resolved).not_to include(pace_b)
     end
   end
@@ -157,10 +165,12 @@ RSpec.describe "Organization tenant isolation", type: :model do
   describe "SaluteReportPolicy::Scope" do
     let!(:salute_a) { create(:salute_report, area_of_operation: ao_a) }
     let!(:salute_b) { create(:salute_report, area_of_operation: ao_b) }
+    let!(:salute_global) { create(:salute_report, area_of_operation: global_ao) }
 
-    it "returns only salute reports in the user's org AOs" do
+    it "returns only salute reports in the user's org AOs, not global AO doctrine" do
       resolved = SaluteReportPolicy::Scope.new(commander_a, SaluteReport.all).resolve
       expect(resolved).to include(salute_a)
+      expect(resolved).not_to include(salute_global)
       expect(resolved).not_to include(salute_b)
     end
   end

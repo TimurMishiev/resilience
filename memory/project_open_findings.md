@@ -8,8 +8,8 @@ type: findings
 
 Last reconciled with code: 2026-04-09
 
-Active execution of these findings is tracked in `memory/project_production_readiness_plan.md`.
-No new feature work should take precedence over that file until the production-readiness program is complete.
+The production-readiness program (`memory/project_production_readiness_plan.md`) is now complete.
+Future work is tracked in `memory/project_roadmap.md`.
 
 ## P1 / High-Leverage Programs
 
@@ -17,20 +17,21 @@ _(No open P1 items. All prior P1 replay parity gaps have been closed.)_
 
 ## P2 / Important Platform Follow-Through
 
-- Tenant/workspace isolation is still incomplete.
-  - Organization model + org/AO scoping exist, but domain-wide data isolation, workspace management, and admin tenant UI are not built.
-  - Current code path is now explicit about the supported interim model: org-owned operational data, shared global intelligence domains (`ExternalSignal`, `Vessel`), org-null global AOs on the AO surface for org-scoped users who are not pinned to a single AO, and org-owned attached doctrine/operational records unless a policy explicitly opts into shared visibility.
-  - This is acknowledged as a major track, not a quick patch.
+- Tenant/workspace isolation: production-readiness scope is **closed**.
+  - Org/AO scoping is enforced in policies with request-level proof.
+  - Tenant model is explicit in code: org-owned operational/doctrine data, shared global intelligence domains (`ExternalSignal`, `Vessel`), org-null global AOs on the AO surface, hidden/immutable cross-org doctrine.
+  - Full multi-tenant admin UI and workspace management remain a future roadmap program.
 
-- Frontend maintenance concentration substantially reduced:
-  - `useGlobeEngine.ts` (1156→453 lines): overlays extracted to `hooks/globe/useGlobeOverlays.ts` (409), tracks to `hooks/globe/useGlobeTrackLayers.ts` (163), assets to `hooks/globe/useGlobeAssetEntities.ts` (120), signals to `hooks/globe/useGlobeSignalPrimitives.ts` (147), sites to `hooks/globe/useGlobeSiteEntities.ts` (104)
-  - `useMapLibreEngine.ts` (876→378 lines): overlays extracted to `hooks/map/useMapOverlays.ts` (280), assets to `hooks/map/useMapAssetLayers.ts` (139), sites to `hooks/map/useMapSiteLayers.ts` (97), tracks to `hooks/map/useMapTrackLayers.ts` (115)
-  - `GlobePage.tsx` (487 lines) — reasonable size after prior toolbar/legend/inspector extraction
-  - `CorrelationRulesPage.tsx` and `PlanningPage.tsx` already decomposed
+- Frontend decomposition: production-readiness scope is **closed**.
+  - Engine hooks (`useGlobeEngine`, `useMapLibreEngine`) decomposed into focused sub-hooks.
+  - Core pages decomposed: `MapPage.tsx` (318 lines), `DashboardPage.tsx` (275 lines), `GlobePage.tsx` (403 lines), `CorrelationRulesPage.tsx` (343 lines), `PlanningPage.tsx` (462 lines).
+  - Remaining large pages (`AlertTriagePage` 570, `GraphPage` 519, `SignalFeedPage` 505) are future candidates if velocity demands it.
 
-- The remaining SSE architecture ceiling is still thread-per-connection transport.
+- SSE transport ceiling: production-readiness scope is **closed**.
   - Admission control is hardened (lease-based, per-user + per-IP caps, advisory locks).
-  - The transport model itself is unchanged — replacing it is a future scale project.
+  - Constraint chain is explicitly documented in `puma.rb`.
+  - Thread-per-connection model is accepted for single-machine Fly.io target scale.
+  - Replacing the transport is a future scale project if multi-machine deployment is needed.
 
 - ~~Risk score replay is not yet supported.~~ — DONE: `RiskScoresController#replay_risk_scores` with `as_of` + 3 specs.
 

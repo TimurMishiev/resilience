@@ -25,7 +25,7 @@ class IncidentPolicy < ApplicationPolicy
       return scope unless scope_restricted?
 
       scoped_by_site = scope.where(site_id: site_scope.select(:id))
-      scoped_by_area = scope.where(site_id: nil, area_of_operation_id: area_of_operation_scope.select(:id))
+      scoped_by_area = scope.where(site_id: nil, area_of_operation_id: owned_area_of_operation_scope.select(:id))
 
       scoped_by_site.or(scoped_by_area)
     end

@@ -1,22 +1,22 @@
 import { useState, useMemo } from 'react'
-import { Button, Callout, Classes, Icon, Tag, Tooltip } from '@blueprintjs/core'
+import { Button, Callout, Classes, Icon } from '@blueprintjs/core'
 import ExportDialog from '../components/ExportDialog'
 import AlertsPanel from '../components/dashboard/AlertsPanel'
+import { DashboardBarChartCard } from '../components/dashboard/DashboardBarChartCard'
+import { DashboardKpiRow } from '../components/dashboard/DashboardKpiRow'
+import { DashboardReadinessCard } from '../components/dashboard/DashboardReadinessCard'
 import LoiteringWatchlist from '../components/dashboard/LoiteringWatchlist'
 import RecommendationCard from '../components/RecommendationCard'
 import EvidenceDrawer from '../components/EvidenceDrawer'
 import { useNavigate } from 'react-router-dom'
 import {
-  BarChart,
-  Bar,
-  Cell,
-  XAxis,
-  YAxis,
   Tooltip as ChartTooltip,
   ResponsiveContainer,
   LineChart,
   Line,
   CartesianGrid,
+  XAxis,
+  YAxis,
 } from 'recharts'
 import { useReadiness, useThroughput } from '../hooks/useReadiness'
 import { useRiskScores } from '../hooks/useRiskScores'
@@ -27,7 +27,7 @@ import { useReplay } from '../context/ReplayContext'
 import { useRole } from '../hooks/useRole'
 import { useRecommendations } from '../hooks/useRecommendations'
 import type { Recommendation } from '../api/recommendations'
-import type { WorkflowStatus, TaskPriority, RiskLevel } from '../api/types'
+import type { WorkflowStatus, TaskPriority } from '../api/types'
 import { humanize } from '../utils/humanize'
 import { COLORS } from '../lib/colors'
 
@@ -47,32 +47,6 @@ const PRIORITY_COLOR: Record<TaskPriority, string> = {
   high:     COLORS.warning,
   normal:   COLORS.primary,
   low:      COLORS.subtle,
-}
-
-function scoreIntent(score: number | null) {
-  if (score === null) return COLORS.subtle
-  if (score >= 0.75) return COLORS.success
-  if (score >= 0.5)  return COLORS.warning
-  return COLORS.danger
-}
-
-function pct(n: number | null): string {
-  if (n === null) return '—'
-  return `${Math.round(n * 100)}%`
-}
-
-const RISK_COLOR: Record<RiskLevel, string> = {
-  low:      COLORS.success,
-  moderate: COLORS.warning,
-  high:     COLORS.orange,
-  critical: COLORS.danger,
-}
-
-const RISK_LABEL: Record<RiskLevel, string> = {
-  low:      'LOW',
-  moderate: 'MOD',
-  high:     'HIGH',
-  critical: 'CRIT',
 }
 
 export default function DashboardPage() {
@@ -160,167 +134,35 @@ export default function DashboardPage() {
         </Callout>
       )}
 
-      {/* KPI row */}
-      <div className="dashboard-kpi-row">
-        <div className="dashboard-kpi">
-          <span className="dashboard-kpi-label bp6-text-muted">Total Tasks</span>
-          <span className="dashboard-kpi-value">
-            {loading ? <span className={Classes.SKELETON} style={{ width: 40, display: 'inline-block' }}>&nbsp;</span> : totalTasks}
-          </span>
-        </div>
-        <div className="dashboard-kpi">
-          <span className="dashboard-kpi-label bp6-text-muted">Resolved</span>
-          <span className="dashboard-kpi-value" style={{ color: COLORS.success }}>
-            {loading ? <span className={Classes.SKELETON} style={{ width: 56, display: 'inline-block' }}>&nbsp;</span> : (
-              <>
-                {resolvedCount}
-                <span className="dashboard-kpi-sub">
-                  {totalTasks > 0 ? ` (${Math.round(resolvedCount / totalTasks * 100)}%)` : ''}
-                </span>
-              </>
-            )}
-          </span>
-        </div>
-        <div className="dashboard-kpi">
-          <span className="dashboard-kpi-label bp6-text-muted">Blocked</span>
-          <span className="dashboard-kpi-value" style={{ color: blockedCount > 0 ? COLORS.danger : COLORS.success }}>
-            {loading ? <span className={Classes.SKELETON} style={{ width: 32, display: 'inline-block' }}>&nbsp;</span> : blockedCount}
-          </span>
-        </div>
-        <div className="dashboard-kpi">
-          <span className="dashboard-kpi-label bp6-text-muted">Avg Readiness</span>
-          <span className="dashboard-kpi-value" style={{ color: scoreIntent(avgReadiness) }}>
-            {loading ? <span className={Classes.SKELETON} style={{ width: 48, display: 'inline-block' }}>&nbsp;</span> : pct(avgReadiness)}
-          </span>
-        </div>
-      </div>
+      <DashboardKpiRow
+        loading={loading}
+        totalTasks={totalTasks}
+        resolvedCount={resolvedCount}
+        blockedCount={blockedCount}
+        avgReadiness={avgReadiness}
+      />
 
       <div className="dashboard-grid">
-        {/* Site readiness */}
-        <div className="dashboard-card">
-          <h4 className="dashboard-card-title bp6-heading">Site Readiness</h4>
-          {loading ? (
-            <div className="readiness-list">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="readiness-row">
-                  <span className={`readiness-name ${Classes.SKELETON}`} style={{ width: 80 }}>&nbsp;</span>
-                  <div className="readiness-bar-track">
-                    <div className={Classes.SKELETON} style={{ width: '60%', height: '100%' }}>&nbsp;</div>
-                  </div>
-                  <span className={Classes.SKELETON} style={{ width: 36, display: 'inline-block' }}>&nbsp;</span>
-                  <div className={Classes.SKELETON} style={{ width: 28 }}>&nbsp;</div>
-                </div>
-              ))}
-            </div>
-          ) : readiness.length === 0 ? (
-            <p className="bp6-text-muted">No sites.</p>
-          ) : (
-            <div className="readiness-list">
-              {readiness.map((s) => {
-                const risk = riskBySite[s.site_id]
-                return (
-                  <div key={s.site_id} className="readiness-row">
-                    <span className="readiness-name">{s.site_name}</span>
-                    <div className="readiness-bar-track">
-                      <div
-                        className="readiness-bar-fill"
-                        style={{
-                          width: `${Math.round((s.score ?? 0) * 100)}%`,
-                          backgroundColor: scoreIntent(s.score),
-                        }}
-                      />
-                    </div>
-                    <span className="readiness-pct" style={{ color: scoreIntent(s.score) }}>
-                      {pct(s.score)}
-                    </span>
-                    <div className="readiness-counts">
-                      <Tag minimal intent="success" style={{ fontSize: 10 }}>{s.counts.resolved}R</Tag>
-                      {s.counts.blocked > 0 && (
-                        <Tag minimal intent="danger" style={{ fontSize: 10 }}>{s.counts.blocked}B</Tag>
-                      )}
-                    </div>
-                    {risk && (
-                      <Tooltip
-                        content={
-                          <span style={{ fontSize: 11, lineHeight: 1.6 }}>
-                            <strong>Risk Score: {risk.score}/100</strong><br />
-                            Alerts: {risk.components.alert_pressure.toFixed(1)}&nbsp;·&nbsp;
-                            Tasks: {risk.components.task_health.toFixed(1)}&nbsp;·&nbsp;
-                            Signals: {risk.components.signal_density.toFixed(1)}
-                          </span>
-                        }
-                        placement="top"
-                      >
-                        <Tag
-                          minimal
-                          style={{
-                            fontSize: 10,
-                            fontWeight: 700,
-                            color: RISK_COLOR[risk.risk_level],
-                            borderColor: RISK_COLOR[risk.risk_level],
-                            cursor: 'default',
-                            letterSpacing: '0.04em',
-                          }}
-                        >
-                          {RISK_LABEL[risk.risk_level]}
-                        </Tag>
-                      </Tooltip>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
+        <DashboardReadinessCard
+          loading={loading}
+          readiness={readiness}
+          riskBySite={riskBySite}
+        />
 
-        {/* Task status breakdown */}
-        <div className="dashboard-card">
-          <h4 className="dashboard-card-title bp6-heading">Tasks by Status</h4>
-          {tasksError && <Callout intent="danger" compact>{tasksError.message}</Callout>}
-          {loading ? (
-            <div className={Classes.SKELETON} style={{ width: '100%', height: 180 }}>&nbsp;</div>
-          ) : (
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={statusCounts} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-                <XAxis dataKey="status" tick={{ fill: COLORS.muted, fontSize: 11 }} />
-                <YAxis tick={{ fill: COLORS.muted, fontSize: 11 }} allowDecimals={false} />
-                <ChartTooltip
-                  contentStyle={{ background: COLORS.chartBg, border: `1px solid ${COLORS.chartBorder}`, fontSize: 12 }}
-                  cursor={{ fill: 'rgba(255,255,255,0.04)' }}
-                />
-                <Bar dataKey="count" radius={[3, 3, 0, 0]}>
-                  {statusCounts.map((entry) => (
-                    <Cell key={entry.status} fill={entry.fill} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
+        <DashboardBarChartCard
+          title="Tasks by Status"
+          loading={loading}
+          data={statusCounts}
+          xKey="status"
+          error={tasksError?.message ?? null}
+        />
 
-        {/* Task priority breakdown */}
-        <div className="dashboard-card">
-          <h4 className="dashboard-card-title bp6-heading">Tasks by Priority</h4>
-          {loading ? (
-            <div className={Classes.SKELETON} style={{ width: '100%', height: 180 }}>&nbsp;</div>
-          ) : (
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={priorityCounts} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-                <XAxis dataKey="priority" tick={{ fill: COLORS.muted, fontSize: 11 }} />
-                <YAxis tick={{ fill: COLORS.muted, fontSize: 11 }} allowDecimals={false} />
-                <ChartTooltip
-                  contentStyle={{ background: COLORS.chartBg, border: `1px solid ${COLORS.chartBorder}`, fontSize: 12 }}
-                  cursor={{ fill: 'rgba(255,255,255,0.04)' }}
-                />
-                <Bar dataKey="count" radius={[3, 3, 0, 0]}>
-                  {priorityCounts.map((entry) => (
-                    <Cell key={entry.priority} fill={entry.fill} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
+        <DashboardBarChartCard
+          title="Tasks by Priority"
+          loading={loading}
+          data={priorityCounts}
+          xKey="priority"
+        />
 
         <>
           {/* Recent alerts — rule fires */}

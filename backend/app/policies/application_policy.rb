@@ -65,17 +65,30 @@ class ApplicationPolicy
     if area_scope.klass.column_names.include?("organization_id")
       # Global/org-null AOs are readable on the AO surface, but attached
       # doctrine/operational data stays org-owned unless a policy opts in.
-      organization_ids = include_global ? [user.organization_id, nil] : user.organization_id
+      organization_ids = include_global ? [ user.organization_id, nil ] : user.organization_id
       return area_scope.where(organization_id: organization_ids).exists?
     end
 
     AreaOfOperation.joins(:sites).where(id: area_id, sites: { organization_id: user.organization_id }).exists?
   end
 
+  # Dedicated AO catalog/surface may expose org-null global AOs to org-scoped
+  # users who are not pinned to a single AO. This helper should only be used by
+  # the AO surface itself and other explicitly global-aware reads.
+  def area_of_operation_surface_accessible?(area_or_id)
+    area_of_operation_accessible?(area_or_id, include_global: true)
+  end
+
+  # Attached doctrine and operational records remain tenant-owned unless a
+  # policy explicitly opts into shared/global visibility.
+  def owned_area_of_operation_accessible?(area_or_id)
+    area_of_operation_accessible?(area_or_id)
+  end
+
   def incident_accessible?(incident)
     return site_accessible?(incident.site) if incident.site.present?
 
-    area_of_operation_accessible?(incident.area_of_operation_id)
+    owned_area_of_operation_accessible?(incident.area_of_operation_id)
   end
 
   def signal_rule_match_accessible?(match)
@@ -120,7 +133,7 @@ class ApplicationPolicy
       if user.organization_id.present?
         klass = scoped.respond_to?(:klass) ? scoped.klass : scoped
         if klass.column_names.include?("organization_id")
-          organization_ids = include_global ? [user.organization_id, nil] : user.organization_id
+          organization_ids = include_global ? [ user.organization_id, nil ] : user.organization_id
           scoped = scoped.where(organization_id: organization_ids)
         else
           scoped = scoped.joins(:sites).where(sites: { organization_id: user.organization_id }).distinct
@@ -128,6 +141,14 @@ class ApplicationPolicy
       end
       scoped = scoped.where(id: user.area_of_operation_id) if user.area_of_operation_id.present?
       scoped
+    end
+
+    def area_of_operation_surface_scope(base = AreaOfOperation.all)
+      area_of_operation_scope(base, include_global: true)
+    end
+
+    def owned_area_of_operation_scope(base = AreaOfOperation.all)
+      area_of_operation_scope(base)
     end
 
     # Filters scope to records whose `column` matches the user's AO when the

@@ -120,6 +120,10 @@ RSpec.describe "API scoped access", type: :request do
     create(:user, :viewer, organization: org_a, area_of_operation: nil)
   end
 
+  let(:org_scoped_commander) do
+    create(:user, :commander, organization: org_a, area_of_operation: nil)
+  end
+
   let(:scoped_operator) do
     create(:user, :operator, organization: org_a, area_of_operation: ao_a)
   end
@@ -150,6 +154,36 @@ RSpec.describe "API scoped access", type: :request do
       get "/api/areas_of_operation/#{global_ao.id}", headers: auth_headers(org_scoped_viewer)
       expect(response).to have_http_status(:ok)
       expect(json_body.fetch("id")).to eq(global_ao.id)
+    end
+
+    it "keeps global AO attached doctrine hidden from org-scoped users" do
+      global_ao = create(:area_of_operation, name: "AO Global Shared")
+      global_rule = create(:correlation_rule, area_of_operation: global_ao, name: "Rule Global")
+      local_chokepoint = create(:chokepoint, area_of_operation: ao_a, name: "Chokepoint Alpha")
+      global_chokepoint = create(:chokepoint, area_of_operation: global_ao, name: "Chokepoint Global")
+      global_intent = create(:commander_intent, area_of_operation: global_ao, title: "Global Intent")
+      global_pace_plan = create(:pace_plan, area_of_operation: global_ao, primary_plan: "Global P")
+      global_salute = create(:salute_report, area_of_operation: global_ao, activity: "Global activity", location: "Grid 9")
+
+      get "/api/correlation_rules", headers: auth_headers(org_scoped_viewer)
+      expect(response).to have_http_status(:ok)
+      expect(json_body.fetch("data").map { |rule| rule.fetch("id") }).to contain_exactly(rule_a.id)
+
+      get "/api/correlation_rules/#{global_rule.id}", headers: auth_headers(org_scoped_viewer)
+      expect(response).to have_http_status(:not_found)
+
+      get "/api/chokepoints", headers: auth_headers(org_scoped_viewer)
+      expect(response).to have_http_status(:ok)
+      expect(json_body.fetch("data").map { |point| point.fetch("id") }).to contain_exactly(local_chokepoint.id)
+
+      get "/api/chokepoints/#{global_chokepoint.id}", headers: auth_headers(org_scoped_viewer)
+      expect(response).to have_http_status(:not_found)
+
+      get "/api/planning", headers: auth_headers(org_scoped_commander)
+      expect(response).to have_http_status(:ok)
+      expect(json_body.fetch("commander_intents").map { |intent| intent.fetch("id") }).not_to include(global_intent.id)
+      expect(json_body.fetch("pace_plans").map { |plan| plan.fetch("id") }).not_to include(global_pace_plan.id)
+      expect(json_body.fetch("salute_reports").map { |report| report.fetch("id") }).not_to include(global_salute.id)
     end
 
     it "limits tasks to scoped sites" do
@@ -376,7 +410,8 @@ RSpec.describe "API scoped access", type: :request do
 
     it "forbids mutating existing org-null global AOs and attached doctrine" do
       global_ao = create(:area_of_operation, name: "AO Global Shared")
-      org_scoped_commander = create(:user, :commander, organization: org_a, area_of_operation: nil)
+      global_intent = create(:commander_intent, area_of_operation: global_ao, title: "Existing Global Intent")
+      global_pace_plan = create(:pace_plan, area_of_operation: global_ao, primary_plan: "Global P")
 
       patch "/api/areas_of_operation/#{global_ao.id}",
             params: {
@@ -457,6 +492,26 @@ RSpec.describe "API scoped access", type: :request do
            headers: auth_headers(org_scoped_commander),
            as: :json
       expect(response).to have_http_status(:forbidden)
+
+      patch "/api/commander_intents/#{global_intent.id}",
+            params: {
+              commander_intent: {
+                title: "Updated Global Intent"
+              }
+            },
+            headers: auth_headers(org_scoped_commander),
+            as: :json
+      expect(response).to have_http_status(:not_found)
+
+      patch "/api/pace_plans/#{global_pace_plan.id}",
+            params: {
+              pace_plan: {
+                primary_plan: "Updated Global P"
+              }
+            },
+            headers: auth_headers(org_scoped_commander),
+            as: :json
+      expect(response).to have_http_status(:not_found)
     end
 
     it "forbids out-of-scope doctrine and rule creation" do

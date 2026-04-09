@@ -1,8 +1,4 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import {
-  Callout,
-  Spinner,
-} from '@blueprintjs/core'
 import { useQueryClient } from '@tanstack/react-query'
 import { useSites } from '../hooks/useSites'
 import { useTasks } from '../hooks/useTasks'
@@ -17,8 +13,9 @@ import { useChokepoints } from '../hooks/useChokepoints'
 import { useRole } from '../hooks/useRole'
 import { useReplayParams } from '../hooks/useReplayParams'
 import { useAssetTrails } from '../hooks/useAssetTrails'
+import { useMapE2EBridge } from '../hooks/useMapE2EBridge'
 import { useEntitySelectionSync } from '../hooks/useEntitySelectionSync'
-import { useMapLibreEngine, MAP_STYLE_CONFIGS, type MapStyleKey } from '../hooks/useMapLibreEngine'
+import { useMapLibreEngine, type MapStyleKey } from '../hooks/useMapLibreEngine'
 import type { Task } from '../api/types'
 import { useLocation } from 'react-router-dom'
 import { assetDisplayPosition, getLiveTelemetryReading } from '../lib/assetPresentation'
@@ -26,55 +23,8 @@ import { buildCoverageCircles } from '../lib/coverage'
 import { parseEntitySelectionRoute } from '../lib/entitySelectionRoute'
 import { computeReadiness } from '../lib/formatters'
 import { buildReplayVessel } from '../lib/replayVessel'
-import { SIGNAL_COLORS, SIGNAL_LABELS } from '../lib/signalConfig'
-import { MapSitePanel } from '../components/MapSitePanel'
-import { MapAssetPanel } from '../components/MapAssetPanel'
-import { MapSignalPanel } from '../components/MapSignalPanel'
-
-const E2E_PICK_SEARCH_OFFSETS: Array<{ x: number; y: number }> = (() => {
-  const offsets = [{ x: 0, y: 0 }]
-  for (let radius = 2; radius <= 30; radius += 2) {
-    for (let y = -radius; y <= radius; y += 2) {
-      for (let x = -radius; x <= radius; x += 2) {
-        if (Math.max(Math.abs(x), Math.abs(y)) !== radius) continue
-        offsets.push({ x, y })
-      }
-    }
-  }
-  return offsets
-})()
-
-type MapE2ESelectionTarget = {
-  id: string
-  name: string
-}
-
-type MapE2ECanvasPoint = {
-  x: number
-  y: number
-}
-
-type MapE2EApi = {
-  getState: () => {
-    mapLoaded: boolean
-    zoom: number | null
-    telemetryConnected: boolean
-    signalsConnected: boolean
-    signalCount: number
-    selectedSiteId: string | null
-    selectedAssetId: string | null
-    selectedSignalId: string | null
-  }
-  getFirstSiteTarget: () => MapE2ESelectionTarget | null
-  projectPosition: (lng: number, lat: number) => MapE2ECanvasPoint | null
-  getPickableSiteCanvasTarget: (siteId: string) => MapE2ECanvasPoint | null
-}
-
-declare global {
-  interface Window {
-    __resilienceMapE2E?: MapE2EApi
-  }
-}
+import { MapOverlayControls } from '../components/map/MapOverlayControls'
+import { MapSelectionPanels } from '../components/map/MapSelectionPanels'
 
 export default function MapPage() {
   const location    = useLocation()
@@ -294,54 +244,19 @@ export default function MapPage() {
     queryClient.invalidateQueries({ queryKey: ['readiness'] })
   }, [queryClient])
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-
-    if (window.localStorage.getItem('resilience.e2e') !== '1') {
-      delete window.__resilienceMapE2E
-      return
-    }
-
-    window.__resilienceMapE2E = {
-      getState: () => ({
-        mapLoaded,
-        zoom: getZoom(),
-        telemetryConnected,
-        signalsConnected,
-        signalCount: signals.length,
-        selectedSiteId,
-        selectedAssetId,
-        selectedSignalId,
-      }),
-      getFirstSiteTarget: () => {
-        const site = sites[0]
-        return site ? { id: site.id, name: site.name } : null
-      },
-      projectPosition: (lng: number, lat: number) => projectPosition(lng, lat),
-      getPickableSiteCanvasTarget: (siteId: string) => {
-        const site = sites.find(candidate => candidate.id === siteId)
-        if (!site) return null
-
-        const basePoint = projectPosition(Number(site.longitude), Number(site.latitude))
-        if (!basePoint) return null
-
-        for (const offset of E2E_PICK_SEARCH_OFFSETS) {
-          const x = basePoint.x + offset.x
-          const y = basePoint.y + offset.y
-          const inspection = inspectCanvasPosition(x, y)
-          if (inspection?.kind === 'site' && inspection.id === siteId) {
-            return { x, y }
-          }
-        }
-
-        return null
-      },
-    }
-
-    return () => {
-      delete window.__resilienceMapE2E
-    }
-  }, [getZoom, inspectCanvasPosition, mapLoaded, projectPosition, selectedAssetId, selectedSignalId, selectedSiteId, signals.length, signalsConnected, sites, telemetryConnected])
+  useMapE2EBridge({
+    mapLoaded,
+    getZoom,
+    telemetryConnected,
+    signalsConnected,
+    signalCount: signals.length,
+    selectedSiteId,
+    selectedAssetId,
+    selectedSignalId,
+    sites,
+    projectPosition,
+    inspectCanvasPosition,
+  })
 
   // ---------------------------------------------------------------------------
   // Render
@@ -350,240 +265,54 @@ export default function MapPage() {
     <div className="map-page">
       <div ref={mapContainerRef} className="map-container" />
 
-      {loading && (
-        <div className="map-overlay map-overlay--loading"><Spinner /></div>
-      )}
+      <MapOverlayControls
+        loading={loading}
+        error={error}
+        isReplaying={isReplaying}
+        telemetryConnected={telemetryConnected}
+        signalError={signalError}
+        mapStyle={mapStyle}
+        showCoverage={showCoverage}
+        showChokepoints={showChokepoints}
+        showTrails={showTrails}
+        trailWindowMinutes={trailWindowMinutes}
+        showSignals={showSignals}
+        showHeatmap={showHeatmap}
+        onMapStyleChange={setMapStyle}
+        onToggleCoverage={() => setShowCoverage(v => !v)}
+        onToggleChokepoints={() => setShowChokepoints(v => !v)}
+        onToggleTrails={() => setShowTrails(v => !v)}
+        onTrailWindowChange={setTrailWindowMinutes}
+        onToggleSignals={() => setShowSignals(v => !v)}
+        onToggleHeatmap={() => setShowHeatmap(v => !v)}
+      />
 
-      {error && (
-        <div className="map-overlay map-overlay--error">
-          <Callout intent="danger" title="Failed to load map data" compact>{error}</Callout>
-        </div>
-      )}
-
-      {/* Telemetry connectivity badge */}
-      {!isReplaying && (
-        <div className={`map-telemetry-badge map-telemetry-badge--${telemetryConnected ? 'live' : 'offline'}`}>
-          <span className="map-telemetry-dot" />
-          {telemetryConnected ? 'TELEMETRY LIVE' : 'TELEMETRY OFFLINE'}
-        </div>
-      )}
-
-      {isReplaying && (
-        <div className="map-overlay map-overlay--error" style={{ top: 56, left: 16, right: 'auto', bottom: 'auto', maxWidth: 420 }}>
-          <Callout intent="warning" title="Replay limitations" compact>
-            Historical AO overlays, risk shading, chokepoint overlays, geofence breach rings, and AIS vessel context remain available during replay. Live-only vessel enrichments remain limited. Historical vessel trails stay available up to the replay timestamp.
-          </Callout>
-        </div>
-      )}
-
-      {!isReplaying && signalError && showSignals && (
-        <div className="map-overlay map-overlay--error" style={{ top: 56, left: 16, right: 'auto', bottom: 'auto', maxWidth: 420 }}>
-          <Callout intent="warning" title="Signal baseline sync degraded" compact>
-            Live signal streaming is connected, but the baseline sync is incomplete. Signals may be temporarily missing while the client retries automatically.
-          </Callout>
-        </div>
-      )}
-
-      {/* Map style switcher */}
-      <div className="map-style-switcher">
-        {(Object.keys(MAP_STYLE_CONFIGS) as MapStyleKey[]).map(key => (
-          <button
-            key={key}
-            className={`map-style-btn${mapStyle === key ? ' map-style-btn--active' : ''}`}
-            onClick={() => setMapStyle(key)}
-          >
-            {MAP_STYLE_CONFIGS[key].label}
-          </button>
-        ))}
-      </div>
-
-      {showCoverage && (
-        <div className="map-coverage-legend">
-          <div className="map-coverage-legend-item">
-            <span className="map-coverage-legend-swatch" style={{ background: 'rgba(61,220,132,0.28)', borderColor: '#3ddc84' }} />
-            Available footprint
-          </div>
-          <div className="map-coverage-legend-item">
-            <span className="map-coverage-legend-swatch" style={{ background: 'rgba(82,130,255,0.24)', borderColor: '#5282ff' }} />
-            Assigned footprint
-          </div>
-          <div className="map-coverage-legend-item">
-            <span className="map-coverage-legend-swatch map-coverage-legend-swatch--dashed" style={{ background: 'rgba(255,179,102,0.18)', borderColor: '#ffb366' }} />
-            Degraded footprint
-          </div>
-        </div>
-      )}
-      <div
-        className={`map-coverage-toggle${showCoverage ? ' map-coverage-toggle--active' : ''}`}
-        onClick={() => setShowCoverage(v => !v)}
-        role="button"
-        aria-label="Toggle sensor coverage"
-      >
-        <span className="map-coverage-toggle-dot" />
-        COVERAGE {showCoverage ? 'ON' : 'OFF'}
-      </div>
-
-      {/* Chokepoint layer legend + toggle */}
-      {showChokepoints && (
-        <div className="map-chokepoint-legend">
-          <div className="map-chokepoint-legend-item">
-            <span className="map-coverage-legend-swatch" style={{ background: 'rgba(255,212,59,0.22)', borderColor: '#ffd43b' }} />
-            Monitor
-          </div>
-          <div className="map-chokepoint-legend-item">
-            <span className="map-coverage-legend-swatch" style={{ background: 'rgba(255,146,43,0.22)', borderColor: '#ff922b' }} />
-            Constrained
-          </div>
-          <div className="map-chokepoint-legend-item">
-            <span className="map-coverage-legend-swatch" style={{ background: 'rgba(250,82,82,0.20)', borderColor: '#fa5252' }} />
-            Contested
-          </div>
-          <div className="map-chokepoint-legend-item">
-            <span className="map-coverage-legend-swatch map-coverage-legend-swatch--dashed" style={{ background: 'rgba(134,142,150,0.18)', borderColor: '#868e96' }} />
-            Closed
-          </div>
-        </div>
-      )}
-      <div
-        className={`map-coverage-toggle${showChokepoints ? ' map-coverage-toggle--active' : ''}`}
-        onClick={() => setShowChokepoints(v => !v)}
-        role="button"
-        aria-label="Toggle chokepoint overlay"
-      >
-        <span className="map-coverage-toggle-dot" />
-        CHOKEPOINTS {showChokepoints ? 'ON' : 'OFF'}
-      </div>
-
-      {/* Asset trail layer toggle + window selector — replay-only */}
-      {isReplaying && showTrails && (
-        <div className="map-coverage-legend">
-          <div className="map-coverage-legend-item">
-            <span className="map-coverage-legend-swatch" style={{ background: 'rgba(61,220,132,0.28)', borderColor: '#3ddc84' }} />
-            Available
-          </div>
-          <div className="map-coverage-legend-item">
-            <span className="map-coverage-legend-swatch" style={{ background: 'rgba(82,130,255,0.24)', borderColor: '#5282ff' }} />
-            Assigned
-          </div>
-          <div className="map-coverage-legend-item">
-            <span className="map-coverage-legend-swatch" style={{ background: 'rgba(255,179,102,0.18)', borderColor: '#ffb366' }} />
-            Degraded
-          </div>
-          <div className="map-coverage-legend-item">
-            <span className="map-coverage-legend-swatch" style={{ background: 'rgba(134,142,150,0.18)', borderColor: '#868e96' }} />
-            Offline
-          </div>
-        </div>
-      )}
-      {isReplaying && (
-        <>
-          <div
-            className={`map-coverage-toggle${showTrails ? ' map-coverage-toggle--active' : ''}`}
-            onClick={() => setShowTrails(v => !v)}
-            role="button"
-            aria-label="Toggle asset trails"
-          >
-            <span className="map-coverage-toggle-dot" />
-            TRAILS {showTrails ? 'ON' : 'OFF'}
-          </div>
-          {showTrails && (
-            <select
-              className="map-trail-window-select"
-              value={trailWindowMinutes}
-              onChange={e => setTrailWindowMinutes(Number(e.target.value))}
-              aria-label="Trail window"
-              title="Trail history window"
-            >
-              <option value={30}>30 min</option>
-              <option value={60}>60 min</option>
-              <option value={120}>120 min</option>
-            </select>
-          )}
-        </>
-      )}
-
-      {/* Signal layer toggle */}
-      {showSignals && (
-        <div className="map-signal-legend">
-          {Object.entries(SIGNAL_LABELS).map(([type, label]) => (
-            <div key={type} className="map-signal-legend-item">
-              <span className="map-signal-legend-dot" style={{ background: SIGNAL_COLORS[type] }} />
-              {label}
-            </div>
-          ))}
-        </div>
-      )}
-      {showSignals && showHeatmap && (
-        <div className="map-heatmap-legend">
-          <div className="map-heatmap-legend-bar" />
-          <div className="map-heatmap-legend-labels">
-            <span>LOW DENSITY</span>
-            <span>HIGH DENSITY</span>
-          </div>
-        </div>
-      )}
-      <div
-        className={`map-signal-toggle${showSignals ? ' map-signal-toggle--active' : ''}`}
-        onClick={() => setShowSignals(v => !v)}
-        role="button"
-        aria-label="Toggle signal layer"
-      >
-        <span className="map-signal-toggle-dot" />
-        SIGNALS {showSignals ? 'ON' : 'OFF'}
-      </div>
-      <div
-        className={`map-heatmap-toggle${showHeatmap ? ' map-heatmap-toggle--active' : ''}`}
-        onClick={() => setShowHeatmap(v => !v)}
-        role="button"
-        aria-label="Toggle signal heatmap"
-      >
-        <span className="map-heatmap-toggle-dot" />
-        HEATMAP {showHeatmap ? 'ON' : 'OFF'}
-      </div>
-
-      {/* ── Site panel ── */}
-      {selectedSite && (
-        <MapSitePanel
-          site={selectedSite}
-          tasks={selectedTasks}
-          readiness={readiness}
-          riskBySiteId={riskBySiteId}
-          isReplaying={isReplaying}
-          role={role}
-          onTransitioned={handleTransitioned}
-          onClose={() => {
-            setSelectedSiteId(null)
-            updateSelectionRoute({ siteId: null, assetId: null, signalId: null })
-          }}
-        />
-      )}
-
-      {/* ── Asset telemetry panel ── */}
-      {selectedAsset && (
-        <MapAssetPanel
-          asset={selectedAsset}
-          liveReading={selectedLiveReading}
-          isReplaying={isReplaying}
-          onClose={() => {
-            setSelectedAssetId(null)
-            updateSelectionRoute({ siteId: null, assetId: null, signalId: null })
-          }}
-        />
-      )}
-
-      {/* ── Signal info panel ── */}
-      {selectedSignal && (
-        <MapSignalPanel
-          signal={selectedSignal}
-          vessel={selectedVessel}
-          vesselTracks={vesselTracks}
-          isReplaying={isReplaying}
-          onClose={() => {
-            setSelectedSignalId(null)
-            updateSelectionRoute({ siteId: null, assetId: null, signalId: null })
-          }}
-        />
-      )}
+      <MapSelectionPanels
+        selectedSite={selectedSite}
+        selectedTasks={selectedTasks}
+        readiness={readiness}
+        riskBySiteId={riskBySiteId}
+        role={role}
+        selectedAsset={selectedAsset}
+        selectedLiveReading={selectedLiveReading}
+        selectedSignal={selectedSignal}
+        selectedVessel={selectedVessel}
+        vesselTracks={vesselTracks}
+        isReplaying={isReplaying}
+        onTransitioned={handleTransitioned}
+        onCloseSite={() => {
+          setSelectedSiteId(null)
+          updateSelectionRoute({ siteId: null, assetId: null, signalId: null })
+        }}
+        onCloseAsset={() => {
+          setSelectedAssetId(null)
+          updateSelectionRoute({ siteId: null, assetId: null, signalId: null })
+        }}
+        onCloseSignal={() => {
+          setSelectedSignalId(null)
+          updateSelectionRoute({ siteId: null, assetId: null, signalId: null })
+        }}
+      />
     </div>
   )
 }

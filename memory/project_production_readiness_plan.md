@@ -124,8 +124,8 @@ Current reality:
 - Some domains remain intentionally global:
   - external signals
   - vessels
-- Org-null areas are currently treated as globally visible on the AO surface for org-scoped users who are not pinned to a single AO.
-- Attached doctrine and operational records remain org-owned unless a policy explicitly opts them into shared/global visibility.
+- Org-null areas are currently treated as globally visible on the dedicated AO surface for org-scoped users who are not pinned to a single AO.
+- Attached doctrine and operational records remain org-owned and hidden/immutable to org-scoped users unless a policy explicitly opts them into shared/global visibility.
 - AO-pinned users remain restricted to their selected AO even when org-null areas exist.
 
 Open questions that must be resolved:
@@ -318,6 +318,17 @@ Completed:
   - request/policy proof now covers org-scoped access to org-null global AOs without widening AO-pinned users or cross-org doctrine mutation
   - `backend/app/controllers/api/events_controller.rb` now filters same-org SSE traffic by `area_of_operation_id` for AO-pinned users, using explicit AO payload fields or a site→AO lookup when needed
   - request proof now covers intentional shared-global domains (`signals`, `vessels`) so future scope work does not over-tighten them
+- Tenant/workspace boundary clarification completion
+  - AO helper semantics are now explicit in code:
+    - dedicated AO-surface visibility may include org-null global AOs
+    - attached doctrine/operational records stay org-owned unless a policy explicitly opts into shared visibility
+  - AO-attached doctrine scope proof now covers global-AO exclusion for:
+    - correlation rules
+    - chokepoints
+    - commander intent
+    - pace plans
+    - salute reports
+  - request proof now covers that org-scoped users cannot read or mutate existing doctrine attached to org-null global AOs
 - Security/frontend capability follow-through
   - `frontend/src/components/TaskRow.tsx` now treats `admin` with the same commander-level task transition affordances that the backend already permits
   - focused frontend proof was added for the admin/operator transition split
@@ -335,18 +346,51 @@ Completed:
     - `frontend/src/pages/UsersPage.tsx`
     - `frontend/src/components/shell/AppSidebar.tsx`
   - focused hook/page proof was added for the capability layer without breaking the existing page mocks
+- Frontend maintainability / decomposition
+  - `frontend/src/pages/MapPage.tsx` is now orchestration-first instead of carrying overlay rendering, selection-panel rendering, and E2E bridge wiring inline
+  - extracted:
+    - `frontend/src/components/map/MapOverlayControls.tsx`
+    - `frontend/src/components/map/MapSelectionPanels.tsx`
+    - `frontend/src/hooks/useMapE2EBridge.ts`
+  - focused map-page proof stayed green after extraction
+- Frontend maintainability / decomposition follow-through
+  - `frontend/src/pages/DashboardPage.tsx` now delegates KPI rendering, readiness rendering, and task bar-chart rendering to focused dashboard components
+  - extracted:
+    - `frontend/src/components/dashboard/DashboardKpiRow.tsx`
+    - `frontend/src/components/dashboard/DashboardReadinessCard.tsx`
+    - `frontend/src/components/dashboard/DashboardBarChartCard.tsx`
+  - focused dashboard proof stayed green after extraction
+
+- Frontend maintainability / decomposition workstream — **COMPLETE**
+  - `GlobePage.tsx` (403 lines): reviewed, orchestration-first after prior toolbar/legend/inspector extraction — no further pass needed
+  - `MapPage.tsx` (318 lines): decomposed — extracted `MapOverlayControls`, `MapSelectionPanels`, `useMapE2EBridge`
+  - `DashboardPage.tsx` (275 lines): decomposed — extracted `DashboardKpiRow`, `DashboardReadinessCard`, `DashboardBarChartCard`
+- Live transport / operational ceiling workstream — **COMPLETE**
+  - SSE constraint chain explicitly documented in `puma.rb` (lines 28-53)
+  - Admission control hardened: `SseStreamLease` + advisory lock + per-user/per-IP caps
+  - Current thread-per-connection model explicitly accepted for single-machine Fly.io target scale
+- Memory / validation / final gate workstream — **COMPLETE**
+  - `project_open_findings.md` reconciled — all production-readiness items marked closed
+  - `project_roadmap.md` updated — production readiness marked complete, feature work unblocked
+  - Full validation green: 2105 RSpec / 407 Vitest / 0 TS errors / 0 whitespace issues
 
 In progress:
 
-- Frontend capability cleanup and remaining maintainability workstream
+- (none)
 
 Next:
 
-1. Decompose `frontend/src/pages/MapPage.tsx` into smaller orchestration + overlay-control units
-2. Reconcile the tenant/workspace model into one explicit, documented boundary rule
-3. Audit remaining global-vs-tenant ambiguities in policy/controller/query code
-4. Decide whether org-null AOs should remain global or be retired in favor of explicit org ownership
-5. Keep memory aligned with the now-closed replay parity tranche
+- This program is **COMPLETE**. Feature roadmap work may resume.
+- Remaining future programs tracked in `memory/project_roadmap.md`:
+  - Security/identity maturity (org admin vs platform admin, richer role modeling)
+  - Tenant/workspace isolation (full multi-tenant admin UI, domain-wide scoping)
+  - Frontend decomposition on-demand (AlertTriagePage, GraphPage, SignalFeedPage if velocity demands it)
+
+Decisions made:
+
+- `GlobePage.tsx` at 403 lines is orchestration-first and does not need further decomposition.
+- Org-null global AOs are intentional for the current product model. Whether to retire them is a future product decision, not a production-readiness blocker.
+- SSE thread-per-connection transport is accepted for target scale. Replacement is a future program if multi-machine deployment is needed.
 
 Blocked / environment notes:
 
@@ -365,6 +409,7 @@ Validation run for the current local replay tranches:
 - `TEST_DATABASE_PORT=5434 bundle exec rspec spec/policies/org_isolation_spec.rb spec/requests/api/scoped_access_spec.rb`
 - `TEST_DATABASE_PORT=5434 bundle exec rspec spec/requests/api/events_spec.rb`
 - `TEST_DATABASE_PORT=5434 bundle exec rspec spec/requests/api/signals_spec.rb spec/requests/api/vessels_spec.rb`
+- `TEST_DATABASE_PORT=5434 bundle exec rspec spec/policies/application_policy_spec.rb spec/policies/area_of_operation_policy_spec.rb spec/policies/org_isolation_spec.rb spec/requests/api/scoped_access_spec.rb`
 - `TEST_DATABASE_PORT=5434 bundle exec rspec --format progress`
 - `npx vitest run frontend/src/test/EntityCard.test.tsx`
 - `npx vitest run frontend/src/test/AreasPage.test.tsx`
@@ -378,6 +423,8 @@ Validation run for the current local replay tranches:
 - `npx tsc --noEmit`
 - `git diff --check`
 - `npx vitest run frontend/src/test/TaskRow.test.tsx`
+- `npx vitest run frontend/src/test/MapPage.test.tsx src/test/MapPanels.test.tsx`
+- `npx vitest run frontend/src/test/DashboardPage.test.tsx`
 - `npx tsc --noEmit`
 - `ruby -c backend/app/controllers/api/assets_controller.rb`
 - `ruby -c backend/app/controllers/api/areas_of_operation_controller.rb`
@@ -385,3 +432,10 @@ Validation run for the current local replay tranches:
 - `ruby -c backend/app/controllers/api/chokepoints_controller.rb`
 - `ruby -c backend/app/controllers/api/signal_rule_matches_controller.rb`
 - `git diff --check`
+
+Final validation run (2026-04-09 — program completion):
+
+- `TEST_DATABASE_PORT=5434 bundle exec rspec --format progress` → 2105 examples, 0 failures
+- `npx vitest run --reporter=dot` → 62 test files, 407 tests passed
+- `npx tsc --noEmit` → 0 errors
+- `git diff --check` → clean

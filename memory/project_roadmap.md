@@ -17,8 +17,8 @@ If this roadmap disagrees with code, prefer code and then update memory.
 
 ## Current Working Rule
 
-No new feature development should start until `memory/project_production_readiness_plan.md` is complete or explicitly narrowed.
-This roadmap remains the place for future build direction, but it is not the active execution queue right now.
+The production-readiness program is **complete** as of 2026-04-09.
+Feature roadmap work may now resume. This file is the active execution queue.
 
 ## Shipped
 
@@ -41,22 +41,21 @@ This roadmap remains the place for future build direction, but it is not the act
 - Viewer-role schema parity plus scoped request-matrix proof
 - Replay parity for recommendations, ontology query, incident detail, and alert triage
 - Replay parity across entity drawers, areas, correlation rules, site detail, dashboard, and map/globe operational overlays
+- Production readiness program (replay parity, tenant boundary hardening, security/capability maturity, frontend decomposition, SSE ceiling documentation)
 
 ## Current Major Tracks
 
 These are the real remaining programs. They are not “small hardening patches.”
 
-1. Production readiness execution
-   - tracked in `memory/project_production_readiness_plan.md`
-   - takes precedence over all roadmap feature work
-2. Security/identity maturity
-   - richer role modeling beyond `viewer` / `operator` / `commander`
-   - session lifecycle beyond single-token logout revocation
-3. Tenant/workspace isolation
-   - domain-wide data scoping
-   - policy/query isolation
-4. Frontend decomposition
-   - split the largest engine/page files into smaller maintained units
+1. ~~Production readiness execution~~ — **COMPLETE** (2026-04-09)
+2. Security/identity maturity (future)
+   - richer role modeling beyond current 4-role system
+   - org admin vs platform admin separation
+3. Tenant/workspace isolation (future)
+   - full multi-tenant admin UI and workspace management
+   - domain-wide data scoping beyond current org/AO enforcement
+4. Frontend decomposition (future, on-demand)
+   - remaining large pages (`AlertTriagePage`, `GraphPage`, `SignalFeedPage`) if velocity demands it
 5. Spatial baseline/documentation cleanup
    - keep PostGIS-backed schema reality, local test setup, and comments/docs aligned
 
