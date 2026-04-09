@@ -1,21 +1,22 @@
-# Resilience — Mission Operations Console
+# Resilience
 
-**A full-stack operational intelligence platform for monitoring distributed field operations in real time.**
+**Operational intelligence platform for monitoring distributed field operations, fusing multi-source intelligence, and coordinating tactical response in real time.**
 
-Built as a portfolio project targeting defense-tech companies (Palantir, Anduril, Reveal Technology). Resilience demonstrates the kind of engineering patterns found in real mission-critical software: audit-safe data models, server-enforced state machines, real-time intelligence fusion, and AI grounded to real operational data.
+Resilience is the kind of software that runs inside a TOC (Tactical Operations Center). It ingests live sensor feeds, correlates threat patterns, fuses alerts into incidents, and gives operators a single operational picture across 2D map, 3D globe, and structured data surfaces. Every mutation is audit-logged transactionally. Every surface supports time-travel replay. The authorization model enforces organization and area-of-operation boundaries at every layer.
 
-🔗 **Live demo: [https://resilience-ops.fly.dev](https://resilience-ops.fly.dev)**
+Built as a portfolio project targeting defense-tech engineering roles (Palantir, Anduril, Reveal Technology, Shield AI). The codebase is production-hardened: 2,100+ backend specs, 400+ frontend tests, 13 Playwright E2E scenarios, Pundit authorization on every endpoint, and CI that gates on security scanning, type safety, and performance budgets before auto-deploying.
 
-| Role | Email | Password | Access |
-|------|-------|----------|--------|
-| Commander | commander@resilience.mil | password123 | Full read/write — rules, signals, AI, site management |
-| Operator | operator@resilience.mil | password123 | Task management, alert triage, incident workspace |
+**Live:** [https://resilience-ops.fly.dev](https://resilience-ops.fly.dev)
+
+| Role | Email | Password |
+|------|-------|----------|
+| Commander | commander@resilience.mil | password123 |
+| Operator | operator@resilience.mil | password123 |
+| Viewer | viewer@resilience.mil | password123 |
 
 ---
 
 ## Quick Start
-
-You only need [Docker](https://docs.docker.com/get-docker/) with Compose support (Docker Desktop on Mac/Windows, or Docker Engine + the Compose plugin on Linux).
 
 ```bash
 git clone https://github.com/TimurMishiev/resilience.git
@@ -23,289 +24,304 @@ cd resilience
 docker compose up
 ```
 
-Open **[http://localhost:3000](http://localhost:3000)**.
+Open **http://localhost:3000**. Demo data is seeded automatically.
 
-Demo data (sites, tasks, signals, rules, incidents, vessels, risk scores) is seeded automatically on first run and is available immediately. External live feeds (seismic, aircraft, disaster alerts) begin opportunistically — some start right away, others require free credentials or have a startup delay. See the [Signal Feeds](#live-signal-feeds) section for details.
-
-> **Note on startup logs:** You may see warnings like `[AISFeed] AISHUB_USERNAME not set` or similar for optional feeds that require credentials. These are expected — the app is fully usable with demo data and does not require any feed credentials to run.
-
-> **Want AI briefings?** Add an Anthropic API key (free at [console.anthropic.com](https://console.anthropic.com)):
+> **AI features** require an Anthropic API key:
 > ```bash
 > ANTHROPIC_API_KEY=sk-ant-... docker compose up
 > ```
 
-> **Want Sentry error reporting too?** The Rails DSN is runtime config, but the browser DSN is compiled into the SPA bundle, so rebuild when you add it:
-> ```bash
-> SENTRY_DSN=https://backend-public-key@o0.ingest.sentry.io/0 \
-> VITE_SENTRY_DSN=https://frontend-public-key@o0.ingest.sentry.io/0 \
-> docker compose up --build
-> ```
-
-> **Stopping:** `Ctrl+C` in the terminal, then `docker compose down` to remove containers. Your data is preserved in a Docker volume — run `docker compose down -v` to reset everything.
+> **Stopping:** `Ctrl+C`, then `docker compose down`. Add `-v` to reset all data.
 
 ---
 
-## What Is Resilience?
+## Architecture
 
-Imagine you're running a network of 9 field sites across multiple regions. Each site has assets deployed, tasks assigned to operators, and a constant stream of intelligence signals coming in — aircraft approaching, seismic activity, GPS jamming, vessels going dark.
+```
+                          ┌──────────────────────────────────────────────┐
+                          │            Frontend  (React 19 / TS)        │
+                          │  24 pages  ·  57 components  ·  48 hooks   │
+                          │  Blueprint.js  ·  MapLibre GL  ·  CesiumJS │
+                          └────────────────────┬─────────────────────────┘
+                                               │  REST  +  SSE
+                          ┌────────────────────▼─────────────────────────┐
+                          │           Backend  (Rails 8 API)             │
+                          │  28 models  ·  30 policies  ·  65 services  │
+                          │  29 controllers  ·  14 jobs  ·  67 migrations│
+                          └──┬──────────────────┬───────────────────┬────┘
+                             │                  │                   │
+               ┌─────────────▼──────┐  ┌───────▼────────┐  ┌──────▼──────────┐
+               │  PostgreSQL 17     │  │  SolidQueue    │  │  SSE Broadcaster │
+               │  + PostGIS         │  │  22 recurring  │  │  PG LISTEN/      │
+               │  UUID PKs          │  │  jobs          │  │  NOTIFY relay    │
+               │  structure.sql     │  │                │  │                  │
+               └────────────────────┘  └────────────────┘  └──────────────────┘
+```
 
-Resilience is the operations console that ties it all together:
+### Signal-to-Action Pipeline
 
-- **You see everything in one place** — a live map showing all 7 signal types, site health, asset positions, and geofenced areas of operation
-- **The system watches for threats automatically** — correlation rules fire when signals match dangerous patterns (e.g. "GPS jamming within 100km of a site AND aircraft approaching within 50km"), generating alerts and tasks without manual intervention
-- **Incidents are created and tracked** — when rules fire, signals are fused into incidents. Operators take ownership, add notes, and work through a structured 5-tab workspace
-- **Every action is auditable** — every state change writes an immutable before/after snapshot. You can time-travel back to any past moment and see exactly what the operational picture looked like
-- **The AI knows what's real** — the briefing and recommendation engine are grounded in actual audit events, signal records, and rule fires. Hallucinated references are rejected before they reach the UI
+```
+External Feeds (7)              Correlation Engine              Operator Workflow
+─────────────────     ────────────────────────────     ───────────────────────────
+USGS seismic     ─┐                                    ┌─ Alert triage (4-state)
+OpenSky aircraft ─┤   ExternalSignal                   ├─ Incident fusion
+AISHub vessels   ─┤     │                              ├─ Kill-chain prosecution
+NASA FIRMS fire  ─┼───► │ ── Rules (simple/compound) ─┼─ Task assignment
+GPSJam jamming   ─┤     │       │                      ├─ AI recommendations
+GDACS disasters  ─┤     │       └── Confidence scoring ├─ Operator notes (append-only)
+ACLED conflict   ─┘     │                              └─ Full audit trail
+                        └── Vessel upsert / gap / loiter
+```
 
-The two roles reflect how real ops teams work:
-- **Commander** — sets the rules, manages sites, injects signals, reviews AI briefings, resolves incidents
-- **Operator** — triages alerts, owns tasks, takes incident assignments, adds operational notes
+1. **Ingest** -- SolidQueue polls 7 feeds on independent schedules (30s to 1h). Each signal is stored as an `ExternalSignal` with type, coordinates, magnitude, and raw payload.
+2. **Correlate** -- Every 30 seconds, `Correlations::EvaluateRecentJob` runs all active rules against recent signals. Rules support single conditions, compound AND/OR across signal types, proximity thresholds, and magnitude floors. Cooldown is claimed atomically (`UPDATE ... WHERE last_fired_at <= ?`) so concurrent workers cannot double-fire.
+3. **Fuse** -- `FusionService` groups related alerts into incidents. `RuleFiringService` computes confidence scores (proximity + freshness + corroboration). Geofence breaches are detected independently.
+4. **Act** -- Operators triage alerts through a 4-state machine (unacknowledged -> acknowledged -> investigating -> closed), work incidents in a 5-tab workspace, and execute AI-generated recommendations that have been validated against real entity references.
+5. **Broadcast** -- Every state change fires an SSE event via PostgreSQL `LISTEN`/`NOTIFY` relay. All connected clients update without polling.
 
 ---
 
-## Features
+## Domain Model
+
+| Entity | Purpose |
+|--------|---------|
+| **Organization** | Tenant boundary. All operational data is org-scoped. |
+| **AreaOfOperation** | Geographic polygon with threat posture. Scopes correlation rules, doctrine, and operational data. Org-null AOs are global intelligence overlays. |
+| **Site** | Monitored location with status, geofence, readiness score, and risk level. |
+| **Asset** | Deployable resource (UAV, sensor, vehicle) with live telemetry stream. |
+| **ExternalSignal** | Raw inbound intelligence from any of 7 feed types. |
+| **Vessel** | First-class AIS entity with track history, gap detection, and loitering analysis. |
+| **CorrelationRule** | Threat pattern matcher -- simple or compound AND/OR conditions with MITRE ATT&CK tagging. |
+| **SignalRuleMatch** | Alert -- links signal, rule, and site with confidence score and 4-state workflow. |
+| **Incident** | Fused operational event grouping related alerts, with prosecution phases (assessing -> executing -> concluded). |
+| **Task** | Actionable work item with priority and 5-state workflow (new -> triaged -> in_progress -> blocked -> resolved). |
+| **Recommendation** | AI-generated action with entity-validated evidence chain and accept/reject/defer/execute lifecycle. |
+| **AuditEvent** | Immutable before/after snapshot written transactionally with every mutation. |
+| **CommanderIntent / PacePlan / SaluteReport / Chokepoint** | Doctrine entities scoped to areas of operation. |
+
+---
+
+## Authorization Model
+
+Four roles with server-enforced Pundit policies on every endpoint:
+
+| Capability | Viewer | Operator | Commander | Admin |
+|-----------|--------|----------|-----------|-------|
+| Read operational data | Y | Y | Y | Y |
+| Task transitions | -- | Own tasks | All tasks | All tasks |
+| Alert triage | -- | Y | Y | Y |
+| Incident management | -- | Assigned | All | All |
+| Create rules / inject signals | -- | -- | Y | Y |
+| AI briefing / ontology query | -- | -- | Y | Y |
+| Planning doctrine (PACE, intent) | -- | -- | Y | Y |
+| Manage users / orgs / sessions | -- | -- | -- | Y |
+
+**Tenant isolation:** Organizations see only their own data. Areas of operation further narrow access for AO-pinned users. Global intelligence domains (signals, vessels) are shared. Doctrine attached to org-null global AOs is hidden from org-scoped users. 30 Pundit policies enforce these boundaries, proven by dedicated org-isolation and scoped-access request specs.
+
+---
+
+## Operational Surfaces
 
 ### Dashboard
-Your operational overview at a glance. A live KPI row shows total incidents, active alerts, task completion rates, and site readiness scores. Each site gets a risk badge (LOW / MODERATE / HIGH / CRITICAL) with a tooltip that breaks down exactly why the score is what it is — alert pressure, task health, and nearby signal density. A 30-day resolution throughput chart shows how the team has been performing.
+KPI row (tasks, resolved rate, blocked count, avg readiness), per-site readiness bars with risk badges (LOW/MOD/HIGH/CRIT backed by composite scoring: alert pressure + task health + signal density), 30-day resolution throughput, recent alerts, AI recommendations, and a live loitering watchlist.
+
+### Map (MapLibre GL)
+2D operational map rendering sites (risk-colored), assets (status-colored with sensor coverage circles), all 7 signal types, AO polygons (posture-colored), chokepoint overlays (status-colored), geofence breach pulse rings, heatmap density layer, and selected-vessel track trails. Style switcher (tactical/satellite/terrain). Click any entity for an inline detail panel with live data and task transitions.
+
+### Globe (CesiumJS)
+3D globe with the same operational data. Sites, assets with live telemetry, signals, AO polygons, chokepoints, coverage circles, breach rings, and vessel tracks. Deep-link selection state shared with the map (`?site_id=`, `?asset_id=`, `?signal_id=`). No Cesium Ion account required.
 
 ### Incidents
-Incidents are created automatically when correlation rules fire or geofence boundaries are breached. The inbox shows every open incident sorted by severity with color-coded left borders (red = critical, amber = high). Operators can filter to "Mine" to see only their assigned incidents and use Take/Drop buttons to claim or release ownership without leaving the list view.
+Inbox sorted by severity with color-coded borders. Filter by status or "Mine" for assigned incidents. Take/Drop ownership inline.
 
 ### Incident Detail
-A full 5-tab workspace for working an incident:
-- **Evidence** — all the alerts (rule fires) that contributed to this incident
-- **Tasks** — tasks spawned from those alerts
-- **Recommendations** — AI-generated action recommendations specific to this incident
-- **Notes** — append-only operational log (notes can never be edited or deleted — the log is the record)
-- **History** — full audit trail of every change made to this incident
-
-### Sites
-All 9 monitored sites in one table with readiness scores, risk levels, and status tags. Click any site to open its detail view.
-
-### Site Detail
-Six tabs of operational data for a single site:
-- **Tasks** — create and manage tasks directly from the site view
-- **Signals** — all signals detected within proximity of this site
-- **Rule Fires** — every correlation rule that fired against this site, with confidence scores and inline triage buttons
-- **Assets** — assets assigned to this site
-- **Audit Trail** — complete history of every change made to this site
-- **Timeline** — a unified chronological threat timeline that merges signals, rule fires, task events, and site changes into a single scrollable spine
-
-### Map
-An interactive 2D map (MapLibre GL) showing everything at once:
-- Site markers color-coded by risk level
-- All supported signal types as colored dots, including aircraft, vessel, seismic, GPS jamming, wildfire, AIS gap, conflict, disaster, and manual analyst signals
-- Areas of Operation as colored polygons (green / amber / red / black by threat level)
-- Sensor coverage circles derived from live or replay-scoped asset posture
-- Site geofence rings plus live breach pulse overlays
-- Click a vessel signal to see its full track history as a dashed polyline with an intel panel showing MMSI, type, flag, speed, and dark/loitering status
-- Click a site marker to see its risk score, open tasks, and transition task status directly from the map popup
-
-### Globe
-A 3D globe (CesiumJS) for the same operational picture in 3D. It renders sites, live asset telemetry, intelligence signals, sensor coverage circles, site geofence and breach rings, and selected-vessel tracks. Map and globe now share deep-link selection state (`site_id`, `asset_id`, `signal_id`) so operators can switch views without losing context. No Cesium Ion account required — uses OpenStreetMap tiles.
+5-tab workspace: Evidence (contributing alerts), Tasks (spawned work), Recommendations (AI-generated with evidence drawer), Notes (append-only operational log), History (full audit trail). Kill-chain prosecution workflow with phase tracking (assessing -> executing -> concluded) and append-only prosecution steps with evidence references.
 
 ### Signal Feed
-All incoming signals in a filterable infinite-scroll table. The list handles thousands of rows without performance issues — only ~25 DOM nodes are rendered at any scroll position. Commanders can inject synthetic signals through a dialog that runs the full correlation engine immediately, which is useful for testing rules.
+Infinite-scroll virtualized table (~25 DOM nodes at any scroll position) showing all ingested signals. Commanders can inject synthetic signals that run the full correlation engine immediately.
 
 ### Correlation Rules
-The engine that watches for threats. You can build:
-- **Simple rules** — one signal type, proximity threshold, magnitude minimum
-- **Compound rules** — AND/OR logic across multiple signal types (e.g. GPS jamming AND aircraft approach = elevated threat)
+Builder for simple and compound (AND/OR) rules with proximity, magnitude, and signal-type conditions. Scoped to AOs. Dry-run against historical signals. 6 one-click templates (Maritime Deception, EW Precursor, etc.). MITRE ATT&CK technique tagging. Effectiveness analytics.
 
-Each rule can be scoped to a specific Area of Operation so it only fires for sites within that AO. Rules support:
-- **Dry run** — test against historical signals before activating
-- **Templates** — 6 pre-built scenarios (Maritime Deception, EW Precursor, Humanitarian Crisis, etc.) that pre-fill the form with one click
-- **MITRE ATT&CK tagging** — attach technique codes (T1590, T0879, etc.) to each rule for classification and reporting
+### Alert Triage
+Virtualized alert inbox with bulk actions, filtering by status/priority/AO, and inline state transitions. Confidence scores displayed per alert.
+
+### Planning
+Unified doctrine surface: SALUTE reports, PACE plans, commander intent, and chokepoints in a single tabbed view scoped to the user's areas of operation.
 
 ### AI Briefing
-Ask Claude for an operational summary of any site (or all sites). The briefing is grounded in three real data sources — recent audit events, nearby intelligence signals (within 200km over 72 hours), and recent rule fires. Every UUID the model cites is validated against the actual records provided; hallucinated IDs are stripped before the response reaches you. Requires an Anthropic API key.
+Natural-language operational summary for any site or all sites. Grounded in real audit events, nearby signals (200km/72h), and recent rule fires. Every entity reference the model cites is validated against actual records -- hallucinated IDs are stripped before reaching the UI. Requires Anthropic API key.
+
+### Ontology Query
+Commander-only natural-language graph query. Translates a root entity + relation focus into a bounded traversal over the incident/site/task/asset/area graph using Anthropic tool-use. Returns normalized nodes, edges, and counts.
 
 ### Replay
-Scrub backward in time to any past timestamp. Sites, tasks, readiness scores, and audit events all reconstruct their state as of that moment from the audit log. Useful for incident post-mortems — "what did the operational picture look like when this incident started?"
+Time-travel to any past timestamp. Sites, tasks, alerts, incidents, readiness scores, risk snapshots, doctrine, AO overlays, chokepoint overlays, breach rings, vessel context, recommendations, and audit events all reconstruct historical state. Live-only surfaces (throughput analytics, loitering watchlist, operational health, mutation affordances) are explicitly gated off during replay.
 
-### Other
-- **Graph view** — D3 force-directed graph showing the Site → Task → Asset dependency chain (Palantir ontology pattern)
-- **Areas of Operation** — draw GeoJSON polygon boundaries with threat levels that scope correlation rules and appear on map and globe
-- **⌘K Global search** — search across sites, tasks, and assets instantly
-- **Real-time updates** — rule fires, alert transitions, task changes, and geofence breaches push instantly to all connected clients via SSE. No polling.
-- **Offline banner** — detects loss of connectivity and disables mutations until the connection is restored
-- **Responsive** — bottom tab bar, card layout, and drawer navigation on mobile screens
+### Other Surfaces
+- **Sites** -- table with readiness, risk, status. **Site Detail** -- 6 tabs: tasks, signals, rule fires, assets, audit trail, timeline.
+- **Graph** -- D3 force-directed ontology graph (site -> task -> asset dependency chain).
+- **Areas of Operation** -- GeoJSON polygon editor with threat posture levels.
+- **Swimlane** -- per-site event lane visualization backed by `Analytics::SwimlaneService`.
+- **Operational Health** -- commander-only dashboard of feed health, job status, and relay liveness snapshots.
+- **Security** -- session inventory with per-session revocation and bulk "sign out all devices".
+- **Users / Organizations** -- admin-only management surfaces.
+- **Command palette** (Cmd+K) -- global search across sites, tasks, and assets.
+- **Batch export** -- CSV/JSON export with per-page filter passthrough for sites, tasks, signals, alerts, incidents, recommendations, and areas.
+- **Offline detection** -- disables mutations and shows reconnection banner on connectivity loss.
 
 ---
 
-## How It Works
+## Real-Time Architecture
 
-### The Big Picture
+SSE (Server-Sent Events) with PostgreSQL `LISTEN`/`NOTIFY` relay for cross-process fan-out.
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                       Frontend (React 19)                        │
-│   Blueprint.js · TanStack Query · MapLibre GL · CesiumJS        │
-│   TypeScript · Vite · PWA                                        │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │ REST API + Server-Sent Events
-┌─────────────────────────▼───────────────────────────────────────┐
-│                      Backend (Rails 8 API)                       │
-│   Service objects · JWT auth · PostgreSQL 17 + PostGIS · SolidQueue │
-└──────────┬──────────────────────────────────────────┬───────────┘
-           │ background threads                       │ push events
-┌──────────▼────────────────────────────┐  ┌──────────▼───────────┐
-│      Intelligence Fusion Pipeline     │  │   SSE Broadcaster     │
-│  7 live feeds → signals → rules       │  │   live updates to     │
-│  → alerts → incidents → AI recs       │  │   all clients         │
-└───────────────────────────────────────┘
-```
+**Admission control:** `SseStreamLease` table with PostgreSQL advisory lock for atomic stream admission. Per-user cap (4 streams), per-IP cap (12 streams), lease-based expiry with heartbeat refresh. `Rack::Attack` throttles SSE token minting and reconnect storms.
 
-### Signal → Alert → Incident flow
+**Thread budget:** SSE streams permanently occupy a Puma thread. Production budget: 20 threads total, 12 max SSE, 8 reserved for API. Documented in `puma.rb` with the full constraint chain.
 
-1. **Signal ingested** — a background thread polls an external feed (USGS, OpenSky, etc.) every few minutes and stores new signals as `ExternalSignal` records
-2. **Rules evaluated** — every 10 seconds, the correlation engine checks all active rules against recent signals. A rule fires when its conditions are met (signal type + proximity + magnitude threshold)
-3. **Alert created** — a `SignalRuleMatch` record is created linking the signal, the rule, and the site. This is the "alert" — it starts in UNACKNOWLEDGED state
-4. **Incident fused** — `FusionService` either opens a new incident or adds the alert to an existing open incident for that site. This is how related alerts get grouped into a single operational event
-5. **SSE broadcast** — after the database transaction commits, an SSE event pushes to all connected clients. Their screens update without any polling
-6. **Operator works the incident** — takes ownership, triages the alerts, adds notes, works through the recommendation queue
+**Streams:** `/api/events` (operational events), `/api/signals/stream` (signal firehose), `/api/telemetry/stream` (asset telemetry). Each uses a short-lived SSE token (60s) fetched just before connection -- the long-lived JWT never appears in a URL.
 
-### Security model
+---
 
-- All API endpoints require a JWT. Tokens are 24 hours, issued on login.
-- SSE connections use a separate short-lived token (60 seconds) fetched just before opening the EventSource. This keeps the long-lived JWT out of server access logs and browser history.
-- Commanders and Operators have different permissions enforced server-side. The API exposes `GET /allowed_transitions` so the UI only shows buttons for actions the current user is actually allowed to take.
-- Rate limiting is enforced by Rack::Attack on all endpoints.
+## Test Coverage
+
+| Layer | Count | Tool |
+|-------|-------|------|
+| Backend specs | 2,105 | RSpec |
+| Frontend unit/integration | 407 (62 files) | Vitest |
+| E2E critical paths | 13 scenarios | Playwright |
+| Security scanning | 0 warnings | Brakeman + bundler-audit |
+| Type safety | 0 errors | TypeScript strict |
+| Lint | 0 errors | ESLint |
+| Performance budget | Globe reconcile benchmark | Playwright + CI gate |
+
+Key test categories:
+- **Org isolation specs** -- prove every Pundit scope restricts records to the correct tenant
+- **Scoped access request specs** -- prove API-level enforcement of org/AO boundaries including global AO doctrine hiding
+- **Adversarial correlation specs** -- 12 edge cases for the correlation engine
+- **Replay parity specs** -- prove historical state reconstruction across operational surfaces
+- **Role boundary E2E** -- Playwright tests proving commander/operator/viewer permission boundaries end-to-end
 
 ---
 
 ## Tech Stack
 
-| | Technology | Why |
-|-|-----------|-----|
-| **Frontend** | React 19, TypeScript, Vite | Type safety, fast builds, modern React patterns |
-| **UI components** | Blueprint.js v6 | Dense, data-rich UI components built for operational software |
-| **Server state** | TanStack Query v5 | Cache management, refetch intervals, optimistic updates |
-| **Maps** | MapLibre GL (2D), CesiumJS (3D) | Open-source, no token required, handles large feature sets |
-| **Charts** | Recharts, D3.js | Composable charts and custom force-directed graph |
-| **Backend** | Ruby on Rails 8 (API mode) | Fast to build correct things; service layer pattern scales cleanly |
-| **Database** | PostgreSQL 17 + PostGIS | UUID PKs via pgcrypto, structure.sql, partial unique indexes, geography columns |
-| **Background jobs** | SolidQueue | In-process async jobs, no Redis needed |
-| **Real-time** | Server-Sent Events | Simpler than WebSockets for unidirectional push; HTTP/2 compatible |
-| **Auth** | JWT + Rack::Attack | Stateless tokens, short-lived SSE tokens, rate limiting |
-| **AI** | Anthropic Claude | Grounded operational summaries and actionable recommendations |
-| **Observability** | Sentry (optional) + OperationalStatus snapshots | External error tracking plus DB-backed ops health for recurring jobs and feeds |
-| **Deploy** | Docker + Fly.io | Single-image compose for local; Fly for production |
+| Layer | Technology | Rationale |
+|-------|-----------|-----------|
+| Frontend | React 19, TypeScript, Vite | Type safety, fast HMR, modern concurrent patterns |
+| UI | Blueprint.js v6 | Dense operational UI components built for data-heavy applications |
+| Server state | TanStack Query v5 | Cache invalidation, background refetch, optimistic updates, infinite scroll |
+| 2D map | MapLibre GL | Open-source, no API key, handles large feature sets with WebGL |
+| 3D globe | CesiumJS | Open-source 3D geospatial, no Ion account required |
+| Charts | Recharts + D3.js | Composable chart components + custom force-directed graph |
+| Backend | Ruby on Rails 8.1 (API mode) | Service-object architecture, fast to build correct systems |
+| Database | PostgreSQL 17 + PostGIS | UUID PKs, `structure.sql`, spatial queries (`ST_DWithin`), partial indexes |
+| Background jobs | SolidQueue | In-process, no Redis dependency, recurring schedule via `recurring.yml` |
+| Real-time | SSE + PG LISTEN/NOTIFY | Unidirectional push, cross-process relay, HTTP/2 compatible |
+| Auth | JWT + bcrypt + Pundit + Rack::Attack | Stateless tokens, per-session revocation via `jti`, 30 authorization policies |
+| AI | Anthropic Claude (tool-use) | Grounded summaries, ontology queries, recommendations with circuit breaker |
+| Observability | Sentry (optional) + `OperationalStatus` | Error tracking + DB-backed health snapshots for jobs and feeds |
+| CI/CD | GitHub Actions -> Fly.io | 5-job pipeline: frontend, backend security, backend tests, perf benchmark, E2E. Auto-deploy on green. |
 
 ---
 
-## Development Setup (without Docker)
+## CI Pipeline
 
-If you want to run the app locally for development:
+```
+push to main
+  ├── Frontend: tsc + ESLint + Vitest + build
+  ├── Backend Security: Brakeman + bundler-audit
+  ├── Backend Tests: RSpec (2,105 examples against PostGIS 17)
+  ├── Globe Benchmark: Playwright perf budget against Dockerized app
+  └── E2E: Playwright critical paths against Dockerized app
+        │
+        └── all green ──► Deploy to Fly.io (automatic)
+```
 
-**Requirements**
-- Ruby 3.4.7 (use [rbenv](https://github.com/rbenv/rbenv) or [asdf](https://asdf-vm.com/))
-- Node.js 22.13+ and Yarn 1.22+ (`nvm use` from the repo root reads `.nvmrc`)
-- PostgreSQL 17 with PostGIS
-  - Homebrew: install matching `postgresql@17` and `postgis`, or use the bundled `postgis/postgis:17-3.5` Compose service
+---
+
+## Development Setup
+
+**Requirements:** Ruby 3.4.7, Node.js 22.13+, Yarn, PostgreSQL 17 with PostGIS.
 
 ```bash
-# 1. Clone the repo
-git clone https://github.com/TimurMishiev/resilience.git
-cd resilience
-
-# 2. Backend setup
+# Backend
 cd backend
 bundle install
-cp .env.example .env
-# Edit .env — fill in SECRET_KEY_BASE (run: bin/rails secret)
+cp .env.example .env          # fill in SECRET_KEY_BASE (run: bin/rails secret)
 bin/rails db:create db:migrate db:seed
 
-# 3. Start the backend (in one terminal)
+# Start backend
 RAILS_MAX_THREADS=48 bundle exec rails server
 
-# 4. Frontend setup (in another terminal)
-cd ../frontend
-cp .env.example .env.local
+# Frontend (separate terminal)
+cd frontend
 yarn install
 yarn dev
 ```
 
-Open **[http://localhost:5176](http://localhost:5176)**
+Open **http://localhost:5176**.
 
-**Running the test suite**
-
-Tests run locally only — the Docker image is a production build and does not include test tooling. Run from your local checkout:
-
-Backend specs require the same PostGIS-backed PostgreSQL 17 setup described above.
+**Running tests:**
 
 ```bash
+# Backend
 cd backend
-bundle exec rspec                         # 765 examples, ~8s
-bundle exec brakeman --no-progress -q     # security scan
-bundle exec bundler-audit check           # CVE check
+bundle exec rspec                          # 2,105 examples
+bundle exec brakeman --no-progress -q      # security scan
+bundle exec bundler-audit check            # CVE check
 
-cd ../frontend
-yarn tsc --noEmit                         # type check
-yarn lint                                 # ESLint
-yarn build                                # production build
-E2E_BASE_URL=http://127.0.0.1:3000 yarn benchmark:globe  # focused globe perf budget
+# Frontend
+cd frontend
+npx tsc --noEmit                           # type check
+yarn lint                                  # ESLint
+npx vitest run                             # 407 tests
+yarn build                                 # production build
+```
+
+---
+
+## Live Signal Feeds
+
+| Signal Type | Source | Credentials | Poll Interval |
+|-------------|--------|-------------|---------------|
+| Seismic | USGS Earthquake Hazards | None | 5 min |
+| Aircraft | OpenSky Network | None | 15 min |
+| Disaster alerts | GDACS | None | 15 min |
+| GPS jamming | GPSJam.org | None | 15 min |
+| Wildfire | NASA FIRMS | Free key | 15 min |
+| Vessel positions | AISHub | Free account | 30 sec |
+| Conflict events | ACLED | Free account | 1 hour |
+
+All 7 signal types appear immediately via seeded demo data regardless of credentials.
+
+```bash
+# With optional feed credentials
+NASA_FIRMS_MAP_KEY=your-key AISHUB_USERNAME=your-user docker compose up
 ```
 
 ---
 
 ## Key Engineering Decisions
 
-These are the non-obvious design choices worth knowing about if you're reading the code.
+**Transactional audit log.** Every mutation writes an `AuditEvent` with `before_snapshot` and `after_snapshot` in the same database transaction. The audit trail is structurally impossible to diverge from the data.
 
-**Audit log written in the same transaction**
-Every mutation (update a site, transition a task, assign an incident) writes an `AuditEvent` record with `before_snapshot` and `after_snapshot` inside the same database transaction. The audit log is structurally impossible to diverge from the data — if the write fails, the audit event doesn't exist either.
+**Atomic cooldown claim.** Rule cooldowns use `UPDATE ... WHERE last_fired_at <= ?`. If `rows_updated = 0`, the cooldown is still active. Two concurrent workers cannot double-fire because only one UPDATE can win the row lock.
 
-**Atomic rule cooldown enforcement**
-Rule cooldowns are claimed with a single `UPDATE ... WHERE (last_fired_at IS NULL OR last_fired_at <= ?)`. If `rows_updated = 0`, the cooldown is still active and the job returns silently. Two concurrent workers can never double-fire the same rule because only one UPDATE can win.
+**Compound rules with zero migration.** When AND/OR multi-signal rules were added, existing flat rules were not migrated. They coerce to compound format at read time via `normalized_conditions`. The discriminator is the presence of an `operator` key.
 
-**Compound rules with zero data migration**
-When compound (AND/OR multi-signal) rule support was added, existing flat rules were not migrated. Instead, they're coerced to compound format at read time via `normalized_conditions`. The type discriminator is the presence of an `operator` key — flat rules just don't have one.
+**AI trust boundary.** `Recommendations::Validator` runs four checks before saving any LLM-produced recommendation: (1) surfaced entity exists, (2) each evidence item exists, (3) action payload IDs exist, (4) payload IDs refer to the same entity as the surfaced entity. Check 4 prevents the model from displaying "Incident A" in the UI while carrying "Incident B" in the executable payload.
 
-**Short-lived SSE tokens**
-The browser's `EventSource` API can't send custom headers, so the JWT would normally have to go in the URL query string where it's visible in proxy logs and browser history. Instead, the frontend posts to `/api/sse_token` immediately before opening the stream, gets a 60-second SSE-only token, and uses that in the URL. The 24h JWT never appears in a URL.
+**AI circuit breaker.** All Anthropic-backed services share a circuit breaker (3-failure threshold, 2-minute open window) with explicit timeouts, zero retries, env-overridable model selection, and observability capture.
 
-**AI trust boundary on recommendations**
-The `Recommendations::Validator` runs four checks on every LLM-produced recommendation before it's saved: (1) the surfaced entity exists, (2) each evidence item exists, (3) the action payload IDs exist, (4) the payload IDs refer to the **same entity** as the surfaced entity. This last check is the important one — without it, an LLM could display "Incident A" in the UI but carry "Incident B" in the executable payload, and both would pass existence checks.
+**Named tenant boundary helpers.** `area_of_operation_surface_accessible?` (AO catalog reads -- includes global AOs) vs `owned_area_of_operation_accessible?` (doctrine/operational data -- org-owned only). Every policy uses the named helper, never the raw flag. Matching Scope helpers enforce the same boundary at the collection level.
 
-**Virtual list for the signal feed**
-The signal feed uses `@tanstack/react-virtual`. Regardless of how many signals are in the database, only ~25 DOM nodes are rendered at any scroll position. `useInfiniteQuery` fetches the next page of 75 rows when the last virtual item scrolls within 10 rows of the bottom.
+**SSE token isolation.** The browser's `EventSource` API cannot send custom headers. Instead of putting the JWT in the URL, the frontend fetches a 60-second SSE-only token from `POST /api/sse_token` immediately before opening the stream. The long-lived JWT never appears in server access logs or browser history.
 
-**Budgeted globe reconcile benchmark**
-The globe has a Playwright benchmark for the focused-to-global signal reconcile path. It runs against the Dockerized production-style app and fails if the measured mean, p95, or worst sample breaches the current budget. This keeps the performance story as an enforced release bar instead of a one-off manual check.
+**Virtualized feed rendering.** The signal feed and alert triage use `@tanstack/react-virtual`. Regardless of total row count, ~25 DOM nodes are rendered at any scroll position. `useInfiniteQuery` fetches the next page when the scroll position approaches the boundary.
 
----
-
-## Live Signal Feeds
-
-4 out of 7 signal types work without any credentials. The other 3 require free account registration.
-
-| Signal type | Source | Credentials |
-|-------------|--------|------------|
-| Seismic events | USGS Earthquake Hazards | None — always live |
-| Aircraft positions | OpenSky Network | None — anonymous mode (300s startup delay) |
-| Disaster alerts | GDACS | None — always live |
-| GPS jamming | GPSJam.org | None — always live |
-| Wildfire detections | NASA FIRMS | Free key — [EarthData](https://firms.modaps.eosdis.nasa.gov/api/map_key/) |
-| Vessel positions | AISHub | Free account — [AISHub](https://www.aishub.net/join-us) |
-| Conflict events | ACLED | Free account — [ACLED](https://developer.acleddata.com/) |
-
-All 7 signal types appear immediately on first run via seeded demo data regardless of credentials.
-
-To add credentials when using Docker:
-```bash
-NASA_FIRMS_MAP_KEY=your-key AISHUB_USERNAME=your-user docker compose up
-```
-
-To add credentials for local development, add them to `backend/.env` (see `.env.example`).
-
-For optional browser/backend Sentry, use:
-- `backend/.env` for `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`
-- `frontend/.env.local` for `VITE_SENTRY_DSN`, `VITE_SENTRY_ENVIRONMENT`, `VITE_SENTRY_RELEASE`
-
-For Fly deploys, remember the split:
-- Rails Sentry (`SENTRY_DSN`) is a Fly runtime secret
-- browser Sentry (`VITE_SENTRY_DSN`) and source-map upload credentials are Docker build args, not runtime env
+**Budgeted globe benchmark.** A Playwright benchmark measures the focused-to-global signal reconcile path against the Dockerized production app. CI fails if mean, p95, or worst sample breaches the budget. Performance is an enforced release bar, not a manual check.
 
 ---
 
@@ -313,27 +329,34 @@ For Fly deploys, remember the split:
 
 ```
 resilience/
-├── compose.yml              # Docker Compose — runs the full app with one command
-├── Dockerfile               # Multi-stage: builds frontend → embeds in Rails → production image
-├── frontend/                # React 19 + TypeScript + Vite
-│   └── src/
-│       ├── api/             # API client functions (one file per resource)
-│       ├── components/      # Shared UI components
-│       ├── context/         # AuthContext, ReplayContext
-│       ├── hooks/           # React Query hooks (one file per resource)
-│       ├── pages/           # Page components (one per route)
-│       └── lib/             # Utilities (signal icons, toaster)
-└── backend/                 # Rails 8 API
+├── compose.yml                    # One-command local run
+├── Dockerfile                     # Multi-stage: frontend build -> Rails -> production image
+├── .github/workflows/ci.yml      # 5-job CI pipeline with auto-deploy
+│
+├── frontend/                      # React 19 + TypeScript + Vite
+│   ├── src/
+│   │   ├── api/                   # 24 API client modules
+│   │   ├── components/            # 57 shared components (map/, dashboard/, shell/)
+│   │   ├── context/               # AuthContext, ReplayContext
+│   │   ├── hooks/                 # 48 hooks (data, engine, telemetry, replay)
+│   │   ├── pages/                 # 24 page components
+│   │   ├── lib/                   # Utilities (colors, coverage, formatters, signals)
+│   │   └── test/                  # 62 Vitest test files
+│   └── e2e/                       # 13 Playwright E2E scenarios
+│
+└── backend/                       # Rails 8.1 API
     ├── app/
-    │   ├── controllers/api/ # API controllers (thin — delegate to services)
-    │   ├── models/          # ActiveRecord models + validations + scopes
-    │   ├── services/        # Business logic (one class per operation)
-    │   └── jobs/            # SolidQueue background jobs
+    │   ├── controllers/api/       # 29 API controllers
+    │   ├── models/                # 28 ActiveRecord models
+    │   ├── policies/              # 30 Pundit authorization policies
+    │   ├── services/              # 65 service objects
+    │   └── jobs/                  # 14 background jobs
+    ├── config/
+    │   └── recurring.yml          # 22 SolidQueue recurring job schedules
     ├── db/
-    │   ├── migrate/         # Database migrations
-    │   ├── structure.sql    # Committed schema (not schema.rb)
-    │   └── seeds.rb         # Demo data
-    └── spec/                # RSpec tests (653 examples)
+    │   ├── migrate/               # 67 migrations
+    │   └── structure.sql          # Committed PostGIS-aware schema
+    └── spec/                      # 2,105 RSpec examples
 ```
 
 ---
