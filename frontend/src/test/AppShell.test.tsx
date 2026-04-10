@@ -76,6 +76,10 @@ vi.mock('../components/shell/AppBanners', () => ({
   AppBanners: () => <div data-testid="app-banners" />,
 }))
 
+vi.mock('../hooks/useSourceHealth', () => ({
+  useSourceHealth: () => ({ sse: 'fresh', data: 'fresh', aggregate: 'fresh' }),
+}))
+
 vi.mock('../components/shell/AppNavbar', () => ({
   AppNavbar: (props: Record<string, unknown>) => {
     navbarState.props = props

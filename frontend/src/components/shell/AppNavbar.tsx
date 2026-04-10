@@ -8,12 +8,27 @@ import {
   Tag,
 } from '@blueprintjs/core'
 import ReplaySelector from '../ReplaySelector'
-import type { ConnectionStatus } from '../../hooks/useEventSource'
+import type { SourceHealthState } from '../../hooks/useSourceHealth'
+import type { FreshnessState } from '../../lib/freshness'
 import type { Posture } from '../../api/types'
 import { POSTURE_LABELS } from '../../utils/humanize'
 
+const FRESHNESS_CSS: Record<FreshnessState, string> = {
+  fresh:       'live-indicator--connected',
+  aging:       'live-indicator--connecting',
+  stale:       'live-indicator--disconnected',
+  unavailable: 'live-indicator--disconnected',
+}
+
+const FRESHNESS_LABEL: Record<FreshnessState, string> = {
+  fresh:       'All sources healthy',
+  aging:       'Data may be delayed',
+  stale:       'Data is stale',
+  unavailable: 'No data available',
+}
+
 interface Props {
-  liveStatus:       ConnectionStatus
+  sourceHealth:     SourceHealthState
   missionPosture:   Posture
   hasMissionPosture: boolean
   isCommander:      boolean
@@ -24,7 +39,7 @@ interface Props {
 }
 
 export function AppNavbar({
-  liveStatus,
+  sourceHealth,
   missionPosture,
   hasMissionPosture,
   isCommander,
@@ -42,8 +57,8 @@ export function AppNavbar({
       </NavbarGroup>
       <NavbarGroup align={Alignment.RIGHT}>
         <span
-          className={`live-indicator live-indicator--${liveStatus}`}
-          title={`Stream: ${liveStatus}`}
+          className={`live-indicator ${FRESHNESS_CSS[sourceHealth.aggregate]}`}
+          title={FRESHNESS_LABEL[sourceHealth.aggregate]}
         />
         {hasMissionPosture && (
           <Tag

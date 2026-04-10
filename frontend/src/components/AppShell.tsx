@@ -7,6 +7,7 @@ import { useRole } from '../hooks/useRole'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { useAreasOfOperation } from '../hooks/useAreasOfOperation'
 import { useSseEvents } from '../hooks/useSseEvents'
+import { useSourceHealth } from '../hooks/useSourceHealth'
 import { AppNavbar } from './shell/AppNavbar'
 import { AppSidebar, AppBottomNav } from './shell/AppSidebar'
 import { AppBanners } from './shell/AppBanners'
@@ -24,7 +25,7 @@ export default function AppShell() {
   const [searchOpen, setSearchOpen] = useState(false)
 
   const replayAreaParams = isReplaying && asOf ? { as_of: asOf } : undefined
-  const { data: areasData } = useAreasOfOperation(replayAreaParams, { enabled: true, staleTime: 60_000 })
+  const { data: areasData, dataUpdatedAt } = useAreasOfOperation(replayAreaParams, { enabled: true, staleTime: 60_000 })
   const areas = areasData?.data ?? []
   const missionPosture: Posture = areas.reduce<Posture>(
     (best, ao) => POSTURE_RANK[ao.posture] > POSTURE_RANK[best] ? ao.posture : best,
@@ -35,6 +36,8 @@ export default function AppShell() {
     enabled: !!currentUser && !isReplaying,
     queryClient,
   })
+
+  const sourceHealth = useSourceHealth(liveStatus, dataUpdatedAt)
 
   // Cmd+K / Ctrl+K — open global search
   useEffect(() => {
@@ -69,7 +72,7 @@ export default function AppShell() {
       </div>
 
       <AppNavbar
-        liveStatus={liveStatus}
+        sourceHealth={sourceHealth}
         missionPosture={missionPosture}
         hasMissionPosture={areas.length > 0}
         isCommander={isCommander}
