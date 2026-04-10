@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockCreateExport = vi.hoisted(() => vi.fn())
 
@@ -10,8 +10,10 @@ vi.mock('../api/exports', () => ({
 
 async function renderDialog(isOpen = true) {
   const onClose = vi.fn()
-  const { default: ExportDialog } = await import('../components/ExportDialog')
-  render(<ExportDialog isOpen={isOpen} onClose={onClose} />)
+  await act(async () => {
+    const { default: ExportDialog } = await import('../components/ExportDialog')
+    render(<ExportDialog isOpen={isOpen} onClose={onClose} />)
+  })
   return { onClose }
 }
 
@@ -20,6 +22,11 @@ describe('ExportDialog', () => {
     mockCreateExport.mockReset()
     globalThis.URL.createObjectURL = vi.fn(() => 'blob:mock-url')
     globalThis.URL.revokeObjectURL = vi.fn()
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
   it('renders form fields when open', async () => {

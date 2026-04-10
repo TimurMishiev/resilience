@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -81,15 +81,19 @@ vi.mock('../hooks/useIncidents', () => ({
 }))
 
 async function renderPage() {
-  const { default: IncidentsPage } = await import('../pages/IncidentsPage')
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
-        <IncidentsPage />
-      </MemoryRouter>
-    </QueryClientProvider>,
-  )
+  let rendered: ReturnType<typeof render> | undefined
+  await act(async () => {
+    const { default: IncidentsPage } = await import('../pages/IncidentsPage')
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    rendered = render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <IncidentsPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+  })
+  return rendered!
 }
 
 describe('IncidentsPage', () => {

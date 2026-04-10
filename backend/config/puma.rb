@@ -35,11 +35,11 @@
 #   Production (fly.toml): RAILS_MAX_THREADS = 20
 #   SSE_MAX_STREAMS_PER_USER = 4  → max 4 streams per authenticated user
 #   SSE_MAX_STREAMS_PER_IP   = 12 → max 12 streams per source IP
-#   Fly hard_limit = 30 connections (HTTP), enforced at the load balancer
+#   Fly hard_limit = 25 connections (HTTP), enforced at the load balancer
 #
 # Production budget (RAILS_MAX_THREADS=20):
 #   At full SSE occupancy (12 streams) → 8 threads remain for API calls.
-#   The Fly hard_limit of 30 exceeds 20 threads intentionally, as most API
+#   The Fly hard_limit of 25 exceeds 20 threads intentionally, as most API
 #   requests complete in <10 ms, keeping average thread utilization low.
 #
 # Local/default budget (RAILS_MAX_THREADS=32):

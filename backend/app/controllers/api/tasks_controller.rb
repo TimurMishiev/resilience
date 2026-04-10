@@ -6,8 +6,13 @@ module Api
     def index
       authorize Task
       if as_of
-        # Replay returns a bounded snapshot set — pagination is not applied.
-        render json: { data: replayed_tasks, meta: nil }
+        tasks = replay_scoped_tasks
+        records, meta = paginate_transformed_relation(tasks.order(created_at: :desc)) do |batch|
+          serialize_replay_tasks(batch, as_of: as_of).select do |record|
+            replay_task_matches_filters?(record)
+          end
+        end
+        render json: { data: records, meta: meta }
       else
         records, meta = paginate(scoped_tasks.order(created_at: :desc))
         render json: { data: records.map { |t| serialize_task(t) }, meta: meta }
@@ -18,9 +23,10 @@ module Api
       task = scoped_record(Task, params[:id], includes: [:asset, { site: :area_of_operation }])
       authorize task, :show?
       if as_of
-        snapshot = replay_single_task(task.id)
-        return render json: { errors: ["Task not found"] }, status: :not_found unless snapshot
-        render json: snapshot
+        serialized = serialize_replay_tasks([task], as_of: as_of).first
+        return render json: { errors: ["Task not found"] }, status: :not_found unless serialized
+
+        render json: serialized
       else
         render json: serialize_task(task)
       end
@@ -89,43 +95,100 @@ module Api
 
     private
 
-    def scoped_tasks
+    # Base scope shared by live and replay paths. Workflow/priority filters
+    # are added only in the live path — replay applies them post-snapshot.
+    def base_scoped_tasks
       tasks = policy_scope(Task).includes(:asset, site: :area_of_operation)
       tasks = tasks.where(site_id: params[:site_id]) if params[:site_id].present?
+      tasks
+    end
+
+    def scoped_tasks
+      tasks = base_scoped_tasks
       tasks = tasks.where(workflow_status: params[:workflow_status]) if params[:workflow_status].present?
       tasks = tasks.where(priority: params[:priority]) if params[:priority].present?
       tasks
     end
 
-    REPLAY_LIMIT = 500
+    alias_method :replay_scoped_tasks, :base_scoped_tasks
 
-    def replayed_tasks
-      task_ids = scoped_tasks.limit(REPLAY_LIMIT).pluck(:id)
-      result = Replay::ProjectionService.call(
-        entity_type: "Task",
-        entity_ids: task_ids,
-        as_of: as_of
-      )
-      result.payload[:snapshots]
+    def serialize_replay_tasks(tasks, as_of:)
+      task_snapshots = latest_audit_snapshots(entity_type: "Task", entity_ids: tasks.map(&:id), as_of: as_of)
+      replay_sites = build_replay_site_index(tasks.map(&:site_id).uniq, as_of: as_of)
+
+      tasks.filter_map do |task|
+        snapshot = task_snapshots[task.id]
+        next if snapshot.blank?
+
+        serialize_task(
+          task,
+          snapshot: snapshot,
+          replay_site: replay_sites[task.site_id],
+          as_of: as_of,
+        )
+      end
     end
 
-    def replay_single_task(id)
-      result = Replay::ProjectionService.call(
-        entity_type: "Task",
-        entity_ids: [id],
-        as_of: as_of
-      )
-      result.payload[:snapshots].first
+    def build_replay_site_index(site_ids, as_of:)
+      return {} if site_ids.empty?
+
+      sites = policy_scope(Site).includes(:area_of_operation).where(id: site_ids).index_by(&:id)
+      site_snapshots = latest_audit_snapshots(entity_type: "Site", entity_ids: sites.keys, as_of: as_of)
+      area_ids = sites.filter_map do |site_id, site|
+        snapshot_or_current(site_snapshots[site_id], "area_of_operation_id", site.area_of_operation_id)
+      end.uniq.compact
+      areas = policy_scope(AreaOfOperation).where(id: area_ids).index_by(&:id)
+      area_snapshots = latest_audit_snapshots(entity_type: "AreaOfOperation", entity_ids: area_ids, as_of: as_of)
+
+      sites.each_with_object({}) do |(site_id, site), index|
+        site_snapshot = site_snapshots[site_id]
+        area_id = snapshot_or_current(site_snapshot, "area_of_operation_id", site.area_of_operation_id)
+        area = area_id.present? ? areas[area_id] : nil
+        area_snapshot = area_id.present? ? area_snapshots[area_id] : nil
+
+        index[site_id] = {
+          name: snapshot_or_current(site_snapshot, "name", site.name),
+          area_of_operation_id: area_id,
+          ao_posture: area.present? || area_snapshot.present? ? snapshot_or_current(area_snapshot, "posture", area&.posture) : nil,
+        }
+      end
     end
 
-    def serialize_task(task)
-      task.as_json(only: %i[id site_id asset_id title description priority
-                             workflow_status blocked_reason resolved_at created_at updated_at])
-          .merge(
-            "site_name"  => task.site&.name,
-            "ao_id"      => task.site&.area_of_operation_id,
-            "ao_posture" => task.site&.area_of_operation&.posture
-          )
+    def replay_task_matches_filters?(record)
+      return false if params[:workflow_status].present? && record[:workflow_status].to_s != params[:workflow_status].to_s
+      return false if params[:priority].present? && record[:priority].to_s != params[:priority].to_s
+
+      true
+    end
+
+    def serialize_task(task, snapshot: nil, replay_site: nil, as_of: nil)
+      serialized = {
+        id: task.id,
+        site_id: snapshot_or_current(snapshot, "site_id", task.site_id),
+        asset_id: snapshot_or_current(snapshot, "asset_id", task.asset_id),
+        title: snapshot_or_current(snapshot, "title", task.title),
+        description: snapshot_or_current(snapshot, "description", task.description),
+        priority: snapshot_or_current(snapshot, "priority", task.priority),
+        workflow_status: snapshot_or_current(snapshot, "workflow_status", task.workflow_status),
+        blocked_reason: snapshot_or_current(snapshot, "blocked_reason", task.blocked_reason),
+        resolved_at: snapshot_value(snapshot, "resolved_at", fallback: task.resolved_at),
+        created_at: task.created_at,
+        updated_at: as_of.present? ? [task.updated_at, as_of].min : task.updated_at,
+      }
+
+      if replay_site.present?
+        serialized.merge(
+          site_name: replay_site[:name],
+          ao_id: replay_site[:area_of_operation_id],
+          ao_posture: replay_site[:ao_posture],
+        )
+      else
+        serialized.merge(
+          site_name: task.site&.name,
+          ao_id: task.site&.area_of_operation_id,
+          ao_posture: task.site&.area_of_operation&.posture,
+        )
+      end
     end
 
     def task_create_params

@@ -363,12 +363,19 @@ RSpec.describe "Api::Tasks", type: :request do
       expect(snapshots).not_to be_empty
       expect(snapshots.first["id"]).to eq(task.id)
       expect(snapshots.first["workflow_status"]).to eq("new")
+      expect(snapshots.first["site_name"]).to eq(site.name)
+      expect(snapshots.first["ao_id"]).to eq(site.area_of_operation_id)
     end
 
-    it "returns nil meta for replay responses" do
+    it "returns pagination meta for replay responses" do
       get "/api/tasks", params: { as_of: as_of_past, site_id: site.id },
           headers: auth_headers(current_user)
-      expect(JSON.parse(response.body)["meta"]).to be_nil
+      expect(JSON.parse(response.body)["meta"]).to include(
+        "total" => 1,
+        "page" => 1,
+        "per_page" => 50,
+        "total_pages" => 1,
+      )
     end
 
     it "excludes tasks created after as_of" do
@@ -390,6 +397,31 @@ RSpec.describe "Api::Tasks", type: :request do
           headers: auth_headers(current_user)
       ids = JSON.parse(response.body)["data"].map { |t| t["id"] }
       expect(ids).not_to include(future_task.id)
+    end
+
+    it "applies workflow filters to historical state, not the live row" do
+      task.update!(workflow_status: "resolved", resolved_at: 15.minutes.ago)
+      AuditEvent.create!(
+        schema_version: 1,
+        actor: "test",
+        entity_type: "Task",
+        entity_id: task.id,
+        event_type: "task.transitioned",
+        action: "transition",
+        before_snapshot: task.attributes.merge("workflow_status" => "new", "resolved_at" => nil).except("updated_at"),
+        after_snapshot: task.attributes.except("updated_at"),
+        correlation_id: SecureRandom.uuid,
+        occurred_at: 15.minutes.ago
+      )
+
+      get "/api/tasks",
+          params: { as_of: as_of_past, site_id: site.id, workflow_status: "new" },
+          headers: auth_headers(current_user)
+
+      expect(response).to have_http_status(:ok)
+      body = JSON.parse(response.body)
+      expect(body["data"].map { |snapshot| snapshot["id"] }).to contain_exactly(task.id)
+      expect(body.dig("meta", "total")).to eq(1)
     end
   end
 end

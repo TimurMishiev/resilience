@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
@@ -99,15 +99,19 @@ vi.mock('../api/auth', () => ({
 }))
 
 async function renderPage() {
-  const { default: SecurityPage } = await import('../pages/SecurityPage')
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
-        <SecurityPage />
-      </MemoryRouter>
-    </QueryClientProvider>,
-  )
+  let rendered: ReturnType<typeof render> | undefined
+  await act(async () => {
+    const { default: SecurityPage } = await import('../pages/SecurityPage')
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    rendered = render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SecurityPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+  })
+  return rendered!
 }
 
 describe('SecurityPage', () => {

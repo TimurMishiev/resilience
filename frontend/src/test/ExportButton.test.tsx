@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockCreateExport = vi.hoisted(() => vi.fn())
 const mockToasterShow = vi.hoisted(() => vi.fn())
@@ -14,13 +14,15 @@ vi.mock('../lib/toaster', () => ({
 }))
 
 async function renderButton(props: { entityType?: string; filters?: Record<string, string> } = {}) {
-  const { default: ExportButton } = await import('../components/ExportButton')
-  render(
-    <ExportButton
-      entityType={(props.entityType ?? 'signals') as 'signals'}
-      filters={props.filters}
-    />,
-  )
+  await act(async () => {
+    const { default: ExportButton } = await import('../components/ExportButton')
+    render(
+      <ExportButton
+        entityType={(props.entityType ?? 'signals') as 'signals'}
+        filters={props.filters}
+      />,
+    )
+  })
 }
 
 describe('ExportButton', () => {
@@ -29,6 +31,11 @@ describe('ExportButton', () => {
     mockToasterShow.mockReset()
     globalThis.URL.createObjectURL = vi.fn(() => 'blob:mock-url')
     globalThis.URL.revokeObjectURL = vi.fn()
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
   it('renders an export button', async () => {
