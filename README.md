@@ -4,7 +4,7 @@
 
 Resilience is the kind of software that runs inside a TOC (Tactical Operations Center). It ingests live sensor feeds, correlates threat patterns, fuses alerts into incidents, and gives operators a single operational picture across 2D map, 3D globe, and structured data surfaces. Every mutation is audit-logged transactionally. Every surface supports time-travel replay. The authorization model enforces organization and area-of-operation boundaries at every layer.
 
-Built as a portfolio project targeting defense-tech engineering roles (Palantir, Anduril, Reveal Technology, Shield AI). The codebase is production-hardened: 2,100+ backend specs, 400+ frontend tests, 13 Playwright E2E scenarios, Pundit authorization on every endpoint, and CI that gates on security scanning, type safety, and performance budgets before auto-deploying.
+Built as a portfolio project targeting defense-tech engineering roles (Palantir, Anduril, Reveal Technology, Shield AI). The codebase is production-hardened: 2,100+ backend specs, 400+ frontend tests, 13 Playwright E2E scenarios, Pundit authorization on every endpoint, and CI that gates on security scanning, type safety, and performance budgets before auto-deploying. Installable as a PWA with offline caching. Classification banner support (UNCLASSIFIED / CUI / SECRET).
 
 **Live:** [https://resilience-ops.fly.dev](https://resilience-ops.fly.dev)
 
@@ -16,7 +16,7 @@ Built as a portfolio project targeting defense-tech engineering roles (Palantir,
 
 ---
 
-## Quick Start
+## Quick Start (Docker)
 
 ```bash
 git clone https://github.com/TimurMishiev/resilience.git
@@ -24,7 +24,7 @@ cd resilience
 docker compose up
 ```
 
-Open **http://localhost:3000**. Demo data is seeded automatically.
+Open **http://localhost:3000**. Demo data (9 sites, 19 tasks, 7 signal types, vessels, incidents, correlation rules) is seeded automatically on first run.
 
 > **AI features** require an Anthropic API key:
 > ```bash
@@ -46,13 +46,13 @@ Open **http://localhost:3000**. Demo data is seeded automatically.
                                                │  REST  +  SSE
                           ┌────────────────────▼─────────────────────────┐
                           │           Backend  (Rails 8 API)             │
-                          │  28 models  ·  30 policies  ·  65 services  │
-                          │  29 controllers  ·  14 jobs  ·  67 migrations│
+                          │  28 models  ·  30 policies  ·  62 services  │
+                          │  32 controllers  ·  13 jobs  ·  67 migrations│
                           └──┬──────────────────┬───────────────────┬────┘
                              │                  │                   │
                ┌─────────────▼──────┐  ┌───────▼────────┐  ┌──────▼──────────┐
                │  PostgreSQL 17     │  │  SolidQueue    │  │  SSE Broadcaster │
-               │  + PostGIS         │  │  22 recurring  │  │  PG LISTEN/      │
+               │  + PostGIS         │  │  18 recurring  │  │  PG LISTEN/      │
                │  UUID PKs          │  │  jobs          │  │  NOTIFY relay    │
                │  structure.sql     │  │                │  │                  │
                └────────────────────┘  └────────────────┘  └──────────────────┘
@@ -126,7 +126,7 @@ Four roles with server-enforced Pundit policies on every endpoint:
 KPI row (tasks, resolved rate, blocked count, avg readiness), per-site readiness bars with risk badges (LOW/MOD/HIGH/CRIT backed by composite scoring: alert pressure + task health + signal density), 30-day resolution throughput, recent alerts, AI recommendations, and a live loitering watchlist.
 
 ### Map (MapLibre GL)
-2D operational map rendering sites (risk-colored), assets (status-colored with sensor coverage circles), all 7 signal types, AO polygons (posture-colored), chokepoint overlays (status-colored), geofence breach pulse rings, heatmap density layer, and selected-vessel track trails. Style switcher (tactical/satellite/terrain). Click any entity for an inline detail panel with live data and task transitions.
+2D operational map rendering sites (risk-colored), assets (status-colored with sensor coverage circles), all 7 signal types, AO polygons (posture-colored), chokepoint overlays (status-colored), geofence breach pulse rings, heatmap density layer, and selected-vessel track trails. Style switcher (tactical/satellite/street). Click any entity for an inline detail panel with live data and task transitions.
 
 ### Globe (CesiumJS)
 3D globe with the same operational data. Sites, assets with live telemetry, signals, AO polygons, chokepoints, coverage circles, breach rings, and vessel tracks. Deep-link selection state shared with the map (`?site_id=`, `?asset_id=`, `?signal_id=`). No Cesium Ion account required.
@@ -161,13 +161,13 @@ Time-travel to any past timestamp. Sites, tasks, alerts, incidents, readiness sc
 ### Other Surfaces
 - **Sites** -- table with readiness, risk, status. **Site Detail** -- 6 tabs: tasks, signals, rule fires, assets, audit trail, timeline.
 - **Graph** -- D3 force-directed ontology graph (site -> task -> asset dependency chain).
-- **Areas of Operation** -- GeoJSON polygon editor with threat posture levels.
+- **Areas of Operation** -- GeoJSON polygon input with threat posture levels, rendered on map and globe.
 - **Swimlane** -- per-site event lane visualization backed by `Analytics::SwimlaneService`.
 - **Operational Health** -- commander-only dashboard of feed health, job status, and relay liveness snapshots.
 - **Security** -- session inventory with per-session revocation and bulk "sign out all devices".
 - **Users / Organizations** -- admin-only management surfaces.
 - **Command palette** (Cmd+K) -- global search across sites, tasks, and assets.
-- **Batch export** -- CSV/JSON export with per-page filter passthrough for sites, tasks, signals, alerts, incidents, recommendations, and areas.
+- **Batch export** -- CSV/JSON export with per-page filter passthrough for signals, alerts, tasks, incidents, sites, and audit events. Global export dialog + per-page export buttons.
 - **Offline detection** -- disables mutations and shows reconnection banner on connectivity loss.
 
 ---
@@ -221,8 +221,9 @@ Key test categories:
 | Real-time | SSE + PG LISTEN/NOTIFY | Unidirectional push, cross-process relay, HTTP/2 compatible |
 | Auth | JWT + bcrypt + Pundit + Rack::Attack | Stateless tokens, per-session revocation via `jti`, 30 authorization policies |
 | AI | Anthropic Claude (tool-use) | Grounded summaries, ontology queries, recommendations with circuit breaker |
-| Observability | Sentry (optional) + `OperationalStatus` | Error tracking + DB-backed health snapshots for jobs and feeds |
-| CI/CD | GitHub Actions -> Fly.io | 5-job pipeline: frontend, backend security, backend tests, perf benchmark, E2E. Auto-deploy on green. |
+| PWA | vite-plugin-pwa + Workbox | Offline-capable with smart precaching — app shell cached, map/globe assets on-demand, API network-first |
+| Observability | Sentry (graceful without DSN) + `OperationalStatus` | Error tracking + DB-backed health snapshots for jobs and feeds |
+| CI/CD | GitHub Actions -> Fly.io | 6-job pipeline: 5 parallel test jobs (frontend, backend security, backend tests, perf benchmark, E2E) + auto-deploy on green |
 
 ---
 
@@ -245,23 +246,40 @@ push to main
 
 **Requirements:** Ruby 3.4.7, Node.js 22.13+, Yarn, PostgreSQL 17 with PostGIS.
 
+**macOS prerequisites:**
+
 ```bash
-# Backend
+brew install postgresql@17 postgis
+brew services start postgresql@17
+rbenv install 3.4.7        # or: rvm install 3.4.7
+nvm install 22.13.0        # or: fnm install 22.13.0
+```
+
+**Ubuntu/Debian prerequisites:**
+
+```bash
+sudo apt install postgresql-17 postgresql-17-postgis-3 libpq-dev
+```
+
+**Backend:**
+
+```bash
 cd backend
 bundle install
 cp .env.example .env          # fill in SECRET_KEY_BASE (run: bin/rails secret)
 bin/rails db:create db:migrate db:seed
-
-# Start backend
 RAILS_MAX_THREADS=48 bundle exec rails server
+```
 
-# Frontend (separate terminal)
+**Frontend (separate terminal):**
+
+```bash
 cd frontend
 yarn install
 yarn dev
 ```
 
-Open **http://localhost:5176**.
+Open **http://localhost:5173**. The Vite dev server proxies `/api/*` to the Rails backend on port 3000.
 
 **Running tests:**
 
@@ -277,7 +295,7 @@ cd frontend
 npx tsc --noEmit                           # type check
 yarn lint                                  # ESLint
 npx vitest run                             # 407 tests
-yarn build                                 # production build
+yarn build                                 # production build (tsc -b, stricter)
 ```
 
 ---
@@ -331,7 +349,7 @@ NASA_FIRMS_MAP_KEY=your-key AISHUB_USERNAME=your-user docker compose up
 resilience/
 ├── compose.yml                    # One-command local run
 ├── Dockerfile                     # Multi-stage: frontend build -> Rails -> production image
-├── .github/workflows/ci.yml      # 5-job CI pipeline with auto-deploy
+├── .github/workflows/ci.yml      # 6-job CI pipeline (5 test + auto-deploy)
 │
 ├── frontend/                      # React 19 + TypeScript + Vite
 │   ├── src/
@@ -346,13 +364,13 @@ resilience/
 │
 └── backend/                       # Rails 8.1 API
     ├── app/
-    │   ├── controllers/api/       # 29 API controllers
+    │   ├── controllers/api/       # 32 API controllers
     │   ├── models/                # 28 ActiveRecord models
     │   ├── policies/              # 30 Pundit authorization policies
-    │   ├── services/              # 65 service objects
-    │   └── jobs/                  # 14 background jobs
+    │   ├── services/              # 62 service objects
+    │   └── jobs/                  # 13 background jobs
     ├── config/
-    │   └── recurring.yml          # 22 SolidQueue recurring job schedules
+    │   └── recurring.yml          # 18 SolidQueue recurring job schedules
     ├── db/
     │   ├── migrate/               # 67 migrations
     │   └── structure.sql          # Committed PostGIS-aware schema
@@ -361,6 +379,35 @@ resilience/
 
 ---
 
+## Architecture Decision Records
+
+Design decisions are documented in [`docs/`](docs/):
+
+- [ADR-001: Server-Side Replay via `as_of` Query Parameter](docs/adr-001-server-side-replay.md) -- Accepted
+- [ADR-002: Horizontal Scaling Strategy](docs/adr-002-horizontal-scaling.md) -- Proposed
+
+---
+
+## Screenshots
+
+| Dashboard | Signal Feed | Correlation Rules |
+|-----------|-------------|-------------------|
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Signals](docs/screenshots/signals.png) | ![Rules](docs/screenshots/rules.png) |
+
+| AI Briefing | Graph View |
+|-------------|------------|
+| ![Briefing](docs/screenshots/briefing.png) | ![Graph](docs/screenshots/graph.png) |
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, test requirements, and code conventions.
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for vulnerability reporting.
+
 ## License
 
-MIT
+[MIT](LICENSE)

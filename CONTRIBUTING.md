@@ -1,0 +1,105 @@
+# Contributing to Resilience
+
+## Development Setup
+
+### Prerequisites
+
+- Ruby 3.4.7 (via rbenv, rvm, or asdf)
+- Node.js 22.13+ (via nvm, fnm, or asdf)
+- Yarn 1.22+
+- PostgreSQL 17 with PostGIS 3.5+
+
+### macOS Quick Setup
+
+```bash
+# PostgreSQL + PostGIS
+brew install postgresql@17 postgis
+brew services start postgresql@17
+
+# Ruby
+rbenv install 3.4.7
+
+# Node
+nvm install 22.13.0
+```
+
+### Backend
+
+```bash
+cd backend
+bundle install
+cp .env.example .env                    # then fill in SECRET_KEY_BASE
+bin/rails secret                        # generates a key — paste into .env
+bin/rails db:create db:migrate db:seed
+RAILS_MAX_THREADS=48 bundle exec rails server
+```
+
+### Frontend
+
+```bash
+cd frontend
+yarn install
+yarn dev                                # opens on http://localhost:5173
+```
+
+### Docker (alternative)
+
+```bash
+docker compose up                       # opens on http://localhost:3000
+```
+
+## Running Tests
+
+```bash
+# Backend — full suite
+cd backend && bundle exec rspec
+
+# Backend — security scan
+bundle exec brakeman --no-progress -q
+bundle exec bundler-audit check
+
+# Frontend — type check + lint + unit tests
+cd frontend
+npx tsc --noEmit
+yarn lint
+npx vitest run
+
+# Frontend — production build (stricter than --noEmit)
+yarn build
+```
+
+All tests must pass before pushing. CI runs the same gates.
+
+## CI Pipeline
+
+Push to `main` triggers 5 parallel test jobs + auto-deploy:
+
+1. **Frontend** -- TypeScript, ESLint, Vitest, production build
+2. **Backend Security** -- Brakeman + bundler-audit
+3. **Backend Tests** -- RSpec against PostGIS 17
+4. **Globe Benchmark** -- Playwright performance budget
+5. **E2E** -- Playwright critical-path scenarios
+
+All green triggers automatic deployment to Fly.io.
+
+## Code Conventions
+
+- **Backend:** Service objects for business logic, Pundit policies for authorization, `Audit::EventWriter` for every state mutation
+- **Frontend:** TanStack Query for server state, custom hooks for data access, Blueprint.js for UI components
+- **Testing:** RSpec request specs for API coverage, Vitest + Testing Library for frontend, Playwright for E2E
+- **Authorization:** Every new endpoint must have a Pundit policy. `verify_authorized` after-action enforces this.
+
+## Commit Style
+
+Use concise, imperative commit messages:
+
+```
+Fix correlation cooldown race in concurrent workers
+Add vessel loitering detection with configurable thresholds
+```
+
+## Pull Requests
+
+- Keep PRs focused on a single concern
+- Include test coverage for new behavior
+- Ensure all CI gates pass before requesting review
