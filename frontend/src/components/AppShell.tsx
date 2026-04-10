@@ -82,7 +82,7 @@ export default function AppShell() {
         onLogout={handleLogout}
       />
 
-      <AppBanners isOnline={isOnline} isReplaying={isReplaying} asOf={asOf} />
+      <AppBanners isOnline={isOnline} isReplaying={isReplaying} asOf={asOf} sourceHealth={sourceHealth} />
 
       <GlobalSearch
         open={searchOpen}

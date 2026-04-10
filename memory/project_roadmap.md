@@ -9,16 +9,24 @@ type: roadmap
 ## Source of Truth
 
 1. Actual code in the repo
-2. `memory/project_production_readiness_plan.md`
-3. This roadmap
-4. `memory/project_resilience.md`
+2. `memory/execution_context.md`
+3. `memory/execution_handoff.md`
+4. This roadmap
+5. `memory/project_open_findings.md`
+6. `memory/project_production_readiness_plan.md`
+7. `memory/project_resilience.md`
 
 If this roadmap disagrees with code, prefer code and then update memory.
 
 ## Current Working Rule
 
 The production-readiness program is **complete** as of 2026-04-09.
-Feature roadmap work may now resume. This file is the active execution queue.
+Feature roadmap work may now resume, but active slice execution and model handoff now live in:
+
+- `memory/execution_context.md`
+- `memory/execution_handoff.md`
+
+This file tracks major programs and future sequencing. It is not the active dirty-tree handoff file.
 
 ## Shipped
 

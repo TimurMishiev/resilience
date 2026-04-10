@@ -7,10 +7,12 @@ type: project
 # Resilience — Project Memory
 
 Companion files:
+- `memory/execution_context.md` — durable execution source of truth for direction, phases, and engineering standards
+- `memory/execution_handoff.md` — active phase/slice handoff for current implementation work
 - `memory/project_roadmap.md` — current implementation order and next major tracks
 - `memory/project_open_findings.md` — unresolved engineering debt and architecture programs
 
-When memory conflicts with code, prefer code. This file is the stable project snapshot; active sequencing and open debt now live in the companion files above.
+When memory conflicts with code, prefer code. This file is the stable project snapshot; active sequencing and handoff live in the execution files above, while roadmap and open debt live in their companion files.
 
 ## Stack
 

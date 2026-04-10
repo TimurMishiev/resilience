@@ -1300,6 +1300,15 @@ body {
   font-size: 12px;
 }
 
+/* ── Degraded-state banner ────────────────────────────────────── */
+
+.degraded-banner {
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  font-size: 12px;
+}
+
 /* ── Telemetry badge ─────────────────────────────────────────── */
 
 .map-telemetry-badge {
