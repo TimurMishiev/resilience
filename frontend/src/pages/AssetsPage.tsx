@@ -15,6 +15,12 @@ import { useReplay } from '../context/ReplayContext'
 import EntityCard from '../components/EntityCard'
 import type { Asset, AssetStatus } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
+import { deriveFreshness, type FreshnessThresholds } from '../lib/freshness'
+
+const ASSET_FRESHNESS_THRESHOLDS: FreshnessThresholds = {
+  agingMs: 6 * 3_600_000,
+  staleMs: 24 * 3_600_000,
+}
 
 function statusIntent(status: AssetStatus): Intent {
   switch (status) {
@@ -29,11 +35,21 @@ function stalenessLabel(
   asset: { last_reported_at: string | null; updated_at: string },
   referenceTimeMs: number,
 ): { label: string; intent: Intent } | null {
-  const ts    = asset.last_reported_at ?? asset.updated_at
-  const ageH  = Math.max(0, (referenceTimeMs - new Date(ts).getTime()) / 3_600_000)
-  if (ageH < 6)  return null
-  if (ageH < 24) return { label: `${Math.round(ageH)}h ago`, intent: 'warning' }
-  return { label: `${Math.round(ageH / 24)}d ago`, intent: 'danger' }
+  const timestamp = asset.last_reported_at ?? asset.updated_at
+  const updatedAtMs = Date.parse(timestamp)
+
+  if (!Number.isFinite(updatedAtMs)) return { label: 'unknown', intent: 'warning' }
+
+  const freshness = deriveFreshness(updatedAtMs, referenceTimeMs, ASSET_FRESHNESS_THRESHOLDS)
+  if (freshness === 'fresh') return null
+  if (freshness === 'unavailable') return { label: 'unknown', intent: 'warning' }
+
+  const ageHours = Math.max(0, (referenceTimeMs - updatedAtMs) / 3_600_000)
+  if (freshness === 'aging') {
+    return { label: `${Math.max(1, Math.round(ageHours))}h ago`, intent: 'warning' }
+  }
+
+  return { label: `${Math.max(1, Math.round(ageHours / 24))}d ago`, intent: 'danger' }
 }
 
 const SKELETON_ROWS = 7

@@ -6,6 +6,7 @@ import {
   NavbarDivider,
   Navbar,
   Tag,
+  Tooltip,
 } from '@blueprintjs/core'
 import ReplaySelector from '../ReplaySelector'
 import type { SourceHealthState } from '../../hooks/useSourceHealth'
@@ -25,6 +26,13 @@ const FRESHNESS_LABEL: Record<FreshnessState, string> = {
   aging:       'Data may be delayed',
   stale:       'Data is stale',
   unavailable: 'No data available',
+}
+
+const SOURCE_LABELS: Record<FreshnessState, string> = {
+  fresh:       'Healthy',
+  aging:       'Delayed',
+  stale:       'Stale',
+  unavailable: 'Unavailable',
 }
 
 interface Props {
@@ -48,6 +56,15 @@ export function AppNavbar({
   onSearchOpen,
   onLogout,
 }: Props) {
+  const sourceHealthTooltip = (
+    <div style={{ fontSize: 12, lineHeight: 1.5 }}>
+      <div><strong>System freshness</strong></div>
+      <div>Overall: {FRESHNESS_LABEL[sourceHealth.aggregate]}</div>
+      <div>Event stream: {SOURCE_LABELS[sourceHealth.sse]}</div>
+      <div>Data refresh: {SOURCE_LABELS[sourceHealth.data]}</div>
+    </div>
+  )
+
   return (
     <Navbar className="shell-navbar">
       <NavbarGroup align={Alignment.LEFT}>
@@ -56,10 +73,15 @@ export function AppNavbar({
         <span className="bp6-text-muted shell-tagline">Mission Operations Console</span>
       </NavbarGroup>
       <NavbarGroup align={Alignment.RIGHT}>
-        <span
-          className={`live-indicator ${FRESHNESS_CSS[sourceHealth.aggregate]}`}
-          title={FRESHNESS_LABEL[sourceHealth.aggregate]}
-        />
+        <Tooltip content={sourceHealthTooltip} placement="bottom">
+          <span
+            className={`live-indicator ${FRESHNESS_CSS[sourceHealth.aggregate]}`}
+            title={FRESHNESS_LABEL[sourceHealth.aggregate]}
+            aria-label={`System freshness: ${FRESHNESS_LABEL[sourceHealth.aggregate]}`}
+            tabIndex={0}
+            data-testid="source-health-indicator"
+          />
+        </Tooltip>
         {hasMissionPosture && (
           <Tag
             minimal={missionPosture === 'observe'}

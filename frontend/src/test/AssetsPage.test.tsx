@@ -3,12 +3,20 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+const referenceTimeState = vi.hoisted(() => ({
+  now: Date.parse('2026-04-11T12:00:00Z'),
+}))
+
+function isoHoursAgo(hoursAgo: number) {
+  return new Date(referenceTimeState.now - (hoursAgo * 3_600_000)).toISOString()
+}
+
 const mockState = vi.hoisted(() => ({
   assets: {
     data: {
       data: [
-        { id: 'a1', name: 'Drone Alpha', asset_type: 'UAV', status: 'available' as const, home_site_id: 's1', last_reported_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-        { id: 'a2', name: 'Patrol Boat', asset_type: 'vessel', status: 'assigned' as const, home_site_id: 's1', last_reported_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+        { id: 'a1', name: 'Drone Alpha', asset_type: 'UAV', status: 'available' as const, home_site_id: 's1', last_reported_at: isoHoursAgo(1), updated_at: isoHoursAgo(1) },
+        { id: 'a2', name: 'Patrol Boat', asset_type: 'vessel', status: 'assigned' as const, home_site_id: 's1', last_reported_at: isoHoursAgo(2), updated_at: isoHoursAgo(2) },
       ],
       meta: { total: 2 },
     },
@@ -27,7 +35,7 @@ vi.mock('../context/ReplayContext', () => ({
   useReplay: () => ({ asOf: null, isReplaying: false }),
 }))
 vi.mock('../hooks/useReferenceTimeMs', () => ({
-  useReferenceTimeMs: () => Date.now(),
+  useReferenceTimeMs: () => referenceTimeState.now,
 }))
 vi.mock('../components/EntityCard', () => ({
   default: () => <div>EntityCard</div>,
@@ -48,8 +56,16 @@ function renderPage() {
 
 describe('AssetsPage', () => {
   beforeEach(() => {
+    referenceTimeState.now = Date.parse('2026-04-11T12:00:00Z')
     mockState.assets.error = null
     mockState.assets.isPending = false
+    mockState.assets.data = {
+      data: [
+        { id: 'a1', name: 'Drone Alpha', asset_type: 'UAV', status: 'available' as const, home_site_id: 's1', last_reported_at: isoHoursAgo(1), updated_at: isoHoursAgo(1) },
+        { id: 'a2', name: 'Patrol Boat', asset_type: 'vessel', status: 'assigned' as const, home_site_id: 's1', last_reported_at: isoHoursAgo(2), updated_at: isoHoursAgo(2) },
+      ],
+      meta: { total: 2 },
+    }
   })
 
   it('renders asset table with data', () => {
@@ -87,5 +103,34 @@ describe('AssetsPage', () => {
       ],
       meta: { total: 2 },
     }
+  })
+
+  it('uses shared freshness thresholds for aging and stale assets', () => {
+    mockState.assets.data = {
+      data: [
+        { id: 'a1', name: 'Drone Alpha', asset_type: 'UAV', status: 'available' as const, home_site_id: 's1', last_reported_at: isoHoursAgo(7), updated_at: isoHoursAgo(7) },
+        { id: 'a2', name: 'Patrol Boat', asset_type: 'vessel', status: 'assigned' as const, home_site_id: 's1', last_reported_at: isoHoursAgo(48), updated_at: isoHoursAgo(48) },
+      ],
+      meta: { total: 2 },
+    }
+
+    renderPage()
+
+    expect(screen.getByText('7h ago')).toBeInTheDocument()
+    expect(screen.getByText('2d ago')).toBeInTheDocument()
+    expect(screen.queryByText(/^fresh$/)).not.toBeInTheDocument()
+  })
+
+  it('falls back to updated_at when last_reported_at is null', () => {
+    mockState.assets.data = {
+      data: [
+        { id: 'a1', name: 'Drone Alpha', asset_type: 'UAV', status: 'available' as const, home_site_id: 's1', last_reported_at: null, updated_at: isoHoursAgo(8) },
+      ],
+      meta: { total: 1 },
+    }
+
+    renderPage()
+
+    expect(screen.getByText('8h ago')).toBeInTheDocument()
   })
 })
