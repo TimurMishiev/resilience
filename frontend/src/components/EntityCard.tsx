@@ -37,6 +37,7 @@ import { ASSET_STATUSES } from '../api/types'
 import { humanize } from '../utils/humanize'
 import type { WorkflowStatus, AssetStatus, Posture } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
+import { deriveFreshness, type FreshnessThresholds } from '../lib/freshness'
 import { workflowIntent, priorityIntent, assetStatusIntent } from '../lib/taskIntents'
 
 export type EntityType = 'task' | 'asset' | 'site' | 'ao'
@@ -56,11 +57,28 @@ function fmt(iso: string) {
   })
 }
 
+const ASSET_FRESHNESS_THRESHOLDS: FreshnessThresholds = {
+  agingMs: 6 * 3_600_000,
+  staleMs: 24 * 3_600_000,
+}
+
 function staleness(last_reported_at: string | null, updated_at: string, referenceTimeMs = Date.now()) {
-  const ageH = (referenceTimeMs - new Date(last_reported_at ?? updated_at).getTime()) / 3_600_000
-  if (ageH < 0) return null
-  if (ageH < 6)  return null
-  if (ageH < 24) return { label: `${Math.round(ageH)}h ago`, intent: 'warning' as Intent }
+  const timestamp = last_reported_at ?? updated_at
+  const updatedAtMs = Date.parse(timestamp)
+
+  if (!Number.isFinite(updatedAtMs)) {
+    return { label: 'unknown', intent: 'warning' as Intent }
+  }
+
+  const freshness = deriveFreshness(updatedAtMs, referenceTimeMs, ASSET_FRESHNESS_THRESHOLDS)
+  if (freshness === 'fresh') return null
+  if (freshness === 'unavailable') return { label: 'unknown', intent: 'warning' as Intent }
+
+  const ageH = (referenceTimeMs - updatedAtMs) / 3_600_000
+  if (freshness === 'aging') {
+    return { label: `${Math.round(ageH)}h ago`, intent: 'warning' as Intent }
+  }
+
   return { label: `${Math.round(ageH / 24)}d ago`, intent: 'danger' as Intent }
 }
 
