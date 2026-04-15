@@ -152,7 +152,7 @@ export function RelayHealthTable({ entries, now }: { entries: OperationalStatusE
                   intent={isExpired ? 'danger' : relayStatusIntent(status)}
                   style={{ fontSize: 10, fontWeight: 600 }}
                 >
-                  {isExpired ? 'STALE' : status.toUpperCase()}
+                  {isExpired ? 'EXPIRED' : status.toUpperCase()}
                 </Tag>
               </td>
               <td className="bp6-text-muted" style={{ fontSize: 12 }}>

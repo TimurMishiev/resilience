@@ -13,12 +13,15 @@ const mockRole = vi.hoisted(() => ({
 }))
 
 const mockState = vi.hoisted(() => ({
+  now: Date.parse('2026-04-15T15:00:00Z'),
   feeds: [] as FeedHealthEntry[],
   feedPending: false,
   feedError: null as Error | null,
+  feedDataUpdatedAt: Date.parse('2026-04-15T15:00:00Z'),
   opsEntries: [] as OperationalStatusEntry[],
   opsPending: false,
   opsError: null as Error | null,
+  opsDataUpdatedAt: Date.parse('2026-04-15T15:00:00Z'),
 }))
 
 vi.mock('../context/ReplayContext', () => ({
@@ -46,13 +49,18 @@ vi.mock('../hooks/useOperationalHealth', () => ({
     data: { data: mockState.feeds },
     isPending: mockState.feedPending,
     error: mockState.feedError,
+    dataUpdatedAt: mockState.feedDataUpdatedAt,
   }),
   useOperationalHealth: () => ({
     data: { data: mockState.opsEntries },
     isPending: mockState.opsPending,
     error: mockState.opsError,
-    dataUpdatedAt: Date.now(),
+    dataUpdatedAt: mockState.opsDataUpdatedAt,
   }),
+}))
+
+vi.mock('../hooks/useReferenceTimeMs', () => ({
+  useReferenceTimeMs: () => mockState.now,
 }))
 
 async function renderPage() {
@@ -69,6 +77,7 @@ async function renderPage() {
 
 describe('OperationalHealthPage', () => {
   beforeEach(() => {
+    mockState.now = Date.parse('2026-04-15T15:00:00Z')
     Object.assign(mockRole, {
       role: 'commander',
       isAdmin: false,
@@ -79,9 +88,11 @@ describe('OperationalHealthPage', () => {
     mockState.feeds = []
     mockState.feedPending = false
     mockState.feedError = null
+    mockState.feedDataUpdatedAt = mockState.now
     mockState.opsEntries = []
     mockState.opsPending = false
     mockState.opsError = null
+    mockState.opsDataUpdatedAt = mockState.now
   })
 
   it('shows commander-access-required callout for non-commander users', async () => {
@@ -151,7 +162,7 @@ describe('OperationalHealthPage', () => {
   })
 
   it('renders relay health with stale detection', async () => {
-    const pastExpiry = new Date(Date.now() - 120_000).toISOString()
+    const pastExpiry = new Date(mockState.now - 120_000).toISOString()
 
     mockState.opsEntries = [
       {
@@ -172,11 +183,12 @@ describe('OperationalHealthPage', () => {
 
     expect(screen.getByText('main')).toBeInTheDocument()
     expect(screen.getByText('signals')).toBeInTheDocument()
-    expect(screen.getByText('STALE')).toBeInTheDocument()
+    expect(screen.getByText('EXPIRED')).toBeInTheDocument()
   })
 
   it('renders relay as OK when heartbeat has not expired', async () => {
-    const futureExpiry = new Date(Date.now() + 60_000).toISOString()
+    const futureExpiry = new Date(mockState.now + 60_000).toISOString()
+    const seenAt = new Date(mockState.now - 15_000).toISOString()
 
     mockState.opsEntries = [
       {
@@ -186,17 +198,36 @@ describe('OperationalHealthPage', () => {
           status: 'ok',
           relay: 'main',
           channel: 'telemetry',
-          last_seen_at: new Date().toISOString(),
+          last_seen_at: seenAt,
           heartbeat_expires_at: futureExpiry,
         },
-        updated_at: new Date().toISOString(),
+        updated_at: seenAt,
       },
     ]
 
     await renderPage()
 
     expect(screen.getByText('OK')).toBeInTheDocument()
-    expect(screen.queryByText('STALE')).not.toBeInTheDocument()
+    expect(screen.queryByText('EXPIRED')).not.toBeInTheDocument()
+  })
+
+  it('shows a stale snapshot warning when operational health data is old', async () => {
+    mockState.opsDataUpdatedAt = mockState.now - 180_000
+
+    await renderPage()
+
+    expect(screen.getByText(/operational health snapshot is stale/i)).toBeInTheDocument()
+    expect(screen.getByText('Snapshot stale')).toBeInTheDocument()
+  })
+
+  it('shows an unavailable snapshot warning when no health snapshot has been received', async () => {
+    mockState.feedDataUpdatedAt = 0
+    mockState.opsDataUpdatedAt = 0
+
+    await renderPage()
+
+    expect(screen.getByText(/operational health snapshot is unavailable/i)).toBeInTheDocument()
+    expect(screen.getAllByText('Snapshot unavailable').length).toBeGreaterThan(0)
   })
 
   it('shows error callouts when API requests fail', async () => {

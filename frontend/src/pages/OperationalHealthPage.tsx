@@ -1,7 +1,9 @@
-import { Callout, Classes, Icon } from '@blueprintjs/core'
+import { Callout, Classes, Icon, Tag } from '@blueprintjs/core'
 import { useFeedHealth, useOperationalHealth } from '../hooks/useOperationalHealth'
 import { useReplay } from '../context/ReplayContext'
 import { useRole } from '../hooks/useRole'
+import { useReferenceTimeMs } from '../hooks/useReferenceTimeMs'
+import { deriveFreshness, worstFreshness, type FreshnessState } from '../lib/freshness'
 import {
   FeedHealthTable,
   RelayHealthTable,
@@ -17,12 +19,34 @@ import type {
   AiServiceTiming,
 } from '../components/operationalHealth/OperationalHealthTables'
 
+const SNAPSHOT_LABELS: Record<FreshnessState, string> = {
+  fresh: 'Snapshot fresh',
+  aging: 'Snapshot delayed',
+  stale: 'Snapshot stale',
+  unavailable: 'Snapshot unavailable',
+}
+
+const SNAPSHOT_INTENT: Record<FreshnessState, 'success' | 'warning' | 'danger' | 'none'> = {
+  fresh: 'success',
+  aging: 'warning',
+  stale: 'danger',
+  unavailable: 'warning',
+}
+
+function snapshotMessage(freshness: FreshnessState): string | null {
+  if (freshness === 'fresh') return null
+  if (freshness === 'aging') return 'Operational health snapshot may be delayed. Feed and relay counts reflect the last successful refresh.'
+  if (freshness === 'stale') return 'Operational health snapshot is stale. Feed and relay counts may no longer reflect current platform state.'
+  return 'Operational health snapshot is unavailable. Feed and relay counts may be incomplete until the next successful refresh.'
+}
+
 export default function OperationalHealthPage() {
   const role = useRole()
   const canViewOperationalHealth = role.canViewOperationalHealth ?? role.isCommander
   const { isReplaying } = useReplay()
-  const { data: feedData, isPending: feedPending, error: feedError } = useFeedHealth()
-  const { data: opsData, isPending: opsPending, error: opsError, dataUpdatedAt } = useOperationalHealth()
+  const referenceTimeMs = useReferenceTimeMs()
+  const { data: feedData, isPending: feedPending, error: feedError, dataUpdatedAt: feedDataUpdatedAt } = useFeedHealth()
+  const { data: opsData, isPending: opsPending, error: opsError, dataUpdatedAt: opsDataUpdatedAt } = useOperationalHealth()
 
   if (!canViewOperationalHealth) {
     return (
@@ -40,10 +64,13 @@ export default function OperationalHealthPage() {
   const okFeeds = feeds.filter(f => f.status === 'ok').length
   const errorFeeds = feeds.filter(f => f.status === 'error' || f.status === 'disabled').length
   const relayEntries = opsEntries.filter(e => e.category === 'relay_health')
+  const feedSnapshotFreshness = deriveFreshness(feedDataUpdatedAt, referenceTimeMs)
+  const opsSnapshotFreshness = deriveFreshness(opsDataUpdatedAt, referenceTimeMs)
+  const snapshotFreshness = worstFreshness([feedSnapshotFreshness, opsSnapshotFreshness])
 
-  // Use React Query's dataUpdatedAt as the reference timestamp for stale
-  // detection — avoids calling Date.now() during render (react-hooks/purity).
-  const now = dataUpdatedAt || 0
+  // Use the shared live reference clock so heartbeat expiry and snapshot freshness
+  // stay aligned with the rest of the app's trust model.
+  const now = referenceTimeMs
 
   const staleRelays = relayEntries.filter(e => {
     const expires = e.payload.heartbeat_expires_at as string | undefined
@@ -80,10 +107,16 @@ export default function OperationalHealthPage() {
         </Callout>
       )}
 
+      {!isReplaying && snapshotMessage(snapshotFreshness) && (
+        <Callout intent={SNAPSHOT_INTENT[snapshotFreshness]} icon="warning-sign" style={{ marginBottom: 16 }}>
+          {snapshotMessage(snapshotFreshness)}
+        </Callout>
+      )}
+
       {/* KPI row */}
       <div className="dashboard-kpi-row" style={{ marginBottom: 20 }}>
         <div className="dashboard-kpi">
-          <span className="dashboard-kpi-label bp6-text-muted">Feeds OK</span>
+          <span className="dashboard-kpi-label bp6-text-muted">Feeds Healthy</span>
           <span className="dashboard-kpi-value" style={{ color: okFeeds > 0 ? '#3dcc91' : '#a7b6c2' }}>
             {feedPending ? <span className={Classes.SKELETON} style={{ width: 32, display: 'inline-block' }}>&nbsp;</span> : okFeeds}
           </span>
@@ -95,13 +128,13 @@ export default function OperationalHealthPage() {
           </span>
         </div>
         <div className="dashboard-kpi">
-          <span className="dashboard-kpi-label bp6-text-muted">Relays Active</span>
+          <span className="dashboard-kpi-label bp6-text-muted">Relay Heartbeats OK</span>
           <span className="dashboard-kpi-value" style={{ color: relayEntries.length > 0 ? '#3dcc91' : '#a7b6c2' }}>
             {opsPending ? <span className={Classes.SKELETON} style={{ width: 32, display: 'inline-block' }}>&nbsp;</span> : relayEntries.length - staleRelays}
           </span>
         </div>
         <div className="dashboard-kpi">
-          <span className="dashboard-kpi-label bp6-text-muted">Relays Stale</span>
+          <span className="dashboard-kpi-label bp6-text-muted">Heartbeats Expired</span>
           <span className="dashboard-kpi-value" style={{ color: staleRelays > 0 ? '#f55656' : '#3dcc91' }}>
             {opsPending ? <span className={Classes.SKELETON} style={{ width: 32, display: 'inline-block' }}>&nbsp;</span> : staleRelays}
           </span>
@@ -113,6 +146,9 @@ export default function OperationalHealthPage() {
         <h4 className="dashboard-card-title bp6-heading">
           <Icon icon="feed" size={14} style={{ marginRight: 6 }} />
           Feed Ingestion Health
+          <Tag minimal intent={SNAPSHOT_INTENT[feedSnapshotFreshness]} style={{ marginLeft: 8, fontSize: 10 }}>
+            {SNAPSHOT_LABELS[feedSnapshotFreshness]}
+          </Tag>
         </h4>
         {feedError && <Callout intent="danger" compact style={{ marginBottom: 12 }}>{feedError.message}</Callout>}
         {feedPending ? (
@@ -127,6 +163,9 @@ export default function OperationalHealthPage() {
         <h4 className="dashboard-card-title bp6-heading">
           <Icon icon="data-connection" size={14} style={{ marginRight: 6 }} />
           Realtime Relay Health
+          <Tag minimal intent={SNAPSHOT_INTENT[opsSnapshotFreshness]} style={{ marginLeft: 8, fontSize: 10 }}>
+            {SNAPSHOT_LABELS[opsSnapshotFreshness]}
+          </Tag>
         </h4>
         {opsError && <Callout intent="danger" compact style={{ marginBottom: 12 }}>{opsError.message}</Callout>}
         {opsPending ? (
