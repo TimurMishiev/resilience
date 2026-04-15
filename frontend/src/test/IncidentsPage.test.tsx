@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mockState = vi.hoisted(() => ({
   isReplaying: false,
   asOf: null as string | null,
+  referenceTimeMs: Date.parse('2026-04-15T16:45:00Z'),
   currentUser: { id: 'user-1', email: 'cmd@test.mil', role: 'commander' },
   incidentsParams: null as Record<string, unknown> | null,
   incidentsOptions: null as { enabled?: boolean; refetchInterval?: number | false } | null,
@@ -30,6 +31,10 @@ vi.mock('../hooks/useRole', () => ({
     isOperator: mockState.currentUser?.role === 'operator',
     isViewer: mockState.currentUser?.role === 'viewer',
   }),
+}))
+
+vi.mock('../hooks/useReferenceTimeMs', () => ({
+  useReferenceTimeMs: () => mockState.referenceTimeMs,
 }))
 
 vi.mock('../hooks/useIncidents', () => ({
@@ -100,6 +105,8 @@ describe('IncidentsPage', () => {
   beforeEach(() => {
     mockState.isReplaying = false
     mockState.asOf = null
+    mockState.referenceTimeMs = Date.parse('2026-04-15T16:45:00Z')
+    mockState.currentUser = { id: 'user-1', email: 'cmd@test.mil', role: 'commander' }
     mockState.incidentsParams = null
     mockState.incidentsOptions = null
   })
@@ -107,6 +114,7 @@ describe('IncidentsPage', () => {
   it('passes as_of and disables polling during replay', async () => {
     mockState.isReplaying = true
     mockState.asOf = '2026-03-29T12:00:00Z'
+    mockState.referenceTimeMs = Date.parse('2026-03-29T12:00:00Z')
 
     await renderPage()
 
@@ -114,6 +122,7 @@ describe('IncidentsPage', () => {
     expect(mockState.incidentsParams).toMatchObject({ as_of: '2026-03-29T12:00:00Z' })
     expect(mockState.incidentsOptions).toMatchObject({ enabled: true, refetchInterval: false })
     expect(screen.getByText('1 visible')).toBeInTheDocument()
+    expect(screen.getByText('2h ago')).toBeInTheDocument()
   })
 
   it('hides transition and assignment actions for viewer role', async () => {

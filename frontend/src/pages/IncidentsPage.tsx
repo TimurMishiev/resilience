@@ -7,6 +7,7 @@ import {
 } from '@blueprintjs/core'
 import ExportButton from '../components/ExportButton'
 import { useIncidents, useTransitionIncident, useAssignIncident } from '../hooks/useIncidents'
+import { useReferenceTimeMs } from '../hooks/useReferenceTimeMs'
 import { useAuth } from '../context/AuthContext'
 import { useReplay } from '../context/ReplayContext'
 import { useRole } from '../hooks/useRole'
@@ -56,8 +57,8 @@ function fmt(iso: string) {
   })
 }
 
-function reltime(iso: string) {
-  const diff = (Date.now() - new Date(iso).getTime()) / 1000
+function reltime(iso: string, referenceTimeMs: number) {
+  const diff = (referenceTimeMs - new Date(iso).getTime()) / 1000
   if (diff < 60)    return `${Math.round(diff)}s ago`
   if (diff < 3600)  return `${Math.round(diff / 60)}m ago`
   if (diff < 86400) return `${Math.round(diff / 3600)}h ago`
@@ -71,6 +72,7 @@ export default function IncidentsPage() {
   const { currentUser } = useAuth()
   const { isCommander, isOperator } = useRole()
   const { isReplaying, asOf } = useReplay()
+  const referenceTimeMs = useReferenceTimeMs(asOf)
   const canMutateIncidents = isCommander || isOperator
 
   const [statusFilter,   setStatusFilter]   = useState<IncidentStatus | ''>('')
@@ -276,7 +278,7 @@ export default function IncidentsPage() {
                   </td>
 
                   <td className="bp6-text-muted mono" style={{ fontSize: 11 }}>
-                    {reltime(incident.opened_at)}
+                    {reltime(incident.opened_at, referenceTimeMs)}
                   </td>
 
                   <td onClick={e => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>

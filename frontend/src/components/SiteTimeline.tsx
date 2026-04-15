@@ -10,14 +10,15 @@ import {
   Tooltip,
 } from '@blueprintjs/core'
 import { useSiteTimeline } from '../hooks/useSite'
+import { useReferenceTimeMs } from '../hooks/useReferenceTimeMs'
 import { SIGNAL_ICON_NAME } from '../lib/signalIcons'
 import type { TimelineEvent, TimelineEventKind, SignalType } from '../api/types'
 import { humanize } from '../utils/humanize'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime()
+function timeAgo(iso: string, referenceTimeMs: number): string {
+  const diff = referenceTimeMs - new Date(iso).getTime()
   const m    = Math.floor(diff / 60_000)
   if (m < 1)   return 'just now'
   if (m < 60)  return `${m}m ago`
@@ -70,7 +71,7 @@ const ALL_KINDS: TimelineEventKind[] = [
 
 // ── single event row ──────────────────────────────────────────────────────────
 
-function EventRow({ event }: { event: TimelineEvent }) {
+function EventRow({ event, referenceTimeMs }: { event: TimelineEvent; referenceTimeMs: number }) {
   const [expanded, setExpanded] = useState(false)
   const cfg = KIND_CONFIG[event.event_kind]
 
@@ -129,7 +130,7 @@ function EventRow({ event }: { event: TimelineEvent }) {
           {/* timestamp */}
           <Tooltip content={fmtFull(event.occurred_at)} placement="top">
             <span className="tt-time bp6-text-muted">
-              {timeAgo(event.occurred_at)}
+              {timeAgo(event.occurred_at, referenceTimeMs)}
             </span>
           </Tooltip>
 
@@ -234,6 +235,7 @@ interface Props {
 export default function SiteTimeline({ siteId, asOf }: Props) {
   const [activeKinds, setActiveKinds] = useState<TimelineEventKind[]>(ALL_KINDS)
   const [days, setDays]               = useState(7)
+  const referenceTimeMs = useReferenceTimeMs(asOf)
 
   const kinds = activeKinds.length === ALL_KINDS.length ? undefined : activeKinds
 
@@ -245,6 +247,12 @@ export default function SiteTimeline({ siteId, asOf }: Props) {
 
   const events = data?.data ?? []
   const total  = data?.meta.total ?? 0
+  const anchoredAt = asOf ? fmtFull(asOf) : null
+  const updatedCopy = dataUpdatedAt > 0
+    ? anchoredAt
+      ? ` · fetched ${fmtFull(new Date(dataUpdatedAt).toISOString())}`
+      : ` · updated ${timeAgo(new Date(dataUpdatedAt).toISOString(), referenceTimeMs)}`
+    : ''
 
   return (
     <div className="threat-timeline">
@@ -273,13 +281,8 @@ export default function SiteTimeline({ siteId, asOf }: Props) {
       {/* ── header row ── */}
       <div className="tt-summary bp6-text-muted">
         {isPending
-          ? 'Loading…'
-          : `${total} event${total !== 1 ? 's' : ''} · last ${days} days`}
-        {dataUpdatedAt > 0 && (
-          <span style={{ marginLeft: 8 }}>
-            · updated {timeAgo(new Date(dataUpdatedAt).toISOString())}
-          </span>
-        )}
+          ? (anchoredAt ? 'Loading historical timeline…' : 'Loading…')
+          : `${total} event${total !== 1 ? 's' : ''} · last ${days} days${anchoredAt ? ` · anchored ${anchoredAt}` : ''}${updatedCopy}`}
       </div>
 
       {/* ── states ── */}
@@ -304,7 +307,7 @@ export default function SiteTimeline({ siteId, asOf }: Props) {
       {events.length > 0 && (
         <ol className="threat-timeline-list">
           {events.map(event => (
-            <EventRow key={event.id} event={event} />
+            <EventRow key={event.id} event={event} referenceTimeMs={referenceTimeMs} />
           ))}
         </ol>
       )}
