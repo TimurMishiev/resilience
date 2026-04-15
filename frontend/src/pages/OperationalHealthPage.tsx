@@ -68,13 +68,9 @@ export default function OperationalHealthPage() {
   const opsSnapshotFreshness = deriveFreshness(opsDataUpdatedAt, referenceTimeMs)
   const snapshotFreshness = worstFreshness([feedSnapshotFreshness, opsSnapshotFreshness])
 
-  // Use the shared live reference clock so heartbeat expiry and snapshot freshness
-  // stay aligned with the rest of the app's trust model.
-  const now = referenceTimeMs
-
   const staleRelays = relayEntries.filter(e => {
     const expires = e.payload.heartbeat_expires_at as string | undefined
-    return expires ? Date.parse(expires) < now : false
+    return expires ? Date.parse(expires) < referenceTimeMs : false
   }).length
 
   // ── Platform Metrics (from Metrics::Recorder snapshots) ────────────
@@ -154,7 +150,7 @@ export default function OperationalHealthPage() {
         {feedPending ? (
           <div className={Classes.SKELETON} style={{ width: '100%', height: 200 }}>&nbsp;</div>
         ) : (
-          <FeedHealthTable feeds={feeds} />
+          <FeedHealthTable feeds={feeds} referenceTimeMs={referenceTimeMs} />
         )}
       </div>
 
@@ -171,7 +167,7 @@ export default function OperationalHealthPage() {
         {opsPending ? (
           <div className={Classes.SKELETON} style={{ width: '100%', height: 120 }}>&nbsp;</div>
         ) : (
-          <RelayHealthTable entries={opsEntries} now={now} />
+          <RelayHealthTable entries={opsEntries} referenceTimeMs={referenceTimeMs} />
         )}
       </div>
 
@@ -197,7 +193,7 @@ export default function OperationalHealthPage() {
           {opsPending ? (
             <div className={Classes.SKELETON} style={{ width: '100%', height: 60 }}>&nbsp;</div>
           ) : (
-            <SseConnectionsCard payload={ssePayload} />
+            <SseConnectionsCard payload={ssePayload} referenceTimeMs={referenceTimeMs} />
           )}
         </div>
 
@@ -222,7 +218,7 @@ export default function OperationalHealthPage() {
         {opsPending ? (
           <div className={Classes.SKELETON} style={{ width: '100%', height: 120 }}>&nbsp;</div>
         ) : (
-          <FeedLagTable feeds={feedLagFeeds} />
+          <FeedLagTable feeds={feedLagFeeds} referenceTimeMs={referenceTimeMs} />
         )}
       </div>
 

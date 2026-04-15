@@ -65,7 +65,7 @@ function formatMs(ms: number): string {
   return `${(ms / 1000).toFixed(2)}s`
 }
 
-export function FeedHealthTable({ feeds }: { feeds: FeedHealthEntry[] }) {
+export function FeedHealthTable({ feeds, referenceTimeMs }: { feeds: FeedHealthEntry[]; referenceTimeMs: number }) {
   if (feeds.length === 0) {
     return <p className="bp6-text-muted" style={{ fontSize: 12 }}>No feed health data recorded yet.</p>
   }
@@ -94,7 +94,7 @@ export function FeedHealthTable({ feeds }: { feeds: FeedHealthEntry[] }) {
               </Tag>
             </td>
             <td className="bp6-text-muted" style={{ fontSize: 12 }}>
-              {timeAgo(feed.finished_at)}
+              {timeAgo(feed.finished_at, referenceTimeMs)}
             </td>
             <td style={{ fontSize: 12 }}>
               {feed.duration_ms < 1000 ? `${feed.duration_ms}ms` : `${(feed.duration_ms / 1000).toFixed(1)}s`}
@@ -116,7 +116,7 @@ export function FeedHealthTable({ feeds }: { feeds: FeedHealthEntry[] }) {
   )
 }
 
-export function RelayHealthTable({ entries, now }: { entries: OperationalStatusEntry[]; now: number }) {
+export function RelayHealthTable({ entries, referenceTimeMs }: { entries: OperationalStatusEntry[]; referenceTimeMs: number }) {
   const relays = entries.filter(entry => entry.category === 'relay_health')
 
   if (relays.length === 0) {
@@ -139,7 +139,7 @@ export function RelayHealthTable({ entries, now }: { entries: OperationalStatusE
           const payload = entry.payload
           const status = (payload.status as string) ?? 'unknown'
           const isExpired = payload.heartbeat_expires_at
-            ? Date.parse(payload.heartbeat_expires_at as string) < now
+            ? Date.parse(payload.heartbeat_expires_at as string) < referenceTimeMs
             : false
 
           return (
@@ -156,10 +156,10 @@ export function RelayHealthTable({ entries, now }: { entries: OperationalStatusE
                 </Tag>
               </td>
               <td className="bp6-text-muted" style={{ fontSize: 12 }}>
-                {payload.last_seen_at ? timeAgo(payload.last_seen_at as string) : '—'}
+                {payload.last_seen_at ? timeAgo(payload.last_seen_at as string, referenceTimeMs) : '—'}
               </td>
               <td className="bp6-text-muted" style={{ fontSize: 12 }}>
-                {payload.heartbeat_expires_at ? timeAgo(payload.heartbeat_expires_at as string) : '—'}
+                {payload.heartbeat_expires_at ? timeAgo(payload.heartbeat_expires_at as string, referenceTimeMs) : '—'}
               </td>
             </tr>
           )
@@ -206,7 +206,7 @@ export function RequestLatencyTable({ endpoints }: { endpoints: EndpointLatency[
   )
 }
 
-export function SseConnectionsCard({ payload }: { payload: SseConnectionPayload | null }) {
+export function SseConnectionsCard({ payload, referenceTimeMs }: { payload: SseConnectionPayload | null; referenceTimeMs: number }) {
   if (!payload) {
     return <p className="bp6-text-muted" style={{ fontSize: 12 }}>No SSE connection data yet.</p>
   }
@@ -224,13 +224,13 @@ export function SseConnectionsCard({ payload }: { payload: SseConnectionPayload 
         </div>
       ))}
       <span className="bp6-text-muted" style={{ fontSize: 11, marginLeft: 'auto' }}>
-        {timeAgo(payload.recorded_at)}
+        {timeAgo(payload.recorded_at, referenceTimeMs)}
       </span>
     </div>
   )
 }
 
-export function FeedLagTable({ feeds }: { feeds: FeedLagEntry[] }) {
+export function FeedLagTable({ feeds, referenceTimeMs }: { feeds: FeedLagEntry[]; referenceTimeMs: number }) {
   if (feeds.length === 0) {
     return <p className="bp6-text-muted" style={{ fontSize: 12 }}>No feed lag data yet.</p>
   }
@@ -260,7 +260,7 @@ export function FeedLagTable({ feeds }: { feeds: FeedLagEntry[] }) {
               </Tag>
             </td>
             <td className="bp6-text-muted" style={{ fontSize: 12 }}>
-              {feed.last_poll_at ? timeAgo(feed.last_poll_at) : '—'}
+              {feed.last_poll_at ? timeAgo(feed.last_poll_at, referenceTimeMs) : '—'}
             </td>
           </tr>
         ))}
