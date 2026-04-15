@@ -20,6 +20,7 @@ import {
 } from 'recharts'
 import { useReadiness, useThroughput } from '../hooks/useReadiness'
 import { useRiskScores } from '../hooks/useRiskScores'
+import { useReferenceTimeMs } from '../hooks/useReferenceTimeMs'
 import { useTasks } from '../hooks/useTasks'
 import { useSignalRuleMatches } from '../hooks/useSignalRuleMatches'
 import { useVessels } from '../hooks/useVessels'
@@ -51,6 +52,7 @@ const PRIORITY_COLOR: Record<TaskPriority, string> = {
 
 export default function DashboardPage() {
   const { asOf, isReplaying } = useReplay()
+  const referenceTimeMs = useReferenceTimeMs()
   const navigate  = useNavigate()
   const { isCommander } = useRole()
   const [evidenceRec, setEvidenceRec] = useState<Recommendation | null>(null)
@@ -227,7 +229,7 @@ export default function DashboardPage() {
                   Failed to load loitering watchlist{loiteringError.message ? `: ${loiteringError.message}` : '.'}
                 </Callout>
               ) : (
-                <LoiteringWatchlist vessels={loiteringVessels} />
+                <LoiteringWatchlist vessels={loiteringVessels} referenceTimeMs={referenceTimeMs} />
               )}
             </div>
 

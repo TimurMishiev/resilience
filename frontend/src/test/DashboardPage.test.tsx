@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const dashboardState = vi.hoisted(() => ({
   isReplaying: false,
   asOf: '2026-04-09T12:00:00Z',
+  referenceTimeMs: Date.parse('2026-03-27T11:30:00.000Z'),
   loiteringError: null as Error | null,
   recommendations: [] as Array<{ id: string }>,
   matches: [] as Array<Record<string, unknown>>,
@@ -101,6 +102,10 @@ vi.mock('../context/ReplayContext', () => ({
   }),
 }))
 
+vi.mock('../hooks/useReferenceTimeMs', () => ({
+  useReferenceTimeMs: () => dashboardState.referenceTimeMs,
+}))
+
 vi.mock('../hooks/useRole', () => ({
   useRole: () => ({
     isCommander: true,
@@ -146,6 +151,7 @@ function renderDashboard() {
 describe('DashboardPage loitering watchlist', () => {
   beforeEach(() => {
     dashboardState.isReplaying = false
+    dashboardState.referenceTimeMs = Date.parse('2026-03-27T11:30:00.000Z')
     dashboardState.recommendations = []
     dashboardState.matches = []
     dashboardState.loiteringError = null
@@ -157,7 +163,7 @@ describe('DashboardPage loitering watchlist', () => {
     expect(screen.getByText('Loitering Watchlist')).toBeInTheDocument()
     expect(screen.getByText('MV Sentinel')).toBeInTheDocument()
     expect(screen.getByText('123456789 · PA · Cargo')).toBeInTheDocument()
-    expect(screen.getByText(/^Loitering \d/)).toBeInTheDocument()
+    expect(screen.getByText('Loitering 30m')).toBeInTheDocument()
     expect(screen.getByText('Dark')).toBeInTheDocument()
   })
 

@@ -8,10 +8,10 @@ function fmtTime(iso: string) {
   })
 }
 
-function fmtLoiteringDuration(iso: string | null): string {
+function fmtLoiteringDuration(iso: string | null, referenceTimeMs: number): string {
   if (!iso) return '—'
 
-  const minutes = Math.max(1, Math.round((Date.now() - Date.parse(iso)) / 60_000))
+  const minutes = Math.max(1, Math.round((referenceTimeMs - Date.parse(iso)) / 60_000))
   if (minutes < 60) return `${minutes}m`
 
   const hours = Math.floor(minutes / 60)
@@ -19,7 +19,13 @@ function fmtLoiteringDuration(iso: string | null): string {
   return remainder === 0 ? `${hours}h` : `${hours}h ${remainder}m`
 }
 
-export default function LoiteringWatchlist({ vessels }: { vessels: Vessel[] }) {
+export default function LoiteringWatchlist({
+  vessels,
+  referenceTimeMs,
+}: {
+  vessels: Vessel[]
+  referenceTimeMs: number
+}) {
   if (vessels.length === 0) {
     return (
       <p className="bp6-text-muted" style={{ fontSize: 12, margin: 0 }}>
@@ -49,7 +55,7 @@ export default function LoiteringWatchlist({ vessels }: { vessels: Vessel[] }) {
             <div className="alert-row-right">
               <div className="alert-actions" style={{ alignItems: 'flex-end' }}>
                 <Tag minimal intent="warning" style={{ fontSize: 10, fontWeight: 600 }}>
-                  Loitering {fmtLoiteringDuration(vessel.loitering_since)}
+                  Loitering {fmtLoiteringDuration(vessel.loitering_since, referenceTimeMs)}
                 </Tag>
                 {vessel.dark && (
                   <Tag minimal intent="danger" style={{ fontSize: 10, fontWeight: 600 }}>
