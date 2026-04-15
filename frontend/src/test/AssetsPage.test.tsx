@@ -11,13 +11,23 @@ function isoHoursAgo(hoursAgo: number) {
   return new Date(referenceTimeState.now - (hoursAgo * 3_600_000)).toISOString()
 }
 
+type AssetRow = {
+  id: string
+  name: string
+  asset_type: string
+  status: 'available' | 'assigned'
+  home_site_id: string
+  last_reported_at: string | null
+  updated_at: string
+}
+
 const mockState = vi.hoisted(() => ({
   assets: {
     data: {
       data: [
-        { id: 'a1', name: 'Drone Alpha', asset_type: 'UAV', status: 'available' as const, home_site_id: 's1', last_reported_at: isoHoursAgo(1), updated_at: isoHoursAgo(1) },
-        { id: 'a2', name: 'Patrol Boat', asset_type: 'vessel', status: 'assigned' as const, home_site_id: 's1', last_reported_at: isoHoursAgo(2), updated_at: isoHoursAgo(2) },
-      ],
+        { id: 'a1', name: 'Drone Alpha', asset_type: 'UAV', status: 'available', home_site_id: 's1', last_reported_at: isoHoursAgo(1), updated_at: isoHoursAgo(1) },
+        { id: 'a2', name: 'Patrol Boat', asset_type: 'vessel', status: 'assigned', home_site_id: 's1', last_reported_at: isoHoursAgo(2), updated_at: isoHoursAgo(2) },
+      ] as AssetRow[],
       meta: { total: 2 },
     },
     error: null as Error | null,

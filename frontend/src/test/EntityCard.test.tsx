@@ -18,7 +18,7 @@ const assetState = vi.hoisted(() => ({
     asset_type: 'drone',
     status: 'available',
     home_site_id: 'site-1',
-    last_reported_at: '2026-04-08T11:30:00Z',
+    last_reported_at: '2026-04-08T11:30:00Z' as string | null,
     created_at: '2026-04-08T09:00:00Z',
     updated_at: '2026-04-08T11:45:00Z',
   },
