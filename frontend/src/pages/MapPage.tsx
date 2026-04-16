@@ -246,7 +246,12 @@ export default function MapPage() {
     queryClient.invalidateQueries({ queryKey: ['readiness'] })
   }, [queryClient])
 
-  const contextPanelOpen = Boolean(selectedSiteId || selectedAssetId || selectedSignalId)
+  const [panelForceOpen, setPanelForceOpen] = useState(false)
+  const [panelWidth, setPanelWidth]         = useState(360)
+  const panelRef = useRef<HTMLElement>(null)
+
+  const hasSelection = Boolean(selectedSiteId || selectedAssetId || selectedSignalId)
+  const contextPanelOpen = hasSelection || panelForceOpen
 
   const clearSelection = useCallback(() => {
     setSelectedSiteId(null)
@@ -255,23 +260,66 @@ export default function MapPage() {
     updateSelectionRoute({ siteId: null, assetId: null, signalId: null })
   }, [setSelectedSiteId, setSelectedAssetId, setSelectedSignalId, updateSelectionRoute])
 
-  // Re-measure the map whenever the docked panel opens/closes so MapLibre's
-  // internal viewport matches the new container width.
+  const closePanel = useCallback(() => {
+    setPanelForceOpen(false)
+    clearSelection()
+  }, [clearSelection])
+
+  // Re-measure the map whenever the docked panel opens/closes or resizes so
+  // MapLibre's internal viewport matches the new container width.
   useEffect(() => {
     if (!mapLoaded) return
     const frame = requestAnimationFrame(() => resize())
     return () => cancelAnimationFrame(frame)
-  }, [contextPanelOpen, mapLoaded, resize])
+  }, [contextPanelOpen, panelWidth, mapLoaded, resize])
 
-  // Escape closes the docked panel (and clears selection) when it's open.
+  // ] toggles the panel; Escape closes it.
   useEffect(() => {
-    if (!contextPanelOpen) return
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') clearSelection()
+      const tag = (event.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+
+      if (event.key === ']') {
+        event.preventDefault()
+        if (contextPanelOpen) {
+          closePanel()
+        } else {
+          setPanelForceOpen(true)
+        }
+        return
+      }
+      if (event.key === 'Escape' && contextPanelOpen) {
+        closePanel()
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [contextPanelOpen, clearSelection])
+  }, [contextPanelOpen, closePanel])
+
+  // Resize handle drag
+  const handleResizeStart = useCallback(
+    (event: React.MouseEvent) => {
+      event.preventDefault()
+      const startX = event.clientX
+      const startWidth = panelWidth
+
+      const onMouseMove = (e: MouseEvent) => {
+        const delta = startX - e.clientX
+        setPanelWidth(Math.min(600, Math.max(240, startWidth + delta)))
+      }
+      const onMouseUp = () => {
+        document.removeEventListener('mousemove', onMouseMove)
+        document.removeEventListener('mouseup', onMouseUp)
+        document.body.style.cursor = ''
+        document.body.style.userSelect = ''
+      }
+      document.body.style.cursor = 'col-resize'
+      document.body.style.userSelect = 'none'
+      document.addEventListener('mousemove', onMouseMove)
+      document.addEventListener('mouseup', onMouseUp)
+    },
+    [panelWidth],
+  )
 
   useMapE2EBridge({
     mapLoaded,
@@ -320,29 +368,47 @@ export default function MapPage() {
 
       {contextPanelOpen && (
         <aside
+          ref={panelRef}
           className="map-context-panel"
           role="complementary"
           aria-label="Map selection detail"
+          style={{ flexBasis: panelWidth, width: panelWidth }}
         >
-          <MapSelectionPanels
-            selectedSite={selectedSite}
-            selectedTasks={selectedTasks}
-            readiness={readiness}
-            riskBySiteId={riskBySiteId}
-            role={role}
-            canTriage={canTriageAlerts}
-            referenceTimeMs={referenceTimeMs}
-            selectedAsset={selectedAsset}
-            selectedLiveReading={selectedLiveReading}
-            selectedSignal={selectedSignal}
-            selectedVessel={selectedVessel}
-            vesselTracks={vesselTracks}
-            isReplaying={isReplaying}
-            onTransitioned={handleTransitioned}
-            onCloseSite={clearSelection}
-            onCloseAsset={clearSelection}
-            onCloseSignal={clearSelection}
+          <div
+            className="map-context-panel-resize-handle"
+            onMouseDown={handleResizeStart}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize panel"
+            data-testid="panel-resize-handle"
           />
+          {hasSelection ? (
+            <MapSelectionPanels
+              selectedSite={selectedSite}
+              selectedTasks={selectedTasks}
+              readiness={readiness}
+              riskBySiteId={riskBySiteId}
+              role={role}
+              canTriage={canTriageAlerts}
+              referenceTimeMs={referenceTimeMs}
+              selectedAsset={selectedAsset}
+              selectedLiveReading={selectedLiveReading}
+              selectedSignal={selectedSignal}
+              selectedVessel={selectedVessel}
+              vesselTracks={vesselTracks}
+              isReplaying={isReplaying}
+              onTransitioned={handleTransitioned}
+              onCloseSite={closePanel}
+              onCloseAsset={closePanel}
+              onCloseSignal={closePanel}
+            />
+          ) : (
+            <div className="map-context-panel-empty bp6-text-muted" data-testid="panel-empty-state">
+              Select a site, asset, or signal on the map to view details.
+              <br /><br />
+              Press <kbd>]</kbd> or <kbd>Esc</kbd> to close this panel.
+            </div>
+          )}
         </aside>
       )}
     </div>

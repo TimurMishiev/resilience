@@ -14,24 +14,26 @@ Phase 2 — Map Workstation + Triage-in-Context
 
 ## Current Slice
 
-Slice 3 — first triage-in-context content: render a compact "Unacknowledged alerts" section inside the docked `MapSitePanel`, site-scoped, with an inline Acknowledge button — COMPLETE
+Slice 2 — keyboard toggle (`]`) and draggable resize handle for the docked context panel — COMPLETE
 
 ## Objective
 
-Begin putting real operational content inside the docked panel so that `/map` stops being a passive detail view and becomes a place where operators can act on what they see without leaving the map.
+Make the docked panel operable without a selection and resizable within sane bounds, so operators can open/close the workspace at will and size it to their preference.
 
 ## Why This Slice
 
-Slice 1 gave us the container; Slice 3 validates that the container is actually a useful work surface. Site-scoped alerts are the lowest-friction payload: the backend already has `for_site`, `unacknowledged`, and the `transition` endpoint, so we get a live triage loop without inventing new scopes. Asset- and signal-scoped alert triage needs new backend scopes and is deferred to a later slice.
+Slices 1+3 locked the container and its first payload. Slice 2 gives operators control over the panel itself — open it to prepare for triage, resize it when the map needs more or less real estate, close it with a keystroke. Ergonomic polish that compounds on every future panel surface.
 
 ## Completed This Session
 
-- new `MapSiteAlertsSection.tsx` — compact up-to-5 unacknowledged alert rows for the selected site; reuses `useSignalRuleMatches({ site_id, workflow_status: 'unacknowledged', per_page: 5 })` with 10s refetch, disables itself entirely in replay mode, renders empty / loading / error states, and includes an overflow link to `/alerts?site_id=…&workflow_status=unacknowledged` when `meta.total` exceeds the displayed rows
-- each row renders rule name (falls back to "Geofence breach" / "Unknown rule"), fired-at age off the shared `referenceTimeMs` clock, confidence %, and (for operator/commander) an inline **Ack** button wired to `useTransitionAlert` with `to_status: 'acknowledged'`
-- threaded `canTriage` (`canTriageAlerts` from `useRole`) and `referenceTimeMs` (`useReferenceTimeMs(isReplaying ? asOf : null)`) from `MapPage` → `MapSelectionPanels` → `MapSitePanel` → `MapSiteAlertsSection`
-- added `.map-site-alerts*` dark-theme styles in `index.css`, slotted below the existing task list inside `MapSitePanel` after a `<Divider />`
-- new `MapSiteAlertsSection.test.tsx` (6 tests): empty state, row rendering with shared-clock age + confidence, Ack mutation payload, role gating hides Ack, overflow link, replay null-render
-- existing `MapPanels.test.tsx` got a lightweight `vi.mock` for `MapSiteAlertsSection` so `MapSitePanel`'s isolated render test stays free of QueryClient/Router setup
+- `]` key toggles the panel open/closed; when opened without a selection, shows an empty-state placeholder ("Select a site, asset, or signal…"); when closed, clears both force-open and any active selection
+- input-field guard: `]` and `Escape` are ignored when focus is in an INPUT, TEXTAREA, or SELECT
+- draggable resize handle on the left edge of the panel; min 240px, max 600px; uses document-level mousemove/mouseup listeners with body cursor + user-select overrides for smooth dragging
+- MapLibre `resize()` now also fires when `panelWidth` changes, not just open/close
+- `closePanel` callback unifies force-close + selection-clear so `]`, Escape, and the per-panel close buttons all share one code path
+- CSS: `.map-context-panel-resize-handle` (absolute-positioned 6px-wide strip, blue highlight on hover/active), `.map-context-panel-empty` (centered placeholder text), `kbd` styling
+- 4 new MapPage tests: empty-state on `]`, toggle off on second `]`, selection+`]` clears both, resize handle presence
+- hardened the five post-push review findings from Slice 3 in a separate commit (lifted mutation, inline error feedback, as_of on overflow link, dropped dead testid + redundant interval)
 
 ## In Progress
 
@@ -39,8 +41,8 @@ Nothing.
 
 ## Next
 
-- Phase 2 Slice 2 — add a keyboard toggle (and possibly a resize handle) for the docked panel so operators can open it without a selection and resize it within sane bounds
 - Phase 2 Slice 4 — extend triage-in-context to asset/signal selections. This likely needs new backend scopes (`for_asset`, or a signal-level join) since `SignalRuleMatch` has no `asset_id` column today — scope the backend work at the start of that slice
+- Phase 2 Slice 5 — cross-panel coordination: selecting a site from the triage panel flies the map to it and vice-versa
 
 ## Files Likely To Change
 
@@ -64,9 +66,9 @@ cd /Users/timurmishiev/Desktop/Code/resilience && git diff --check
 
 ## Last Validation Results
 
-Phase 2 Slice 3 closeout validation run:
+Phase 2 Slice 2 closeout validation run:
 
-- Vitest: full suite — 68 files, 461 tests, 0 failures (added 6 tests in the new `MapSiteAlertsSection` suite)
+- Vitest: full suite — 68 files, 467 tests, 0 failures (added 4 tests for keyboard toggle, empty state, resize handle)
 - TypeScript: 0 errors (`tsc -b` clean)
 - ESLint: 0 errors
 
@@ -94,6 +96,7 @@ Phase 2 Slice 3 closeout validation run:
 - Phase 1 — Trustworthy Operational Picture (all non-spatial trust surfaces now read the shared live reference clock)
 - Phase 2 Slice 1 docked map context panel + viewport re-measurement
 - Phase 2 Slice 3 site-scoped unacknowledged-alerts section inside the docked `MapSitePanel` (reusing `useSignalRuleMatches` + `useTransitionAlert`, `canTriage` + shared reference clock threaded through)
+- Phase 2 Slice 2 keyboard toggle (`]`) + draggable resize handle (240–600px) + empty-state placeholder for the docked panel
 - Inherited-findings infra fixes B-3 (`DB_STATEMENT_TIMEOUT_MS` default 30s) and I-1 (CI concurrency group)
 - production-readiness closeout work
 - replay parity, auth hardening, and tenant-boundary cleanup that are already closed in the existing memory files

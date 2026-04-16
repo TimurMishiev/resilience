@@ -571,6 +571,7 @@ body {
 }
 
 .map-context-panel {
+  position: relative;
   flex: 0 0 360px;
   width: 360px;
   height: 100%;
@@ -579,6 +580,39 @@ body {
   overflow-y: auto;
   padding: 16px;
   box-sizing: border-box;
+}
+
+.map-context-panel-resize-handle {
+  position: absolute;
+  top: 0;
+  left: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 10;
+}
+
+.map-context-panel-resize-handle:hover,
+.map-context-panel-resize-handle:active {
+  background: rgba(45, 114, 210, 0.3);
+}
+
+.map-context-panel-empty {
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 24px 8px;
+  text-align: center;
+}
+
+.map-context-panel-empty kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  font-size: 11px;
+  font-family: monospace;
+  background: #30363d;
+  border: 1px solid #444c56;
+  border-radius: 3px;
+  color: #c9d1d9;
 }
 
 /* Panels rendered inside the docked container should flow as blocks,

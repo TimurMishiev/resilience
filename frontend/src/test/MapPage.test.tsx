@@ -169,6 +169,7 @@ vi.mock('../hooks/useSignalRuleMatches', () => ({
 vi.mock('../hooks/useRole', () => ({
   useRole: () => ({
     role: 'commander',
+    canTriageAlerts: true,
   }),
 }))
 
@@ -636,5 +637,55 @@ describe('MapPage selection routing', () => {
 
     expect(screen.queryByRole('complementary', { name: 'Map selection detail' })).toBeNull()
     expect(screen.getByTestId('location-search')).not.toHaveTextContent('site_id=site-1')
+  })
+
+  it('opens the panel in empty state when ] is pressed with no selection', async () => {
+    renderMapPage('/map')
+
+    expect(screen.queryByRole('complementary', { name: 'Map selection detail' })).toBeNull()
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: ']' }))
+    })
+
+    const panel = await screen.findByRole('complementary', { name: 'Map selection detail' })
+    expect(panel).toBeInTheDocument()
+    expect(screen.getByTestId('panel-empty-state')).toHaveTextContent('Select a site, asset, or signal')
+  })
+
+  it('closes the force-opened panel when ] is pressed again', async () => {
+    renderMapPage('/map')
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: ']' }))
+    })
+
+    expect(screen.getByRole('complementary', { name: 'Map selection detail' })).toBeInTheDocument()
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: ']' }))
+    })
+
+    expect(screen.queryByRole('complementary', { name: 'Map selection detail' })).toBeNull()
+  })
+
+  it('closes a selection-opened panel and clears selection when ] is pressed', async () => {
+    renderMapPage('/map?site_id=site-1')
+
+    expect(await screen.findByTestId('map-site-panel')).toBeInTheDocument()
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: ']' }))
+    })
+
+    expect(screen.queryByRole('complementary', { name: 'Map selection detail' })).toBeNull()
+    expect(screen.getByTestId('location-search')).not.toHaveTextContent('site_id=site-1')
+  })
+
+  it('renders the resize handle inside the docked panel', async () => {
+    renderMapPage('/map?site_id=site-1')
+
+    expect(await screen.findByRole('complementary', { name: 'Map selection detail' })).toBeInTheDocument()
+    expect(screen.getByTestId('panel-resize-handle')).toBeInTheDocument()
   })
 })
