@@ -100,6 +100,8 @@ export interface MapEngineReturn {
   projectPosition: (lng: number, lat: number) => { x: number; y: number } | null
   /** Inspects the current rendered interactive target at a canvas point. */
   inspectCanvasPosition: (x: number, y: number) => { kind: MapInteractiveKind; id: string | null; layerId: string } | null
+  /** Forces MapLibre to re-measure its container. Call after layout changes. */
+  resize: () => void
 }
 
 // ---------------------------------------------------------------------------
@@ -302,11 +304,16 @@ export function useMapLibreEngine({
     }
   }, [])
 
+  const resize = useCallback(() => {
+    mapRef.current?.resize()
+  }, [])
+
   return {
     mapLoaded,
     flyTo,
     getZoom,
     projectPosition,
     inspectCanvasPosition,
+    resize,
   }
 }

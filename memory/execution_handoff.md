@@ -10,27 +10,27 @@ Last updated: 2026-04-15
 
 ## Current Phase
 
-Phase 1 — Trustworthy Operational Picture — COMPLETE
+Phase 2 — Map Workstation + Triage-in-Context
 
 ## Current Slice
 
-Slice 10 — thread the shared reference clock through the operational health tables so feed/relay/SSE/lag relative-time cells stop diverging from the snapshot freshness banner — COMPLETE
+Slice 1 — dock the map context panel on the right side of `/map` and make MapLibre re-measure the viewport when the panel opens or closes, so selected pins stop being hidden by their own detail card — COMPLETE
 
 ## Objective
 
-Close the last trust-surface gap in Phase 1 by making every relative-time cell on the Operational Health page read from the shared live reference clock, so the page's "last seen" values cannot drift away from its own snapshot freshness callout.
+Lay the foundational layout primitive for Phase 2: the map page should reserve real estate for selection detail on the right instead of floating cards over the map, and MapLibre's internal viewport must stay consistent with the docked layout when the panel opens or closes.
 
 ## Why This Slice
 
-Operational Health is a trust/health dashboard. The page already derived snapshot freshness from `useReferenceTimeMs`, but the inline `timeAgo()` cells inside the feed, relay, SSE, and lag tables still read raw `Date.now()`. Under clock skew or when the page tab was paused, cell values could disagree with the banner on the same page — exactly the kind of trust inconsistency Phase 1 is meant to eliminate.
+Every later Phase 2 deliverable (site/entity/alert detail without leaving `/map`, triage-in-context, cross-panel coordination) composes onto a docked panel that owns a fixed slice of the viewport. Getting the container contract and `map.resize()` plumbing right in isolation avoids paying for a layout change on every subsequent slice.
 
 ## Completed This Session
 
-- extended `lib/formatters.ts` `timeAgo()` with an optional `nowMs` parameter, defaulting to `Date.now()` for non-trust callers
-- threaded `referenceTimeMs` into `FeedHealthTable`, `RelayHealthTable`, `SseConnectionsCard`, and `FeedLagTable` and replaced every trust-surface `timeAgo()` call accordingly
-- consolidated `RelayHealthTable`'s former `now` prop into the shared `referenceTimeMs`, and removed the duplicate `const now = referenceTimeMs` alias on `OperationalHealthPage.tsx`
-- verified `OrganizationsPage`, `UsersPage`, and `correlationRules/types.ts` remain out of Phase 1 scope as admin/config surfaces rather than trust surfaces
-- declared Phase 1 complete after confirming all non-spatial trust surfaces now read from the shared live reference clock
+- exposed `resize()` from `useMapLibreEngine` so the MapLibre instance can be re-measured after container-width changes
+- restructured `MapPage.tsx` into a flex row with a `.map-viewport` child and an `aside.map-context-panel` that renders only when a site/asset/signal is selected, with Escape-to-clear wiring and an effect that calls `resize()` on panel open/close
+- added `.map-context-panel` styles and overrode the nested `.map-panel` positioning so the existing typed panels flow as blocks inside the dock instead of stacking as absolute overlays
+- widened the `useMapLibreEngine` mock in `MapPage.test.tsx` to expose a `resize` spy and added two tests: (1) selecting a site docks the panel and triggers resize, (2) Escape closes the panel and clears the route
+- shipped the accumulated infra hardening separately: `DB_STATEMENT_TIMEOUT_MS` on primary production connections (default 30s, overridable) and a CI concurrency group that cancels stale feature-branch runs while preserving main
 
 ## In Progress
 
@@ -38,7 +38,8 @@ Nothing.
 
 ## Next
 
-- Open Phase 2 — `/map` workstation. Choose the first slice from `execution_context.md` and update this handoff accordingly at the start of that session.
+- Phase 2 Slice 2 — add a keyboard toggle (and possibly a resize handle) for the docked panel so operators can open it without a selection and resize it within sane bounds
+- Phase 2 Slice 3 — first triage-in-context content: scoped recent unacknowledged alerts for the selected site/entity with limited inline actions (explicitly not the full AlertTriagePage)
 
 ## Files Likely To Change
 
@@ -62,11 +63,12 @@ cd /Users/timurmishiev/Desktop/Code/resilience && git diff --check
 
 ## Last Validation Results
 
-Slice 10 closeout validation run:
+Phase 2 Slice 1 closeout validation run:
 
-- Vitest: full suite — 67 files, 453 tests, 0 failures
-- TypeScript: 0 errors
+- Vitest: full suite — 67 files, 455 tests, 0 failures (MapPage test suite grew from 14 to 16)
+- TypeScript: 0 errors (`tsc -b && vite build` clean)
 - ESLint: 0 errors
+- Rails spec spot-check (`auth_sessions_spec.rb`): 9/9 green — confirms the `database.yml` `variables: { statement_timeout }` addition boots cleanly
 
 ## Known Risks / Blockers
 
@@ -90,5 +92,7 @@ Slice 10 closeout validation run:
 - Phase 1 Slice 9 loitering watchlist live reference-time normalization
 - Phase 1 Slice 10 operational health tables shared reference-time adoption
 - Phase 1 — Trustworthy Operational Picture (all non-spatial trust surfaces now read the shared live reference clock)
+- Phase 2 Slice 1 docked map context panel + viewport re-measurement
+- Inherited-findings infra fixes B-3 (`DB_STATEMENT_TIMEOUT_MS` default 30s) and I-1 (CI concurrency group)
 - production-readiness closeout work
 - replay parity, auth hardening, and tenant-boundary cleanup that are already closed in the existing memory files

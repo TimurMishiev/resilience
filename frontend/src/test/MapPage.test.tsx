@@ -78,6 +78,7 @@ const vesselHookState = vi.hoisted(() => ({
 
 const engineState = vi.hoisted(() => ({
   flyTo: vi.fn(),
+  resize: vi.fn(),
   latestInput: null as null | {
     showSignals: boolean
     showHeatmap: boolean
@@ -198,6 +199,7 @@ vi.mock('../hooks/useMapLibreEngine', () => ({
       getZoom: vi.fn(() => 1.5),
       projectPosition: vi.fn(),
       inspectCanvasPosition: vi.fn(() => null),
+      resize: engineState.resize,
     }
   },
 }))
@@ -601,5 +603,38 @@ describe('MapPage selection routing', () => {
     })
 
     expect(screen.getByTestId('location-search')).toHaveTextContent('?signal_id=sig-a')
+  })
+
+  it('docks the context panel when a site is selected and resizes the map', async () => {
+    renderMapPage('/map')
+
+    expect(screen.queryByRole('complementary', { name: 'Map selection detail' })).toBeNull()
+    engineState.resize.mockClear()
+
+    await act(async () => {
+      engineState.latestInput?.onSiteClick('site-1')
+    })
+
+    const panel = await screen.findByRole('complementary', { name: 'Map selection detail' })
+    expect(panel).toBeInTheDocument()
+    expect(panel.closest('.map-page')).toHaveClass('map-page--panel-open')
+
+    await act(async () => {
+      await new Promise(resolve => requestAnimationFrame(() => resolve(null)))
+    })
+    expect(engineState.resize).toHaveBeenCalled()
+  })
+
+  it('closes the docked panel and clears selection when Escape is pressed', async () => {
+    renderMapPage('/map?site_id=site-1')
+
+    expect(await screen.findByRole('complementary', { name: 'Map selection detail' })).toBeInTheDocument()
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    })
+
+    expect(screen.queryByRole('complementary', { name: 'Map selection detail' })).toBeNull()
+    expect(screen.getByTestId('location-search')).not.toHaveTextContent('site_id=site-1')
   })
 })

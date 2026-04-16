@@ -153,7 +153,7 @@ export default function MapPage() {
   // ---------------------------------------------------------------------------
   // MapLibre engine
   // ---------------------------------------------------------------------------
-  const { mapLoaded, flyTo, getZoom, projectPosition, inspectCanvasPosition } = useMapLibreEngine({
+  const { mapLoaded, flyTo, getZoom, projectPosition, inspectCanvasPosition, resize } = useMapLibreEngine({
     containerRef: mapContainerRef,
     sites,
     assets,
@@ -244,6 +244,33 @@ export default function MapPage() {
     queryClient.invalidateQueries({ queryKey: ['readiness'] })
   }, [queryClient])
 
+  const contextPanelOpen = Boolean(selectedSiteId || selectedAssetId || selectedSignalId)
+
+  const clearSelection = useCallback(() => {
+    setSelectedSiteId(null)
+    setSelectedAssetId(null)
+    setSelectedSignalId(null)
+    updateSelectionRoute({ siteId: null, assetId: null, signalId: null })
+  }, [setSelectedSiteId, setSelectedAssetId, setSelectedSignalId, updateSelectionRoute])
+
+  // Re-measure the map whenever the docked panel opens/closes so MapLibre's
+  // internal viewport matches the new container width.
+  useEffect(() => {
+    if (!mapLoaded) return
+    const frame = requestAnimationFrame(() => resize())
+    return () => cancelAnimationFrame(frame)
+  }, [contextPanelOpen, mapLoaded, resize])
+
+  // Escape closes the docked panel (and clears selection) when it's open.
+  useEffect(() => {
+    if (!contextPanelOpen) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') clearSelection()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [contextPanelOpen, clearSelection])
+
   useMapE2EBridge({
     mapLoaded,
     getZoom,
@@ -262,10 +289,11 @@ export default function MapPage() {
   // Render
   // ---------------------------------------------------------------------------
   return (
-    <div className="map-page">
-      <div ref={mapContainerRef} className="map-container" />
+    <div className={`map-page${contextPanelOpen ? ' map-page--panel-open' : ''}`}>
+      <div className="map-viewport">
+        <div ref={mapContainerRef} className="map-container" />
 
-      <MapOverlayControls
+        <MapOverlayControls
         loading={loading}
         error={error}
         isReplaying={isReplaying}
@@ -286,33 +314,33 @@ export default function MapPage() {
         onToggleSignals={() => setShowSignals(v => !v)}
         onToggleHeatmap={() => setShowHeatmap(v => !v)}
       />
+      </div>
 
-      <MapSelectionPanels
-        selectedSite={selectedSite}
-        selectedTasks={selectedTasks}
-        readiness={readiness}
-        riskBySiteId={riskBySiteId}
-        role={role}
-        selectedAsset={selectedAsset}
-        selectedLiveReading={selectedLiveReading}
-        selectedSignal={selectedSignal}
-        selectedVessel={selectedVessel}
-        vesselTracks={vesselTracks}
-        isReplaying={isReplaying}
-        onTransitioned={handleTransitioned}
-        onCloseSite={() => {
-          setSelectedSiteId(null)
-          updateSelectionRoute({ siteId: null, assetId: null, signalId: null })
-        }}
-        onCloseAsset={() => {
-          setSelectedAssetId(null)
-          updateSelectionRoute({ siteId: null, assetId: null, signalId: null })
-        }}
-        onCloseSignal={() => {
-          setSelectedSignalId(null)
-          updateSelectionRoute({ siteId: null, assetId: null, signalId: null })
-        }}
-      />
+      {contextPanelOpen && (
+        <aside
+          className="map-context-panel"
+          role="complementary"
+          aria-label="Map selection detail"
+        >
+          <MapSelectionPanels
+            selectedSite={selectedSite}
+            selectedTasks={selectedTasks}
+            readiness={readiness}
+            riskBySiteId={riskBySiteId}
+            role={role}
+            selectedAsset={selectedAsset}
+            selectedLiveReading={selectedLiveReading}
+            selectedSignal={selectedSignal}
+            selectedVessel={selectedVessel}
+            vesselTracks={vesselTracks}
+            isReplaying={isReplaying}
+            onTransitioned={handleTransitioned}
+            onCloseSite={clearSelection}
+            onCloseAsset={clearSelection}
+            onCloseSignal={clearSelection}
+          />
+        </aside>
+      )}
     </div>
   )
 }

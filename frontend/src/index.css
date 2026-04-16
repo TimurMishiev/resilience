@@ -553,11 +553,46 @@ body {
   position: relative;
   width: 100%;
   height: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+}
+
+.map-viewport {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
 }
 
 .map-container {
   width: 100%;
   height: 100%;
+}
+
+.map-context-panel {
+  flex: 0 0 360px;
+  width: 360px;
+  height: 100%;
+  background: #1c2127;
+  border-left: 1px solid #383e47;
+  overflow-y: auto;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+/* Panels rendered inside the docked container should flow as blocks,
+   not absolute-positioned floating cards. */
+.map-context-panel .map-panel {
+  position: static;
+  top: auto;
+  right: auto;
+  width: 100%;
+  max-height: none;
+  margin-bottom: 12px;
+}
+.map-context-panel .map-panel:last-child {
+  margin-bottom: 0;
 }
 
 /* Override shell-main padding for map route */
