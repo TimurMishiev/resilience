@@ -33,6 +33,12 @@ production:
     # the primary pool. Add headroom so SQ dispatchers/workers don't starve API
     # threads when the pool is under contention.
     pool:     <%= ENV.fetch("DB_POOL") { ENV.fetch("RAILS_MAX_THREADS") { 5 }.to_i + 5 } %>
+    # Per-connection statement_timeout guards against a runaway query holding a
+    # pool slot indefinitely. Long-running background jobs that legitimately
+    # need more time should bump it per-transaction with
+    #   ActiveRecord::Base.connection.execute("SET LOCAL statement_timeout = '5min'")
+    variables:
+      statement_timeout: <%= ENV.fetch("DB_STATEMENT_TIMEOUT_MS", 30_000) %>
   cache:
     <<: *primary_production
     # When DATABASE_URL is set all three databases share the same instance;
