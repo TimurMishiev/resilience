@@ -296,12 +296,13 @@ export default function MapPage() {
     return () => window.removeEventListener('keydown', onKey)
   }, [contextPanelOpen, closePanel])
 
-  // Resize handle drag
+  // Resize handle drag — reads starting width from the DOM so the callback
+  // has no panelWidth dep and doesn't re-render on every mousemove frame.
   const handleResizeStart = useCallback(
     (event: React.MouseEvent) => {
       event.preventDefault()
       const startX = event.clientX
-      const startWidth = panelWidth
+      const startWidth = panelRef.current?.offsetWidth ?? 360
 
       const onMouseMove = (e: MouseEvent) => {
         const delta = startX - e.clientX
@@ -318,7 +319,7 @@ export default function MapPage() {
       document.addEventListener('mousemove', onMouseMove)
       document.addEventListener('mouseup', onMouseUp)
     },
-    [panelWidth],
+    [],
   )
 
   useMapE2EBridge({
