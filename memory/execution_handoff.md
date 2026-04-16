@@ -14,44 +14,45 @@ Phase 2 — Map Workstation + Triage-in-Context
 
 ## Current Slice
 
-Support cleanup — align `created_by_id` payload naming across AO/correlation-rule replay serializers, TypeScript domain types, and fixtures so the repo stays contract-consistent before Phase 2 resumes — IN PROGRESS
+Support cleanup — promote focused incident notes/prosecution request coverage into a standalone backend verification slice before Phase 2 resumes — IN PROGRESS
 
 ## Objective
 
-Keep the shared API contract coherent: replay serializers for areas of operation and correlation rules should expose `created_by_id`, matching the rest of the backend serializers and frontend types.
+Land the already-green backend request specs for incident notes and prosecution as an explicit slice so repo handoff stays honest and another model can see why these untracked files exist.
 
 ## Why This Slice
 
-This is a small out-of-band consistency cleanup. It does not advance the active `/map` workstation program directly, but it removes a naming mismatch before more Phase 2 work piles on top of stale fixtures and serializer drift.
+This is a small out-of-band coverage cleanup. It does not advance the active `/map` workstation program directly, but it closes a real handoff gap by documenting and promoting the existing incident request specs instead of leaving them as unexplained residue.
 
 ## Completed This Session
 
 - areas of operation replay serialization now emits `created_by_id`, and the AO request spec expects that field explicitly
 - correlation rule replay serialization now emits `created_by_id`, and frontend fixtures/types for rules and AO consumers were aligned
 - direct request-level proof for correlation-rule responses now pins `created_by_id` and rejects the old `created_by` response key
-- unrelated untracked incident request specs were verified green but intentionally left out of this cleanup tranche
+- focused request specs were added for incident notes and prosecution flows:
+  - `/Users/timurmishiev/Desktop/Code/resilience/backend/spec/requests/api/incidents/notes_spec.rb`
+  - `/Users/timurmishiev/Desktop/Code/resilience/backend/spec/requests/api/incidents/prosecution_spec.rb`
 
 ## In Progress
 
-- final hygiene on the contract cleanup tranche, then return to the active Phase 2 `/map` slices
+- final handoff alignment for the incident coverage slice, then commit it cleanly before returning to the active Phase 2 `/map` slices
 
 ## Next
 
+- commit the standalone incident request coverage slice
 - Phase 2 Slice 4 — extend triage-in-context to asset/signal selections. This likely needs new backend scopes (`for_asset`, or a signal-level join) since `SignalRuleMatch` has no `asset_id` column today — scope the backend work at the start of that slice
 - Phase 2 Slice 5 — cross-panel coordination: selecting a site from the triage panel flies the map to it and vice-versa
 
 ## Files Likely To Change
 
-- `/Users/timurmishiev/Desktop/Code/resilience/memory/execution_context.md`
 - `/Users/timurmishiev/Desktop/Code/resilience/memory/execution_handoff.md`
-- `/Users/timurmishiev/Desktop/Code/resilience/frontend/src/pages/MapPage.tsx`
-- Phase 2 `/map` workstation surfaces — to be scoped at the start of that slice
+- `/Users/timurmishiev/Desktop/Code/resilience/backend/spec/requests/api/incidents/notes_spec.rb`
+- `/Users/timurmishiev/Desktop/Code/resilience/backend/spec/requests/api/incidents/prosecution_spec.rb`
+- once this slice is committed: Phase 2 `/map` workstation surfaces — to be scoped at the start of that slice
 
 ## Currently Locked Files
 
-- `/Users/timurmishiev/Desktop/Code/resilience/backend/spec/requests/api/incidents/notes_spec.rb`
-- `/Users/timurmishiev/Desktop/Code/resilience/backend/spec/requests/api/incidents/prosecution_spec.rb`
-  These untracked specs are green but unrelated to the current contract-cleanup tranche. Keep them out of the next commit unless they are deliberately promoted into their own slice.
+- none
 
 ## Validation Commands
 
@@ -59,22 +60,23 @@ This is a small out-of-band consistency cleanup. It does not advance the active 
 cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx tsc --noEmit
 cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run
 cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src
+cd /Users/timurmishiev/Desktop/Code/resilience/backend && source ~/.zshrc && TEST_DATABASE_PORT=5434 bundle exec rspec spec/requests/api/incidents/notes_spec.rb spec/requests/api/incidents/prosecution_spec.rb
 cd /Users/timurmishiev/Desktop/Code/resilience && git diff --check
 ```
 
 ## Last Validation Results
 
-Contract-cleanup validation run:
+Contract-cleanup + incident coverage validation run:
 
 - Focused backend: `spec/requests/api/areas_of_operation_spec.rb`, `spec/requests/api/correlation_rules_spec.rb` → 69 examples, 0 failures
-- Focused unrelated residue check: `spec/requests/api/incidents/notes_spec.rb`, `spec/requests/api/incidents/prosecution_spec.rb` → 32 examples, 0 failures
+- Focused backend: `spec/requests/api/incidents/notes_spec.rb`, `spec/requests/api/incidents/prosecution_spec.rb` → 32 examples, 0 failures
 - Vitest: full suite — 68 files, 467 tests, 0 failures
 - TypeScript: 0 errors
 - `git diff --check`: clean
 
 ## Known Risks / Blockers
 
-- This is not a roadmap-advancing Phase 2 slice. Once the cleanup is committed, handoff should return to the active `/map` workstation program immediately.
+- This is not a roadmap-advancing Phase 2 slice. Once the coverage cleanup is committed, handoff should return to the active `/map` workstation program immediately.
 - Phase 1 is now closed. `lib/formatters.ts` `timeAgo()` still falls back to `Date.now()` when called with no `nowMs`; remaining callers (`OrganizationsPage`, `UsersPage`, `correlationRules/types.ts`) are intentionally left on wall-clock as admin/config surfaces, not trust surfaces.
 
 ## Open Questions
