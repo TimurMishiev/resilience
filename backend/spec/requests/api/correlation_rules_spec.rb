@@ -37,8 +37,9 @@ RSpec.describe "Api::CorrelationRules", type: :request do
       expect(rule.keys).to include(
         "id", "name", "description", "is_active",
         "cooldown_minutes", "conditions", "actions",
-        "last_fired_at", "created_at"
+        "last_fired_at", "created_at", "created_by_id"
       )
+      expect(rule).not_to have_key("created_by")
     end
 
     it "is accessible to operators" do
@@ -61,6 +62,8 @@ RSpec.describe "Api::CorrelationRules", type: :request do
       expect(body["name"]).to eq("Active Rule")
       expect(body["conditions"]).to be_a(Hash)
       expect(body["actions"]).to be_a(Hash)
+      expect(body["created_by_id"]).to eq(rule_active.created_by_id)
+      expect(body).not_to have_key("created_by")
     end
 
     it "returns 404 for unknown UUID" do

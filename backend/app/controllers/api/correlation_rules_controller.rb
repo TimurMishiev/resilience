@@ -345,7 +345,7 @@ module Api
         updated_at: as_of.present? ? [rule.updated_at, as_of].min : rule.updated_at,
         conditions: snapshot_or_current(snapshot, "conditions", rule.conditions),
         actions: snapshot_or_current(snapshot, "actions", rule.actions),
-        created_by: rule.created_by_id,
+        created_by_id: rule.created_by_id,
         mitre_tags: snapshot_or_current(snapshot, "mitre_tags", rule.mitre_tags || []),
       }
     end

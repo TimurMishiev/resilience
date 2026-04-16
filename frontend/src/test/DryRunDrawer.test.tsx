@@ -20,7 +20,7 @@ const RULE: CorrelationRule = {
   cooldown_minutes: 10,
   conditions: { signal_type: 'seismic_event', proximity_km: 50 },
   actions: { create_task: { title: 'Quake alert' } },
-  created_by: 'user-1',
+  created_by_id: 'user-1',
   area_of_operation_id: null,
   mitre_tags: [],
   last_fired_at: null,

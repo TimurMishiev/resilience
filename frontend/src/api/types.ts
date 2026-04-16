@@ -23,7 +23,7 @@ export interface AreaOfOperation {
   posture_changed_at: string | null
   color: string               // hex e.g. "#ff4757"
   geometry: GeoJsonPolygon
-  created_by: string
+  created_by_id: string
   created_at: string
   updated_at: string
 }
@@ -518,7 +518,7 @@ export interface CorrelationRule {
   is_active: boolean
   conditions: RuleConditions
   actions: CorrelationActions
-  created_by: string
+  created_by_id: string
   area_of_operation_id: string | null
   cooldown_minutes: number
   last_fired_at: string | null

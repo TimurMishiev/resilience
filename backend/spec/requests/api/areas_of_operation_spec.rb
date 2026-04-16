@@ -34,7 +34,7 @@ RSpec.describe "Api::AreasOfOperation", type: :request do
       area = JSON.parse(response.body)["data"].first
       expect(area.keys).to include(
         "id", "name", "description", "threat_level",
-        "color", "geometry", "created_by", "created_at", "updated_at"
+        "color", "geometry", "created_by_id", "created_at", "updated_at"
       )
     end
 

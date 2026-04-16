@@ -14,30 +14,26 @@ Phase 2 — Map Workstation + Triage-in-Context
 
 ## Current Slice
 
-Slice 2 — keyboard toggle (`]`) and draggable resize handle for the docked context panel — COMPLETE
+Support cleanup — align `created_by_id` payload naming across AO/correlation-rule replay serializers, TypeScript domain types, and fixtures so the repo stays contract-consistent before Phase 2 resumes — IN PROGRESS
 
 ## Objective
 
-Make the docked panel operable without a selection and resizable within sane bounds, so operators can open/close the workspace at will and size it to their preference.
+Keep the shared API contract coherent: replay serializers for areas of operation and correlation rules should expose `created_by_id`, matching the rest of the backend serializers and frontend types.
 
 ## Why This Slice
 
-Slices 1+3 locked the container and its first payload. Slice 2 gives operators control over the panel itself — open it to prepare for triage, resize it when the map needs more or less real estate, close it with a keystroke. Ergonomic polish that compounds on every future panel surface.
+This is a small out-of-band consistency cleanup. It does not advance the active `/map` workstation program directly, but it removes a naming mismatch before more Phase 2 work piles on top of stale fixtures and serializer drift.
 
 ## Completed This Session
 
-- `]` key toggles the panel open/closed; when opened without a selection, shows an empty-state placeholder ("Select a site, asset, or signal…"); when closed, clears both force-open and any active selection
-- input-field guard: `]` and `Escape` are ignored when focus is in an INPUT, TEXTAREA, or SELECT
-- draggable resize handle on the left edge of the panel; min 240px, max 600px; uses document-level mousemove/mouseup listeners with body cursor + user-select overrides for smooth dragging
-- MapLibre `resize()` now also fires when `panelWidth` changes, not just open/close
-- `closePanel` callback unifies force-close + selection-clear so `]`, Escape, and the per-panel close buttons all share one code path
-- CSS: `.map-context-panel-resize-handle` (absolute-positioned 6px-wide strip, blue highlight on hover/active), `.map-context-panel-empty` (centered placeholder text), `kbd` styling
-- 4 new MapPage tests: empty-state on `]`, toggle off on second `]`, selection+`]` clears both, resize handle presence
-- hardened the five post-push review findings from Slice 3 in a separate commit (lifted mutation, inline error feedback, as_of on overflow link, dropped dead testid + redundant interval)
+- areas of operation replay serialization now emits `created_by_id`, and the AO request spec expects that field explicitly
+- correlation rule replay serialization now emits `created_by_id`, and frontend fixtures/types for rules and AO consumers were aligned
+- direct request-level proof for correlation-rule responses now pins `created_by_id` and rejects the old `created_by` response key
+- unrelated untracked incident request specs were verified green but intentionally left out of this cleanup tranche
 
 ## In Progress
 
-Nothing.
+- final hygiene on the contract cleanup tranche, then return to the active Phase 2 `/map` slices
 
 ## Next
 
@@ -53,7 +49,9 @@ Nothing.
 
 ## Currently Locked Files
 
-None.
+- `/Users/timurmishiev/Desktop/Code/resilience/backend/spec/requests/api/incidents/notes_spec.rb`
+- `/Users/timurmishiev/Desktop/Code/resilience/backend/spec/requests/api/incidents/prosecution_spec.rb`
+  These untracked specs are green but unrelated to the current contract-cleanup tranche. Keep them out of the next commit unless they are deliberately promoted into their own slice.
 
 ## Validation Commands
 
@@ -66,14 +64,17 @@ cd /Users/timurmishiev/Desktop/Code/resilience && git diff --check
 
 ## Last Validation Results
 
-Phase 2 Slice 2 closeout validation run:
+Contract-cleanup validation run:
 
-- Vitest: full suite — 68 files, 467 tests, 0 failures (added 4 tests for keyboard toggle, empty state, resize handle)
-- TypeScript: 0 errors (`tsc -b` clean)
-- ESLint: 0 errors
+- Focused backend: `spec/requests/api/areas_of_operation_spec.rb`, `spec/requests/api/correlation_rules_spec.rb` → 69 examples, 0 failures
+- Focused unrelated residue check: `spec/requests/api/incidents/notes_spec.rb`, `spec/requests/api/incidents/prosecution_spec.rb` → 32 examples, 0 failures
+- Vitest: full suite — 68 files, 467 tests, 0 failures
+- TypeScript: 0 errors
+- `git diff --check`: clean
 
 ## Known Risks / Blockers
 
+- This is not a roadmap-advancing Phase 2 slice. Once the cleanup is committed, handoff should return to the active `/map` workstation program immediately.
 - Phase 1 is now closed. `lib/formatters.ts` `timeAgo()` still falls back to `Date.now()` when called with no `nowMs`; remaining callers (`OrganizationsPage`, `UsersPage`, `correlationRules/types.ts`) are intentionally left on wall-clock as admin/config surfaces, not trust surfaces.
 
 ## Open Questions

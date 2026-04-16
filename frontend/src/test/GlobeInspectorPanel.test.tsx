@@ -48,7 +48,7 @@ const area: AreaOfOperation = {
   posture_changed_at: null,
   color: '#ffaa00',
   geometry: { type: 'Polygon', coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] },
-  created_by: 'commander@example.com',
+  created_by_id: 'commander@example.com',
   created_at: '2026-03-26T10:00:00.000Z',
   updated_at: '2026-03-26T10:00:00.000Z',
 }

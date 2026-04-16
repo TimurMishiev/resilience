@@ -526,7 +526,7 @@ function makeArea(overrides: Partial<GlobeEngineInput['areaOfOperations'][number
         [20, 10],
       ]],
     },
-    created_by: 'tester',
+    created_by_id: 'tester',
     created_at: '2024-01-01T00:00:00Z',
     updated_at: '2024-01-01T00:00:00Z',
     ...overrides,

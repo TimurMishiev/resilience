@@ -208,7 +208,7 @@ module Api
         created_at: area.created_at,
         updated_at: as_of.present? ? [area.updated_at, as_of].min : area.updated_at,
         geometry: snapshot_or_current(snapshot, "geometry", area.geometry),
-        created_by: area.created_by_id,
+        created_by_id: area.created_by_id,
       }
     end
   end
