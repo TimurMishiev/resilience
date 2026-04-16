@@ -46,9 +46,9 @@ module Audit
                 .where(id: entity_id)
                 .pick(Arel.sql("COALESCE(sites.organization_id, areas_of_operation.organization_id)"))
       when "SignalRuleMatch"
-        SignalRuleMatch.joins(:site).where(id: entity_id).pick("sites.organization_id")
+        SignalRuleMatch.left_joins(:site).where(id: entity_id).pick("sites.organization_id")
       when "Asset"
-        Asset.joins(:home_site).where(id: entity_id).pick("sites.organization_id")
+        Asset.left_joins(:home_site).where(id: entity_id).pick("sites.organization_id")
       when "Recommendation"
         rec = Recommendation.find_by(id: entity_id)
         resolve_organization_id(rec.affected_entity_type, rec.affected_entity_id) if rec
