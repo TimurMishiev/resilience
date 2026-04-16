@@ -144,6 +144,14 @@ RSpec.describe "Api::Tasks", type: :request do
         expect(task.reload.priority).to eq("high")
       end
 
+      it "allows admin to update priority" do
+        admin = create(:user, :admin)
+        patch "/api/tasks/#{task.id}", params: { task: { priority: "critical" } },
+              headers: auth_headers(admin), as: :json
+        expect(response).to have_http_status(:ok)
+        expect(task.reload.priority).to eq("critical")
+      end
+
       it "silently ignores priority when sent by an operator" do
         operator = create(:user, :operator)
         patch "/api/tasks/#{task.id}", params: { task: { title: "Op Title", priority: "high" } },
@@ -261,6 +269,18 @@ RSpec.describe "Api::Tasks", type: :request do
       end
     end
 
+    it "allows admin to resolve an in_progress task" do
+      admin = create(:user, :admin)
+      in_progress_task = create(:task, site: site, workflow_status: "in_progress")
+
+      post "/api/tasks/#{in_progress_task.id}/transition",
+           params: { transition: { to_status: "resolved" } },
+           headers: auth_headers(admin), as: :json
+
+      expect(response).to have_http_status(:ok)
+      expect(in_progress_task.reload.workflow_status).to eq("resolved")
+    end
+
     context "when transitioning to blocked" do
       let!(:triaged_task) { create(:task, :triaged, site: site) }
 
@@ -327,6 +347,15 @@ RSpec.describe "Api::Tasks", type: :request do
       body = JSON.parse(response.body)
       expect(body["allowed"]).to eq(["blocked"])
       expect(body["commander_only"]).to eq([])
+    end
+
+    it "treats admin as commander-equivalent for allowed transitions" do
+      admin = create(:user, :admin)
+      task = create(:task, site: site, workflow_status: "in_progress")
+      get "/api/tasks/#{task.id}/allowed_transitions", headers: auth_headers(admin)
+      body = JSON.parse(response.body)
+      expect(body["allowed"]).to eq(%w[blocked resolved])
+      expect(body["commander_only"]).to eq(["resolved"])
     end
 
     it "returns 404 for an unknown task" do

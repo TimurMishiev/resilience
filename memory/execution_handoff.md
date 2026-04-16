@@ -12,43 +12,70 @@ Last updated: 2026-04-15
 
 Phase 2 — Map Workstation + Triage-in-Context
 
+Phase 2 was temporarily paused while production blockers found by the full-system audit were closed.
+
 ## Current Slice
 
-Support cleanup — promote focused incident notes/prosecution request coverage into a standalone backend verification slice before Phase 2 resumes — IN PROGRESS
+Production blocker hardening — AI tenant scoping, task authority normalization, Users admin AO assignment, and post-fix audit — COMPLETE
 
 ## Objective
 
-Land the already-green backend request specs for incident notes and prosecution as an explicit slice so repo handoff stays honest and another model can see why these untracked files exist.
+Close the remaining correctness/security blockers that prevented a production-ready verdict before resuming roadmap implementation.
 
 ## Why This Slice
 
-This is a small out-of-band coverage cleanup. It does not advance the active `/map` workstation program directly, but it closes a real handoff gap by documenting and promoting the existing incident request specs instead of leaving them as unexplained residue.
+The last full audit found one real blocker and two important consistency gaps:
+
+- commander-only AI endpoints were bypassing org/AO scope
+- task services still treated only the literal `"commander"` role string as commander authority even though policy/frontend treat `admin` as commander-equivalent
+- the Users admin UI still displayed AO assignment without allowing admins to edit it
+
+This slice fixes those directly without mixing in new feature work.
 
 ## Completed This Session
 
-- areas of operation replay serialization now emits `created_by_id`, and the AO request spec expects that field explicitly
-- correlation rule replay serialization now emits `created_by_id`, and frontend fixtures/types for rules and AO consumers were aligned
-- direct request-level proof for correlation-rule responses now pins `created_by_id` and rejects the old `created_by` response key
-- focused request specs were added for incident notes and prosecution flows:
-  - `/Users/timurmishiev/Desktop/Code/resilience/backend/spec/requests/api/incidents/notes_spec.rb`
-  - `/Users/timurmishiev/Desktop/Code/resilience/backend/spec/requests/api/incidents/prosecution_spec.rb`
+- AI controller flows now thread `current_user` into:
+  - `/Users/timurmishiev/Desktop/Code/resilience/backend/app/controllers/api/ai_controller.rb`
+- Added shared AI scoping helpers in:
+  - `/Users/timurmishiev/Desktop/Code/resilience/backend/app/services/ai/scoped_relations.rb`
+- Scoped AI catalogs, root resolution, summaries, and graph traversal relations in:
+  - `/Users/timurmishiev/Desktop/Code/resilience/backend/app/services/ai/filter_service.rb`
+  - `/Users/timurmishiev/Desktop/Code/resilience/backend/app/services/ai/signal_filter_service.rb`
+  - `/Users/timurmishiev/Desktop/Code/resilience/backend/app/services/ai/summary_service.rb`
+  - `/Users/timurmishiev/Desktop/Code/resilience/backend/app/services/ai/ontology_query_service.rb`
+- Added request/service coverage so the AI tenant boundary is enforced in CI:
+  - `/Users/timurmishiev/Desktop/Code/resilience/backend/spec/requests/api/ai_spec.rb`
+  - `/Users/timurmishiev/Desktop/Code/resilience/backend/spec/services/ai/filter_service_spec.rb`
+  - `/Users/timurmishiev/Desktop/Code/resilience/backend/spec/services/ai/signal_filter_service_spec.rb`
+  - `/Users/timurmishiev/Desktop/Code/resilience/backend/spec/services/ai/summary_service_spec.rb`
+  - `/Users/timurmishiev/Desktop/Code/resilience/backend/spec/services/ai/ontology_query_service_spec.rb`
+- Normalized admin/commander task authority in:
+  - `/Users/timurmishiev/Desktop/Code/resilience/backend/app/services/tasks/transition_service.rb`
+  - `/Users/timurmishiev/Desktop/Code/resilience/backend/app/services/tasks/update_service.rb`
+- Added backend proof for admin task behavior in:
+  - `/Users/timurmishiev/Desktop/Code/resilience/backend/spec/requests/api/tasks_spec.rb`
+  - `/Users/timurmishiev/Desktop/Code/resilience/backend/spec/services/tasks/transition_service_spec.rb`
+  - `/Users/timurmishiev/Desktop/Code/resilience/backend/spec/services/tasks/update_service_spec.rb`
+- Exposed AO assignment in the Users admin dialog and added coverage in:
+  - `/Users/timurmishiev/Desktop/Code/resilience/frontend/src/pages/UsersPage.tsx`
+  - `/Users/timurmishiev/Desktop/Code/resilience/frontend/src/test/UsersPage.test.tsx`
+  - `/Users/timurmishiev/Desktop/Code/resilience/backend/spec/requests/api/users_spec.rb`
+- Post-fix audit now clears the previous blocker and leaves the repo in a production-ready-with-caveats state for the declared operating envelope
 
 ## In Progress
 
-- final handoff alignment for the incident coverage slice, then commit it cleanly before returning to the active Phase 2 `/map` slices
+- none
 
 ## Next
 
-- commit the standalone incident request coverage slice
-- Phase 2 Slice 4 — extend triage-in-context to asset/signal selections. This likely needs new backend scopes (`for_asset`, or a signal-level join) since `SignalRuleMatch` has no `asset_id` column today — scope the backend work at the start of that slice
-- Phase 2 Slice 5 — cross-panel coordination: selecting a site from the triage panel flies the map to it and vice-versa
+- resume Phase 2 Slice 4:
+  - extend triage-in-context to asset/signal selections on `/map`
+- if a later audit finds new blockers, pause roadmap work and close them before continuing
 
 ## Files Likely To Change
 
 - `/Users/timurmishiev/Desktop/Code/resilience/memory/execution_handoff.md`
-- `/Users/timurmishiev/Desktop/Code/resilience/backend/spec/requests/api/incidents/notes_spec.rb`
-- `/Users/timurmishiev/Desktop/Code/resilience/backend/spec/requests/api/incidents/prosecution_spec.rb`
-- once this slice is committed: Phase 2 `/map` workstation surfaces — to be scoped at the start of that slice
+- next roadmap slice is expected to move back to Phase 2 `/map` surfaces
 
 ## Currently Locked Files
 
@@ -57,49 +84,51 @@ This is a small out-of-band coverage cleanup. It does not advance the active `/m
 ## Validation Commands
 
 ```bash
+cd /Users/timurmishiev/Desktop/Code/resilience/backend && source ~/.zshrc && TEST_DATABASE_PORT=5434 bundle exec rspec spec/requests/api/ai_spec.rb spec/services/ai/filter_service_spec.rb spec/services/ai/signal_filter_service_spec.rb spec/services/ai/summary_service_spec.rb spec/services/ai/ontology_query_service_spec.rb spec/requests/api/tasks_spec.rb spec/services/tasks/transition_service_spec.rb spec/services/tasks/update_service_spec.rb spec/requests/api/users_spec.rb
+cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run src/test/UsersPage.test.tsx src/test/TaskRow.test.tsx
 cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx tsc --noEmit
-cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run
-cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src
-cd /Users/timurmishiev/Desktop/Code/resilience/backend && source ~/.zshrc && TEST_DATABASE_PORT=5434 bundle exec rspec spec/requests/api/incidents/notes_spec.rb spec/requests/api/incidents/prosecution_spec.rb
+cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/pages/UsersPage.tsx src/test/UsersPage.test.tsx
+cd /Users/timurmishiev/Desktop/Code/resilience/backend && source ~/.zshrc && TEST_DATABASE_PORT=5434 bundle exec rspec
+cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run && npx tsc --noEmit
 cd /Users/timurmishiev/Desktop/Code/resilience && git diff --check
 ```
 
 ## Last Validation Results
 
-Contract-cleanup + incident coverage validation run:
-
-- Focused backend: `spec/requests/api/areas_of_operation_spec.rb`, `spec/requests/api/correlation_rules_spec.rb` → 69 examples, 0 failures
-- Focused backend: `spec/requests/api/incidents/notes_spec.rb`, `spec/requests/api/incidents/prosecution_spec.rb` → 32 examples, 0 failures
-- Vitest: full suite — 68 files, 467 tests, 0 failures
-- TypeScript: 0 errors
-- `git diff --check`: clean
+- Focused backend blocker tranche:
+  - `211 examples, 0 failures`
+- Focused frontend/admin surface:
+  - `src/test/UsersPage.test.tsx`, `src/test/TaskRow.test.tsx`
+  - `6 tests, 0 failures`
+- Full backend suite:
+  - `2154 examples, 0 failures`
+- Full frontend suite:
+  - `68 files, 467 tests, 0 failures`
+- TypeScript:
+  - `0 errors`
+- `git diff --check`:
+  - clean
 
 ## Known Risks / Blockers
 
-- This is not a roadmap-advancing Phase 2 slice. Once the coverage cleanup is committed, handoff should return to the active `/map` workstation program immediately.
-- Phase 1 is now closed. `lib/formatters.ts` `timeAgo()` still falls back to `Date.now()` when called with no `nowMs`; remaining callers (`OrganizationsPage`, `UsersPage`, `correlationRules/types.ts`) are intentionally left on wall-clock as admin/config surfaces, not trust surfaces.
+- The current production-ready assessment is for the declared operating envelope only:
+  - bounded single-machine Fly deployment
+  - capped SSE concurrency
+  - current scoped/shared tenant model
+- The Users admin AO selector currently lists visible AOs and relies on backend validation to reject org/AO mismatches; that is acceptable for now because the backend contract is authoritative and safe.
 
 ## Open Questions
 
-- Are the initial freshness thresholds still appropriate once more sources are folded into the shared model?
-- Should the first detailed source-health view live in the navbar indicator or on an existing commander-only operational surface?
+- Should Phase 2 continue immediately at asset/signal triage-in-context, or should there be a short cleanup tranche first for any low-severity audit notes?
 
 ## Do Not Reopen
 
-- Phase 0 — Execution Foundation after these two files are accepted
-- Phase 1 Slice 2 shell degraded-state visibility (`d3bf38a`)
-- Phase 1 Slice 3 `AssetsPage` freshness adoption
-- Phase 1 Slice 4 navbar source-health detail
-- Phase 1 Slice 5 `EntityCard` freshness adoption
-- Phase 1 Slice 6 operational-health snapshot freshness language
-- Phase 1 Slice 7 site timeline reference-time normalization
-- Phase 1 Slice 8 incident replay-relative recency
-- Phase 1 Slice 9 loitering watchlist live reference-time normalization
-- Phase 1 Slice 10 operational health tables shared reference-time adoption
-- Phase 1 — Trustworthy Operational Picture (all non-spatial trust surfaces now read the shared live reference clock)
-- Phase 2 Slice 1 docked map context panel + viewport re-measurement
-- Phase 2 Slice 3 site-scoped unacknowledged-alerts section inside the docked `MapSitePanel` (reusing `useSignalRuleMatches` + `useTransitionAlert`, `canTriage` + shared reference clock threaded through)
-- Phase 2 Slice 2 keyboard toggle (`]`) + draggable resize handle (240–600px) + empty-state placeholder for the docked panel
-- Inherited-findings infra fixes B-3 (`DB_STATEMENT_TIMEOUT_MS` default 30s) and I-1 (CI concurrency group)
-- production-readiness closeout work
-- replay parity, auth hardening, and tenant-boundary cleanup that are already closed in the existing memory files
+- Phase 0 — Execution Foundation
+- Phase 1 — Trustworthy Operational Picture
+- incident notes/prosecution standalone coverage slice (`44cd768`)
+- replay parity, auth hardening, and tenant-boundary cleanup already recorded as closed in the existing memory files
+- `created_by_id` replay serializer contract cleanup (`1935b3d`)
+- production blocker hardening tranche:
+  - AI tenant scoping
+  - admin/commander task authority normalization
+  - Users AO assignment UI

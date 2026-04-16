@@ -9,7 +9,7 @@ module Api
     # entity_type defaults to 'tasks' for backward compatibility.
     def filter
       service = params[:entity_type] == "signals" ? Ai::SignalFilterService : Ai::FilterService
-      result  = service.call(query: params.require(:q))
+      result  = service.call(query: params.require(:q), user: current_user)
 
       if result.success
         render json: { data: result.payload }
@@ -24,6 +24,7 @@ module Api
       result = Ai::OntologyQueryService.call(
         query: params.require(:q),
         as_of: safe_parse_datetime(params[:as_of]),
+        user: current_user,
       )
 
       if result.success
@@ -67,7 +68,8 @@ module Api
         summary_type: params.require(:summary_type),
         site_id:      params[:site_id],
         from:         safe_parse_datetime(params[:from]),
-        to:           safe_parse_datetime(params[:to])
+        to:           safe_parse_datetime(params[:to]),
+        user:         current_user,
       )
 
       if result.success

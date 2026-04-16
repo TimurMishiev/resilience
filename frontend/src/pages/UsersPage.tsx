@@ -6,6 +6,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getUsers, updateUser, type UserRecord, type UserUpdateParams } from '../api/users'
 import { getOrganizations, type Organization } from '../api/organizations'
+import { getAreasOfOperation } from '../api/areas_of_operation'
 import { getApiErrorMessage } from '../api/client'
 import { useRole } from '../hooks/useRole'
 import { useReplayGuardedMutation } from '../hooks/useReplayGuardedMutation'
@@ -27,13 +28,19 @@ export default function UsersPage() {
     queryKey: ['organizations'],
     queryFn: getOrganizations,
   })
+  const aosQuery = useQuery({
+    queryKey: ['areas_of_operation', { per_page: 200 }],
+    queryFn: () => getAreasOfOperation({ per_page: 200 }),
+  })
 
   const users = data?.data ?? []
   const orgs = orgsQuery.data?.data ?? []
+  const aos = aosQuery.data?.data ?? []
 
   const [editingUser, setEditingUser] = useState<UserRecord | null>(null)
   const [formRole, setFormRole] = useState('')
   const [formOrgId, setFormOrgId] = useState<string>('')
+  const [formAoId, setFormAoId] = useState<string>('')
 
   const updateMutation = useReplayGuardedMutation({
     mutationFn: ({ id, params }: { id: string; params: UserUpdateParams }) => updateUser(id, params),
@@ -48,11 +55,13 @@ export default function UsersPage() {
     setEditingUser(user)
     setFormRole(user.role)
     setFormOrgId(user.organization_id ?? '')
+    setFormAoId(user.area_of_operation_id ?? '')
     updateMutation.reset()
   }
 
   function closeDialog() {
     setEditingUser(null)
+    setFormAoId('')
     updateMutation.reset()
   }
 
@@ -61,6 +70,7 @@ export default function UsersPage() {
     const params: UserUpdateParams = {
       role: formRole,
       organization_id: formOrgId || null,
+      area_of_operation_id: formAoId || null,
     }
     updateMutation.mutate({ id: editingUser.id, params })
   }
@@ -157,6 +167,19 @@ export default function UsersPage() {
               <option value="">— No organization —</option>
               {orgs.map((org: Organization) => (
                 <option key={org.id} value={org.id}>{org.name}</option>
+              ))}
+            </HTMLSelect>
+          </FormGroup>
+          <FormGroup label="Area of Operation" labelFor="user-area-of-operation">
+            <HTMLSelect
+              id="user-area-of-operation"
+              value={formAoId}
+              onChange={e => setFormAoId(e.target.value)}
+              fill
+            >
+              <option value="">— No area of operation —</option>
+              {aos.map(ao => (
+                <option key={ao.id} value={ao.id}>{ao.name}</option>
               ))}
             </HTMLSelect>
           </FormGroup>

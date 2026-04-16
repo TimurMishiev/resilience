@@ -6,6 +6,7 @@ RSpec.describe "Api::Users", type: :request do
   let(:operator)  { create(:user, role: "operator") }
 
   let!(:org) { create(:organization, name: "Alpha Corp", slug: "alpha-corp") }
+  let!(:ao) { create(:area_of_operation, name: "Northern Corridor", organization: org) }
 
   describe "GET /api/users" do
     it "returns 200 with data array and pagination meta for admin" do
@@ -69,6 +70,18 @@ RSpec.describe "Api::Users", type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(JSON.parse(response.body)["role"]).to eq("commander")
+    end
+
+    it "updates AO assignment as admin" do
+      patch "/api/users/#{operator.id}",
+            params: { user: { organization_id: org.id, area_of_operation_id: ao.id } },
+            headers: auth_headers(admin)
+
+      expect(response).to have_http_status(:ok)
+      body = JSON.parse(response.body)
+      expect(body["organization_id"]).to eq(org.id)
+      expect(body["area_of_operation_id"]).to eq(ao.id)
+      expect(body["area_of_operation_name"]).to eq("Northern Corridor")
     end
 
     it "writes an audit event on update" do

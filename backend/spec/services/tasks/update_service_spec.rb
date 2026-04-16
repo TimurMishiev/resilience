@@ -29,6 +29,20 @@ RSpec.describe Tasks::UpdateService do
     end
   end
 
+  describe "admin updates" do
+    it "treats admin as commander-equivalent for priority changes" do
+      result = described_class.call(
+        task: task,
+        params: { "priority" => "critical" },
+        actor: actor,
+        actor_role: "admin",
+      )
+
+      expect(result).to be_success
+      expect(result.payload[:task].priority).to eq("critical")
+    end
+  end
+
   describe "operator field restrictions" do
     it "allows title and description but strips priority" do
       result = described_class.call(

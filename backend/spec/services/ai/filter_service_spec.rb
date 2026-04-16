@@ -5,6 +5,7 @@ RSpec.describe Ai::FilterService, type: :service do
   let(:fake_response) { double("anthropic_response", content: [tool_block]) }
   let(:fake_messages) { double("messages", create: fake_response) }
   let(:fake_client) { double("anthropic_client", messages: fake_messages) }
+  let(:user) { create(:user, :commander) }
 
   before do
     stub_const("ENV", ENV.to_h.merge("ANTHROPIC_API_KEY" => "test_key_for_specs"))
@@ -15,7 +16,7 @@ RSpec.describe Ai::FilterService, type: :service do
     let(:tool_input) { {} }
 
     it "rejects a blank query" do
-      result = described_class.call(query: "  ")
+      result = described_class.call(user: user, query: "  ")
 
       expect(result.success).to be(false)
       expect(result.errors).to include("Query cannot be blank")
@@ -44,7 +45,7 @@ RSpec.describe Ai::FilterService, type: :service do
         ),
       ).and_return(fake_client)
 
-      result = described_class.call(query: query)
+      result = described_class.call(user: user, query: query)
 
       expect(result.success).to be(true)
     end
@@ -59,7 +60,7 @@ RSpec.describe Ai::FilterService, type: :service do
         hash_including(model: "claude-sonnet-4-5-20250929"),
       ).and_return(fake_response)
 
-      result = described_class.call(query: query)
+      result = described_class.call(user: user, query: query)
 
       expect(result.success).to be(true)
     end
@@ -78,7 +79,7 @@ RSpec.describe Ai::FilterService, type: :service do
         ),
       )
 
-      result = described_class.call(query: query)
+      result = described_class.call(user: user, query: query)
 
       expect(result.success).to be(false)
       expect(result.errors).to eq(["Task filter query timed out"])
@@ -98,7 +99,7 @@ RSpec.describe Ai::FilterService, type: :service do
         ),
       )
 
-      result = described_class.call(query: query)
+      result = described_class.call(user: user, query: query)
 
       expect(result.success).to be(false)
       expect(result.errors).to eq(["AI service error: planner exploded"])
@@ -115,8 +116,8 @@ RSpec.describe Ai::FilterService, type: :service do
         builder.bind_call(service)
       end
 
-      first = described_class.new(query: "first")
-      second = described_class.new(query: "second")
+      first = described_class.new(user: user, query: "first")
+      second = described_class.new(user: user, query: "second")
 
       expect(first.send(:site_catalog)).to eq(second.send(:site_catalog))
       expect(calls).to eq(1)
@@ -126,7 +127,7 @@ RSpec.describe Ai::FilterService, type: :service do
       allow(Ai::CircuitBreaker).to receive(:open?).with(service: described_class::BREAKER_SERVICE).and_return(true)
       expect(Anthropic::Client).not_to receive(:new)
 
-      result = described_class.call(query: query)
+      result = described_class.call(user: user, query: query)
 
       expect(result.success).to be(false)
       expect(result.errors).to eq(["AI temporarily unavailable. Please retry shortly."])
@@ -146,7 +147,7 @@ RSpec.describe Ai::FilterService, type: :service do
     end
 
     it "normalizes invalid planner output to safe filter values" do
-      result = described_class.call(query: "filter tasks")
+      result = described_class.call(user: user, query: "filter tasks")
 
       expect(result.success).to be(true)
       expect(result.payload[:filters]).to eq(
@@ -156,6 +157,35 @@ RSpec.describe Ai::FilterService, type: :service do
         created_after: nil,
         created_before: "2026-04-01T10:00:00Z",
       )
+    end
+  end
+
+  describe "tenant scoping" do
+    let(:org) { create(:organization) }
+    let(:user) { create(:user, :commander, organization: org) }
+    let!(:local_site) { create(:site, name: "Forward Site Alpha", organization: org) }
+    let!(:foreign_site) { create(:site, name: "Foreign Site Bravo", organization: create(:organization)) }
+    let(:tool_input) do
+      {
+        "site_id" => foreign_site.id,
+        "workflow_status" => "triaged",
+        "priority" => "high",
+      }
+    end
+
+    it "excludes foreign sites from the planner catalog and rejects foreign site ids" do
+      tool_payload = nil
+      allow(fake_messages).to receive(:create) do |args|
+        tool_payload = args[:tools].first
+        fake_response
+      end
+
+      result = described_class.call(user: user, query: "show high priority tasks at bravo")
+
+      expect(result.success).to be(true)
+      expect(result.payload[:filters][:site_id]).to be_nil
+      expect(tool_payload.dig(:input_schema, :properties, :site_id, :description)).to include("Forward Site Alpha")
+      expect(tool_payload.dig(:input_schema, :properties, :site_id, :description)).not_to include("Foreign Site Bravo")
     end
   end
 end

@@ -5,6 +5,7 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
   let(:fake_response) { double("anthropic_response", content: [tool_block]) }
   let(:fake_messages) { double("messages", create: fake_response) }
   let(:fake_client) { double("anthropic_client", messages: fake_messages) }
+  let(:user) { create(:user, :commander) }
 
   before do
     stub_const("ENV", ENV.to_h.merge("ANTHROPIC_API_KEY" => "test_key_for_specs"))
@@ -15,7 +16,7 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
     let(:tool_input) { {} }
 
     it "rejects a blank query" do
-      result = described_class.call(query: "  ")
+      result = described_class.call(user: user, query: "  ")
 
       expect(result.success).to be(false)
       expect(result.errors).to include("Query cannot be blank")
@@ -44,7 +45,7 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
         ),
       ).and_return(fake_client)
 
-      result = described_class.call(query: query)
+      result = described_class.call(user: user, query: query)
 
       expect(result.success).to be(true)
     end
@@ -59,7 +60,7 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
         hash_including(model: "claude-sonnet-4-5-20250929"),
       ).and_return(fake_response)
 
-      result = described_class.call(query: query)
+      result = described_class.call(user: user, query: query)
 
       expect(result.success).to be(true)
     end
@@ -78,7 +79,7 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
         ),
       )
 
-      result = described_class.call(query: query)
+      result = described_class.call(user: user, query: query)
 
       expect(result.success).to be(false)
       expect(result.errors).to eq(["Ontology query timed out"])
@@ -98,7 +99,7 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
         ),
       )
 
-      result = described_class.call(query: query)
+      result = described_class.call(user: user, query: query)
 
       expect(result.success).to be(false)
       expect(result.errors).to eq(["AI service error: planner exploded"])
@@ -115,8 +116,8 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
         builder.bind_call(service)
       end
 
-      first = described_class.new(query: "first")
-      second = described_class.new(query: "second")
+      first = described_class.new(user: user, query: "first")
+      second = described_class.new(user: user, query: "second")
 
       expect(first.send(:catalog_context)).to eq(second.send(:catalog_context))
       expect(calls).to eq(1)
@@ -126,7 +127,7 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
       allow(Ai::CircuitBreaker).to receive(:open?).with(service: described_class::BREAKER_SERVICE).and_return(true)
       expect(Anthropic::Client).not_to receive(:new)
 
-      result = described_class.call(query: query)
+      result = described_class.call(user: user, query: query)
 
       expect(result.success).to be(false)
       expect(result.errors).to eq(["AI temporarily unavailable. Please retry shortly."])
@@ -217,7 +218,7 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
     end
 
     it "returns a bounded graph rooted on the resolved site" do
-      result = described_class.call(query: "show incidents, alerts, tasks, assets, and recommendations connected to Forward Site Alpha")
+      result = described_class.call(user: user, query: "show incidents, alerts, tasks, assets, and recommendations connected to Forward Site Alpha")
 
       expect(result.success).to be(true)
       expect(result.normalized_query[:root_type]).to eq("site")
@@ -277,7 +278,7 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
       end
     end
     it "keeps scanning past bounding-box-only candidates until it finds the exact-radius matches" do
-      service = described_class.new(query: "show signals near Equator Site")
+      service = described_class.new(user: user, query: "show signals near Equator Site")
       result = service.send(:exact_signals_near_site, site, window_start: 24.hours.ago, upper_bound: Time.current, limit: 2)
 
       expect(result.map(&:id)).to contain_exactly(
@@ -364,7 +365,7 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
     end
 
     it "rewinds mutable node state to the replay cutoff" do
-      result = described_class.call(
+      result = described_class.call(user: user,
         query: "show the task and recommendation context around Replay Site",
         as_of: cutoff,
       )
@@ -382,7 +383,7 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
     it "resolves a replay site root even when the site is currently inactive" do
       site.update!(status: "inactive")
 
-      result = described_class.call(
+      result = described_class.call(user: user,
         query: "show the task and recommendation context around Replay Site",
         as_of: cutoff,
       )
@@ -414,7 +415,7 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
     end
 
     it "returns prosecution steps when incident prosecution is requested" do
-      result = described_class.call(query: "show the prosecution state for pier intrusion investigation")
+      result = described_class.call(user: user, query: "show the prosecution state for pier intrusion investigation")
 
       expect(result.success).to be(true)
       expect(result.nodes.map { |node| node[:type] }).to include("incident", "site", "prosecution_step")
@@ -469,7 +470,7 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
     end
 
     it "returns bounded asset context and excludes stale recommendations" do
-      result = described_class.call(query: "show the task, site, and recommendation context around Guardian 01")
+      result = described_class.call(user: user, query: "show the task, site, and recommendation context around Guardian 01")
 
       expect(result.success).to be(true)
       expect(result.normalized_query[:root_type]).to eq("asset")
@@ -565,7 +566,7 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
     end
 
     it "excludes stale time-bound entities outside the requested window" do
-      result = described_class.call(query: "show recent alerts, signals, prosecution steps, and recommendations for fuel depot intrusion")
+      result = described_class.call(user: user, query: "show recent alerts, signals, prosecution steps, and recommendations for fuel depot intrusion")
 
       expect(result.success).to be(true)
 
@@ -592,7 +593,7 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
     end
 
     it "falls back to default relations and limits when the tool omits them" do
-      result = described_class.call(query: "show me what is connected to Forward Site Alpha")
+      result = described_class.call(user: user, query: "show me what is connected to Forward Site Alpha")
 
       expect(result.success).to be(true)
       expect(result.normalized_query[:relations]).to eq(Ai::OntologyQueryService::RELATIONS_BY_ROOT["site"])
@@ -624,7 +625,7 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
       end
 
       it "does not include asset nodes when only tasks are requested" do
-        result = described_class.call(query: "show tasks for Harbor Site Delta")
+        result = described_class.call(user: user, query: "show tasks for Harbor Site Delta")
 
         expect(result.success).to be(true)
         expect(result.normalized_query[:relations]).to eq(["tasks"])
@@ -665,7 +666,7 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
       end
 
       it "does not include unrequested incident or task nodes" do
-        result = described_class.call(query: "show alerts for Harbor Site Delta")
+        result = described_class.call(user: user, query: "show alerts for Harbor Site Delta")
 
         expect(result.success).to be(true)
         expect(result.normalized_query[:relations]).to eq(["alerts"])
@@ -706,7 +707,7 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
       end
 
       it "does not include unrequested incident or signal nodes" do
-        result = described_class.call(query: "show alerts for Inspect quay sector 4")
+        result = described_class.call(user: user, query: "show alerts for Inspect quay sector 4")
 
         expect(result.success).to be(true)
         expect(result.normalized_query[:relations]).to eq(["alerts"])
@@ -755,7 +756,7 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
       end
 
       it "does not include asset nodes when tasks are requested for an incident" do
-        result = described_class.call(query: "show tasks for Pier intrusion investigation")
+        result = described_class.call(user: user, query: "show tasks for Pier intrusion investigation")
 
         expect(result.success).to be(true)
         expect(result.normalized_query[:relations]).to eq(["tasks"])
@@ -778,7 +779,7 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
     end
 
     it "returns a clear ambiguity error when multiple roots match" do
-      result = described_class.call(query: "show what is connected to harbor")
+      result = described_class.call(user: user, query: "show what is connected to harbor")
 
       expect(result.success).to be(false)
       expect(result.errors.first).to include("ambiguous")
@@ -799,7 +800,7 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
         double("anthropic_response", content: [double("tool_block", type: "tool_use", name: described_class::TOOL_NAME, input: inactive_tool)]),
       )
 
-      result = described_class.call(query: "show what is connected to Dormant Pier")
+      result = described_class.call(user: user, query: "show what is connected to Dormant Pier")
 
       expect(result.success).to be(false)
       expect(result.errors).to eq(["No site matched 'Dormant Pier'"])
@@ -862,7 +863,7 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
     end
 
     it "returns a bounded graph rooted on the resolved task with all requested relations" do
-      result = described_class.call(query: "show site, asset, incidents, alerts, and recommendations for Patrol northern pier")
+      result = described_class.call(user: user, query: "show site, asset, incidents, alerts, and recommendations for Patrol northern pier")
 
       expect(result.success).to be(true)
       expect(result.normalized_query[:root_type]).to eq("task")
@@ -909,7 +910,7 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
       end
 
       it "returns sites and incidents connected to the area of operation" do
-        result = described_class.call(query: "show sites and incidents in Western Littoral")
+        result = described_class.call(user: user, query: "show sites and incidents in Western Littoral")
 
         expect(result.success).to be(true)
         expect(result.normalized_query[:root_type]).to eq("area_of_operation")
@@ -938,7 +939,7 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
       end
 
       it "auto-injects the incident site node even when the sites relation is not requested" do
-        result = described_class.call(query: "show incidents in Western Littoral")
+        result = described_class.call(user: user, query: "show incidents in Western Littoral")
 
         expect(result.success).to be(true)
 
@@ -954,6 +955,38 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
         expect(site_entity_ids).to contain_exactly(site_in_ao.id)
         expect(site_entity_ids).not_to include(unrelated_site.id)
       end
+    end
+  end
+
+  describe "tenant scoping" do
+    let(:org) { create(:organization) }
+    let(:other_org) { create(:organization) }
+    let(:user) { create(:user, :commander, organization: org) }
+    let!(:local_site) { create(:site, name: "Forward Site Alpha", organization: org) }
+    let!(:foreign_site) { create(:site, name: "Foreign Site Bravo", organization: other_org) }
+    let(:tool_input) do
+      {
+        "root_type" => "site",
+        "root_name" => "Foreign Site Bravo",
+        "relations" => ["incidents"],
+        "time_window_hours" => 24,
+        "limit" => 4,
+      }
+    end
+
+    it "limits the catalog and root resolution to the commander's visible tenant scope" do
+      system_prompt = nil
+      allow(fake_messages).to receive(:create) do |args|
+        system_prompt = args[:system]
+        fake_response
+      end
+
+      result = described_class.call(user: user, query: "show incidents connected to Foreign Site Bravo")
+
+      expect(result.success).to be(false)
+      expect(result.errors.first).to match(/No site matched 'Foreign Site Bravo'/)
+      expect(system_prompt).to include("Forward Site Alpha")
+      expect(system_prompt).not_to include("Foreign Site Bravo")
     end
   end
 end

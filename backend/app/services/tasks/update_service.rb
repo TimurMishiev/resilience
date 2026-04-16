@@ -10,7 +10,7 @@ module Tasks
     OPERATOR_FIELDS  = %w[title description asset_id].freeze
 
     def initialize(task:, params:, actor:, actor_role: "operator")
-      permitted = actor_role == "commander" ? COMMANDER_FIELDS : OPERATOR_FIELDS
+      permitted = commander_role?(actor_role) ? COMMANDER_FIELDS : OPERATOR_FIELDS
       @task   = task
       @params = params.to_h.slice(*permitted)
       @actor  = actor
@@ -51,6 +51,10 @@ module Tasks
     end
 
     private
+
+    def commander_role?(role)
+      %w[commander admin].include?(role.to_s)
+    end
 
     def task_snapshot(task)
       task.attributes.except("updated_at")

@@ -9,6 +9,8 @@ module Ai
   # - No prompt injection risk from site names — names appear only in the
   #   description field, never as executable instructions.
   class FilterService < ApplicationService
+    include ScopedRelations
+
     ALLOWED_WORKFLOW_STATUSES = %w[new triaged in_progress blocked resolved].freeze
     ALLOWED_PRIORITIES        = %w[low normal high critical].freeze
     TOOL_NAME                 = "apply_task_filters"
@@ -16,11 +18,12 @@ module Ai
     DEFAULT_MODEL             = "claude-haiku-4-5-20251001"
     ANTHROPIC_TIMEOUT_SECONDS = 30
     ANTHROPIC_MAX_RETRIES     = 2
-    CATALOG_CACHE_KEY         = "ai/filter/sites/v1"
+    CATALOG_CACHE_KEY         = "ai/filter/sites/v2"
     CATALOG_CACHE_TTL         = 60.seconds
 
-    def initialize(query:)
+    def initialize(query:, user:)
       @query = query.to_s.strip
+      @user = user
     end
 
     def call
@@ -137,13 +140,13 @@ module Ai
     end
 
     def site_catalog
-      Rails.cache.fetch(CATALOG_CACHE_KEY, expires_in: CATALOG_CACHE_TTL) do
+      Rails.cache.fetch("#{CATALOG_CACHE_KEY}/#{scope_cache_token}", expires_in: CATALOG_CACHE_TTL) do
         build_site_catalog
       end
     end
 
     def build_site_catalog
-      Site.order(:name).pluck(:id, :name).map do |id, name|
+      scoped_sites.order(:name).pluck(:id, :name).map do |id, name|
         { id: id, name: name }
       end
     end

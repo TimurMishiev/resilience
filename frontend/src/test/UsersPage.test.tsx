@@ -48,10 +48,30 @@ const mockOrgs = vi.hoisted(() => ({
   meta: { page: 1, per_page: 25, total: 2, total_pages: 1 },
 }))
 
+const mockAos = vi.hoisted(() => ({
+  data: [
+    {
+      id: 'ao-1',
+      name: 'Northern Corridor',
+      description: null,
+      threat_level: 'green',
+      posture: 'observe',
+      posture_changed_at: null,
+      color: '#23d160',
+      geometry: { type: 'Polygon', coordinates: [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]] },
+      created_by_id: 'usr-1',
+      created_at: '2026-04-01T10:00:00Z',
+      updated_at: '2026-04-01T10:00:00Z',
+    },
+  ],
+  meta: { page: 1, per_page: 200, total: 1, total_pages: 1 },
+}))
+
 const apiMocks = vi.hoisted(() => ({
   getUsers: vi.fn(),
   updateUser: vi.fn(),
   getOrganizations: vi.fn(),
+  getAreasOfOperation: vi.fn(),
 }))
 
 vi.mock('../context/AuthContext', () => ({
@@ -81,6 +101,10 @@ vi.mock('../api/users', () => ({
 
 vi.mock('../api/organizations', () => ({
   getOrganizations: (...args: unknown[]) => apiMocks.getOrganizations(...args),
+}))
+
+vi.mock('../api/areas_of_operation', () => ({
+  getAreasOfOperation: (...args: unknown[]) => apiMocks.getAreasOfOperation(...args),
 }))
 
 function queryClient() {
@@ -113,6 +137,7 @@ describe('UsersPage', () => {
     })
     apiMocks.getUsers.mockResolvedValue(mockUsers)
     apiMocks.getOrganizations.mockResolvedValue(mockOrgs)
+    apiMocks.getAreasOfOperation.mockResolvedValue(mockAos)
     apiMocks.updateUser.mockReset()
   })
 
@@ -139,11 +164,13 @@ describe('UsersPage', () => {
     expect(screen.queryByText('alice@ops.test')).not.toBeInTheDocument()
   })
 
-  it('opens edit dialog and submits org assignment', async () => {
+  it('opens edit dialog and submits org and AO assignment', async () => {
     apiMocks.updateUser.mockResolvedValue({
       ...mockUsers.data[1],
       organization_id: 'org-2',
       organization_name: 'Bravo Unit',
+      area_of_operation_id: 'ao-1',
+      area_of_operation_name: 'Northern Corridor',
     })
     const user = userEvent.setup()
     await renderPage()
@@ -158,12 +185,15 @@ describe('UsersPage', () => {
 
     const orgSelect = within(dialog).getByLabelText('Organization')
     await user.selectOptions(orgSelect, 'org-2')
+    const aoSelect = within(dialog).getByLabelText('Area of Operation')
+    await user.selectOptions(aoSelect, 'ao-1')
 
     await user.click(within(dialog).getByText('Save'))
 
     expect(apiMocks.updateUser).toHaveBeenCalledWith('usr-2', {
       role: 'viewer',
       organization_id: 'org-2',
+      area_of_operation_id: 'ao-1',
     })
   })
 

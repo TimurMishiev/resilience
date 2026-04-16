@@ -18,7 +18,10 @@ RSpec.describe "Api::Ai", type: :request do
     end
 
     it "returns task filter data for commanders" do
-      allow(Ai::FilterService).to receive(:call).and_return(
+      expect(Ai::FilterService).to receive(:call).with(
+        query: "show high priority tasks",
+        user: commander,
+      ).and_return(
         ServiceResult.success(
           original_query: "show high priority tasks",
           filters: {
@@ -49,7 +52,10 @@ RSpec.describe "Api::Ai", type: :request do
     end
 
     it "surfaces task filter validation failures" do
-      allow(Ai::FilterService).to receive(:call).and_return(
+      expect(Ai::FilterService).to receive(:call).with(
+        query: "show high priority tasks",
+        user: commander,
+      ).and_return(
         ServiceResult.failure(errors: ["Task filter query timed out"]),
       )
 
@@ -60,7 +66,10 @@ RSpec.describe "Api::Ai", type: :request do
     end
 
     it "returns signal filter data for commanders" do
-      allow(Ai::SignalFilterService).to receive(:call).and_return(
+      expect(Ai::SignalFilterService).to receive(:call).with(
+        query: "show gps jamming signals near alpha",
+        user: commander,
+      ).and_return(
         ServiceResult.success(
           original_query: "show gps jamming signals near alpha",
           filters: {
@@ -93,7 +102,10 @@ RSpec.describe "Api::Ai", type: :request do
     end
 
     it "surfaces signal filter validation failures" do
-      allow(Ai::SignalFilterService).to receive(:call).and_return(
+      expect(Ai::SignalFilterService).to receive(:call).with(
+        query: "show gps jamming signals near alpha",
+        user: commander,
+      ).and_return(
         ServiceResult.failure(errors: ["Signal filter query timed out"]),
       )
 
@@ -103,6 +115,28 @@ RSpec.describe "Api::Ai", type: :request do
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(JSON.parse(response.body)).to eq("errors" => ["Signal filter query timed out"])
+    end
+
+    it "fails closed on foreign site ids for scoped commanders" do
+      org = create(:organization)
+      scoped_commander = create(:user, :commander, organization: org)
+      create(:site, name: "Forward Site Alpha", organization: org)
+      foreign_site = create(:site, name: "Foreign Site Bravo", organization: create(:organization))
+
+      stub_const("ENV", ENV.to_h.merge("ANTHROPIC_API_KEY" => "test_key_for_specs"))
+      tool_block = double("tool_block", type: "tool_use", name: Ai::FilterService::TOOL_NAME, input: {
+        "site_id" => foreign_site.id,
+        "workflow_status" => "triaged",
+      })
+      fake_response = double("anthropic_response", content: [tool_block])
+      fake_messages = double("messages", create: fake_response)
+      fake_client = double("anthropic_client", messages: fake_messages)
+      allow(Anthropic::Client).to receive(:new).and_return(fake_client)
+
+      get "/api/ai/filter", params: { q: "show triaged tasks at foreign site bravo" }, headers: auth_headers(scoped_commander)
+
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body).dig("data", "filters", "site_id")).to be_nil
     end
   end
 
@@ -126,7 +160,11 @@ RSpec.describe "Api::Ai", type: :request do
     end
 
     it "returns ontology graph data for commanders" do
-      allow(Ai::OntologyQueryService).to receive(:call).and_return(
+      expect(Ai::OntologyQueryService).to receive(:call).with(
+        query: valid_payload[:q],
+        as_of: nil,
+        user: commander,
+      ).and_return(
         ServiceResult.success(
           original_query: valid_payload[:q],
           summary: "Resolved Forward Site Alpha as the focal site.",
@@ -180,6 +218,7 @@ RSpec.describe "Api::Ai", type: :request do
       expect(Ai::OntologyQueryService).to receive(:call).with(
         query: valid_payload[:q],
         as_of: cutoff,
+        user: commander,
       ).and_return(ServiceResult.success(
         original_query: valid_payload[:q],
         summary: "ok",
@@ -206,7 +245,11 @@ RSpec.describe "Api::Ai", type: :request do
     end
 
     it "surfaces ontology service validation failures" do
-      allow(Ai::OntologyQueryService).to receive(:call).and_return(
+      expect(Ai::OntologyQueryService).to receive(:call).with(
+        query: "phantom base",
+        as_of: nil,
+        user: commander,
+      ).and_return(
         ServiceResult.failure(errors: ["No site matched 'phantom base'"]),
       )
 
@@ -214,6 +257,34 @@ RSpec.describe "Api::Ai", type: :request do
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(JSON.parse(response.body)).to eq("errors" => ["No site matched 'phantom base'"])
+    end
+
+    it "does not resolve foreign roots for scoped commanders" do
+      org = create(:organization)
+      scoped_commander = create(:user, :commander, organization: org)
+      create(:site, name: "Forward Site Alpha", organization: org)
+      create(:site, name: "Foreign Site Bravo", organization: create(:organization))
+
+      stub_const("ENV", ENV.to_h.merge("ANTHROPIC_API_KEY" => "test_key_for_specs"))
+      tool_block = double("tool_block", type: "tool_use", name: Ai::OntologyQueryService::TOOL_NAME, input: {
+        "root_type" => "site",
+        "root_name" => "Foreign Site Bravo",
+        "relations" => ["incidents"],
+        "time_window_hours" => 24,
+        "limit" => 4,
+      })
+      fake_response = double("anthropic_response", content: [tool_block])
+      fake_messages = double("messages", create: fake_response)
+      fake_client = double("anthropic_client", messages: fake_messages)
+      allow(Anthropic::Client).to receive(:new).and_return(fake_client)
+
+      post "/api/ai/ontology_query",
+           params: { q: "show incidents connected to Foreign Site Bravo" },
+           headers: auth_headers(scoped_commander),
+           as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(JSON.parse(response.body)["errors"].first).to match(/No site matched 'Foreign Site Bravo'/)
     end
   end
 
@@ -302,7 +373,13 @@ RSpec.describe "Api::Ai", type: :request do
     end
 
     it "returns summary data for commanders" do
-      allow(Ai::SummaryService).to receive(:call).and_return(
+      expect(Ai::SummaryService).to receive(:call).with(
+        summary_type: "leadership_briefing",
+        site_id: nil,
+        from: nil,
+        to: nil,
+        user: commander,
+      ).and_return(
         ServiceResult.success(
           summary: "Executive summary",
           citations: ["audit-1"],
@@ -326,7 +403,13 @@ RSpec.describe "Api::Ai", type: :request do
     end
 
     it "surfaces service validation failures" do
-      allow(Ai::SummaryService).to receive(:call).and_return(
+      expect(Ai::SummaryService).to receive(:call).with(
+        summary_type: "leadership_briefing",
+        site_id: nil,
+        from: nil,
+        to: nil,
+        user: commander,
+      ).and_return(
         ServiceResult.failure(errors: ["ANTHROPIC_API_KEY is not set"]),
       )
 
@@ -334,6 +417,21 @@ RSpec.describe "Api::Ai", type: :request do
 
       expect(response).to have_http_status(:unprocessable_content)
       expect(JSON.parse(response.body)).to eq("errors" => ["ANTHROPIC_API_KEY is not set"])
+    end
+
+    it "returns not found when a scoped commander requests a foreign site summary" do
+      org = create(:organization)
+      scoped_commander = create(:user, :commander, organization: org)
+      foreign_site = create(:site, organization: create(:organization))
+      expect(Anthropic::Client).not_to receive(:new)
+
+      post "/api/ai/summary",
+           params: { summary_type: "site_activity", site_id: foreign_site.id },
+           headers: auth_headers(scoped_commander),
+           as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(JSON.parse(response.body)).to eq("errors" => ["Site not found"])
     end
   end
 end

@@ -4,6 +4,8 @@ module Ai
   # Uses Claude tool_use with enum-constrained schema for the same prompt-injection
   # resistance and structural validity guarantees.
   class SignalFilterService < ApplicationService
+    include ScopedRelations
+
     ALLOWED_SIGNAL_TYPES = %w[
       aircraft_position vessel_position seismic_event gps_jamming
       wildfire ais_gap conflict_event disaster_alert manual
@@ -18,11 +20,12 @@ module Ai
     DEFAULT_MODEL             = "claude-haiku-4-5-20251001"
     ANTHROPIC_TIMEOUT_SECONDS = 30
     ANTHROPIC_MAX_RETRIES     = 2
-    CATALOG_CACHE_KEY         = "ai/signal_filter/sites/v1"
+    CATALOG_CACHE_KEY         = "ai/signal_filter/sites/v2"
     CATALOG_CACHE_TTL         = 60.seconds
 
-    def initialize(query:)
+    def initialize(query:, user:)
       @query = query.to_s.strip
+      @user = user
     end
 
     def call
@@ -135,13 +138,13 @@ module Ai
     end
 
     def site_catalog
-      Rails.cache.fetch(CATALOG_CACHE_KEY, expires_in: CATALOG_CACHE_TTL) do
+      Rails.cache.fetch("#{CATALOG_CACHE_KEY}/#{scope_cache_token}", expires_in: CATALOG_CACHE_TTL) do
         build_site_catalog
       end
     end
 
     def build_site_catalog
-      Site.order(:name).pluck(:id, :name).map do |id, name|
+      scoped_sites.order(:name).pluck(:id, :name).map do |id, name|
         { id: id, name: name }
       end
     end

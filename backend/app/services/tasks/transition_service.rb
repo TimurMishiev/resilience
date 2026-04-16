@@ -37,7 +37,7 @@ module Tasks
         )
       end
 
-      if commander_only_transition? && @actor_role != "commander"
+      if commander_only_transition? && !commander_role?(@actor_role)
         return ServiceResult.failure(
           errors: ["Commander authority required to transition task to '#{@to_status}'"]
         )
@@ -90,13 +90,21 @@ module Tasks
     # renders only the actions the actor is actually permitted to take.
     def self.allowed_transitions_for(current_status, role: "commander")
       all = ALLOWED_TRANSITIONS.fetch(current_status, [])
-      return all if role == "commander"
+      return all if commander_role?(role)
 
       commander_only = COMMANDER_ONLY_TRANSITIONS.fetch(current_status, [])
       all.reject { |to| commander_only.include?(to) }
     end
 
     private
+
+    def self.commander_role?(role)
+      %w[commander admin].include?(role.to_s)
+    end
+
+    def commander_role?(role)
+      self.class.commander_role?(role)
+    end
 
     def transition_allowed?
       ALLOWED_TRANSITIONS.fetch(@task.workflow_status, []).include?(@to_status)

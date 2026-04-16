@@ -10,6 +10,7 @@ RSpec.describe Ai::SummaryService, type: :service do
 
   let(:fake_messages) { double("messages", create: fake_response) }
   let(:fake_client)   { double("anthropic_client", messages: fake_messages) }
+  let(:user) { create(:user, :commander) }
 
   before do
     stub_const("ENV", ENV.to_h.merge("ANTHROPIC_API_KEY" => "test_key_for_specs"))
@@ -30,13 +31,13 @@ RSpec.describe Ai::SummaryService, type: :service do
 
     %w[site_activity readiness_change leadership_briefing].each do |type|
       it "accepts #{type}" do
-        result = described_class.call(summary_type: type)
+        result = described_class.call(user: user, summary_type: type)
         expect(result.success).to be true
       end
     end
 
     it "rejects unknown summary_type" do
-      result = described_class.call(summary_type: "hack_the_planet")
+      result = described_class.call(user: user, summary_type: "hack_the_planet")
       expect(result.success).to be false
       expect(result.errors.first).to match(/Invalid summary_type/)
     end
@@ -58,7 +59,7 @@ RSpec.describe Ai::SummaryService, type: :service do
         ),
       ).and_return(fake_client)
 
-      result = described_class.call(summary_type: "site_activity", site_id: site.id)
+      result = described_class.call(user: user, summary_type: "site_activity", site_id: site.id)
 
       expect(result.success).to be(true)
     end
@@ -73,7 +74,7 @@ RSpec.describe Ai::SummaryService, type: :service do
         hash_including(model: "claude-sonnet-4-5-20250929"),
       ).and_return(fake_response)
 
-      result = described_class.call(summary_type: "site_activity", site_id: site.id)
+      result = described_class.call(user: user, summary_type: "site_activity", site_id: site.id)
 
       expect(result.success).to be(true)
     end
@@ -92,7 +93,7 @@ RSpec.describe Ai::SummaryService, type: :service do
         ),
       )
 
-      result = described_class.call(summary_type: "site_activity", site_id: site.id)
+      result = described_class.call(user: user, summary_type: "site_activity", site_id: site.id)
 
       expect(result.success).to be(false)
       expect(result.errors).to eq(["Summary generation timed out"])
@@ -112,7 +113,7 @@ RSpec.describe Ai::SummaryService, type: :service do
         ),
       )
 
-      result = described_class.call(summary_type: "site_activity", site_id: site.id)
+      result = described_class.call(user: user, summary_type: "site_activity", site_id: site.id)
 
       expect(result.success).to be(false)
       expect(result.errors).to eq(["AI service error: summary exploded"])
@@ -122,7 +123,7 @@ RSpec.describe Ai::SummaryService, type: :service do
       allow(Ai::CircuitBreaker).to receive(:open?).with(service: described_class::BREAKER_SERVICE).and_return(true)
       expect(Anthropic::Client).not_to receive(:new)
 
-      result = described_class.call(summary_type: "site_activity", site_id: site.id)
+      result = described_class.call(user: user, summary_type: "site_activity", site_id: site.id)
 
       expect(result.success).to be(false)
       expect(result.errors).to eq(["AI temporarily unavailable. Please retry shortly."])
@@ -135,7 +136,7 @@ RSpec.describe Ai::SummaryService, type: :service do
     it "returns failure when no data exists for the given site" do
       isolated_site = create(:site)
       # no tasks, no events, no signals, no matches
-      result = described_class.call(summary_type: "site_activity", site_id: isolated_site.id)
+      result = described_class.call(user: user, summary_type: "site_activity", site_id: isolated_site.id)
       expect(result.success).to be false
       expect(result.errors.first).to match(/No operational data/)
     end
@@ -171,7 +172,7 @@ RSpec.describe Ai::SummaryService, type: :service do
         fake_response
       end
 
-      described_class.call(summary_type: "site_activity", site_id: site.id)
+      described_class.call(user: user, summary_type: "site_activity", site_id: site.id)
       expect(content_sent).to include(site_audit[:id].to_s)
     end
 
@@ -182,7 +183,7 @@ RSpec.describe Ai::SummaryService, type: :service do
         fake_response
       end
 
-      described_class.call(summary_type: "site_activity", site_id: site.id)
+      described_class.call(user: user, summary_type: "site_activity", site_id: site.id)
       expect(content_sent).to include(task_audit[:id].to_s)
     end
 
@@ -193,7 +194,7 @@ RSpec.describe Ai::SummaryService, type: :service do
         fake_response
       end
 
-      described_class.call(summary_type: "site_activity", site_id: site.id)
+      described_class.call(user: user, summary_type: "site_activity", site_id: site.id)
       expect(content_sent).not_to include(other_site_audit[:id].to_s)
     end
   end
@@ -222,7 +223,7 @@ RSpec.describe Ai::SummaryService, type: :service do
           fake_response
         end
 
-        described_class.call(summary_type: "site_activity", site_id: site.id)
+        described_class.call(user: user, summary_type: "site_activity", site_id: site.id)
         expect(content_sent).to include("INTELLIGENCE SIGNALS")
         # signal_type is humanized in the context block ("Gps jamming"); source is uppercased ("GPSJAM")
         expect(content_sent).to include("GPSJAM")
@@ -250,7 +251,7 @@ RSpec.describe Ai::SummaryService, type: :service do
           fake_response
         end
 
-        described_class.call(summary_type: "site_activity", site_id: site.id)
+        described_class.call(user: user, summary_type: "site_activity", site_id: site.id)
         expect(content_sent).to include("Yemen")
         expect(content_sent).to include("Houthi Forces")
         expect(content_sent).to include("fatalities: 12")
@@ -278,7 +279,7 @@ RSpec.describe Ai::SummaryService, type: :service do
           fake_response
         end
 
-        described_class.call(summary_type: "site_activity", site_id: site.id)
+        described_class.call(user: user, summary_type: "site_activity", site_id: site.id)
         expect(content_sent).to include("Orange")
         expect(content_sent).to include("Earthquake")
         expect(content_sent).to include("Moderate shaking")
@@ -293,7 +294,7 @@ RSpec.describe Ai::SummaryService, type: :service do
           fake_response
         end
 
-        described_class.call(summary_type: "site_activity", site_id: site.id)
+        described_class.call(user: user, summary_type: "site_activity", site_id: site.id)
         expect(content_sent).to include("INTELLIGENCE SIGNALS: (none detected in area)")
       end
     end
@@ -309,7 +310,7 @@ RSpec.describe Ai::SummaryService, type: :service do
           fake_response
         end
 
-        described_class.call(summary_type: "leadership_briefing")
+        described_class.call(user: user, summary_type: "leadership_briefing")
         expect(content_sent).to include("INTELLIGENCE SIGNALS: (none detected in area)")
       end
     end
@@ -338,7 +339,7 @@ RSpec.describe Ai::SummaryService, type: :service do
         allow(ExternalSignal.connection).to receive(:extension_enabled?).and_call_original
         allow(ExternalSignal.connection).to receive(:extension_enabled?).with("postgis").and_return(false)
 
-        service = described_class.new(summary_type: "site_activity", site_id: site.id)
+        service = described_class.new(user: user, summary_type: "site_activity", site_id: site.id)
         service.instance_variable_set(:@site, site)
 
         signals = service.send(:fetch_signals)
@@ -379,7 +380,7 @@ RSpec.describe Ai::SummaryService, type: :service do
         fake_response
       end
 
-      described_class.call(
+      described_class.call(user: user,
         summary_type: "site_activity",
         site_id: site.id,
         to: 2.hours.ago,
@@ -421,7 +422,7 @@ RSpec.describe Ai::SummaryService, type: :service do
           fake_response
         end
 
-        described_class.call(summary_type: "site_activity", site_id: site.id)
+        described_class.call(user: user, summary_type: "site_activity", site_id: site.id)
         expect(content_sent).to include("RULE FIRES")
         expect(content_sent).to include("87%")
         expect(content_sent).to include("create_task")
@@ -436,7 +437,7 @@ RSpec.describe Ai::SummaryService, type: :service do
           fake_response
         end
 
-        described_class.call(summary_type: "site_activity", site_id: site.id)
+        described_class.call(user: user, summary_type: "site_activity", site_id: site.id)
         expect(content_sent).to include("RULE FIRES: (none in last")
       end
     end
@@ -456,7 +457,7 @@ RSpec.describe Ai::SummaryService, type: :service do
         double("resp", content: [ double("b", text: %({"summary":"ok","citations":["#{audit.id}"]})) ])
       )
 
-      result = described_class.call(summary_type: "site_activity", site_id: site.id)
+      result = described_class.call(user: user, summary_type: "site_activity", site_id: site.id)
       expect(result.payload[:citations]).to include(audit.id)
     end
 
@@ -466,7 +467,7 @@ RSpec.describe Ai::SummaryService, type: :service do
         double("resp", content: [ double("b", text: %({"summary":"ok","citations":["#{hallucinated_id}"]})) ])
       )
 
-      result = described_class.call(summary_type: "site_activity", site_id: site.id)
+      result = described_class.call(user: user, summary_type: "site_activity", site_id: site.id)
       expect(result.payload[:citations]).not_to include(hallucinated_id)
     end
   end
@@ -481,7 +482,7 @@ RSpec.describe Ai::SummaryService, type: :service do
     end
 
     it "returns context_counts in the payload" do
-      result = described_class.call(summary_type: "site_activity", site_id: site.id)
+      result = described_class.call(user: user, summary_type: "site_activity", site_id: site.id)
       expect(result.payload[:context_counts]).to include(
         audit_events: be_a(Integer),
         signals:      be_a(Integer),
@@ -502,20 +503,20 @@ RSpec.describe Ai::SummaryService, type: :service do
       allow(fake_messages).to receive(:create).and_return(
         double("resp", content: [ double("b", text: "not json at all") ])
       )
-      result = described_class.call(summary_type: "site_activity", site_id: site.id)
+      result = described_class.call(user: user, summary_type: "site_activity", site_id: site.id)
       expect(result.success).to be false
       expect(result.errors.first).to match(/unparseable/)
     end
 
     it "returns failure when ANTHROPIC_API_KEY is missing" do
       allow(Anthropic::Client).to receive(:new).and_raise(KeyError)
-      result = described_class.call(summary_type: "site_activity", site_id: site.id)
+      result = described_class.call(user: user, summary_type: "site_activity", site_id: site.id)
       expect(result.success).to be false
       expect(result.errors.first).to match(/ANTHROPIC_API_KEY/)
     end
 
     it "returns failure when site_id is not found" do
-      result = described_class.call(
+      result = described_class.call(user: user,
         summary_type: "site_activity",
         site_id:      "00000000-0000-0000-0000-000000000000"
       )
@@ -524,10 +525,56 @@ RSpec.describe Ai::SummaryService, type: :service do
     end
   end
 
+  describe "tenant scoping" do
+    let(:org) { create(:organization) }
+    let(:other_org) { create(:organization) }
+    let(:user) { create(:user, :commander, organization: org) }
+    let(:site) { create(:site, name: "Forward Site Alpha", organization: org, latitude: 26.5, longitude: 56.2) }
+    let(:foreign_site) { create(:site, name: "Foreign Site Bravo", organization: other_org, latitude: 24.0, longitude: 55.0) }
+    let!(:local_task) { create(:task, site: site, title: "Inspect harbor perimeter") }
+    let!(:foreign_task) { create(:task, site: foreign_site, title: "Foreign task") }
+    let!(:local_event) do
+      create(:audit_event, entity_type: "Task", entity_id: local_task.id, event_type: "task.transitioned", occurred_at: 1.hour.ago)
+    end
+    let!(:foreign_event) do
+      create(:audit_event, entity_type: "Task", entity_id: foreign_task.id, event_type: "task.transitioned", occurred_at: 1.hour.ago)
+    end
+    let!(:local_match) do
+      create(:signal_rule_match, site: site, fired_at: 90.minutes.ago)
+    end
+    let!(:foreign_match) do
+      create(:signal_rule_match, site: foreign_site, fired_at: 90.minutes.ago)
+    end
+
+    it "fails closed when a scoped commander requests a foreign site briefing" do
+      result = described_class.call(user: user, summary_type: "site_activity", site_id: foreign_site.id)
+
+      expect(result.success).to be(false)
+      expect(result.errors).to eq(["Site not found"])
+    end
+
+    it "excludes foreign audit events and alert context from a scoped site briefing" do
+      content_sent = nil
+      allow(fake_messages).to receive(:create) do |args|
+        content_sent = args[:messages].first[:content]
+        fake_response
+      end
+
+      result = described_class.call(user: user, summary_type: "site_activity", site_id: site.id)
+
+      expect(result.success).to be(true)
+      expect(content_sent).to include(local_event.id)
+      expect(content_sent).to include(local_match.correlation_rule.name)
+      expect(content_sent).not_to include(foreign_event.id)
+      expect(content_sent).not_to include("Foreign task")
+      expect(content_sent).not_to include(foreign_match.correlation_rule.name)
+    end
+  end
+
   describe "#sanitize_for_prompt" do
     # Expose the private method for targeted testing via a fresh instance.
     let(:service) do
-      described_class.new(summary_type: "site_activity")
+      described_class.new(user: user, summary_type: "site_activity")
     end
 
     def sanitize(value)

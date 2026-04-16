@@ -3,6 +3,8 @@ module Ai
   # rooted on one operational entity, then executes that query deterministically
   # against the existing data model.
   class OntologyQueryService < ApplicationService
+    include ScopedRelations
+
     TOOL_NAME              = "plan_ontology_query"
     BREAKER_SERVICE        = "ontology_query"
     DEFAULT_MODEL          = "claude-haiku-4-5-20251001"
@@ -13,7 +15,7 @@ module Ai
     SIGNAL_RADIUS_KM       = 200.0
     ANTHROPIC_TIMEOUT_SECONDS = 30
     ANTHROPIC_MAX_RETRIES     = 2
-    CATALOG_CACHE_KEY         = "ai/ontology_query/catalog_context/v1"
+    CATALOG_CACHE_KEY         = "ai/ontology_query/catalog_context/v2"
     CATALOG_CACHE_TTL         = 60.seconds
 
     ROOT_TYPES = %w[site incident task asset area_of_operation].freeze
@@ -26,9 +28,10 @@ module Ai
     }.freeze
     ALL_RELATIONS = RELATIONS_BY_ROOT.values.flatten.uniq.freeze
 
-    def initialize(query:, as_of: nil)
+    def initialize(query:, as_of: nil, user:)
       @query = query.to_s.strip
       @as_of = as_of
+      @user = user
       reset_graph!
     end
 
@@ -177,19 +180,20 @@ module Ai
     end
 
     def catalog_cache_key
-      return CATALOG_CACHE_KEY unless @as_of.present?
+      base_key = "#{CATALOG_CACHE_KEY}/#{scope_cache_token}"
+      return base_key unless @as_of.present?
 
-      "#{CATALOG_CACHE_KEY}/#{@as_of.to_i}"
+      "#{base_key}/#{@as_of.to_i}"
     end
 
     def build_catalog_context
       [
         "Known entities:",
         "Sites: #{catalog_names(apply_replay_existence_scope(site_catalog_scope).order(:name).limit(50).pluck(:name))}",
-        "Areas of operation: #{catalog_names(apply_replay_existence_scope(AreaOfOperation.all).order(:name).limit(30).pluck(:name))}",
-        "Incidents: #{catalog_names(apply_replay_existence_scope(Incident.recent).limit(40).pluck(:title))}",
-        "Tasks: #{catalog_names(apply_replay_existence_scope(Task.all).order(created_at: :desc).limit(40).pluck(:title))}",
-        "Assets: #{catalog_names(apply_replay_existence_scope(Asset.all).order(:name).limit(50).pluck(:name))}",
+        "Areas of operation: #{catalog_names(apply_replay_existence_scope(scoped_areas).order(:name).limit(30).pluck(:name))}",
+        "Incidents: #{catalog_names(apply_replay_existence_scope(scoped_incidents(Incident.recent)).limit(40).pluck(:title))}",
+        "Tasks: #{catalog_names(apply_replay_existence_scope(scoped_tasks).order(created_at: :desc).limit(40).pluck(:title))}",
+        "Assets: #{catalog_names(apply_replay_existence_scope(scoped_assets).order(:name).limit(50).pluck(:name))}",
       ].join("\n")
     end
 
@@ -223,13 +227,13 @@ module Ai
         when "site"
           [site_root_scope, :name]
         when "incident"
-          [Incident.includes(:signal_rule_matches, :site, :area_of_operation), :title]
+          [scoped_incidents(Incident.includes(:signal_rule_matches, :site, :area_of_operation)), :title]
         when "task"
-          [Task.includes(:site, :asset), :title]
+          [scoped_tasks(Task.includes(:site, :asset)), :title]
         when "asset"
-          [Asset.includes(:home_site), :name]
+          [scoped_assets(Asset.includes(:home_site)), :name]
         when "area_of_operation"
-          [AreaOfOperation.all, :name]
+          [scoped_areas, :name]
         end
 
       return ServiceResult.failure(errors: ["Unsupported root entity type: #{root_type}"]) if scope.nil?
@@ -290,7 +294,7 @@ module Ai
 
       incidents = []
       if relations.include?("incidents")
-        incidents = apply_replay_existence_scope(Incident.where(site_id: site.id), upper_bound: upper_bound)
+        incidents = apply_replay_existence_scope(scoped_incidents(Incident.where(site_id: site.id)), upper_bound: upper_bound)
           .includes(:site, :area_of_operation, :signal_rule_matches)
           .order(opened_at: :desc)
           .limit(limit)
@@ -303,7 +307,7 @@ module Ai
 
       tasks = []
       if relations.include?("tasks")
-        tasks = apply_replay_existence_scope(Task.where(site_id: site.id), upper_bound: upper_bound)
+        tasks = apply_replay_existence_scope(scoped_tasks(Task.where(site_id: site.id)), upper_bound: upper_bound)
         tasks = tasks.includes(:asset) if relations.include?("assets")
         tasks = tasks.order(created_at: :desc).limit(limit)
         tasks.each do |task|
@@ -319,7 +323,7 @@ module Ai
       end
 
       if relations.include?("assets")
-        apply_replay_existence_scope(Asset.where(home_site_id: site.id), upper_bound: upper_bound).order(:name).limit(limit).each do |asset|
+        apply_replay_existence_scope(scoped_assets(Asset.where(home_site_id: site.id)), upper_bound: upper_bound).order(:name).limit(limit).each do |asset|
           asset_node = add_asset_node(asset)
           add_edge(site_node, asset_node, "home_site_asset")
           included_targets << ["Asset", asset.id]
@@ -328,7 +332,7 @@ module Ai
 
       alerts = []
       if relations.include?("alerts")
-        alerts = SignalRuleMatch.where(site_id: site.id)
+        alerts = scoped_alerts(SignalRuleMatch.where(site_id: site.id))
                                 .where("fired_at >= ?", window_start)
                                 .where("fired_at <= ?", upper_bound)
                                 .includes(:task, :signal, :correlation_rule, incident: :signal_rule_matches)
@@ -387,7 +391,7 @@ module Ai
 
       alerts = []
       if relations.include?("alerts")
-        alerts = incident.signal_rule_matches
+        alerts = scoped_alerts(incident.signal_rule_matches)
                          .where("fired_at >= ?", window_start)
                          .where("fired_at <= ?", upper_bound)
                          .includes(:signal, :task, :correlation_rule)
@@ -401,7 +405,7 @@ module Ai
       end
 
       if relations.include?("tasks")
-        apply_replay_existence_scope(incident.tasks.distinct, upper_bound: upper_bound).order(created_at: :desc).limit(limit).each do |task|
+        apply_replay_existence_scope(scoped_tasks(incident.tasks.distinct), upper_bound: upper_bound).order(created_at: :desc).limit(limit).each do |task|
           task_node = add_task_node(task)
           add_edge(incident_node, task_node, "incident_task")
           included_targets << ["Task", task.id]
@@ -464,7 +468,7 @@ module Ai
 
       alerts = []
       if relations.include?("alerts")
-        alerts = SignalRuleMatch.where(task_id: task.id)
+        alerts = scoped_alerts(SignalRuleMatch.where(task_id: task.id))
                                 .includes(:signal, :correlation_rule, incident: :signal_rule_matches)
                                 .where("fired_at >= ?", window_start)
                                 .where("fired_at <= ?", upper_bound)
@@ -484,7 +488,7 @@ module Ai
       end
 
       if relations.include?("incidents")
-        Incident.joins(:signal_rule_matches)
+        scoped_incidents(Incident.joins(:signal_rule_matches))
                 .where(signal_rule_matches: { task_id: task.id })
                 .where("incidents.created_at <= ?", upper_bound)
                 .includes(:signal_rule_matches)
@@ -513,7 +517,7 @@ module Ai
       end
 
       if relations.include?("tasks")
-        apply_replay_existence_scope(Task.where(asset_id: asset.id), upper_bound: upper_bound).includes(:site).order(created_at: :desc).limit(limit).each do |task|
+        apply_replay_existence_scope(scoped_tasks(Task.where(asset_id: asset.id)), upper_bound: upper_bound).includes(:site).order(created_at: :desc).limit(limit).each do |task|
           task_node = add_task_node(task)
           add_edge(task_node, asset_node, "task_asset")
           included_targets << ["Task", task.id]
@@ -531,7 +535,7 @@ module Ai
 
       sites = []
       if relations.include?("sites")
-        sites = apply_replay_existence_scope(Site.where(area_of_operation_id: area.id), upper_bound: upper_bound).order(:name).limit(limit)
+        sites = apply_replay_existence_scope(scoped_sites(Site.where(area_of_operation_id: area.id)), upper_bound: upper_bound).order(:name).limit(limit)
         sites.each do |site|
           site_node = add_site_node(site)
           add_edge(site_node, area_node, "in_area_of_operation")
@@ -540,7 +544,7 @@ module Ai
       end
 
       if relations.include?("incidents")
-        apply_replay_existence_scope(Incident.where(area_of_operation_id: area.id), upper_bound: upper_bound)
+        apply_replay_existence_scope(scoped_incidents(Incident.where(area_of_operation_id: area.id)), upper_bound: upper_bound)
           .includes(:site, :signal_rule_matches)
           .order(opened_at: :desc)
           .limit(limit)
@@ -572,7 +576,7 @@ module Ai
       relation = scopes.reduce { |combined, scope| combined.or(scope) }
       return unless relation
 
-      relation.recent.limit(limit).each do |rec|
+      scoped_recommendations(relation).recent.limit(limit).each do |rec|
         rec_node = add_recommendation_node(rec)
         target_node_id = node_id_for(recommendation_target_node_type(rec), rec.affected_entity_id)
         add_edge(rec_node, target_node_id, "recommendation_target") if @nodes.key?(target_node_id)
@@ -792,7 +796,8 @@ module Ai
     end
 
     def site_catalog_scope
-      @as_of.present? ? Site.all : Site.active
+      base = @as_of.present? ? Site.all : Site.active
+      scoped_sites(base)
     end
 
     def site_root_scope
@@ -958,19 +963,19 @@ module Ai
       scope =
         case entity_type
         when "Site"
-          Site.all
+          scoped_sites
         when "AreaOfOperation"
-          AreaOfOperation.all
+          scoped_areas
         when "Incident"
-          Incident.includes(:signal_rule_matches)
+          scoped_incidents(Incident.includes(:signal_rule_matches))
         when "Task"
-          Task.all
+          scoped_tasks
         when "Asset"
-          Asset.all
+          scoped_assets
         when "SignalRuleMatch"
-          SignalRuleMatch.includes(:correlation_rule)
+          scoped_alerts(SignalRuleMatch.includes(:correlation_rule))
         when "Recommendation"
-          Recommendation.all
+          scoped_recommendations
         else
           return {}
         end

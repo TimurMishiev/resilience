@@ -24,6 +24,10 @@ RSpec.describe Tasks::TransitionService, type: :service do
     it "returns correct transitions from resolved" do
       expect(described_class.allowed_transitions_for("resolved")).to eq(%w[triaged])
     end
+
+    it "treats admin as commander-equivalent" do
+      expect(described_class.allowed_transitions_for("in_progress", role: "admin")).to eq(%w[blocked resolved])
+    end
   end
 
   describe "#call" do
@@ -264,6 +268,26 @@ RSpec.describe Tasks::TransitionService, type: :service do
       it "returns triaged for both roles from new" do
         expect(described_class.allowed_transitions_for("new", role: "operator"))
           .to eq(%w[triaged])
+      end
+    end
+
+    context "admin attempting commander-only transitions" do
+      it "allows resolving an in_progress task" do
+        task = create(:task, site: site, workflow_status: "in_progress")
+
+        result = described_class.call(task: task, to_status: "resolved", actor: actor, actor_role: "admin")
+
+        expect(result).to be_success
+        expect(task.reload.workflow_status).to eq("resolved")
+      end
+
+      it "allows unblocking a blocked task" do
+        task = create(:task, :blocked, site: site)
+
+        result = described_class.call(task: task, to_status: "in_progress", actor: actor, actor_role: "admin")
+
+        expect(result).to be_success
+        expect(task.reload.workflow_status).to eq("in_progress")
       end
     end
   end

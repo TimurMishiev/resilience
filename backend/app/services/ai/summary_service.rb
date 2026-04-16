@@ -19,6 +19,8 @@ module Ai
   #   - No ExternalSignals (no focal point to center proximity search on)
   #   - Recent SignalRuleMatches across all sites (top 10)
   class SummaryService < ApplicationService
+    include ScopedRelations
+
     ALLOWED_SUMMARY_TYPES = %w[site_activity readiness_change leadership_briefing].freeze
     BREAKER_SERVICE = "summary"
 
@@ -31,11 +33,12 @@ module Ai
     ANTHROPIC_TIMEOUT_SECONDS = 30
     ANTHROPIC_MAX_RETRIES     = 2
 
-    def initialize(summary_type:, site_id: nil, from: nil, to: nil)
+    def initialize(summary_type:, site_id: nil, from: nil, to: nil, user:)
       @summary_type = summary_type.to_s
       @site_id      = site_id
       @from         = from
       @to           = to
+      @user         = user
     end
 
     def call
@@ -44,7 +47,7 @@ module Ai
       end
       return ServiceResult.failure(errors: ["AI temporarily unavailable. Please retry shortly."]) if Ai::CircuitBreaker.open?(service: BREAKER_SERVICE)
 
-      @site    = Site.find(@site_id) if @site_id.present?
+      @site    = scoped_sites.find(@site_id) if @site_id.present?
       events   = fetch_events
       signals  = fetch_signals
       matches  = fetch_matches
@@ -109,10 +112,10 @@ module Ai
     # ── data fetchers ────────────────────────────────────────────────────────────
 
     def fetch_events
-      scope = AuditEvent.order(occurred_at: :desc).limit(MAX_AUDIT_EVENTS)
+      scope = scoped_audit_events(AuditEvent.order(occurred_at: :desc)).limit(MAX_AUDIT_EVENTS)
 
       if @site.present?
-        task_ids = Task.where(site_id: @site.id).pluck(:id)
+        task_ids = scoped_tasks(Task.where(site_id: @site.id)).pluck(:id)
 
         # Include both Site-level events and Task-level events for this site.
         # This was previously missing Site events, making the briefing blind to
@@ -181,7 +184,7 @@ module Ai
     # Site-scoped when @site is set; last 10 across all sites otherwise (leadership briefing).
     def fetch_matches
       cutoff = context_upper_bound - CONTEXT_WINDOW_HOURS.hours
-      scope  = SignalRuleMatch
+      scope  = scoped_alerts(SignalRuleMatch)
         .where("fired_at > ? AND fired_at <= ?", cutoff, context_upper_bound)
         .includes(:correlation_rule, :signal, :site)
         .order(fired_at: :desc)
