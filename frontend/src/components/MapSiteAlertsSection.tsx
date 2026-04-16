@@ -1,6 +1,8 @@
+import { useCallback, useState } from 'react'
 import { Button, Icon, Spinner, Tag, Tooltip } from '@blueprintjs/core'
 import { Link } from 'react-router-dom'
 import { useSignalRuleMatches, useTransitionAlert } from '../hooks/useSignalRuleMatches'
+import { useReplayParams } from '../hooks/useReplayParams'
 import { SIGNAL_ICON_NAME } from '../lib/signalIcons'
 import { timeAgo } from '../lib/formatters'
 import type { SignalRuleMatch } from '../api/types'
@@ -10,26 +12,52 @@ const TRIAGE_LIMIT = 5
 interface MapSiteAlertsSectionProps {
   siteId: string
   referenceTimeMs: number
-  isReplaying: boolean
   canTriage: boolean
 }
 
 export function MapSiteAlertsSection({
   siteId,
   referenceTimeMs,
-  isReplaying,
   canTriage,
 }: MapSiteAlertsSectionProps) {
+  const { isReplaying, asOf } = useReplayParams()
+
   const { data, isLoading, error } = useSignalRuleMatches(
     { site_id: siteId, workflow_status: 'unacknowledged', per_page: TRIAGE_LIMIT },
-    { enabled: !isReplaying, refetchInterval: isReplaying ? false : 10_000 },
+    { enabled: !isReplaying },
+  )
+
+  const transition = useTransitionAlert()
+  const [pendingAckId, setPendingAckId] = useState<string | null>(null)
+  const [failedAckId, setFailedAckId]   = useState<string | null>(null)
+
+  const handleAck = useCallback(
+    (id: string) => {
+      setFailedAckId(null)
+      setPendingAckId(id)
+      transition.mutate(
+        { id, body: { to_status: 'acknowledged' } },
+        {
+          onSettled: () => setPendingAckId(null),
+          onError:   () => setFailedAckId(id),
+        },
+      )
+    },
+    [transition],
   )
 
   if (isReplaying) return null
 
-  const matches = data?.data ?? []
-  const total = data?.meta?.total ?? matches.length
+  const matches  = data?.data ?? []
+  const total    = data?.meta?.total ?? matches.length
   const overflow = total > matches.length
+
+  // Preserve as_of so a future replay-aware surface doesn't jump the operator
+  // out of the replay frame. Currently unreachable (section null-renders in
+  // replay) but cheap defensive wiring.
+  const overflowHref =
+    `/alerts?site_id=${siteId}&workflow_status=unacknowledged` +
+    (asOf ? `&as_of=${encodeURIComponent(asOf)}` : '')
 
   return (
     <section
@@ -40,9 +68,7 @@ export function MapSiteAlertsSection({
       <header className="map-site-alerts-header">
         <span className="map-site-alerts-title">Unacknowledged alerts</span>
         {matches.length > 0 && (
-          <Tag minimal intent="danger" data-testid="map-site-alerts-count">
-            {total}
-          </Tag>
+          <Tag minimal intent="danger">{total}</Tag>
         )}
       </header>
 
@@ -72,16 +98,16 @@ export function MapSiteAlertsSection({
               match={match}
               referenceTimeMs={referenceTimeMs}
               canTriage={canTriage}
+              isPending={pendingAckId === match.id}
+              hasFailed={failedAckId === match.id}
+              onAck={handleAck}
             />
           ))}
         </ul>
       )}
 
       {overflow && (
-        <Link
-          to={`/alerts?site_id=${siteId}&workflow_status=unacknowledged`}
-          className="map-site-alerts-more"
-        >
+        <Link to={overflowHref} className="map-site-alerts-more">
           View all {total} →
         </Link>
       )}
@@ -93,10 +119,19 @@ interface MapSiteAlertRowProps {
   match: SignalRuleMatch
   referenceTimeMs: number
   canTriage: boolean
+  isPending: boolean
+  hasFailed: boolean
+  onAck: (id: string) => void
 }
 
-function MapSiteAlertRow({ match, referenceTimeMs, canTriage }: MapSiteAlertRowProps) {
-  const transition = useTransitionAlert()
+function MapSiteAlertRow({
+  match,
+  referenceTimeMs,
+  canTriage,
+  isPending,
+  hasFailed,
+  onAck,
+}: MapSiteAlertRowProps) {
   const conf = typeof match.confidence === 'number' ? match.confidence : null
   const ruleName =
     match.correlation_rule?.name ??
@@ -121,6 +156,17 @@ function MapSiteAlertRow({ match, referenceTimeMs, canTriage }: MapSiteAlertRowP
                 </Tooltip>
               </>
             )}
+            {hasFailed && (
+              <>
+                {' · '}
+                <span
+                  className="map-site-alert-failed"
+                  data-testid="map-site-alert-failed"
+                >
+                  Ack failed — retry
+                </span>
+              </>
+            )}
           </span>
         </div>
       </div>
@@ -129,10 +175,8 @@ function MapSiteAlertRow({ match, referenceTimeMs, canTriage }: MapSiteAlertRowP
           small
           minimal
           intent="primary"
-          disabled={transition.isPending}
-          onClick={() =>
-            transition.mutate({ id: match.id, body: { to_status: 'acknowledged' } })
-          }
+          loading={isPending}
+          onClick={() => onAck(match.id)}
           data-testid="map-site-alert-ack"
         >
           Ack

@@ -1481,6 +1481,11 @@ body {
   font-size: 10px;
 }
 
+.map-site-alert-failed {
+  color: #cd4246;
+  font-weight: 600;
+}
+
 .map-site-alerts-more {
   font-size: 11px;
   color: #8abbff;

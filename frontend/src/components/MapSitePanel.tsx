@@ -132,7 +132,6 @@ export function MapSitePanel({
       <MapSiteAlertsSection
         siteId={site.id}
         referenceTimeMs={referenceTimeMs}
-        isReplaying={isReplaying}
         canTriage={canTriage}
       />
     </div>
