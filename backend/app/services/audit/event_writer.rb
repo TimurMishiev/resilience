@@ -14,8 +14,11 @@ module Audit
       correlation_id:,
       action: nil,
       before_snapshot: nil,
-      metadata: nil
+      metadata: nil,
+      organization_id: :resolve
     )
+      resolved_org = organization_id == :resolve ? resolve_organization_id(entity_type, entity_id) : organization_id
+
       AuditEvent.create!(
         schema_version: 1,
         actor: actor,
@@ -28,7 +31,7 @@ module Audit
         metadata: metadata,
         correlation_id: correlation_id,
         occurred_at: Time.current,
-        organization_id: resolve_organization_id(entity_type, entity_id)
+        organization_id: resolved_org
       )
     end
 
