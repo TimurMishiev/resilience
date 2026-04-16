@@ -11,6 +11,10 @@ vi.mock('../components/TaskRow', () => ({
   TaskRow: ({ task }: { task: Task }) => <li data-testid="task-row">{task.title}</li>,
 }))
 
+vi.mock('../components/MapSiteAlertsSection', () => ({
+  MapSiteAlertsSection: () => <div data-testid="map-site-alerts-stub" />,
+}))
+
 const baseSite: Site = {
   id: 'site-1',
   name: 'Site Alpha',
@@ -151,6 +155,8 @@ describe('map data panels', () => {
         riskBySiteId={{ [baseSite.id]: risk }}
         isReplaying
         role="commander"
+        canTriage
+        referenceTimeMs={Date.parse('2026-03-26T12:00:00Z')}
         onTransitioned={() => {}}
         onClose={onClose}
       />,

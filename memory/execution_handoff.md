@@ -14,23 +14,24 @@ Phase 2 — Map Workstation + Triage-in-Context
 
 ## Current Slice
 
-Slice 1 — dock the map context panel on the right side of `/map` and make MapLibre re-measure the viewport when the panel opens or closes, so selected pins stop being hidden by their own detail card — COMPLETE
+Slice 3 — first triage-in-context content: render a compact "Unacknowledged alerts" section inside the docked `MapSitePanel`, site-scoped, with an inline Acknowledge button — COMPLETE
 
 ## Objective
 
-Lay the foundational layout primitive for Phase 2: the map page should reserve real estate for selection detail on the right instead of floating cards over the map, and MapLibre's internal viewport must stay consistent with the docked layout when the panel opens or closes.
+Begin putting real operational content inside the docked panel so that `/map` stops being a passive detail view and becomes a place where operators can act on what they see without leaving the map.
 
 ## Why This Slice
 
-Every later Phase 2 deliverable (site/entity/alert detail without leaving `/map`, triage-in-context, cross-panel coordination) composes onto a docked panel that owns a fixed slice of the viewport. Getting the container contract and `map.resize()` plumbing right in isolation avoids paying for a layout change on every subsequent slice.
+Slice 1 gave us the container; Slice 3 validates that the container is actually a useful work surface. Site-scoped alerts are the lowest-friction payload: the backend already has `for_site`, `unacknowledged`, and the `transition` endpoint, so we get a live triage loop without inventing new scopes. Asset- and signal-scoped alert triage needs new backend scopes and is deferred to a later slice.
 
 ## Completed This Session
 
-- exposed `resize()` from `useMapLibreEngine` so the MapLibre instance can be re-measured after container-width changes
-- restructured `MapPage.tsx` into a flex row with a `.map-viewport` child and an `aside.map-context-panel` that renders only when a site/asset/signal is selected, with Escape-to-clear wiring and an effect that calls `resize()` on panel open/close
-- added `.map-context-panel` styles and overrode the nested `.map-panel` positioning so the existing typed panels flow as blocks inside the dock instead of stacking as absolute overlays
-- widened the `useMapLibreEngine` mock in `MapPage.test.tsx` to expose a `resize` spy and added two tests: (1) selecting a site docks the panel and triggers resize, (2) Escape closes the panel and clears the route
-- shipped the accumulated infra hardening separately: `DB_STATEMENT_TIMEOUT_MS` on primary production connections (default 30s, overridable) and a CI concurrency group that cancels stale feature-branch runs while preserving main
+- new `MapSiteAlertsSection.tsx` — compact up-to-5 unacknowledged alert rows for the selected site; reuses `useSignalRuleMatches({ site_id, workflow_status: 'unacknowledged', per_page: 5 })` with 10s refetch, disables itself entirely in replay mode, renders empty / loading / error states, and includes an overflow link to `/alerts?site_id=…&workflow_status=unacknowledged` when `meta.total` exceeds the displayed rows
+- each row renders rule name (falls back to "Geofence breach" / "Unknown rule"), fired-at age off the shared `referenceTimeMs` clock, confidence %, and (for operator/commander) an inline **Ack** button wired to `useTransitionAlert` with `to_status: 'acknowledged'`
+- threaded `canTriage` (`canTriageAlerts` from `useRole`) and `referenceTimeMs` (`useReferenceTimeMs(isReplaying ? asOf : null)`) from `MapPage` → `MapSelectionPanels` → `MapSitePanel` → `MapSiteAlertsSection`
+- added `.map-site-alerts*` dark-theme styles in `index.css`, slotted below the existing task list inside `MapSitePanel` after a `<Divider />`
+- new `MapSiteAlertsSection.test.tsx` (6 tests): empty state, row rendering with shared-clock age + confidence, Ack mutation payload, role gating hides Ack, overflow link, replay null-render
+- existing `MapPanels.test.tsx` got a lightweight `vi.mock` for `MapSiteAlertsSection` so `MapSitePanel`'s isolated render test stays free of QueryClient/Router setup
 
 ## In Progress
 
@@ -39,7 +40,7 @@ Nothing.
 ## Next
 
 - Phase 2 Slice 2 — add a keyboard toggle (and possibly a resize handle) for the docked panel so operators can open it without a selection and resize it within sane bounds
-- Phase 2 Slice 3 — first triage-in-context content: scoped recent unacknowledged alerts for the selected site/entity with limited inline actions (explicitly not the full AlertTriagePage)
+- Phase 2 Slice 4 — extend triage-in-context to asset/signal selections. This likely needs new backend scopes (`for_asset`, or a signal-level join) since `SignalRuleMatch` has no `asset_id` column today — scope the backend work at the start of that slice
 
 ## Files Likely To Change
 
@@ -63,12 +64,11 @@ cd /Users/timurmishiev/Desktop/Code/resilience && git diff --check
 
 ## Last Validation Results
 
-Phase 2 Slice 1 closeout validation run:
+Phase 2 Slice 3 closeout validation run:
 
-- Vitest: full suite — 67 files, 455 tests, 0 failures (MapPage test suite grew from 14 to 16)
-- TypeScript: 0 errors (`tsc -b && vite build` clean)
+- Vitest: full suite — 68 files, 461 tests, 0 failures (added 6 tests in the new `MapSiteAlertsSection` suite)
+- TypeScript: 0 errors (`tsc -b` clean)
 - ESLint: 0 errors
-- Rails spec spot-check (`auth_sessions_spec.rb`): 9/9 green — confirms the `database.yml` `variables: { statement_timeout }` addition boots cleanly
 
 ## Known Risks / Blockers
 
@@ -93,6 +93,7 @@ Phase 2 Slice 1 closeout validation run:
 - Phase 1 Slice 10 operational health tables shared reference-time adoption
 - Phase 1 — Trustworthy Operational Picture (all non-spatial trust surfaces now read the shared live reference clock)
 - Phase 2 Slice 1 docked map context panel + viewport re-measurement
+- Phase 2 Slice 3 site-scoped unacknowledged-alerts section inside the docked `MapSitePanel` (reusing `useSignalRuleMatches` + `useTransitionAlert`, `canTriage` + shared reference clock threaded through)
 - Inherited-findings infra fixes B-3 (`DB_STATEMENT_TIMEOUT_MS` default 30s) and I-1 (CI concurrency group)
 - production-readiness closeout work
 - replay parity, auth hardening, and tenant-boundary cleanup that are already closed in the existing memory files

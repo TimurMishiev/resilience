@@ -12,6 +12,8 @@ interface MapSelectionPanelsProps {
   readiness: number | null
   riskBySiteId: Record<string, SiteRiskScore>
   role: UserRole
+  canTriage: boolean
+  referenceTimeMs: number
   selectedAsset: Asset | null
   selectedLiveReading: TelemetryReading | null
   selectedSignal: Signal | null
@@ -30,6 +32,8 @@ export function MapSelectionPanels({
   readiness,
   riskBySiteId,
   role,
+  canTriage,
+  referenceTimeMs,
   selectedAsset,
   selectedLiveReading,
   selectedSignal,
@@ -51,6 +55,8 @@ export function MapSelectionPanels({
           riskBySiteId={riskBySiteId}
           isReplaying={isReplaying}
           role={role}
+          canTriage={canTriage}
+          referenceTimeMs={referenceTimeMs}
           onTransitioned={onTransitioned}
           onClose={onCloseSite}
         />

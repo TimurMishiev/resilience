@@ -11,6 +11,7 @@ import { useRiskScores } from '../hooks/useRiskScores'
 import { useActiveBreachSiteIds } from '../hooks/useSignalRuleMatches'
 import { useChokepoints } from '../hooks/useChokepoints'
 import { useRole } from '../hooks/useRole'
+import { useReferenceTimeMs } from '../hooks/useReferenceTimeMs'
 import { useReplayParams } from '../hooks/useReplayParams'
 import { useAssetTrails } from '../hooks/useAssetTrails'
 import { useMapE2EBridge } from '../hooks/useMapE2EBridge'
@@ -29,7 +30,8 @@ import { MapSelectionPanels } from '../components/map/MapSelectionPanels'
 export default function MapPage() {
   const location    = useLocation()
   const { asOf, isReplaying, asOfParam, signalQueryParams } = useReplayParams()
-  const { role }    = useRole()
+  const { role, canTriageAlerts } = useRole()
+  const referenceTimeMs = useReferenceTimeMs(isReplaying ? asOf : null)
   const queryClient = useQueryClient()
 
   const mapContainerRef = useRef<HTMLDivElement>(null)
@@ -328,6 +330,8 @@ export default function MapPage() {
             readiness={readiness}
             riskBySiteId={riskBySiteId}
             role={role}
+            canTriage={canTriageAlerts}
+            referenceTimeMs={referenceTimeMs}
             selectedAsset={selectedAsset}
             selectedLiveReading={selectedLiveReading}
             selectedSignal={selectedSignal}

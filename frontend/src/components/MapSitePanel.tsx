@@ -2,6 +2,7 @@ import { Callout, Divider, Tag, Tooltip } from '@blueprintjs/core'
 import type { Site, Task, RiskLevel, SiteRiskScore } from '../api/types'
 import type { UserRole } from '../hooks/useRole'
 import { TaskRow } from './TaskRow'
+import { MapSiteAlertsSection } from './MapSiteAlertsSection'
 
 const RISK_COLOR: Record<RiskLevel, string> = {
   low:      '#23a26d',
@@ -24,6 +25,8 @@ interface MapSitePanelProps {
   riskBySiteId: Record<string, SiteRiskScore>
   isReplaying: boolean
   role: UserRole
+  canTriage: boolean
+  referenceTimeMs: number
   onTransitioned: () => void
   onClose: () => void
 }
@@ -35,6 +38,8 @@ export function MapSitePanel({
   riskBySiteId,
   isReplaying,
   role,
+  canTriage,
+  referenceTimeMs,
   onTransitioned,
   onClose,
 }: MapSitePanelProps) {
@@ -122,6 +127,14 @@ export function MapSitePanel({
       {tasks.length === 0 && (
         <p className="bp6-text-muted map-no-tasks">No tasks assigned to this site.</p>
       )}
+
+      <Divider />
+      <MapSiteAlertsSection
+        siteId={site.id}
+        referenceTimeMs={referenceTimeMs}
+        isReplaying={isReplaying}
+        canTriage={canTriage}
+      />
     </div>
   )
 }

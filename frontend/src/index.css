@@ -1398,6 +1398,100 @@ body {
   /* stacks below site panel if both open simultaneously */
 }
 
+.map-site-alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+}
+
+.map-site-alerts-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8f99a8;
+}
+
+.map-site-alerts-title {
+  line-height: 1.4;
+}
+
+.map-site-alerts-empty {
+  font-size: 12px;
+  padding: 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.map-site-alert-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.map-site-alert-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  background: #252a31;
+  border: 1px solid #383e47;
+  border-radius: 3px;
+}
+
+.map-site-alert-row-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.map-site-alert-icon {
+  color: #8f99a8;
+  display: inline-flex;
+  align-items: center;
+}
+
+.map-site-alert-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.map-site-alert-rule {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f6f7f9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.map-site-alert-meta {
+  font-size: 10px;
+}
+
+.map-site-alerts-more {
+  font-size: 11px;
+  color: #8abbff;
+  text-decoration: none;
+  padding-top: 4px;
+}
+
+.map-site-alerts-more:hover {
+  text-decoration: underline;
+}
+
 .map-telemetry-readings {
   display: flex;
   flex-direction: column;
