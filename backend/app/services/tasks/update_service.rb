@@ -52,10 +52,6 @@ module Tasks
 
     private
 
-    def commander_role?(role)
-      %w[commander admin].include?(role.to_s)
-    end
-
     def task_snapshot(task)
       task.attributes.except("updated_at")
     end

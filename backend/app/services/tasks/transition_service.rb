@@ -98,14 +98,6 @@ module Tasks
 
     private
 
-    def self.commander_role?(role)
-      %w[commander admin].include?(role.to_s)
-    end
-
-    def commander_role?(role)
-      self.class.commander_role?(role)
-    end
-
     def transition_allowed?
       ALLOWED_TRANSITIONS.fetch(@task.workflow_status, []).include?(@to_status)
     end

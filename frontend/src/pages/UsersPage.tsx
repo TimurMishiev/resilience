@@ -36,6 +36,7 @@ export default function UsersPage() {
   const users = data?.data ?? []
   const orgs = orgsQuery.data?.data ?? []
   const aos = aosQuery.data?.data ?? []
+  const aosTruncated = (aosQuery.data?.meta?.total ?? 0) > (aosQuery.data?.meta?.per_page ?? 200)
 
   const [editingUser, setEditingUser] = useState<UserRecord | null>(null)
   const [formRole, setFormRole] = useState('')
@@ -170,7 +171,11 @@ export default function UsersPage() {
               ))}
             </HTMLSelect>
           </FormGroup>
-          <FormGroup label="Area of Operation" labelFor="user-area-of-operation">
+          <FormGroup
+            label="Area of Operation"
+            labelFor="user-area-of-operation"
+            helperText={aosTruncated ? `Showing first ${aos.length} of ${aosQuery.data?.meta?.total}` : undefined}
+          >
             <HTMLSelect
               id="user-area-of-operation"
               value={formAoId}

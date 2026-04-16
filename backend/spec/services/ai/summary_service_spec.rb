@@ -534,10 +534,10 @@ RSpec.describe Ai::SummaryService, type: :service do
     let!(:local_task) { create(:task, site: site, title: "Inspect harbor perimeter") }
     let!(:foreign_task) { create(:task, site: foreign_site, title: "Foreign task") }
     let!(:local_event) do
-      create(:audit_event, entity_type: "Task", entity_id: local_task.id, event_type: "task.transitioned", occurred_at: 1.hour.ago)
+      create(:audit_event, entity_type: "Task", entity_id: local_task.id, event_type: "task.transitioned", occurred_at: 1.hour.ago, organization_id: org.id)
     end
     let!(:foreign_event) do
-      create(:audit_event, entity_type: "Task", entity_id: foreign_task.id, event_type: "task.transitioned", occurred_at: 1.hour.ago)
+      create(:audit_event, entity_type: "Task", entity_id: foreign_task.id, event_type: "task.transitioned", occurred_at: 1.hour.ago, organization_id: other_org.id)
     end
     let!(:local_match) do
       create(:signal_rule_match, site: site, fired_at: 90.minutes.ago)

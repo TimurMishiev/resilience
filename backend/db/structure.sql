@@ -152,7 +152,8 @@ CREATE TABLE public.audit_events (
     metadata jsonb,
     correlation_id uuid NOT NULL,
     occurred_at timestamp(6) without time zone DEFAULT now() NOT NULL,
-    after_workflow_status text GENERATED ALWAYS AS ((after_snapshot ->> 'workflow_status'::text)) STORED
+    after_workflow_status text GENERATED ALWAYS AS ((after_snapshot ->> 'workflow_status'::text)) STORED,
+    organization_id uuid
 );
 
 
@@ -1688,6 +1689,13 @@ CREATE INDEX index_audit_events_on_correlation_id ON public.audit_events USING b
 --
 
 CREATE INDEX index_audit_events_on_occurred_at ON public.audit_events USING btree (occurred_at);
+
+
+--
+-- Name: index_audit_events_on_organization_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_audit_events_on_organization_id ON public.audit_events USING btree (organization_id) WHERE (organization_id IS NOT NULL);
 
 
 --
@@ -3429,6 +3437,7 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260415100000'),
 ('20260406130000'),
 ('20260406120000'),
 ('20260406110000'),
