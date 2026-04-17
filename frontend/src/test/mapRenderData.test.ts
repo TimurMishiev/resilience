@@ -86,6 +86,7 @@ describe('mapRenderData', () => {
   })
 
   it('uses live telemetry for asset features and falls back to seeded home-site positions otherwise', () => {
+    const referenceTimeMs = Date.parse('2026-03-27T10:00:00.000Z')
     const liveReading: TelemetryReading = {
       asset_id: 'asset-1',
       name: 'Asset asset-1',
@@ -105,9 +106,14 @@ describe('mapRenderData', () => {
     }
 
     const liveCollection = buildAssetFeatureCollection(
-      [makeAsset('asset-1', 'vehicle')],
+      [{
+        ...makeAsset('asset-1', 'vehicle'),
+        last_reported_at: '2026-03-27T09:30:00.000Z',
+      }],
       [baseSite],
       new Map([['asset-1', liveReading]]),
+      false,
+      referenceTimeMs,
     )
     expect(liveCollection.features[0]?.geometry).toEqual({
       type: 'Point',
@@ -116,27 +122,70 @@ describe('mapRenderData', () => {
     expect(liveCollection.features[0]?.properties).toMatchObject({
       id: 'asset-1',
       icon: 'V',
+      freshness: 'fresh',
     })
 
+    const agingAsset = {
+      ...makeAsset('asset-2', 'equipment'),
+      last_reported_at: '2026-03-27T02:00:00.000Z',
+    }
     const seededCollection = buildAssetFeatureCollection(
-      [makeAsset('asset-2', 'equipment')],
+      [agingAsset],
       [baseSite],
       new Map([['asset-2', staleReading]]),
+      false,
+      referenceTimeMs,
     )
     expect(seededCollection.features[0]?.geometry).not.toEqual({
       type: 'Point',
       coordinates: [7.7, 42.2],
     })
+    expect(seededCollection.features[0]?.properties).toMatchObject({
+      freshness: 'aging',
+    })
+
+    const staleCollection = buildAssetFeatureCollection(
+      [{
+        ...makeAsset('asset-3', 'equipment'),
+        updated_at: '2026-03-25T08:00:00.000Z',
+      }],
+      [baseSite],
+      new Map(),
+      false,
+      referenceTimeMs,
+    )
+    expect(staleCollection.features[0]?.properties).toMatchObject({
+      freshness: 'stale',
+    })
 
     const historicalCollection = buildAssetFeatureCollection(
-      [makeAsset('asset-2', 'equipment')],
+      [agingAsset],
       [baseSite],
       new Map([['asset-2', staleReading]]),
       true,
+      referenceTimeMs,
     )
     expect(historicalCollection.features[0]?.geometry).toEqual({
       type: 'Point',
       coordinates: [7.7, 42.2],
+    })
+  })
+
+  it('marks assets with invalid timestamps as unavailable', () => {
+    const collection = buildAssetFeatureCollection(
+      [{
+        ...makeAsset('asset-bad', 'vehicle'),
+        last_reported_at: 'garbage',
+        updated_at: 'still-garbage',
+      }],
+      [baseSite],
+      new Map(),
+      false,
+      Date.parse('2026-03-27T10:00:00.000Z'),
+    )
+
+    expect(collection.features[0]?.properties).toMatchObject({
+      freshness: 'unavailable',
     })
   })
 

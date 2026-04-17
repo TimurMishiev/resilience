@@ -1,8 +1,14 @@
 import type { Asset, Site, Task } from '../api/types'
+import { deriveFreshness, type FreshnessThresholds } from './freshness'
 import { assetDisplayPosition } from './assetPresentation'
 import { SIGNAL_ICON_CHAR } from './signalIcons'
 import { SOURCE_LABELS, SIGNAL_COLORS, SIGNAL_LABELS } from './signalConfig'
 import type { TelemetryMap } from './telemetry'
+
+const ASSET_MAP_FRESHNESS_THRESHOLDS: FreshnessThresholds = {
+  agingMs: 6 * 3_600_000,
+  staleMs: 24 * 3_600_000,
+}
 
 function assetTypeIcon(type: Asset['asset_type']): string {
   switch (type) {
@@ -139,6 +145,7 @@ export function buildAssetFeatureCollection(
   sites: Site[],
   readings: TelemetryMap,
   allowHistoricalTelemetry = false,
+  referenceTimeMs = Date.now(),
 ): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
@@ -150,6 +157,12 @@ export function buildAssetFeatureCollection(
         { lat: 37.7749, lng: -122.4194 },
         { allowHistorical: allowHistoricalTelemetry },
       )
+      const timestamp = asset.last_reported_at ?? asset.updated_at
+      const updatedAtMs = Date.parse(timestamp)
+      const freshness =
+        Number.isFinite(updatedAtMs)
+          ? deriveFreshness(updatedAtMs, referenceTimeMs, ASSET_MAP_FRESHNESS_THRESHOLDS)
+          : 'unavailable'
       return {
         type: 'Feature' as const,
         properties: {
@@ -157,6 +170,7 @@ export function buildAssetFeatureCollection(
           name: asset.name,
           asset_type: asset.asset_type,
           status: asset.status,
+          freshness,
           icon: assetTypeIcon(asset.asset_type),
         },
         geometry: {

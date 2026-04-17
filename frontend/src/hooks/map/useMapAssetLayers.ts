@@ -20,6 +20,7 @@ export interface MapAssetLayersInput {
   assets:    Asset[]
   readings:  TelemetryMap
   isReplaying: boolean
+  referenceTimeMs: number
   selectedAssetId: string | null
 }
 
@@ -30,6 +31,7 @@ export function useMapAssetLayers({
   assets,
   readings,
   isReplaying,
+  referenceTimeMs,
   selectedAssetId,
 }: MapAssetLayersInput): void {
   // Source + layer init
@@ -55,6 +57,14 @@ export function useMapAssetLayers({
             'degraded', '#4a2f17',
             '#3a3f4b',
           ],
+          'circle-opacity': [
+            'match', ['get', 'freshness'],
+            'fresh', 0.94,
+            'aging', 0.72,
+            'stale', 0.46,
+            'unavailable', 0.32,
+            0.94,
+          ],
           'circle-stroke-width': 1.5,
           'circle-stroke-color': [
             'match', ['get', 'status'],
@@ -62,6 +72,14 @@ export function useMapAssetLayers({
             'assigned', '#5282ff',
             'degraded', '#ffb366',
             '#8f99a8',
+          ],
+          'circle-stroke-opacity': [
+            'match', ['get', 'freshness'],
+            'fresh', 1,
+            'aging', 0.8,
+            'stale', 0.58,
+            'unavailable', 0.42,
+            1,
           ],
         },
       })
@@ -99,6 +117,14 @@ export function useMapAssetLayers({
           'text-color': '#ffffff',
           'text-halo-color': 'rgba(0,0,0,0.55)',
           'text-halo-width': 1,
+          'text-opacity': [
+            'match', ['get', 'freshness'],
+            'fresh', 1,
+            'aging', 0.78,
+            'stale', 0.54,
+            'unavailable', 0.4,
+            1,
+          ],
         },
       })
     }
@@ -124,8 +150,8 @@ export function useMapAssetLayers({
     const map = mapRef.current
     if (!map || !mapLoaded) return
     const existing = map.getSource('asset-points') as GeoJSONSource | undefined
-    if (existing) existing.setData(buildAssetFeatureCollection(assets, sites, readings, isReplaying))
-  }, [assets, isReplaying, mapLoaded, readings, sites, mapRef])
+    if (existing) existing.setData(buildAssetFeatureCollection(assets, sites, readings, isReplaying, referenceTimeMs))
+  }, [assets, isReplaying, mapLoaded, readings, referenceTimeMs, sites, mapRef])
 
   // Selection ring filter
   useEffect(() => {

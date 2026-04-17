@@ -78,6 +78,7 @@ export interface MapEngineInput {
   showTrails:      boolean
   mapStyle:        MapStyleKey
   isReplaying:  boolean
+  referenceTimeMs: number
   selectedSiteId:   string | null
   selectedAssetId:  string | null
   selectedSignalId: string | null
@@ -128,6 +129,7 @@ export function useMapLibreEngine({
   showTrails,
   mapStyle,
   isReplaying,
+  referenceTimeMs,
   selectedSiteId,
   selectedAssetId,
   selectedSignalId,
@@ -206,7 +208,7 @@ export function useMapLibreEngine({
   })
 
   useMapAssetLayers({
-    mapRef, mapLoaded, sites, assets, readings, isReplaying, selectedAssetId,
+    mapRef, mapLoaded, sites, assets, readings, isReplaying, referenceTimeMs, selectedAssetId,
   })
 
   useMapOverlays({

@@ -175,6 +175,7 @@ export default function MapPage() {
     showTrails: isReplaying && showTrails,
     mapStyle,
     isReplaying,
+    referenceTimeMs,
     selectedSiteId,
     selectedAssetId,
     selectedSignalId,

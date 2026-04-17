@@ -98,7 +98,7 @@ function buildMapFacade() {
     },
     addLayer(spec: { id: string }, before?: unknown) {
       void before
-      track('addLayer', spec.id)
+      track('addLayer', spec.id, spec)
       layerIds.add(spec.id)
     },
     getLayer(id: string) {
@@ -190,6 +190,7 @@ function defaultInput(
     showTrails: false,
     mapStyle: 'tactical',
     isReplaying: false,
+    referenceTimeMs: Date.parse('2026-03-26T12:00:00.000Z'),
     selectedSiteId: null,
     selectedAssetId: null,
     selectedSignalId: null,
@@ -453,6 +454,87 @@ describe('useMapLibreEngine adapter', () => {
       )
       expect(call).toBeDefined()
       expect(call?.args[1]).toEqual(['==', ['get', 'id'], 'asset-xyz'])
+    })
+  })
+
+  describe('asset freshness rendering', () => {
+    it('encodes asset freshness on source data using the shared reference time', async () => {
+      const containerRef = makeContainerRef()
+
+      await bootMap(
+        facade,
+        containerRef,
+        defaultInput(containerRef, {
+          assets: [{
+            id: 'asset-1',
+            name: 'Asset One',
+            asset_type: 'vehicle',
+            status: 'available',
+            home_site_id: null,
+            last_reported_at: '2026-03-26T02:00:00.000Z',
+            created_at: '2026-03-24T00:00:00.000Z',
+            updated_at: '2026-03-24T00:00:00.000Z',
+          }],
+          referenceTimeMs: Date.parse('2026-03-26T12:00:00.000Z'),
+        }),
+      )
+
+      expect(facade.calls).toContainEqual({
+        method: 'setData',
+        args: [
+          'asset-points',
+          expect.objectContaining({
+            type: 'FeatureCollection',
+            features: [
+              expect.objectContaining({
+                properties: expect.objectContaining({
+                  id: 'asset-1',
+                  freshness: 'aging',
+                }),
+              }),
+            ],
+          }),
+        ],
+      })
+    })
+
+    it('maps asset freshness into circle and symbol opacity', async () => {
+      const containerRef = makeContainerRef()
+
+      await bootMap(facade, containerRef, defaultInput(containerRef))
+
+      const assetCirclesLayer = facade.calls.find(
+        c => c.method === 'addLayer' && c.args[0] === 'asset-circles',
+      )?.args[1] as { paint?: Record<string, unknown> } | undefined
+
+      const assetSymbolsLayer = facade.calls.find(
+        c => c.method === 'addLayer' && c.args[0] === 'asset-symbols',
+      )?.args[1] as { paint?: Record<string, unknown> } | undefined
+
+      expect(assetCirclesLayer?.paint?.['circle-opacity']).toEqual([
+        'match', ['get', 'freshness'],
+        'fresh', 0.94,
+        'aging', 0.72,
+        'stale', 0.46,
+        'unavailable', 0.32,
+        0.94,
+      ])
+      expect(assetCirclesLayer?.paint?.['circle-stroke-opacity']).toEqual([
+        'match', ['get', 'freshness'],
+        'fresh', 1,
+        'aging', 0.8,
+        'stale', 0.58,
+        'unavailable', 0.42,
+        1,
+      ])
+      expect(assetSymbolsLayer?.paint?.['text-opacity']).toEqual([
+        'match', ['get', 'freshness'],
+        'fresh', 1,
+        'aging', 0.78,
+        'stale', 0.54,
+        'unavailable', 0.4,
+        1,
+      ])
     })
   })
 
