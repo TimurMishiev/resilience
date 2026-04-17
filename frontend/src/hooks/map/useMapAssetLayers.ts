@@ -22,6 +22,7 @@ export interface MapAssetLayersInput {
   isReplaying: boolean
   referenceTimeMs: number
   selectedAssetId: string | null
+  linkedSiteId: string | null
 }
 
 export function useMapAssetLayers({
@@ -33,6 +34,7 @@ export function useMapAssetLayers({
   isReplaying,
   referenceTimeMs,
   selectedAssetId,
+  linkedSiteId,
 }: MapAssetLayersInput): void {
   // Source + layer init
   useEffect(() => {
@@ -101,6 +103,23 @@ export function useMapAssetLayers({
       })
     }
 
+    if (!map.getLayer('asset-linked-ring')) {
+      map.addLayer({
+        id: 'asset-linked-ring',
+        type: 'circle',
+        source: 'asset-points',
+        paint: {
+          'circle-radius': 15,
+          'circle-color': 'rgba(0,0,0,0)',
+          'circle-stroke-width': 1.5,
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-opacity': 0.55,
+          'circle-blur': 0.3,
+        },
+        filter: ['==', ['get', 'home_site_id'], ''],
+      })
+    }
+
     if (!map.getLayer('asset-symbols')) {
       map.addLayer({
         id: 'asset-symbols',
@@ -162,4 +181,14 @@ export function useMapAssetLayers({
       ['==', ['get', 'id'], selectedAssetId ?? ''],
     )
   }, [mapLoaded, selectedAssetId, mapRef])
+
+  // Linked highlight ring filter (assets at the selected site)
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapLoaded || !map.getLayer('asset-linked-ring')) return
+    map.setFilter(
+      'asset-linked-ring',
+      ['==', ['get', 'home_site_id'], linkedSiteId ?? ''],
+    )
+  }, [mapLoaded, linkedSiteId, mapRef])
 }

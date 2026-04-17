@@ -1,6 +1,18 @@
 import type { Signal } from '../api/types'
+import { deriveFreshness, type FreshnessThresholds } from './freshness'
 
-function buildMapSignalFeature(signal: Signal): GeoJSON.Feature {
+const SIGNAL_MAP_FRESHNESS_THRESHOLDS: FreshnessThresholds = {
+  agingMs: 2 * 3_600_000,
+  staleMs: 12 * 3_600_000,
+}
+
+function buildMapSignalFeature(signal: Signal, referenceTimeMs: number): GeoJSON.Feature {
+  const occurredAtMs = Date.parse(signal.occurred_at)
+  const freshness =
+    Number.isFinite(occurredAtMs)
+      ? deriveFreshness(occurredAtMs, referenceTimeMs, SIGNAL_MAP_FRESHNESS_THRESHOLDS)
+      : 'unavailable'
+
   return {
     type: 'Feature',
     properties: {
@@ -12,6 +24,7 @@ function buildMapSignalFeature(signal: Signal): GeoJSON.Feature {
       speed: signal.speed,
       heading: signal.heading,
       occurred_at: signal.occurred_at,
+      freshness,
       p_country: (signal.raw_payload.country as string | undefined) ?? null,
       p_actor1: (signal.raw_payload.actor1 as string | undefined) ?? null,
       p_fatalities: (signal.raw_payload.fatalities as number | undefined) ?? null,
@@ -28,16 +41,17 @@ function buildMapSignalFeature(signal: Signal): GeoJSON.Feature {
   }
 }
 
-export function buildMapSignalFeatureCollection(signals: Signal[]): GeoJSON.FeatureCollection {
+export function buildMapSignalFeatureCollection(signals: Signal[], referenceTimeMs = Date.now()): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
-    features: signals.map(buildMapSignalFeature),
+    features: signals.map(s => buildMapSignalFeature(s, referenceTimeMs)),
   }
 }
 
 export function buildMapSignalRenderCollections(
   signals: Signal[],
   selectedSignalId: string | null,
+  referenceTimeMs = Date.now(),
 ): {
   clusterable: GeoJSON.FeatureCollection
   selected: GeoJSON.FeatureCollection
@@ -46,7 +60,7 @@ export function buildMapSignalRenderCollections(
   let selectedFeature: GeoJSON.Feature | null = null
 
   for (const signal of signals) {
-    const feature = buildMapSignalFeature(signal)
+    const feature = buildMapSignalFeature(signal, referenceTimeMs)
 
     if (selectedSignalId && signal.id === selectedSignalId && selectedFeature === null) {
       selectedFeature = feature

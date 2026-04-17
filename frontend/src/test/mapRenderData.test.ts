@@ -123,6 +123,7 @@ describe('mapRenderData', () => {
       id: 'asset-1',
       icon: 'V',
       freshness: 'fresh',
+      home_site_id: baseSite.id,
     })
 
     const agingAsset = {

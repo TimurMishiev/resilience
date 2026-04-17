@@ -21,6 +21,7 @@ export interface MapSignalLayersInput {
   mapLoaded:         boolean
   signals:           Signal[]
   selectedSignalId:  string | null
+  referenceTimeMs:   number
   showSignals:       boolean
   showHeatmap:       boolean
   onSignalClickRef:  MutableRefObject<(signalId: string | null) => void>
@@ -32,35 +33,38 @@ export function useMapSignalLayers({
   mapLoaded,
   signals,
   selectedSignalId,
+  referenceTimeMs,
   showSignals,
   showHeatmap,
   onSignalClickRef,
 }: MapSignalLayersInput) {
   const signalsRef = useRef<Signal[]>([])
   const selectedSignalIdRef = useRef<string | null>(selectedSignalId)
+  const referenceTimeMsRef = useRef(referenceTimeMs)
 
   useEffect(() => { signalsRef.current = signals }, [signals])
   useEffect(() => { selectedSignalIdRef.current = selectedSignalId }, [selectedSignalId])
+  useEffect(() => { referenceTimeMsRef.current = referenceTimeMs }, [referenceTimeMs])
 
   // Signal GeoJSON source data
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapLoaded) return
-    const { clusterable, selected } = buildMapSignalRenderCollections(signals, selectedSignalId)
-    updateSignalSources(map, clusterable, selected, buildMapSignalFeatureCollection(signals))
-  }, [mapLoaded, selectedSignalId, signals, mapRef])
+    const { clusterable, selected } = buildMapSignalRenderCollections(signals, selectedSignalId, referenceTimeMs)
+    updateSignalSources(map, clusterable, selected, buildMapSignalFeatureCollection(signals, referenceTimeMs))
+  }, [mapLoaded, selectedSignalId, signals, referenceTimeMs, mapRef])
 
   // Signal GeoJSON layers + interactions — set up once per style load
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapLoaded) return
-    const signalCollections = buildMapSignalRenderCollections(signalsRef.current, selectedSignalIdRef.current)
+    const signalCollections = buildMapSignalRenderCollections(signalsRef.current, selectedSignalIdRef.current, referenceTimeMsRef.current)
     return ensureSignalLayers(
       map,
       maplibreRef.current?.Popup,
       signalCollections.clusterable,
       signalCollections.selected,
-      buildMapSignalFeatureCollection(signalsRef.current),
+      buildMapSignalFeatureCollection(signalsRef.current, referenceTimeMsRef.current),
     )
   }, [mapLoaded, mapRef, maplibreRef])
 

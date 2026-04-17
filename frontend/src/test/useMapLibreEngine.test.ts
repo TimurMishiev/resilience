@@ -457,6 +457,148 @@ describe('useMapLibreEngine adapter', () => {
     })
   })
 
+  // ── Cross-entity linked ring filters ──────────────────────────────────────
+  //
+  // When an asset is selected, its home site should get a linked ring.
+  // When a site is selected, all assets at that site should get a linked ring.
+
+  describe('cross-entity linked ring filters', () => {
+    it('creates site-linked-ring and asset-linked-ring layers on init', async () => {
+      const containerRef = makeContainerRef()
+      await bootMap(facade, containerRef, defaultInput(containerRef))
+
+      expect(facade.layerIds.has('site-linked-ring')).toBe(true)
+      expect(facade.layerIds.has('asset-linked-ring')).toBe(true)
+    })
+
+    it('highlights the home site when an asset with home_site_id is selected', async () => {
+      const containerRef = makeContainerRef()
+      const hook = await bootMap(facade, containerRef, defaultInput(containerRef, {
+        assets: [{
+          id: 'asset-1',
+          name: 'Asset One',
+          asset_type: 'vehicle',
+          status: 'available',
+          home_site_id: 'site-home',
+          last_reported_at: '2026-03-26T11:00:00.000Z',
+          created_at: '2026-03-24T00:00:00.000Z',
+          updated_at: '2026-03-24T00:00:00.000Z',
+        }],
+      }))
+
+      facade.calls.length = 0
+
+      await act(async () => {
+        hook.rerender(defaultInput(containerRef, {
+          assets: [{
+            id: 'asset-1',
+            name: 'Asset One',
+            asset_type: 'vehicle',
+            status: 'available',
+            home_site_id: 'site-home',
+            last_reported_at: '2026-03-26T11:00:00.000Z',
+            created_at: '2026-03-24T00:00:00.000Z',
+            updated_at: '2026-03-24T00:00:00.000Z',
+          }],
+          selectedAssetId: 'asset-1',
+        }))
+      })
+
+      const call = facade.calls.find(
+        c => c.method === 'setFilter' && c.args[0] === 'site-linked-ring',
+      )
+      expect(call).toBeDefined()
+      expect(call?.args[1]).toEqual(['==', ['get', 'id'], 'site-home'])
+    })
+
+    it('highlights assets at a site when that site is selected', async () => {
+      const containerRef = makeContainerRef()
+      const hook = await bootMap(facade, containerRef, defaultInput(containerRef))
+
+      facade.calls.length = 0
+
+      await act(async () => {
+        hook.rerender(defaultInput(containerRef, { selectedSiteId: 'site-abc' }))
+      })
+
+      const call = facade.calls.find(
+        c => c.method === 'setFilter' && c.args[0] === 'asset-linked-ring',
+      )
+      expect(call).toBeDefined()
+      expect(call?.args[1]).toEqual(['==', ['get', 'home_site_id'], 'site-abc'])
+    })
+
+    it('resets linked rings to empty string on deselect', async () => {
+      const containerRef = makeContainerRef()
+      const hook = await bootMap(facade, containerRef, defaultInput(containerRef, {
+        assets: [{
+          id: 'asset-1',
+          name: 'Asset One',
+          asset_type: 'vehicle',
+          status: 'available',
+          home_site_id: 'site-home',
+          last_reported_at: '2026-03-26T11:00:00.000Z',
+          created_at: '2026-03-24T00:00:00.000Z',
+          updated_at: '2026-03-24T00:00:00.000Z',
+        }],
+        selectedAssetId: 'asset-1',
+        selectedSiteId: 'site-abc',
+      }))
+
+      facade.calls.length = 0
+
+      await act(async () => {
+        hook.rerender(defaultInput(containerRef, {
+          assets: [{
+            id: 'asset-1',
+            name: 'Asset One',
+            asset_type: 'vehicle',
+            status: 'available',
+            home_site_id: 'site-home',
+            last_reported_at: '2026-03-26T11:00:00.000Z',
+            created_at: '2026-03-24T00:00:00.000Z',
+            updated_at: '2026-03-24T00:00:00.000Z',
+          }],
+          selectedAssetId: null,
+          selectedSiteId: null,
+        }))
+      })
+
+      const siteLinkedCall = facade.calls.find(
+        c => c.method === 'setFilter' && c.args[0] === 'site-linked-ring',
+      )
+      const assetLinkedCall = facade.calls.find(
+        c => c.method === 'setFilter' && c.args[0] === 'asset-linked-ring',
+      )
+      expect(siteLinkedCall?.args[1]).toEqual(['==', ['get', 'id'], ''])
+      expect(assetLinkedCall?.args[1]).toEqual(['==', ['get', 'home_site_id'], ''])
+    })
+
+    it('re-creates linked ring layers after style switch', async () => {
+      const containerRef = makeContainerRef()
+      const hook = await bootMap(facade, containerRef, defaultInput(containerRef))
+
+      expect(facade.layerIds.has('site-linked-ring')).toBe(true)
+      expect(facade.layerIds.has('asset-linked-ring')).toBe(true)
+
+      await act(async () => {
+        hook.rerender(defaultInput(containerRef, { mapStyle: 'satellite' }))
+        await Promise.resolve()
+      })
+
+      expect(facade.layerIds.has('site-linked-ring')).toBe(false)
+      expect(facade.layerIds.has('asset-linked-ring')).toBe(false)
+
+      await act(async () => {
+        facade.fire('style.load')
+        await Promise.resolve()
+      })
+
+      expect(facade.layerIds.has('site-linked-ring')).toBe(true)
+      expect(facade.layerIds.has('asset-linked-ring')).toBe(true)
+    })
+  })
+
   describe('asset freshness rendering', () => {
     it('encodes asset freshness on source data using the shared reference time', async () => {
       const containerRef = makeContainerRef()

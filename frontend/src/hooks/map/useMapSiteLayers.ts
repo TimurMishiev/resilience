@@ -16,6 +16,7 @@ export interface MapSiteLayersInput {
   sites:     Site[]
   tasksBySite: Record<string, Task[]>
   selectedSiteId: string | null
+  linkedSiteId: string | null
 }
 
 export function useMapSiteLayers({
@@ -24,6 +25,7 @@ export function useMapSiteLayers({
   sites,
   tasksBySite,
   selectedSiteId,
+  linkedSiteId,
 }: MapSiteLayersInput): void {
   // Source + layer init
   useEffect(() => {
@@ -65,6 +67,23 @@ export function useMapSiteLayers({
       })
     }
 
+    if (!map.getLayer('site-linked-ring')) {
+      map.addLayer({
+        id: 'site-linked-ring',
+        type: 'circle',
+        source: 'site-points',
+        paint: {
+          'circle-radius': 14,
+          'circle-color': 'rgba(0,0,0,0)',
+          'circle-stroke-width': 1.5,
+          'circle-stroke-color': '#5282ff',
+          'circle-stroke-opacity': 0.7,
+          'circle-blur': 0.3,
+        },
+        filter: ['==', ['get', 'id'], ''],
+      })
+    }
+
     const handleMouseEnter = () => { map.getCanvas().style.cursor = 'pointer' }
     const handleMouseLeave = () => { map.getCanvas().style.cursor = '' }
 
@@ -94,4 +113,14 @@ export function useMapSiteLayers({
       ['==', ['get', 'id'], selectedSiteId ?? ''],
     )
   }, [mapLoaded, selectedSiteId, mapRef])
+
+  // Linked highlight ring filter (e.g. asset's home site when asset is selected)
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapLoaded || !map.getLayer('site-linked-ring')) return
+    map.setFilter(
+      'site-linked-ring',
+      ['==', ['get', 'id'], linkedSiteId ?? ''],
+    )
+  }, [mapLoaded, linkedSiteId, mapRef])
 }

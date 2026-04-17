@@ -20,7 +20,7 @@
  *    without needing to be re-registered.
  */
 
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import type {
   GeoJSONSource,
   Map as MapLibreMap,
@@ -201,14 +201,24 @@ export function useMapLibreEngine({
   }, [mapStyle])
 
   // ---------------------------------------------------------------------------
+  // Cross-entity spatial linking
+  // ---------------------------------------------------------------------------
+  const selectedAssetHomeSiteId = useMemo(
+    () => assets.find(a => a.id === selectedAssetId)?.home_site_id ?? null,
+    [assets, selectedAssetId],
+  )
+
+  // ---------------------------------------------------------------------------
   // Sub-hooks — layer management delegated for maintainability
   // ---------------------------------------------------------------------------
   useMapSiteLayers({
     mapRef, mapLoaded, sites, tasksBySite, selectedSiteId,
+    linkedSiteId: selectedAssetHomeSiteId,
   })
 
   useMapAssetLayers({
     mapRef, mapLoaded, sites, assets, readings, isReplaying, referenceTimeMs, selectedAssetId,
+    linkedSiteId: selectedSiteId,
   })
 
   useMapOverlays({
@@ -222,7 +232,7 @@ export function useMapLibreEngine({
   })
 
   useMapSignalLayers({
-    mapRef, maplibreRef, mapLoaded, signals, selectedSignalId,
+    mapRef, maplibreRef, mapLoaded, signals, selectedSignalId, referenceTimeMs,
     showSignals, showHeatmap, onSignalClickRef,
   })
 

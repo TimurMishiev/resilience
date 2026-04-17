@@ -170,6 +170,7 @@ export function buildAssetFeatureCollection(
           name: asset.name,
           asset_type: asset.asset_type,
           status: asset.status,
+          home_site_id: asset.home_site_id ?? '',
           freshness,
           icon: assetTypeIcon(asset.asset_type),
         },

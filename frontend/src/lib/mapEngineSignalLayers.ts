@@ -127,7 +127,14 @@ export function ensureSignalLayers(
       paint: {
         'circle-radius': signalGlowRadiusExpression(),
         'circle-color': signalColorExpression(),
-        'circle-opacity': 0.15,
+        'circle-opacity': [
+          'match', ['get', 'freshness'],
+          'fresh', 0.15,
+          'aging', 0.10,
+          'stale', 0.06,
+          'unavailable', 0.03,
+          0.15,
+        ],
         'circle-blur': 1.2,
       },
     })
@@ -142,9 +149,24 @@ export function ensureSignalLayers(
       paint: {
         'circle-radius': signalCircleRadiusExpression(),
         'circle-color': signalColorExpression(),
-        'circle-opacity': 0.85,
+        'circle-opacity': [
+          'match', ['get', 'freshness'],
+          'fresh', 0.85,
+          'aging', 0.65,
+          'stale', 0.40,
+          'unavailable', 0.25,
+          0.85,
+        ],
         'circle-stroke-width': 1,
         'circle-stroke-color': 'rgba(255,255,255,0.25)',
+        'circle-stroke-opacity': [
+          'match', ['get', 'freshness'],
+          'fresh', 1,
+          'aging', 0.75,
+          'stale', 0.50,
+          'unavailable', 0.30,
+          1,
+        ],
       },
     })
   }
@@ -166,6 +188,14 @@ export function ensureSignalLayers(
         'text-color': '#ffffff',
         'text-halo-color': 'rgba(0,0,0,0.45)',
         'text-halo-width': 1,
+        'text-opacity': [
+          'match', ['get', 'freshness'],
+          'fresh', 1,
+          'aging', 0.75,
+          'stale', 0.50,
+          'unavailable', 0.30,
+          1,
+        ],
       },
     })
   }
