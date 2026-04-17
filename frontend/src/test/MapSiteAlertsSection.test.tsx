@@ -126,6 +126,27 @@ describe('MapSiteAlertsSection', () => {
     expect(onSelectSignal).toHaveBeenCalledWith('signal-1')
   })
 
+  it('renders linked task context inline when the alert created a task', () => {
+    hookState.data = {
+      data: [
+        buildMatch({
+          task: {
+            id: 'task-1',
+            title: 'Dispatch response team',
+            workflow_status: 'in_progress',
+            priority: 'high',
+          },
+        }),
+      ],
+      meta: { page: 1, per_page: 5, total: 1, total_pages: 1 },
+    }
+    renderSection()
+    expect(screen.getByTestId('map-site-alert-task')).toBeInTheDocument()
+    expect(screen.getByText('Dispatch response team')).toBeInTheDocument()
+    expect(screen.getByText('in progress')).toBeInTheDocument()
+    expect(screen.getByText('high')).toBeInTheDocument()
+  })
+
   it('invokes the acknowledge mutation when the Ack button is clicked', () => {
     hookState.data = {
       data: [buildMatch()],

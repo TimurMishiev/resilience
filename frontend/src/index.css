@@ -1515,6 +1515,30 @@ body {
   font-size: 10px;
 }
 
+.map-site-alert-task {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.map-site-alert-task-title {
+  font-size: 11px;
+  color: #d3d8de;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-site-alert-task-tags {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
 .map-site-alert-failed {
   color: #cd4246;
   font-weight: 600;

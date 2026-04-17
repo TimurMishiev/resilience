@@ -3,7 +3,9 @@ import { Button, Icon, Spinner, Tag, Tooltip } from '@blueprintjs/core'
 import { useSignalRuleMatches, useTransitionAlert } from '../hooks/useSignalRuleMatches'
 import { useReplayParams } from '../hooks/useReplayParams'
 import { timeAgo } from '../lib/formatters'
+import { priorityIntent, workflowIntent } from '../lib/taskIntents'
 import type { SignalRuleMatch } from '../api/types'
+import { humanize } from '../utils/humanize'
 
 const TRIAGE_LIMIT = 5
 
@@ -157,6 +159,19 @@ function SignalAlertRow({
               </>
             )}
           </span>
+          {match.task && (
+            <div className="map-site-alert-task" data-testid="map-signal-alert-task">
+              <span className="map-site-alert-task-title">{match.task.title}</span>
+              <div className="map-site-alert-task-tags">
+                <Tag minimal small intent={workflowIntent(match.task.workflow_status)}>
+                  {humanize(match.task.workflow_status)}
+                </Tag>
+                <Tag minimal small intent={priorityIntent(match.task.priority)}>
+                  {match.task.priority}
+                </Tag>
+              </div>
+            </div>
+          )}
         </div>
       </div>
       <div className="map-panel-actions">
