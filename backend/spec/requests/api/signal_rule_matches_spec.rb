@@ -79,6 +79,13 @@ RSpec.describe "Api::SignalRuleMatches", type: :request do
       expect(ids).to contain_exactly(match1.id, match3.id)
     end
 
+    it "filters by signal_id" do
+      target_signal = match2.signal
+      get "/api/signal_rule_matches", params: { signal_id: target_signal.id }, headers: auth_headers(user)
+      ids = JSON.parse(response.body)["data"].map { |m| m["id"] }
+      expect(ids).to contain_exactly(match2.id)
+    end
+
     it "filters by from datetime" do
       from = 1.hour.ago.iso8601
       get "/api/signal_rule_matches", params: { from: from }, headers: auth_headers(user)

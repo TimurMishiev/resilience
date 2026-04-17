@@ -67,6 +67,8 @@ export function MapSelectionPanels({
           asset={selectedAsset}
           liveReading={selectedLiveReading}
           isReplaying={isReplaying}
+          canTriage={canTriage}
+          referenceTimeMs={referenceTimeMs}
           onClose={onCloseAsset}
         />
       )}
@@ -77,6 +79,8 @@ export function MapSelectionPanels({
           vessel={selectedVessel}
           vesselTracks={vesselTracks}
           isReplaying={isReplaying}
+          canTriage={canTriage}
+          referenceTimeMs={referenceTimeMs}
           onClose={onCloseSignal}
         />
       )}

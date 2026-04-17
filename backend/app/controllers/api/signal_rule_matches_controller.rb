@@ -4,7 +4,7 @@ module Api
     after_action :verify_policy_scoped, only: %i[index active_breach_sites]
 
     # GET /api/signal_rule_matches
-    # Query params: rule_id, site_id, workflow_status, geofence_breach, from, to, as_of, page, per_page
+    # Query params: rule_id, site_id, signal_id, workflow_status, geofence_breach, from, to, as_of, page, per_page
     # as_of: ISO8601 timestamp — limits fired_at to matches that existed at that point in time
     def index
       authorize SignalRuleMatch
@@ -13,6 +13,7 @@ module Api
 
       matches = matches.for_rule(params[:rule_id])        if params[:rule_id].present?
       matches = matches.for_site(params[:site_id])        if params[:site_id].present?
+      matches = matches.where(signal_id: params[:signal_id]) if params[:signal_id].present?
       matches = matches.by_status(params[:workflow_status]) if params[:workflow_status].present? && as_of.blank?
       matches = matches.where("fired_at >= ?", safe_parse_datetime(params[:from])) if params[:from].present?
       upper   = [safe_parse_datetime(params[:to]), as_of].compact.min

@@ -4,6 +4,7 @@ import type { TelemetryReading } from '../lib/telemetry'
 import { humanize } from '../utils/humanize'
 import { assetStatusIntent, batteryIntent } from '../lib/taskIntents'
 import { headingLabel, formatTimestampTime } from '../lib/formatters'
+import { MapSiteAlertsSection } from './MapSiteAlertsSection'
 
 function assetTypeIcon(type: Asset['asset_type']): string {
   switch (type) {
@@ -18,6 +19,8 @@ interface MapAssetPanelProps {
   asset: Asset
   liveReading: TelemetryReading | null
   isReplaying: boolean
+  canTriage: boolean
+  referenceTimeMs: number
   onClose: () => void
 }
 
@@ -25,6 +28,8 @@ export function MapAssetPanel({
   asset,
   liveReading,
   isReplaying,
+  canTriage,
+  referenceTimeMs,
   onClose,
 }: MapAssetPanelProps) {
   return (
@@ -100,6 +105,17 @@ export function MapAssetPanel({
         <p className="bp6-text-muted map-no-tasks">
           {isReplaying ? 'No telemetry snapshot available for this replay time.' : 'Awaiting telemetry data…'}
         </p>
+      )}
+
+      {asset.home_site_id && (
+        <>
+          <Divider />
+          <MapSiteAlertsSection
+            siteId={asset.home_site_id}
+            referenceTimeMs={referenceTimeMs}
+            canTriage={canTriage}
+          />
+        </>
       )}
     </div>
   )

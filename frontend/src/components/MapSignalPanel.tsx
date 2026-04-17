@@ -6,12 +6,15 @@ import { formatTimestampFull } from '../lib/formatters'
 import { humanize } from '../utils/humanize'
 import { SIGNAL_COLORS, SIGNAL_LABELS, SOURCE_LABELS, ALERT_LEVEL_INTENT } from '../lib/signalConfig'
 import { SIGNAL_ICON_NAME } from '../lib/signalIcons'
+import { MapSignalAlertsSection } from './MapSignalAlertsSection'
 
 interface MapSignalPanelProps {
   signal: Signal
   vessel: Vessel | null
   vesselTracks: VesselTrack[]
   isReplaying: boolean
+  canTriage: boolean
+  referenceTimeMs: number
   onClose: () => void
 }
 
@@ -20,6 +23,8 @@ export function MapSignalPanel({
   vessel,
   vesselTracks,
   isReplaying,
+  canTriage,
+  referenceTimeMs,
   onClose,
 }: MapSignalPanelProps) {
   const title = vessel?.name
@@ -269,6 +274,13 @@ export function MapSignalPanel({
           </span>
         </div>
       </div>
+
+      <Divider />
+      <MapSignalAlertsSection
+        signalId={signal.id}
+        referenceTimeMs={referenceTimeMs}
+        canTriage={canTriage}
+      />
     </div>
   )
 }

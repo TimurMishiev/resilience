@@ -15,6 +15,10 @@ vi.mock('../components/MapSiteAlertsSection', () => ({
   MapSiteAlertsSection: () => <div data-testid="map-site-alerts-stub" />,
 }))
 
+vi.mock('../components/MapSignalAlertsSection', () => ({
+  MapSignalAlertsSection: () => <div data-testid="map-signal-alerts-stub" />,
+}))
+
 const baseSite: Site = {
   id: 'site-1',
   name: 'Site Alpha',
@@ -179,6 +183,8 @@ describe('map data panels', () => {
         asset={asset}
         liveReading={reading}
         isReplaying={false}
+        canTriage
+        referenceTimeMs={Date.parse('2026-03-26T12:00:00Z')}
         onClose={() => {}}
       />,
     )
@@ -194,6 +200,8 @@ describe('map data panels', () => {
         asset={asset}
         liveReading={null}
         isReplaying
+        canTriage
+        referenceTimeMs={Date.parse('2026-03-26T12:00:00Z')}
         onClose={() => {}}
       />,
     )
@@ -208,6 +216,8 @@ describe('map data panels', () => {
         vessel={null}
         vesselTracks={[]}
         isReplaying={false}
+        canTriage
+        referenceTimeMs={Date.parse('2026-03-26T12:00:00Z')}
         onClose={() => {}}
       />,
     )
@@ -229,6 +239,8 @@ describe('map data panels', () => {
         vessel={vessel}
         vesselTracks={vesselTracks}
         isReplaying
+        canTriage
+        referenceTimeMs={Date.parse('2026-03-26T12:00:00Z')}
         onClose={() => {}}
       />,
     )
