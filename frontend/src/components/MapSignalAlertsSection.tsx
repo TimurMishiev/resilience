@@ -147,7 +147,7 @@ function SignalAlertRow({
             {match.workflow_status !== 'unacknowledged' && (
               <>
                 {' · '}
-                <Tag minimal small>{match.workflow_status}</Tag>
+                <Tag minimal>{match.workflow_status}</Tag>
               </>
             )}
             {hasFailed && (
@@ -163,10 +163,10 @@ function SignalAlertRow({
             <div className="map-site-alert-task" data-testid="map-signal-alert-task">
               <span className="map-site-alert-task-title">{match.task.title}</span>
               <div className="map-site-alert-task-tags">
-                <Tag minimal small intent={workflowIntent(match.task.workflow_status)}>
+                <Tag minimal intent={workflowIntent(match.task.workflow_status)}>
                   {humanize(match.task.workflow_status)}
                 </Tag>
-                <Tag minimal small intent={priorityIntent(match.task.priority)}>
+                <Tag minimal intent={priorityIntent(match.task.priority)}>
                   {match.task.priority}
                 </Tag>
               </div>
