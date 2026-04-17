@@ -27,6 +27,7 @@ interface MapSitePanelProps {
   role: UserRole
   canTriage: boolean
   referenceTimeMs: number
+  onSelectSignal: (signalId: string) => void
   onTransitioned: () => void
   onClose: () => void
 }
@@ -40,6 +41,7 @@ export function MapSitePanel({
   role,
   canTriage,
   referenceTimeMs,
+  onSelectSignal,
   onTransitioned,
   onClose,
 }: MapSitePanelProps) {
@@ -133,6 +135,7 @@ export function MapSitePanel({
         siteId={site.id}
         referenceTimeMs={referenceTimeMs}
         canTriage={canTriage}
+        onSelectSignal={onSelectSignal}
       />
     </div>
   )

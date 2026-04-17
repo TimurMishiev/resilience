@@ -11,12 +11,14 @@ interface MapSignalAlertsSectionProps {
   signalId: string
   referenceTimeMs: number
   canTriage: boolean
+  onSelectSite: (siteId: string) => void
 }
 
 export function MapSignalAlertsSection({
   signalId,
   referenceTimeMs,
   canTriage,
+  onSelectSite,
 }: MapSignalAlertsSectionProps) {
   const { isReplaying } = useReplayParams()
 
@@ -90,6 +92,7 @@ export function MapSignalAlertsSection({
               canTriage={canTriage}
               isPending={pendingAckId === match.id}
               hasFailed={failedAckId === match.id}
+              onSelectSite={onSelectSite}
               onAck={handleAck}
             />
           ))}
@@ -105,6 +108,7 @@ function SignalAlertRow({
   canTriage,
   isPending,
   hasFailed,
+  onSelectSite,
   onAck,
 }: {
   match: SignalRuleMatch
@@ -112,6 +116,7 @@ function SignalAlertRow({
   canTriage: boolean
   isPending: boolean
   hasFailed: boolean
+  onSelectSite: (siteId: string) => void
   onAck: (id: string) => void
 }) {
   const conf = typeof match.confidence === 'number' ? match.confidence : null
@@ -154,18 +159,31 @@ function SignalAlertRow({
           </span>
         </div>
       </div>
-      {canTriage && match.workflow_status === 'unacknowledged' && (
-        <Button
-          small
-          minimal
-          intent="primary"
-          loading={isPending}
-          onClick={() => onAck(match.id)}
-          data-testid="map-signal-alert-ack"
-        >
-          Ack
-        </Button>
-      )}
+      <div className="map-panel-actions">
+        {match.site && (
+          <Button
+            small
+            minimal
+            icon="map-marker"
+            onClick={() => onSelectSite(match.site!.id)}
+            data-testid="map-signal-alert-open-site"
+          >
+            Inspect site
+          </Button>
+        )}
+        {canTriage && match.workflow_status === 'unacknowledged' && (
+          <Button
+            small
+            minimal
+            intent="primary"
+            loading={isPending}
+            onClick={() => onAck(match.id)}
+            data-testid="map-signal-alert-ack"
+          >
+            Ack
+          </Button>
+        )}
+      </div>
     </li>
   )
 }

@@ -76,6 +76,7 @@ function renderSection(props: Partial<Parameters<typeof MapSiteAlertsSection>[0]
         siteId="site-1"
         referenceTimeMs={REFERENCE_MS}
         canTriage
+        onSelectSignal={() => {}}
         {...props}
       />
     </MemoryRouter>,
@@ -112,6 +113,17 @@ describe('MapSiteAlertsSection', () => {
     expect(screen.getByText(/5m ago/)).toBeInTheDocument()
     expect(screen.getByText('82%')).toBeInTheDocument()
     expect(screen.queryByText(/View all/)).toBeNull()
+  })
+
+  it('opens source signal context from an alert row', () => {
+    const onSelectSignal = vi.fn()
+    hookState.data = {
+      data: [buildMatch()],
+      meta: { page: 1, per_page: 5, total: 1, total_pages: 1 },
+    }
+    renderSection({ onSelectSignal })
+    fireEvent.click(screen.getByTestId('map-site-alert-open-signal'))
+    expect(onSelectSignal).toHaveBeenCalledWith('signal-1')
   })
 
   it('invokes the acknowledge mutation when the Ack button is clicked', () => {

@@ -13,12 +13,14 @@ interface MapSiteAlertsSectionProps {
   siteId: string
   referenceTimeMs: number
   canTriage: boolean
+  onSelectSignal: (signalId: string) => void
 }
 
 export function MapSiteAlertsSection({
   siteId,
   referenceTimeMs,
   canTriage,
+  onSelectSignal,
 }: MapSiteAlertsSectionProps) {
   const { isReplaying, asOf } = useReplayParams()
 
@@ -100,6 +102,7 @@ export function MapSiteAlertsSection({
               canTriage={canTriage}
               isPending={pendingAckId === match.id}
               hasFailed={failedAckId === match.id}
+              onSelectSignal={onSelectSignal}
               onAck={handleAck}
             />
           ))}
@@ -121,6 +124,7 @@ interface MapSiteAlertRowProps {
   canTriage: boolean
   isPending: boolean
   hasFailed: boolean
+  onSelectSignal: (signalId: string) => void
   onAck: (id: string) => void
 }
 
@@ -130,6 +134,7 @@ function MapSiteAlertRow({
   canTriage,
   isPending,
   hasFailed,
+  onSelectSignal,
   onAck,
 }: MapSiteAlertRowProps) {
   const conf = typeof match.confidence === 'number' ? match.confidence : null
@@ -170,18 +175,31 @@ function MapSiteAlertRow({
           </span>
         </div>
       </div>
-      {canTriage && (
-        <Button
-          small
-          minimal
-          intent="primary"
-          loading={isPending}
-          onClick={() => onAck(match.id)}
-          data-testid="map-site-alert-ack"
-        >
-          Ack
-        </Button>
-      )}
+      <div className="map-panel-actions">
+        {match.signal && (
+          <Button
+            small
+            minimal
+            icon="notifications"
+            onClick={() => onSelectSignal(match.signal!.id)}
+            data-testid="map-site-alert-open-signal"
+          >
+            Inspect signal
+          </Button>
+        )}
+        {canTriage && (
+          <Button
+            small
+            minimal
+            intent="primary"
+            loading={isPending}
+            onClick={() => onAck(match.id)}
+            data-testid="map-site-alert-ack"
+          >
+            Ack
+          </Button>
+        )}
+      </div>
     </li>
   )
 }

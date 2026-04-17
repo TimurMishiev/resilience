@@ -206,22 +206,64 @@ vi.mock('../hooks/useMapLibreEngine', () => ({
 }))
 
 vi.mock('../components/MapSitePanel', () => ({
-  MapSitePanel: ({ site }: { site: { name: string } }) => (
-    <div data-testid="map-site-panel">{site.name}</div>
+  MapSitePanel: ({
+    site,
+    onSelectSignal,
+  }: {
+    site: { name: string }
+    onSelectSignal?: (signalId: string) => void
+  }) => (
+    <div data-testid="map-site-panel">
+      <span>{site.name}</span>
+      <button type="button" data-testid="map-site-open-signal" onClick={() => onSelectSignal?.('sig-1')}>
+        Inspect signal
+      </button>
+    </div>
   ),
 }))
 
 vi.mock('../components/MapAssetPanel', () => ({
-  MapAssetPanel: ({ asset }: { asset: { name: string } }) => (
-    <div data-testid="map-asset-panel">{asset.name}</div>
+  MapAssetPanel: ({
+    asset,
+    onSelectHomeSite,
+    onSelectSignal,
+  }: {
+    asset: { name: string; home_site_id?: string | null }
+    onSelectHomeSite?: (siteId: string) => void
+    onSelectSignal?: (signalId: string) => void
+  }) => (
+    <div data-testid="map-asset-panel">
+      <span>{asset.name}</span>
+      {asset.home_site_id ? (
+        <>
+          <button type="button" data-testid="map-asset-open-site" onClick={() => onSelectHomeSite?.(asset.home_site_id!)}>
+            Inspect home site
+          </button>
+          <button type="button" data-testid="map-asset-open-signal" onClick={() => onSelectSignal?.('sig-1')}>
+            Inspect signal
+          </button>
+        </>
+      ) : null}
+    </div>
   ),
 }))
 
 vi.mock('../components/MapSignalPanel', () => ({
-  MapSignalPanel: ({ signal, vessel }: { signal: { raw_payload: { version: string } }; vessel?: { mmsi?: string | null } | null }) => (
+  MapSignalPanel: ({
+    signal,
+    vessel,
+    onSelectSite,
+  }: {
+    signal: { raw_payload: { version: string } }
+    vessel?: { mmsi?: string | null } | null
+    onSelectSite?: (siteId: string) => void
+  }) => (
     <div data-testid="map-signal-panel">
       <span data-testid="signal-version">{signal.raw_payload.version}</span>
       {vessel?.mmsi ? <span data-testid="signal-vessel-mmsi">{vessel.mmsi}</span> : null}
+      <button type="button" data-testid="map-signal-open-site" onClick={() => onSelectSite?.('site-1')}>
+        Inspect site
+      </button>
     </div>
   ),
 }))
@@ -362,6 +404,20 @@ describe('MapPage selection routing', () => {
     expect(engineState.flyTo).not.toHaveBeenCalled()
   })
 
+  it('switches from site alert context into the related signal panel without leaving /map', async () => {
+    renderMapPage('/map?site_id=site-1')
+
+    expect(await screen.findByTestId('map-site-panel')).toHaveTextContent('Site One')
+
+    await act(async () => {
+      screen.getByTestId('map-site-open-signal').click()
+    })
+
+    expect(await screen.findByTestId('map-signal-panel')).toBeInTheDocument()
+    expect(screen.getByTestId('location-search')).toHaveTextContent('?signal_id=sig-1')
+    expect(screen.queryByTestId('map-site-panel')).not.toBeInTheDocument()
+  })
+
   it('re-derives the selected signal from the live collection on refresh', async () => {
     const view = renderMapPage('/map?signal_id=sig-1')
 
@@ -408,6 +464,34 @@ describe('MapPage selection routing', () => {
     view.rerender(view.renderTree())
 
     expect(await screen.findByTestId('location-search')).toBeEmptyDOMElement()
+    expect(screen.queryByTestId('map-asset-panel')).not.toBeInTheDocument()
+  })
+
+  it('switches from asset context into the related site panel without leaving /map', async () => {
+    renderMapPage('/map?asset_id=asset-1')
+
+    expect(await screen.findByTestId('map-asset-panel')).toHaveTextContent('Asset One')
+
+    await act(async () => {
+      screen.getByTestId('map-asset-open-site').click()
+    })
+
+    expect(await screen.findByTestId('map-site-panel')).toHaveTextContent('Site One')
+    expect(screen.getByTestId('location-search')).toHaveTextContent('?site_id=site-1')
+    expect(screen.queryByTestId('map-asset-panel')).not.toBeInTheDocument()
+  })
+
+  it('switches from asset site-alert context into the related signal panel without leaving /map', async () => {
+    renderMapPage('/map?asset_id=asset-1')
+
+    expect(await screen.findByTestId('map-asset-panel')).toHaveTextContent('Asset One')
+
+    await act(async () => {
+      screen.getByTestId('map-asset-open-signal').click()
+    })
+
+    expect(await screen.findByTestId('map-signal-panel')).toBeInTheDocument()
+    expect(screen.getByTestId('location-search')).toHaveTextContent('?signal_id=sig-1')
     expect(screen.queryByTestId('map-asset-panel')).not.toBeInTheDocument()
   })
 
@@ -471,6 +555,20 @@ describe('MapPage selection routing', () => {
     view.rerender(view.renderTree())
 
     expect(await screen.findByTestId('location-search')).toBeEmptyDOMElement()
+    expect(screen.queryByTestId('map-signal-panel')).not.toBeInTheDocument()
+  })
+
+  it('switches from signal context into the related site panel without leaving /map', async () => {
+    renderMapPage('/map?signal_id=sig-1')
+
+    expect(await screen.findByTestId('map-signal-panel')).toBeInTheDocument()
+
+    await act(async () => {
+      screen.getByTestId('map-signal-open-site').click()
+    })
+
+    expect(await screen.findByTestId('map-site-panel')).toHaveTextContent('Site One')
+    expect(screen.getByTestId('location-search')).toHaveTextContent('?site_id=site-1')
     expect(screen.queryByTestId('map-signal-panel')).not.toBeInTheDocument()
   })
 

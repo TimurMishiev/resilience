@@ -1,4 +1,4 @@
-import { Divider, Tag } from '@blueprintjs/core'
+import { Button, Divider, Tag } from '@blueprintjs/core'
 import type { Asset } from '../api/types'
 import type { TelemetryReading } from '../lib/telemetry'
 import { humanize } from '../utils/humanize'
@@ -21,6 +21,8 @@ interface MapAssetPanelProps {
   isReplaying: boolean
   canTriage: boolean
   referenceTimeMs: number
+  onSelectHomeSite: (siteId: string) => void
+  onSelectSignal: (signalId: string) => void
   onClose: () => void
 }
 
@@ -30,6 +32,8 @@ export function MapAssetPanel({
   isReplaying,
   canTriage,
   referenceTimeMs,
+  onSelectHomeSite,
+  onSelectSignal,
   onClose,
 }: MapAssetPanelProps) {
   return (
@@ -110,10 +114,21 @@ export function MapAssetPanel({
       {asset.home_site_id && (
         <>
           <Divider />
+          <div className="map-panel-actions">
+            <Button
+              small
+              minimal
+              icon="map-marker"
+              onClick={() => onSelectHomeSite(asset.home_site_id!)}
+            >
+              Inspect home site
+            </Button>
+          </div>
           <MapSiteAlertsSection
             siteId={asset.home_site_id}
             referenceTimeMs={referenceTimeMs}
             canTriage={canTriage}
+            onSelectSignal={onSelectSignal}
           />
         </>
       )}

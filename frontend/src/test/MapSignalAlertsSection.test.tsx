@@ -82,6 +82,7 @@ function renderSection(props: Partial<Parameters<typeof MapSignalAlertsSection>[
         signalId="signal-1"
         referenceTimeMs={REFERENCE_MS}
         canTriage
+        onSelectSite={() => {}}
         {...props}
       />
     </MemoryRouter>,
@@ -156,6 +157,17 @@ describe('MapSignalAlertsSection', () => {
     expect(vars).toEqual({ id: 'match-1', body: { to_status: 'acknowledged' } })
     expect(options?.onSettled).toBeTypeOf('function')
     expect(options?.onError).toBeTypeOf('function')
+  })
+
+  it('opens related site context when a matched site is inspected', () => {
+    const onSelectSite = vi.fn()
+    hookState.data = {
+      data: [buildMatch()],
+      meta: { page: 1, per_page: 5, total: 1, total_pages: 1 },
+    }
+    renderSection({ onSelectSite })
+    fireEvent.click(screen.getByTestId('map-signal-alert-open-site'))
+    expect(onSelectSite).toHaveBeenCalledWith('site-1')
   })
 
   it('surfaces an inline retry hint when the acknowledge mutation fails', () => {

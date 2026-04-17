@@ -398,6 +398,8 @@ export default function MapPage() {
               selectedVessel={selectedVessel}
               vesselTracks={vesselTracks}
               isReplaying={isReplaying}
+              onSelectSite={onSiteClick}
+              onSelectSignal={onSignalClick}
               onTransitioned={handleTransitioned}
               onCloseSite={closePanel}
               onCloseAsset={closePanel}

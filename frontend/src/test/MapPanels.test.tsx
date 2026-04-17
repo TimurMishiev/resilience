@@ -12,11 +12,25 @@ vi.mock('../components/TaskRow', () => ({
 }))
 
 vi.mock('../components/MapSiteAlertsSection', () => ({
-  MapSiteAlertsSection: () => <div data-testid="map-site-alerts-stub" />,
+  MapSiteAlertsSection: ({ onSelectSignal }: { onSelectSignal?: (signalId: string) => void }) => (
+    <div>
+      <div data-testid="map-site-alerts-stub" />
+      <button type="button" data-testid="map-site-open-signal-stub" onClick={() => onSelectSignal?.('sig-1')}>
+        Inspect signal
+      </button>
+    </div>
+  ),
 }))
 
 vi.mock('../components/MapSignalAlertsSection', () => ({
-  MapSignalAlertsSection: () => <div data-testid="map-signal-alerts-stub" />,
+  MapSignalAlertsSection: ({ onSelectSite }: { onSelectSite?: (siteId: string) => void }) => (
+    <div>
+      <div data-testid="map-signal-alerts-stub" />
+      <button type="button" data-testid="map-signal-open-site-stub" onClick={() => onSelectSite?.('site-1')}>
+        Inspect site
+      </button>
+    </div>
+  ),
 }))
 
 const baseSite: Site = {
@@ -150,6 +164,7 @@ const vesselTracks: VesselTrack[] = [
 describe('map data panels', () => {
   it('renders site state, readiness, risk, replay notice, and tasks', () => {
     const onClose = vi.fn()
+    const onSelectSignal = vi.fn()
 
     render(
       <MapSitePanel
@@ -161,6 +176,7 @@ describe('map data panels', () => {
         role="commander"
         canTriage
         referenceTimeMs={Date.parse('2026-03-26T12:00:00Z')}
+        onSelectSignal={onSelectSignal}
         onTransitioned={() => {}}
         onClose={onClose}
       />,
@@ -172,12 +188,16 @@ describe('map data panels', () => {
     expect(screen.getByText('RISK CRIT 91')).toBeInTheDocument()
     expect(screen.getByText(/Replay mode/i)).toBeInTheDocument()
     expect(screen.getByTestId('task-row')).toHaveTextContent('Investigate perimeter breach')
+    fireEvent.click(screen.getByTestId('map-site-open-signal-stub'))
+    expect(onSelectSignal).toHaveBeenCalledWith('sig-1')
 
     fireEvent.click(screen.getByRole('button', { name: /close/i }))
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
   it('renders asset telemetry when live data exists and replay fallback copy when it does not', () => {
+    const onSelectHomeSite = vi.fn()
+    const onSelectSignal = vi.fn()
     const { rerender } = render(
       <MapAssetPanel
         asset={asset}
@@ -185,6 +205,8 @@ describe('map data panels', () => {
         isReplaying={false}
         canTriage
         referenceTimeMs={Date.parse('2026-03-26T12:00:00Z')}
+        onSelectHomeSite={onSelectHomeSite}
+        onSelectSignal={onSelectSignal}
         onClose={() => {}}
       />,
     )
@@ -194,6 +216,10 @@ describe('map data panels', () => {
     expect(screen.getByText(/12.4 m\/s/)).toBeInTheDocument()
     expect(screen.getByText(/E \(90°\)/)).toBeInTheDocument()
     expect(screen.getByText(/51.5100, 0.1300/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /inspect home site/i }))
+    expect(onSelectHomeSite).toHaveBeenCalledWith('site-1')
+    fireEvent.click(screen.getByTestId('map-site-open-signal-stub'))
+    expect(onSelectSignal).toHaveBeenCalledWith('sig-1')
 
     rerender(
       <MapAssetPanel
@@ -202,6 +228,8 @@ describe('map data panels', () => {
         isReplaying
         canTriage
         referenceTimeMs={Date.parse('2026-03-26T12:00:00Z')}
+        onSelectHomeSite={onSelectHomeSite}
+        onSelectSignal={onSelectSignal}
         onClose={() => {}}
       />,
     )
@@ -210,6 +238,7 @@ describe('map data panels', () => {
   })
 
   it('renders disaster alert detail with custom title and alert metadata', () => {
+    const onSelectSite = vi.fn()
     render(
       <MapSignalPanel
         signal={disasterSignal}
@@ -218,6 +247,7 @@ describe('map data panels', () => {
         isReplaying={false}
         canTriage
         referenceTimeMs={Date.parse('2026-03-26T12:00:00Z')}
+        onSelectSite={onSelectSite}
         onClose={() => {}}
       />,
     )
@@ -230,6 +260,8 @@ describe('map data panels', () => {
     expect(screen.getByText('Philippines')).toBeInTheDocument()
     expect(screen.getByText('Extreme')).toBeInTheDocument()
     expect(screen.getByText(/2.7 \/ 3.0/)).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('map-signal-open-site-stub'))
+    expect(onSelectSite).toHaveBeenCalledWith('site-1')
   })
 
   it('renders vessel identity, behavior tags, track summary, and replay warning', () => {
@@ -241,6 +273,7 @@ describe('map data panels', () => {
         isReplaying
         canTriage
         referenceTimeMs={Date.parse('2026-03-26T12:00:00Z')}
+        onSelectSite={() => {}}
         onClose={() => {}}
       />,
     )

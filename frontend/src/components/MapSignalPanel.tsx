@@ -15,6 +15,7 @@ interface MapSignalPanelProps {
   isReplaying: boolean
   canTriage: boolean
   referenceTimeMs: number
+  onSelectSite: (siteId: string) => void
   onClose: () => void
 }
 
@@ -25,6 +26,7 @@ export function MapSignalPanel({
   isReplaying,
   canTriage,
   referenceTimeMs,
+  onSelectSite,
   onClose,
 }: MapSignalPanelProps) {
   const title = vessel?.name
@@ -280,6 +282,7 @@ export function MapSignalPanel({
         signalId={signal.id}
         referenceTimeMs={referenceTimeMs}
         canTriage={canTriage}
+        onSelectSite={onSelectSite}
       />
     </div>
   )

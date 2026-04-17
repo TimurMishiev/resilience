@@ -20,6 +20,8 @@ interface MapSelectionPanelsProps {
   selectedVessel: Vessel | null
   vesselTracks: VesselTrack[]
   isReplaying: boolean
+  onSelectSite: (siteId: string | null) => void
+  onSelectSignal: (signalId: string | null) => void
   onTransitioned: () => void
   onCloseSite: () => void
   onCloseAsset: () => void
@@ -40,6 +42,8 @@ export function MapSelectionPanels({
   selectedVessel,
   vesselTracks,
   isReplaying,
+  onSelectSite,
+  onSelectSignal,
   onTransitioned,
   onCloseSite,
   onCloseAsset,
@@ -57,6 +61,7 @@ export function MapSelectionPanels({
           role={role}
           canTriage={canTriage}
           referenceTimeMs={referenceTimeMs}
+          onSelectSignal={onSelectSignal}
           onTransitioned={onTransitioned}
           onClose={onCloseSite}
         />
@@ -69,6 +74,8 @@ export function MapSelectionPanels({
           isReplaying={isReplaying}
           canTriage={canTriage}
           referenceTimeMs={referenceTimeMs}
+          onSelectHomeSite={onSelectSite}
+          onSelectSignal={onSelectSignal}
           onClose={onCloseAsset}
         />
       )}
@@ -81,6 +88,7 @@ export function MapSelectionPanels({
           isReplaying={isReplaying}
           canTriage={canTriage}
           referenceTimeMs={referenceTimeMs}
+          onSelectSite={onSelectSite}
           onClose={onCloseSignal}
         />
       )}
