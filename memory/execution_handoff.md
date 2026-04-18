@@ -16,23 +16,28 @@ Phase 4 — Debrief
 
 ## Current Slice
 
-Phase 4 Slice 2: Debrief entry point + timeline data hook — COMPLETE
+Support cleanup tranche: incident assignment boundary hardening + debrief timeline completeness — COMPLETE
 
-(Phase 4 Slice 1 — audit events API prerequisites — shipped in commit `2c49a3c`.)
+(Phase 4 Slice 2 — debrief entry point + timeline data hook — remains shipped. Phase 4 Slice 3 is still the next roadmap slice.)
 
 ## Objective
 
-Stand up a commander-only `/debrief` surface that consumes the Slice 1 API additions to render a cross-entity timeline of operationally meaningful events. Preset time ranges only (1h / 6h / 24h / 7d); no click-to-reconstruct, no temporal diff, no custom date picker in this slice.
+Close the confirmed post-review gaps without widening roadmap scope: secure incident assignee lookup to incident tenant scope, make the debrief meaningful-event curation complete for site status and recommendation terminal decisions, remove debrief timeline truncation blindness with cursor-backed loading, and stop logging raw ontology-query text into exception telemetry.
 
 ## Completed This Session
 
-- `frontend/src/hooks/useDebriefTimeline.ts` — new cross-entity query hook. Wraps `getAuditEvents` with a curated `event_types` list and a `from` window derived from the selected preset range. Computes `from` inside `queryFn` (not in render) to satisfy `react-hooks/purity`. Curated list covers 16 event types spanning incidents, tasks, alerts, assets, sites (flag + unflag), posture changes, SALUTE reports, and recommendation acceptance/execution — sourced from backend controllers, models, AND services (not just services).
-- `frontend/src/components/DebriefPanel.tsx` — range selector (HTMLSelect) + cross-entity timeline list with entity-type tag, actor, time, and event label. Empty state uses NonIdealState.
-- `frontend/src/pages/DebriefPage.tsx` — commander-gated shell (matches BriefingPage pattern: `useRole()` + inline Callout fallback via `canAccessDebrief ?? isCommander`).
-- `frontend/src/App.tsx` — lazy-imported `DebriefPage` and registered `/debrief` route wrapped in `PageErrorBoundary`.
-- `frontend/src/components/shell/AppSidebar.tsx` — new "Debrief" MenuItem (history icon) with LockLabel driven by `canAccessDebrief ?? isCommander`.
-- `frontend/src/hooks/useRole.ts` — added `canAccessDebrief: isCommander` helper so both debrief gate sites flow through the same `useRole` surface as the other commander-gated entries (briefing, ontology, etc.).
-- Tests: `useDebriefTimeline.test.ts` (5 specs — range windows, curated event types, disabled gating, data passthrough), `DebriefPage.test.tsx` (2 specs — commander render + operator access-denied), `DebriefPanel.test.tsx` (4 specs — event rendering, range-change refetch, empty NonIdealState, error Callout).
+- `backend/app/controllers/api/incidents_controller.rb` — assignment now resolves assignees through the incident’s org/AO-compatible user scope instead of an unscoped global `User.find_by`.
+- `backend/app/services/incidents/assign_service.rb` — added defense-in-depth validation so incompatible assignees are rejected even if another caller bypasses the controller boundary.
+- `backend/spec/requests/api/incidents_spec.rb` — added cross-organization and cross-AO assignment rejection coverage.
+- `backend/app/controllers/api/audit_events_controller.rb` — audit-events index now returns `{ data, meta }`, orders by `occurred_at DESC, id DESC`, supports cursor params (`before_occurred_at`, `before_id`), and exposes `has_more` / `next_cursor`.
+- `backend/spec/requests/api/audit_events_spec.rb` — updated for the new response envelope and added cursor-pagination coverage.
+- `backend/spec/requests/api/scoped_access_spec.rb` — updated scoped audit-events access assertions to the new `{ data, meta }` response envelope.
+- `frontend/src/api/audit_events.ts` + `frontend/src/api/types.ts` — split the audit-events API into array-unwrapping `getAuditEvents()` for existing entity timelines and cursor-aware `getAuditEventsPage()` for debrief.
+- `frontend/src/hooks/useDebriefTimeline.ts` — debrief now uses infinite query pagination with an anchored `from`/`to` window per query session, includes `site_status_changed`, `recommendation_deferred`, and `recommendation_rejected`, and exposes `hasMore` / `loadMore`.
+- `frontend/src/components/DebriefPanel.tsx` — debrief timeline now renders a `Load older events` action when additional pages exist instead of silently clipping at 200.
+- `frontend/src/test/useDebriefTimeline.test.ts` + `frontend/src/test/DebriefPanel.test.tsx` — added coverage for anchored `from`/`to` forwarding, cursor pagination, page accumulation, and the debrief load-more UI.
+- `backend/app/services/ai/ontology_query_service.rb` — exception telemetry now records `query_length` and a boolean `as_of_applied` only; raw natural-language query text and the exact `as_of` timestamp are no longer sent to observability.
+- `backend/spec/services/ai/ontology_query_service_spec.rb` — updated telemetry assertions to require `query_length` / `as_of_applied` and prove both raw `query` and `as_of` are absent.
 
 ## In Progress
 
@@ -41,19 +46,24 @@ Stand up a commander-only `/debrief` surface that consumes the Slice 1 API addit
 ## Next
 
 - Phase 4 Slice 3: click-to-reconstruct from a debrief timeline row — wire selecting an event into entering replay at that `occurred_at` and (where possible) deep-linking to the entity page (incident/task/site/asset). Must preserve replay `as_of` semantics.
-- Run `/gate` before committing Slice 2.
+- Run `/gate` on this support-cleanup tranche before committing.
 
 ## Files Changed This Slice
 
-- `frontend/src/hooks/useDebriefTimeline.ts` (new)
-- `frontend/src/components/DebriefPanel.tsx` (new)
-- `frontend/src/pages/DebriefPage.tsx` (new)
-- `frontend/src/test/useDebriefTimeline.test.ts` (new)
-- `frontend/src/test/DebriefPage.test.tsx` (new)
-- `frontend/src/test/DebriefPanel.test.tsx` (new)
-- `frontend/src/App.tsx`
-- `frontend/src/components/shell/AppSidebar.tsx`
-- `frontend/src/hooks/useRole.ts`
+- `backend/app/controllers/api/incidents_controller.rb`
+- `backend/app/services/incidents/assign_service.rb`
+- `backend/spec/requests/api/incidents_spec.rb`
+- `backend/app/controllers/api/audit_events_controller.rb`
+- `backend/spec/requests/api/audit_events_spec.rb`
+- `backend/spec/requests/api/scoped_access_spec.rb`
+- `backend/app/services/ai/ontology_query_service.rb`
+- `backend/spec/services/ai/ontology_query_service_spec.rb`
+- `frontend/src/api/audit_events.ts`
+- `frontend/src/api/types.ts`
+- `frontend/src/hooks/useDebriefTimeline.ts`
+- `frontend/src/components/DebriefPanel.tsx`
+- `frontend/src/test/useDebriefTimeline.test.ts`
+- `frontend/src/test/DebriefPanel.test.tsx`
 
 ## Currently Locked Files
 
@@ -62,27 +72,33 @@ Stand up a commander-only `/debrief` surface that consumes the Slice 1 API addit
 ## Validation Commands
 
 ```bash
-cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx tsc --noEmit
+cd /Users/timurmishiev/Desktop/Code/resilience/backend && TEST_DATABASE_PORT=5434 /Users/timurmishiev/.rbenv/shims/bundle exec rspec spec/requests/api/incidents_spec.rb spec/requests/api/audit_events_spec.rb spec/requests/api/scoped_access_spec.rb spec/services/ai/ontology_query_service_spec.rb
+cd /Users/timurmishiev/Desktop/Code/resilience/backend && TEST_DATABASE_PORT=5434 /Users/timurmishiev/.rbenv/shims/bundle exec rspec
+cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run src/test/useDebriefTimeline.test.ts src/test/DebriefPanel.test.tsx
 cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run
-cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/hooks/useDebriefTimeline.ts src/hooks/useRole.ts src/components/DebriefPanel.tsx src/pages/DebriefPage.tsx src/App.tsx src/components/shell/AppSidebar.tsx src/test/useDebriefTimeline.test.ts src/test/DebriefPage.test.tsx src/test/DebriefPanel.test.tsx
+cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx tsc -p tsconfig.app.json --noEmit
+cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/hooks/useDebriefTimeline.ts src/components/DebriefPanel.tsx src/api/audit_events.ts src/api/types.ts src/test/useDebriefTimeline.test.ts src/test/DebriefPanel.test.tsx
 git diff --check
 ```
 
 ## Last Validation Results
 
-- TypeScript: 0 errors
-- Full Vitest suite: 518 tests across 73 files, 0 failures (was 507/70 before Slice 2; +11 tests, +3 files)
-- ESLint on touched files: 0 errors, 0 warnings
-- Debrief-specific tests: 11/11 pass (`useDebriefTimeline.test.ts` 5, `DebriefPage.test.tsx` 2, `DebriefPanel.test.tsx` 4 — includes empty-state and error-branch coverage)
+- Focused backend specs: 112 examples, 0 failures (`spec/requests/api/incidents_spec.rb`, `spec/requests/api/audit_events_spec.rb`, `spec/requests/api/scoped_access_spec.rb`, `spec/services/ai/ontology_query_service_spec.rb`; `TEST_DATABASE_PORT=5434` required locally because the default backend DB bootstrap still hits the known `transaction_timeout`/pending-migrations environment issue)
+- Full backend suite: 2166 examples, 0 failures (`TEST_DATABASE_PORT=5434`)
+- Focused frontend tests: 11/11 pass (`useDebriefTimeline.test.ts` 6, `DebriefPanel.test.tsx` 5)
+- Full Vitest suite: 520 tests across 73 files, 0 failures
+- TypeScript (`tsconfig.app.json`): 0 errors
+- ESLint on touched frontend files: 0 errors, 0 warnings
 - `git diff --check`: clean
 
 ## Known Risks / Blockers
 
-- Commander-only gate is enforced in UI (`useRole()`), backed by the existing backend policy: `AuditEventAccessPolicy#index?` returns `commander?` whenever `entity_id` is blank, and the Slice 1 controller also forbids operators from using `entity_types[]` without a scoped entity. So an operator who bypassed the UI gate still gets 403 from the API.
-- Curated event list is hard-coded in the hook (`MEANINGFUL_DEBRIEF_EVENT_TYPES`, 16 entries). Cross-checked against controllers (`areas_of_operation`, `sites`, `salute_reports`), models (`recommendation`), AND services as of 2026-04-18 — earlier revisions only covered services and missed `posture_changed`, `salute_report.created`, `site_unflagged`, `recommendation_accepted`, `recommendation_executed`. Intentional exclusions: `task.updated`, `incident_updated`, `incident.fusion_attached` (noisy/internal). Open asymmetry: `recommendation_rejected` and `recommendation_deferred` are NOT included — only accepted/executed are. If we later decide debrief should reflect all commander terminal decisions, add both. New event types added anywhere in the backend won't surface here automatically — owners must update the curated list.
-- `from` is computed inside `queryFn`, not in render — so reading React Query's cache for a given range returns a stable result until a new render triggers a new query (range-change or manual invalidate). `nowIso` is exposed for tests; production callers pass nothing and get wall-clock anchor.
-- Limit is 200. Narrower ranges (1h) are well under that; a busy 7d window could clip. Slice 3 will introduce click-to-reconstruct so individual events stay navigable even if the raw list is clipped; pagination can follow later if it proves necessary.
-- No replay propagation in this surface yet — the debrief is purely a historical list driven by `from`/`to`. Clicking an event to enter replay is explicitly Slice 3.
+- Commander-only broad audit access is still enforced in UI and backend: `AuditEventAccessPolicy#index?` returns `commander?` whenever `entity_id` is blank, and the controller still forbids operators from using `entity_types[]` without a scoped entity.
+- Frontend type-check must use the build-equivalent `tsc -p tsconfig.app.json --noEmit` (or `tsc -b`). The loose root `tsc --noEmit` exits 0 even when app sources fail to compile, because the root `tsconfig.json` is a project-reference shell. Any handoff claim of "TypeScript: 0 errors" must be sourced from the project-scoped invocation.
+- Curated debrief event coverage is now broader (`site_status_changed`, `recommendation_deferred`, `recommendation_rejected` added), but the list is still manual. New backend event types will not surface automatically; owners must update `MEANINGFUL_DEBRIEF_EVENT_TYPES`.
+- Debrief no longer silently clips at 200 rows; it now exposes cursor-backed loading. It still does not have click-to-reconstruct or temporal diff. Those remain Slice 3+ work.
+- Local backend validation still requires `TEST_DATABASE_PORT=5434` because the default test DB bootstrap path hits the known `transaction_timeout` / pending-migrations environment mismatch.
+- No replay propagation in this surface yet — the debrief remains a historical list driven by `from`/`to`. Clicking an event to enter replay is explicitly Slice 3.
 
 ## Do Not Reopen
 

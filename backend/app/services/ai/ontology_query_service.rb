@@ -1061,7 +1061,10 @@ module Ai
       Observability.capture_exception(
         exception,
         tags: { service: "ontology_query", failure: failure },
-        extra: { query: @query },
+        extra: {
+          query_length: @query.length,
+          as_of_applied: @as_of.present?,
+        },
         throttle_key: "ontology_query:#{failure}:#{exception.class.name}",
       )
     end

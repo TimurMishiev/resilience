@@ -1,5 +1,6 @@
-import { useQuery } from '@tanstack/react-query'
-import { getAuditEvents } from '../api/audit_events'
+import { useInfiniteQuery } from '@tanstack/react-query'
+import { getAuditEventsPage } from '../api/audit_events'
+import type { AuditEventsCursor } from '../api/types'
 
 export type DebriefRange = '1h' | '6h' | '24h' | '7d'
 
@@ -33,10 +34,13 @@ export const MEANINGFUL_DEBRIEF_EVENT_TYPES: string[] = [
   'alert.transitioned',
   'asset.status_changed',
   'site_flagged',
+  'site_status_changed',
   'site_unflagged',
   'posture_changed',
   'salute_report.created',
   'recommendation_accepted',
+  'recommendation_deferred',
+  'recommendation_rejected',
   'recommendation_executed',
 ]
 
@@ -48,18 +52,49 @@ interface Params {
   nowIso?: string
 }
 
+interface DebriefPageParam {
+  anchorIso: string
+  cursor: AuditEventsCursor | null
+}
+
 export function useDebriefTimeline({ range, enabled = true, nowIso }: Params) {
-  return useQuery({
-    queryKey: ['debrief_timeline', range, nowIso ?? null],
-    queryFn: () => {
-      const anchor = nowIso ? new Date(nowIso).getTime() : Date.now()
+  const queryKey = ['debrief_timeline', range, nowIso ?? null] as const
+  const initialPageParam: DebriefPageParam = {
+    anchorIso: nowIso ?? new Date().toISOString(),
+    cursor: null,
+  }
+
+  const query = useInfiniteQuery({
+    queryKey,
+    queryFn: ({ pageParam }) => {
+      const { anchorIso, cursor } = pageParam
+      const anchor = new Date(anchorIso).getTime()
       const from = new Date(anchor - RANGE_MS[range]).toISOString()
-      return getAuditEvents({
+      return getAuditEventsPage({
         from,
+        to: anchorIso,
         event_types: MEANINGFUL_DEBRIEF_EVENT_TYPES,
         limit: DEBRIEF_LIMIT,
+        ...(cursor ?? {}),
       })
     },
+    initialPageParam,
+    getNextPageParam: (lastPage, _pages, lastPageParam) => (
+      lastPage.meta.has_more && lastPage.meta.next_cursor
+        ? {
+            anchorIso: lastPageParam.anchorIso,
+            cursor: lastPage.meta.next_cursor,
+          }
+        : undefined
+    ),
     enabled,
   })
+
+  return {
+    ...query,
+    events: query.data?.pages.flatMap((page) => page.data) ?? [],
+    hasMore: query.hasNextPage ?? false,
+    loadMore: query.fetchNextPage,
+    isLoadingMore: query.isFetchingNextPage,
+  }
 }

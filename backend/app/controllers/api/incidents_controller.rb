@@ -107,7 +107,7 @@ module Api
       incident = scoped_record(Incident, params[:id], includes: [:site, :area_of_operation, :signal_rule_matches, :assigned_to])
       authorize incident, :assign?
       assignee = if params[:assignee_id].present?
-        user = User.find_by(id: params[:assignee_id])
+        user = assignable_user_scope_for(incident).find_by(id: params[:assignee_id])
         return render json: { errors: ["User not found"] }, status: :not_found unless user
         user
       end
@@ -274,6 +274,17 @@ module Api
 
     def incident_params
       params.require(:incident).permit(:title, :description, :severity)
+    end
+
+    def assignable_user_scope_for(incident)
+      scope = User.all
+      incident_org_id = incident.site&.organization_id || incident.area_of_operation&.organization_id
+      incident_ao_id  = incident.site&.area_of_operation_id || incident.area_of_operation_id
+
+      scope = scope.where(organization_id: incident_org_id) if incident_org_id.present?
+      return scope unless incident_ao_id.present?
+
+      scope.where(area_of_operation_id: [nil, incident_ao_id])
     end
 
     def audit_forbidden_assignment_attempt(incident, assignee)

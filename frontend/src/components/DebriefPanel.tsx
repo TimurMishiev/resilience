@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Callout, HTMLSelect, NonIdealState, Spinner, Tag } from '@blueprintjs/core'
+import { Button, Callout, HTMLSelect, NonIdealState, Spinner, Tag } from '@blueprintjs/core'
 import type { AuditEvent } from '../api/types'
 import { humanize } from '../utils/humanize'
 import {
@@ -24,7 +24,7 @@ function eventLabel(event: AuditEvent): string {
 
 export default function DebriefPanel() {
   const [range, setRange] = useState<DebriefRange>('24h')
-  const { data: events, error, isPending } = useDebriefTimeline({ range })
+  const { events, error, isPending, hasMore, loadMore, isLoadingMore } = useDebriefTimeline({ range })
 
   return (
     <div className="debrief-panel">
@@ -57,22 +57,35 @@ export default function DebriefPanel() {
       )}
 
       {!isPending && !error && events && events.length > 0 && (
-        <ol className="timeline debrief-timeline">
-          {events.map((event) => (
-            <li key={event.id} className="timeline-item">
-              <div className="timeline-meta">
-                <span className="timeline-time bp6-text-muted">{formatTime(event.occurred_at)}</span>
-                <span className="timeline-actor bp6-text-muted">{event.actor}</span>
-              </div>
-              <div className="timeline-body">
-                <Tag minimal intent="primary" className="debrief-entity-tag">
-                  {event.entity_type}
-                </Tag>
-                <Tag minimal className="timeline-label">{eventLabel(event)}</Tag>
-              </div>
-            </li>
-          ))}
-        </ol>
+        <>
+          <ol className="timeline debrief-timeline">
+            {events.map((event) => (
+              <li key={event.id} className="timeline-item">
+                <div className="timeline-meta">
+                  <span className="timeline-time bp6-text-muted">{formatTime(event.occurred_at)}</span>
+                  <span className="timeline-actor bp6-text-muted">{event.actor}</span>
+                </div>
+                <div className="timeline-body">
+                  <Tag minimal intent="primary" className="debrief-entity-tag">
+                    {event.entity_type}
+                  </Tag>
+                  <Tag minimal className="timeline-label">{eventLabel(event)}</Tag>
+                </div>
+              </li>
+            ))}
+          </ol>
+
+          {hasMore && (
+            <div className="debrief-load-more">
+              <Button
+                text="Load older events"
+                onClick={() => void loadMore()}
+                loading={isLoadingMore}
+                outlined
+              />
+            </div>
+          )}
+        </>
       )}
     </div>
   )

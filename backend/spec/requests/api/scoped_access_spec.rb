@@ -237,7 +237,7 @@ RSpec.describe "API scoped access", type: :request do
           headers: auth_headers(scoped_operator)
 
       expect(response).to have_http_status(:ok)
-      expect(json_body.map { |event| event.fetch("id") }).to eq([audit_task_a.id])
+      expect(json_body.fetch("data").map { |event| event.fetch("id") }).to eq([audit_task_a.id])
 
       get "/api/audit_events",
           params: { entity_type: "Task", entity_id: task_b.id },
@@ -293,7 +293,7 @@ RSpec.describe "API scoped access", type: :request do
       get "/api/audit_events", headers: auth_headers(scoped_commander)
 
       expect(response).to have_http_status(:ok)
-      returned_ids = json_body.map { |e| e.fetch("id") }
+      returned_ids = json_body.fetch("data").map { |e| e.fetch("id") }
 
       visible_events.each do |event|
         expect(returned_ids).to include(event.id),

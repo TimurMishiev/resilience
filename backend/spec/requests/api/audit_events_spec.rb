@@ -23,6 +23,14 @@ RSpec.describe "Api::AuditEvents", type: :request do
   end
 
   describe "GET /api/audit_events" do
+    def response_events
+      JSON.parse(response.body).fetch("data")
+    end
+
+    def response_meta
+      JSON.parse(response.body).fetch("meta")
+    end
+
     it "requires authentication" do
       get "/api/audit_events"
 
@@ -32,7 +40,7 @@ RSpec.describe "Api::AuditEvents", type: :request do
     it "returns 200 with events in descending occurred_at order" do
       get "/api/audit_events", headers: auth_headers(current_user)
       expect(response).to have_http_status(:ok)
-      events = JSON.parse(response.body)
+      events = response_events
       expect(events.map { |e| e["id"] }).to include(event_a.id, event_b.id)
       timestamps = events.map { |e| e["occurred_at"] }
       expect(timestamps).to eq(timestamps.sort.reverse)
@@ -40,26 +48,28 @@ RSpec.describe "Api::AuditEvents", type: :request do
 
     it "filters by entity_type" do
       get "/api/audit_events", params: { entity_type: "Task" }, headers: auth_headers(current_user)
-      ids = JSON.parse(response.body).map { |e| e["id"] }
+      ids = response_events.map { |e| e["id"] }
       expect(ids).to include(event_a.id)
       expect(ids).not_to include(event_b.id)
     end
 
     it "filters by entity_id" do
       get "/api/audit_events", params: { entity_id: task.id }, headers: auth_headers(current_user)
-      ids = JSON.parse(response.body).map { |e| e["id"] }
+      ids = response_events.map { |e| e["id"] }
       expect(ids).to eq([event_a.id])
     end
 
     it "respects the limit param" do
       create_list(:audit_event, 5, entity_type: "Task", entity_id: task.id)
       get "/api/audit_events", params: { limit: 2 }, headers: auth_headers(current_user)
-      expect(JSON.parse(response.body).size).to eq(2)
+      expect(response_events.size).to eq(2)
+      expect(response_meta).to include("limit" => 2, "has_more" => true)
     end
 
     it "caps limit at 500" do
       get "/api/audit_events", params: { limit: 9999 }, headers: auth_headers(current_user)
       expect(response).to have_http_status(:ok)
+      expect(response_meta.fetch("limit")).to eq(500)
     end
 
     it "filters by as_of" do
@@ -67,7 +77,7 @@ RSpec.describe "Api::AuditEvents", type: :request do
           params: { as_of: 150.minutes.ago.iso8601 },
           headers: auth_headers(current_user)
 
-      ids = JSON.parse(response.body).map { |event| event["id"] }
+      ids = response_events.map { |event| event["id"] }
       expect(ids).to contain_exactly(event_b.id)
     end
 
@@ -76,7 +86,7 @@ RSpec.describe "Api::AuditEvents", type: :request do
           params: { from: 150.minutes.ago.iso8601, to: 30.minutes.ago.iso8601 },
           headers: auth_headers(current_user)
 
-      ids = JSON.parse(response.body).map { |event| event["id"] }
+      ids = response_events.map { |event| event["id"] }
       expect(ids).to contain_exactly(event_a.id)
     end
 
@@ -86,7 +96,7 @@ RSpec.describe "Api::AuditEvents", type: :request do
           headers: auth_headers(current_user)
 
       expect(response).to have_http_status(:ok)
-      ids = JSON.parse(response.body).map { |event| event["id"] }
+      ids = response_events.map { |event| event["id"] }
       expect(ids).to include(event_a.id, event_b.id)
     end
 
@@ -95,7 +105,7 @@ RSpec.describe "Api::AuditEvents", type: :request do
           params: { event_types: ["task.created"] },
           headers: auth_headers(current_user)
 
-      ids = JSON.parse(response.body).map { |event| event["id"] }
+      ids = response_events.map { |event| event["id"] }
       expect(ids).to contain_exactly(event_a.id)
     end
 
@@ -104,7 +114,7 @@ RSpec.describe "Api::AuditEvents", type: :request do
           params: { entity_types: %w[Task Site] },
           headers: auth_headers(current_user)
 
-      ids = JSON.parse(response.body).map { |event| event["id"] }
+      ids = response_events.map { |event| event["id"] }
       expect(ids).to include(event_a.id, event_b.id)
     end
 
@@ -113,7 +123,7 @@ RSpec.describe "Api::AuditEvents", type: :request do
           params: { entity_types: ["Site"] },
           headers: auth_headers(current_user)
 
-      ids = JSON.parse(response.body).map { |event| event["id"] }
+      ids = response_events.map { |event| event["id"] }
       expect(ids).to include(event_b.id)
       expect(ids).not_to include(event_a.id)
     end
@@ -131,7 +141,7 @@ RSpec.describe "Api::AuditEvents", type: :request do
           params: { entity_type: "Task", entity_id: task.id, entity_types: ["Site"] },
           headers: auth_headers(current_user)
 
-      ids = JSON.parse(response.body).map { |event| event["id"] }
+      ids = response_events.map { |event| event["id"] }
       expect(ids).to contain_exactly(event_a.id)
     end
 
@@ -141,13 +151,13 @@ RSpec.describe "Api::AuditEvents", type: :request do
           params: { as_of: 1.hour.ago.iso8601, to: 2.5.hours.ago.iso8601 },
           headers: auth_headers(current_user)
 
-      ids = JSON.parse(response.body).map { |event| event["id"] }
+      ids = response_events.map { |event| event["id"] }
       expect(ids).to contain_exactly(event_b.id)
     end
 
     it "returns expected fields" do
       get "/api/audit_events", headers: auth_headers(current_user)
-      event = JSON.parse(response.body).first
+      event = response_events.first
       expect(event.keys).to include(
         "id", "schema_version", "actor", "entity_type", "entity_id",
         "event_type", "action", "before_snapshot", "after_snapshot",
@@ -161,13 +171,40 @@ RSpec.describe "Api::AuditEvents", type: :request do
           headers: auth_headers(operator)
 
       expect(response).to have_http_status(:ok)
-      expect(JSON.parse(response.body).map { |event| event["id"] }).to eq([event_a.id])
+      expect(response_events.map { |event| event["id"] }).to eq([event_a.id])
     end
 
     it "forbids operators from querying the global audit log" do
       get "/api/audit_events", headers: auth_headers(operator)
 
       expect(response).to have_http_status(:forbidden)
+    end
+
+    it "returns a cursor when older matching events exist" do
+      older_events = [
+        create(:audit_event, entity_type: "Task", entity_id: task.id, occurred_at: 4.hours.ago),
+        create(:audit_event, entity_type: "Task", entity_id: task.id, occurred_at: 5.hours.ago),
+        create(:audit_event, entity_type: "Task", entity_id: task.id, occurred_at: 6.hours.ago),
+      ]
+      get "/api/audit_events", params: { limit: 2 }, headers: auth_headers(current_user)
+
+      meta = response_meta
+      expect(meta.fetch("has_more")).to eq(true)
+      expect(meta.fetch("next_cursor")).to include("before_occurred_at", "before_id")
+
+      cursor = meta.fetch("next_cursor")
+      get "/api/audit_events",
+          params: {
+            limit: 2,
+            before_occurred_at: cursor.fetch("before_occurred_at"),
+            before_id: cursor.fetch("before_id"),
+          },
+          headers: auth_headers(current_user)
+
+      next_page_ids = response_events.map { |event| event["id"] }
+      expect(next_page_ids).to eq(older_events.first(2).map(&:id))
+      expect(next_page_ids).not_to include(cursor.fetch("before_id"))
+      expect(response_meta.fetch("has_more")).to eq(true)
     end
   end
 end

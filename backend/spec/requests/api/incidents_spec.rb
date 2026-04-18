@@ -384,6 +384,38 @@ RSpec.describe "Api::Incidents", type: :request do
       expect(response).to have_http_status(:not_found)
     end
 
+    it "returns 404 when commander tries to assign a user from another organization" do
+      org_a = create(:organization)
+      org_b = create(:organization)
+      site.update!(organization: org_a)
+      commander.update!(organization: org_a)
+      foreign_user = create(:user, organization: org_b)
+
+      patch "/api/incidents/#{incident.id}/assign",
+            params:  { assignee_id: foreign_user.id },
+            headers: auth_headers(commander), as: :json
+
+      expect(response).to have_http_status(:not_found)
+      expect(incident.reload.assigned_to).to be_nil
+    end
+
+    it "returns 404 when commander tries to assign a user scoped to a different AO" do
+      org = create(:organization)
+      ao_a = create(:area_of_operation, organization: org, created_by: commander)
+      ao_b = create(:area_of_operation, organization: org, created_by: commander)
+      site.update!(organization: org, area_of_operation: ao_a)
+      incident.update!(area_of_operation: ao_a)
+      commander.update!(organization: org)
+      foreign_ao_user = create(:user, organization: org, area_of_operation: ao_b)
+
+      patch "/api/incidents/#{incident.id}/assign",
+            params:  { assignee_id: foreign_ao_user.id },
+            headers: auth_headers(commander), as: :json
+
+      expect(response).to have_http_status(:not_found)
+      expect(incident.reload.assigned_to).to be_nil
+    end
+
     it "allows operators to self-assign" do
       patch "/api/incidents/#{incident.id}/assign",
             params:  { assignee_id: operator.id },

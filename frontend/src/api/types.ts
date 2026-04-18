@@ -291,6 +291,22 @@ export interface AuditEvent {
   occurred_at: string
 }
 
+export interface AuditEventsCursor {
+  before_occurred_at: string
+  before_id: string
+}
+
+export interface AuditEventsMeta {
+  limit: number
+  has_more: boolean
+  next_cursor: AuditEventsCursor | null
+}
+
+export interface AuditEventsResponse {
+  data: AuditEvent[]
+  meta: AuditEventsMeta
+}
+
 export interface ReadinessScore {
   score: number | null
   total_tasks: number

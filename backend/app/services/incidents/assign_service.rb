@@ -16,6 +16,10 @@ module Incidents
     end
 
     def call
+      unless assignee_compatible_with_incident_scope?
+        return ServiceResult.failure(errors: ["Assignee is not eligible for this incident"])
+      end
+
       before = {
         assigned_to_id: @incident.assigned_to_id,
         assigned_at:    @incident.assigned_at,
@@ -56,6 +60,18 @@ module Incidents
 
     def actor_label
       @actor.respond_to?(:email) ? @actor.email : @actor.to_s
+    end
+
+    def assignee_compatible_with_incident_scope?
+      return true unless @assignee.present?
+
+      incident_org_id = @incident.site&.organization_id || @incident.area_of_operation&.organization_id
+      incident_ao_id  = @incident.site&.area_of_operation_id || @incident.area_of_operation_id
+
+      return false if incident_org_id.present? && @assignee.organization_id != incident_org_id
+      return false if incident_ao_id.present? && @assignee.area_of_operation_id.present? && @assignee.area_of_operation_id != incident_ao_id
+
+      true
     end
   end
 end

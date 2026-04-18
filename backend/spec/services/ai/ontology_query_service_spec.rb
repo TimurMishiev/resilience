@@ -74,10 +74,13 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
         timeout_error,
         hash_including(
           tags: include(service: "ontology_query", failure: "timeout"),
-          extra: include(query: query),
+          extra: include(query_length: query.length, as_of_applied: false),
           throttle_key: a_string_including("ontology_query:timeout"),
         ),
-      )
+      ) do |_exception, kwargs|
+        expect(kwargs.fetch(:extra)).not_to have_key(:query)
+        expect(kwargs.fetch(:extra)).not_to have_key(:as_of)
+      end
 
       result = described_class.call(user: user, query: query)
 
@@ -94,10 +97,13 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
         error,
         hash_including(
           tags: include(service: "ontology_query", failure: "error"),
-          extra: include(query: query),
+          extra: include(query_length: query.length, as_of_applied: false),
           throttle_key: a_string_including("ontology_query:error"),
         ),
-      )
+      ) do |_exception, kwargs|
+        expect(kwargs.fetch(:extra)).not_to have_key(:query)
+        expect(kwargs.fetch(:extra)).not_to have_key(:as_of)
+      end
 
       result = described_class.call(user: user, query: query)
 

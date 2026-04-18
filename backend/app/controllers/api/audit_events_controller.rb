@@ -24,7 +24,7 @@ module Api
       )
       authorize access, :index?
 
-      events = AuditEvent.all.order(occurred_at: :desc)
+      events = AuditEvent.all.order(occurred_at: :desc, id: :desc)
       events = events.up_to(as_of) if as_of.present?
 
       from_time = safe_parse_datetime(params[:from])
@@ -48,8 +48,21 @@ module Api
         events = scope_audit_events_by_org(events)
       end
 
+      events = apply_before_cursor(events)
+
       limit = [params.fetch(:limit, 100).to_i, 500].min
-      render json: events.limit(limit).map { |e| serialize_event(e) }
+      rows = events.limit(limit + 1).to_a
+      has_more = rows.length > limit
+      rows = rows.first(limit)
+
+      render json: {
+        data: rows.map { |event| serialize_event(event) },
+        meta: {
+          limit: limit,
+          has_more: has_more,
+          next_cursor: build_next_cursor(rows, has_more: has_more),
+        },
+      }
     end
 
     private
@@ -72,6 +85,31 @@ module Api
       event.as_json(only: %i[id schema_version actor entity_type entity_id event_type
                               action before_snapshot after_snapshot metadata
                               correlation_id occurred_at])
+    end
+
+    def apply_before_cursor(events)
+      before_time = safe_parse_datetime(params[:before_occurred_at])
+      before_id = params[:before_id].presence
+      return events unless before_time
+
+      if before_id.present?
+        events.where(
+          "occurred_at < :before_time OR (occurred_at = :before_time AND id < :before_id)",
+          before_time: before_time,
+          before_id: before_id,
+        )
+      else
+        events.where("occurred_at < ?", before_time)
+      end
+    end
+
+    def build_next_cursor(rows, has_more:)
+      return nil unless has_more && rows.any?
+
+      {
+        before_occurred_at: rows.last.occurred_at.iso8601(6),
+        before_id: rows.last.id,
+      }
     end
   end
 end
