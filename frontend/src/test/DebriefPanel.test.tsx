@@ -9,6 +9,12 @@ const replayState = vi.hoisted(() => ({
   setAsOf: vi.fn(),
 }))
 
+const mockToasterShow = vi.hoisted(() => vi.fn())
+
+vi.mock('../lib/toaster', () => ({
+  AppToaster: Promise.resolve({ show: mockToasterShow }),
+}))
+
 vi.mock('../api/audit_events', () => ({
   getAuditEventsPage: vi.fn().mockResolvedValue({
     data: [
@@ -109,6 +115,7 @@ describe('DebriefPanel', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     replayState.setAsOf.mockReset()
+    mockToasterShow.mockReset()
     const { getAuditEventsPage } = await import('../api/audit_events')
     ;(getAuditEventsPage as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: [
@@ -338,5 +345,137 @@ describe('DebriefPanel', () => {
     expect(getAsset).toHaveBeenCalledWith('a1', { as_of: '2026-04-17T10:45:00Z' })
     expect(replayState.setAsOf).toHaveBeenCalledWith('2026-04-17T10:45:00Z')
     expect(screen.getByTestId('location')).toHaveTextContent('/sites/site-asset?asset=a1')
+  })
+
+  it('surfaces a danger toast when the reconstruction lookup fails', async () => {
+    const user = userEvent.setup()
+    const { getAuditEventsPage } = await import('../api/audit_events')
+    const { getTask } = await import('../api/tasks')
+    ;(getAuditEventsPage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      data: [
+        {
+          id: 'e-task',
+          schema_version: 1,
+          actor: 'op@example.com',
+          entity_type: 'Task',
+          entity_id: 't1',
+          event_type: 'task.transitioned',
+          action: 'resolved',
+          before_snapshot: null,
+          after_snapshot: {},
+          metadata: null,
+          correlation_id: 'ct',
+          occurred_at: '2026-04-17T11:30:00Z',
+        },
+      ],
+      meta: { limit: 200, has_more: false, next_cursor: null },
+    })
+    ;(getTask as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('Task not found'))
+
+    renderPanel()
+
+    await user.click(await screen.findByRole('button', { name: /Enter replay from Task event/i }))
+
+    await waitFor(() => expect(mockToasterShow).toHaveBeenCalledTimes(1))
+    expect(mockToasterShow).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Task not found', intent: 'danger' }),
+    )
+    // Replay still enters at the event timestamp so the operator can navigate manually.
+    expect(replayState.setAsOf).toHaveBeenCalledWith('2026-04-17T11:30:00Z')
+    // Navigation should not happen on failure — still on /debrief.
+    expect(screen.getByTestId('location')).toHaveTextContent('/debrief')
+  })
+
+  it('ignores a stale in-flight lookup when a newer row is clicked', async () => {
+    const user = userEvent.setup()
+    const { getAuditEventsPage } = await import('../api/audit_events')
+    const { getTask } = await import('../api/tasks')
+    const { getAsset } = await import('../api/assets')
+
+    ;(getAuditEventsPage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      data: [
+        {
+          id: 'e-task',
+          schema_version: 1,
+          actor: 'op@example.com',
+          entity_type: 'Task',
+          entity_id: 't1',
+          event_type: 'task.transitioned',
+          action: 'resolved',
+          before_snapshot: null,
+          after_snapshot: {},
+          metadata: null,
+          correlation_id: 'ct',
+          occurred_at: '2026-04-17T11:30:00Z',
+        },
+        {
+          id: 'e-asset',
+          schema_version: 1,
+          actor: 'cmdr@example.com',
+          entity_type: 'Asset',
+          entity_id: 'a1',
+          event_type: 'asset.status_changed',
+          action: 'assigned',
+          before_snapshot: null,
+          after_snapshot: {},
+          metadata: null,
+          correlation_id: 'ca',
+          occurred_at: '2026-04-17T10:45:00Z',
+        },
+      ],
+      meta: { limit: 200, has_more: false, next_cursor: null },
+    })
+
+    // Task lookup resolves later than the Asset click — it must not win navigation.
+    let resolveTask: (value: unknown) => void = () => {}
+    ;(getTask as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      () => new Promise((resolve) => { resolveTask = resolve }),
+    )
+    ;(getAsset as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      id: 'a1',
+      name: 'Sentinel Drone',
+      asset_type: 'uav',
+      status: 'available',
+      home_site_id: 'site-asset',
+      last_reported_at: '2026-04-17T10:45:00Z',
+      created_at: '2026-04-17T10:00:00Z',
+      updated_at: '2026-04-17T10:45:00Z',
+    })
+
+    renderPanel()
+
+    await user.click(await screen.findByRole('button', { name: /Enter replay from Task event/i }))
+    await user.click(screen.getByRole('button', { name: /Enter replay from Asset event/i }))
+
+    // Asset click is newer — it wins navigation and replay anchor.
+    await waitFor(() => {
+      expect(screen.getByTestId('location')).toHaveTextContent('/sites/site-asset?asset=a1')
+    })
+    expect(replayState.setAsOf).toHaveBeenLastCalledWith('2026-04-17T10:45:00Z')
+
+    // Now resolve the stale task lookup — it must NOT overwrite navigation or setAsOf.
+    resolveTask({
+      id: 't1',
+      site_id: 'site-task',
+      asset_id: null,
+      title: 'Resolve outage',
+      description: null,
+      priority: 'high',
+      workflow_status: 'new',
+      blocked_reason: null,
+      resolved_at: null,
+      created_at: '2026-04-17T11:30:00Z',
+      updated_at: '2026-04-17T11:30:00Z',
+      site_name: 'Task Site',
+      ao_id: 'ao-1',
+      ao_posture: 'defensive',
+    })
+
+    // Give the stale promise a tick to settle.
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/sites/site-asset?asset=a1')
+    expect(replayState.setAsOf).toHaveBeenLastCalledWith('2026-04-17T10:45:00Z')
+    expect(replayState.setAsOf).not.toHaveBeenCalledWith('2026-04-17T11:30:00Z')
   })
 })

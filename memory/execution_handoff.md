@@ -16,21 +16,29 @@ Phase 4 — Debrief
 
 ## Current Slice
 
-Phase 4 Slice 3 — click-to-reconstruct from debrief timeline rows — COMPLETE
+Phase 4 Slice 3 hardening — post-review P2/P3 follow-ups on click-to-reconstruct — IN PROGRESS (uncommitted)
 
-(Phase 4 Slice 2 — debrief entry point + timeline data hook — remains shipped. Phase 4 Slice 4 is now the next roadmap slice.)
+(Phase 4 Slice 3 — click-to-reconstruct from debrief timeline rows — shipped in `45906cb`. Phase 4 Slice 4 is still the next roadmap slice once this hardening round lands.)
 
 ## Objective
 
-Turn the debrief timeline into a real reconstruction entry flow: selecting a meaningful event should enter replay at that `occurred_at` and deep-link into the existing entity surface where the current route model can support it, without inventing new detail pages or breaking replay `as_of` semantics.
+Close post-push mentor findings on the debrief reconstruction flow without widening roadmap scope:
+- surface lookup failures to the operator via `AppToaster` instead of swallowing them silently,
+- eliminate a rapid-click race where a stale in-flight lookup could overwrite replay anchor / navigation set by a newer click,
+- replace the duplicated entity-type string list with a compile-time type guard so the switch stays exhaustive.
 
 ## Completed This Session
 
-- `frontend/src/components/DebriefPanel.tsx` — debrief rows are now clickable for reconstructable entity types (`Incident`, `Site`, `Task`, `Asset`); selecting one enters replay at the event timestamp and navigates into the supported detail surface.
-- `frontend/src/pages/SiteDetailPage.tsx` — added URL-driven `?asset=` drawer parity alongside the existing `?task=` deep link so asset reconstruction can land inside the current site-detail route model instead of inventing a new asset page.
-- `frontend/src/index.css` — added explicit clickable-row styling and focus treatment for debrief reconstruction actions.
-- `frontend/src/test/DebriefPanel.test.tsx` — added direct proof for incident reconstruction plus replay-aware task and asset reconstruction via `getTask(..., { as_of })` / `getAsset(..., { as_of })`.
-- `frontend/src/test/SiteDetailPage.test.tsx` — added proof that the `?asset=` route query opens and clears the asset drawer on the existing site-detail surface.
+- `frontend/src/components/DebriefPanel.tsx` — added `ReconstructableEntityType` + `isReconstructable` type guard; `resolveReconstructionTarget` is now narrowed and exhaustive. Added `AppToaster` danger toast on lookup failure (replay still enters so the operator can navigate manually). Added a monotonic `latestClickToken` ref so only the newest click applies `setAsOf` + `navigate`; older resolutions (success or failure) are abandoned.
+- `frontend/src/test/DebriefPanel.test.tsx` — added proof that a failed task lookup shows a danger toast with the API error message, keeps replay entered, and does not navigate; added proof that a newer asset click wins over an older in-flight task lookup (stale result does not overwrite navigation or `setAsOf`).
+
+## Shipped in `45906cb` (Slice 3 proper)
+
+- `frontend/src/components/DebriefPanel.tsx` — debrief rows clickable for `Incident`/`Site`/`Task`/`Asset`; enter replay at the event timestamp and deep-link into the supported detail surface.
+- `frontend/src/pages/SiteDetailPage.tsx` — URL-driven `?asset=` drawer parity with the existing `?task=` deep link.
+- `frontend/src/index.css` — clickable-row styling + focus treatment.
+- `frontend/src/test/DebriefPanel.test.tsx` / `frontend/src/test/SiteDetailPage.test.tsx` — direct proof for all four entity branches and `?asset=` drawer round-trip.
+- `frontend/e2e/replay-globe.spec.ts` — **orthogonal CI fix** (realigned the replay hint assertion to the current `GlobeToolbar` copy). Bundled into the Slice 3 commit; should have been split or called out here — flagged by post-push mentor review as P3 handoff drift.
 
 ## In Progress
 
@@ -38,16 +46,14 @@ Turn the debrief timeline into a real reconstruction entry flow: selecting a mea
 
 ## Next
 
+- Commit this hardening round, then move to Phase 4 Slice 4.
 - Phase 4 Slice 4: temporal diff between moments — establish at least one meaningful operator diff flow on top of the debrief/replay foundation without turning replay into a generic time machine.
 - Keep debrief reconstruction scoped to the existing route model unless Slice 4 explicitly justifies a broader shared-detail surface.
 
-## Files Changed This Slice
+## Files Changed This Slice (hardening round, uncommitted)
 
 - `frontend/src/components/DebriefPanel.tsx`
-- `frontend/src/pages/SiteDetailPage.tsx`
-- `frontend/src/index.css`
 - `frontend/src/test/DebriefPanel.test.tsx`
-- `frontend/src/test/SiteDetailPage.test.tsx`
 
 ## Currently Locked Files
 
@@ -56,17 +62,17 @@ Turn the debrief timeline into a real reconstruction entry flow: selecting a mea
 ## Validation Commands
 
 ```bash
-cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run src/test/DebriefPanel.test.tsx src/test/SiteDetailPage.test.tsx
+cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run src/test/DebriefPanel.test.tsx
 cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run
 cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx tsc -p tsconfig.app.json --noEmit
-cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/components/DebriefPanel.tsx src/pages/SiteDetailPage.tsx src/test/DebriefPanel.test.tsx src/test/SiteDetailPage.test.tsx
+cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/components/DebriefPanel.tsx src/test/DebriefPanel.test.tsx
 git diff --check
 ```
 
 ## Last Validation Results
 
-- Focused frontend tests: 11/11 pass (`DebriefPanel.test.tsx` 8, `SiteDetailPage.test.tsx` 3)
-- Full Vitest suite: 524 tests across 73 files, 0 failures
+- Focused frontend tests: 10/10 pass (`DebriefPanel.test.tsx`, including new toaster + single-flight race coverage)
+- Full Vitest suite: 526 tests across 73 files, 0 failures
 - TypeScript (`tsconfig.app.json`): 0 errors
 - ESLint on touched frontend files: 0 errors, 0 warnings
 - `git diff --check`: clean
@@ -74,9 +80,10 @@ git diff --check
 ## Known Risks / Blockers
 
 - Frontend type-check must use the build-equivalent `tsc -p tsconfig.app.json --noEmit` (or `tsc -b`). The loose root `tsc --noEmit` exits 0 even when app sources fail to compile, because the root `tsconfig.json` is a project-reference shell.
-- Curated debrief event coverage is still manual. New backend event types will not surface automatically; owners must update `MEANINGFUL_DEBRIEF_EVENT_TYPES`.
+- Curated debrief event coverage is still manual. New backend event types will not surface automatically; owners must update `MEANINGFUL_DEBRIEF_EVENT_TYPES`. The set of reconstructable entity types is also a single source of truth in `DebriefPanel.tsx` (`ReconstructableEntityType`) — add new types there and the switch stays exhaustive via the type guard.
 - Debrief reconstruction is intentionally limited to entity types the current route model can support cleanly (`Incident`, `Site`, `Task`, `Asset`). Other meaningful events still remain historical context rows only.
 - Temporal diff does not exist yet. That remains the next meaningful Debrief slice.
+- Debrief reconstruction intentionally enters replay at `event.occurred_at` even when the lookup fails, so the operator can still investigate manually from that timestamp. The failure is surfaced via `AppToaster` — if that assumption changes (e.g. we want hard-fail-no-replay on 403), rework `handleReconstruct` explicitly, don't just remove the toast.
 - Local backend validation still requires `TEST_DATABASE_PORT=5434` because the default test DB bootstrap path hits the known `transaction_timeout` / pending-migrations environment mismatch.
 
 ## Do Not Reopen

@@ -1,16 +1,27 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Button, Callout, HTMLSelect, NonIdealState, Spinner, Tag } from '@blueprintjs/core'
 import { useNavigate } from 'react-router-dom'
 import { getAsset } from '../api/assets'
+import { getApiErrorMessage } from '../api/client'
 import { getTask } from '../api/tasks'
 import type { AuditEvent } from '../api/types'
 import { useReplay } from '../context/ReplayContext'
+import { AppToaster } from '../lib/toaster'
 import { humanize } from '../utils/humanize'
 import {
   DEBRIEF_RANGE_OPTIONS,
   useDebriefTimeline,
   type DebriefRange,
 } from '../hooks/useDebriefTimeline'
+
+type ReconstructableEntityType = 'Incident' | 'Site' | 'Task' | 'Asset'
+type ReconstructableEvent = AuditEvent & { entity_type: ReconstructableEntityType }
+
+const RECONSTRUCTABLE_ENTITY_TYPES = ['Incident', 'Site', 'Task', 'Asset'] as const
+
+function isReconstructable(event: AuditEvent): event is ReconstructableEvent {
+  return (RECONSTRUCTABLE_ENTITY_TYPES as readonly string[]).includes(event.entity_type)
+}
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
@@ -26,11 +37,7 @@ function eventLabel(event: AuditEvent): string {
   return humanize(event.event_type)
 }
 
-function canReconstruct(event: AuditEvent): boolean {
-  return ['Incident', 'Site', 'Task', 'Asset'].includes(event.entity_type)
-}
-
-async function resolveReconstructionTarget(event: AuditEvent): Promise<string | null> {
+async function resolveReconstructionTarget(event: ReconstructableEvent): Promise<string | null> {
   switch (event.entity_type) {
     case 'Incident':
       return `/incidents/${event.entity_id}`
@@ -45,8 +52,6 @@ async function resolveReconstructionTarget(event: AuditEvent): Promise<string | 
       if (!asset.home_site_id) return null
       return `/sites/${asset.home_site_id}?asset=${encodeURIComponent(asset.id)}`
     }
-    default:
-      return null
   }
 }
 
@@ -57,19 +62,33 @@ export default function DebriefPanel() {
   const { setAsOf } = useReplay()
   const { events, error, isPending, hasMore, loadMore, isLoadingMore } = useDebriefTimeline({ range })
 
-  async function handleReconstruct(event: AuditEvent) {
-    if (!canReconstruct(event)) return
+  // Monotonic token so a newer click supersedes any in-flight lookup.
+  const latestClickToken = useRef(0)
 
+  async function handleReconstruct(event: AuditEvent) {
+    if (!isReconstructable(event)) return
+
+    const token = ++latestClickToken.current
     const requiresLookup = event.entity_type === 'Task' || event.entity_type === 'Asset'
     if (requiresLookup) setPendingEventId(event.id)
 
     try {
       const target = await resolveReconstructionTarget(event)
+      if (token !== latestClickToken.current) return
       if (requiresLookup) setPendingEventId(null)
       setAsOf(event.occurred_at)
       if (target) navigate(target)
-    } catch {
+    } catch (err) {
+      if (token !== latestClickToken.current) return
       if (requiresLookup) setPendingEventId(null)
+      void AppToaster.then((t) =>
+        t.show({
+          message: getApiErrorMessage(err, 'Could not open reconstruction target'),
+          intent: 'danger',
+          icon: 'error',
+          timeout: 4000,
+        }),
+      )
       setAsOf(event.occurred_at)
     }
   }
@@ -108,7 +127,7 @@ export default function DebriefPanel() {
         <>
           <ol className="timeline debrief-timeline">
             {events.map((event) => {
-              const reconstructable = canReconstruct(event)
+              const reconstructable = isReconstructable(event)
               const rowBody = (
                 <>
                   <div className="timeline-meta">
