@@ -2,7 +2,12 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { type ReactNode } from 'react'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const replayState = vi.hoisted(() => ({
+  setAsOf: vi.fn(),
+}))
 
 vi.mock('../api/audit_events', () => ({
   getAuditEventsPage: vi.fn().mockResolvedValue({
@@ -44,12 +49,58 @@ vi.mock('../api/audit_events', () => ({
   }),
 }))
 
+vi.mock('../api/tasks', () => ({
+  getTask: vi.fn().mockResolvedValue({
+    id: 't1',
+    site_id: 'site-task',
+    asset_id: null,
+    title: 'Resolve outage',
+    description: null,
+    priority: 'high',
+    workflow_status: 'new',
+    blocked_reason: null,
+    resolved_at: null,
+    created_at: '2026-04-17T11:30:00Z',
+    updated_at: '2026-04-17T11:30:00Z',
+    site_name: 'Task Site',
+    ao_id: 'ao-1',
+    ao_posture: 'defensive',
+  }),
+}))
+
+vi.mock('../api/assets', () => ({
+  getAsset: vi.fn().mockResolvedValue({
+    id: 'a1',
+    name: 'Sentinel Drone',
+    asset_type: 'uav',
+    status: 'available',
+    home_site_id: 'site-asset',
+    last_reported_at: '2026-04-17T10:45:00Z',
+    created_at: '2026-04-17T10:00:00Z',
+    updated_at: '2026-04-17T10:45:00Z',
+  }),
+}))
+
+vi.mock('../context/ReplayContext', () => ({
+  useReplay: () => replayState,
+}))
+
 import DebriefPanel from '../components/DebriefPanel'
+
+function LocationProbe() {
+  const location = useLocation()
+  return <div data-testid="location">{`${location.pathname}${location.search}`}</div>
+}
 
 function renderPanel() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <MemoryRouter initialEntries={['/debrief']}>
+      <QueryClientProvider client={queryClient}>
+        <LocationProbe />
+        {children}
+      </QueryClientProvider>
+    </MemoryRouter>
   )
   return render(<DebriefPanel />, { wrapper })
 }
@@ -57,6 +108,7 @@ function renderPanel() {
 describe('DebriefPanel', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
+    replayState.setAsOf.mockReset()
     const { getAuditEventsPage } = await import('../api/audit_events')
     ;(getAuditEventsPage as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: [
@@ -210,5 +262,81 @@ describe('DebriefPanel', () => {
 
     expect(await screen.findByText('Site')).toBeInTheDocument()
     expect(screen.getByText('deactivate')).toBeInTheDocument()
+  })
+
+  it('enters replay and navigates directly for incident events', async () => {
+    const user = userEvent.setup()
+    renderPanel()
+
+    await user.click(await screen.findByRole('button', { name: /Enter replay from Incident event/i }))
+
+    expect(replayState.setAsOf).toHaveBeenCalledWith('2026-04-17T12:00:00Z')
+    expect(screen.getByTestId('location')).toHaveTextContent('/incidents/i1')
+  })
+
+  it('resolves a task event into the site-scoped deep link at the replay timestamp', async () => {
+    const user = userEvent.setup()
+    const { getAuditEventsPage } = await import('../api/audit_events')
+    const { getTask } = await import('../api/tasks')
+    ;(getAuditEventsPage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      data: [
+        {
+          id: 'e-task',
+          schema_version: 1,
+          actor: 'op@example.com',
+          entity_type: 'Task',
+          entity_id: 't1',
+          event_type: 'task.transitioned',
+          action: 'resolved',
+          before_snapshot: null,
+          after_snapshot: {},
+          metadata: null,
+          correlation_id: 'ct',
+          occurred_at: '2026-04-17T11:30:00Z',
+        },
+      ],
+      meta: { limit: 200, has_more: false, next_cursor: null },
+    })
+
+    renderPanel()
+
+    await user.click(await screen.findByRole('button', { name: /Enter replay from Task event/i }))
+
+    expect(getTask).toHaveBeenCalledWith('t1', { as_of: '2026-04-17T11:30:00Z' })
+    expect(replayState.setAsOf).toHaveBeenCalledWith('2026-04-17T11:30:00Z')
+    expect(screen.getByTestId('location')).toHaveTextContent('/sites/site-task?task=t1')
+  })
+
+  it('resolves an asset event into the site asset drawer deep link at the replay timestamp', async () => {
+    const user = userEvent.setup()
+    const { getAuditEventsPage } = await import('../api/audit_events')
+    const { getAsset } = await import('../api/assets')
+    ;(getAuditEventsPage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      data: [
+        {
+          id: 'e-asset',
+          schema_version: 1,
+          actor: 'cmdr@example.com',
+          entity_type: 'Asset',
+          entity_id: 'a1',
+          event_type: 'asset.status_changed',
+          action: 'assigned',
+          before_snapshot: null,
+          after_snapshot: {},
+          metadata: null,
+          correlation_id: 'ca',
+          occurred_at: '2026-04-17T10:45:00Z',
+        },
+      ],
+      meta: { limit: 200, has_more: false, next_cursor: null },
+    })
+
+    renderPanel()
+
+    await user.click(await screen.findByRole('button', { name: /Enter replay from Asset event/i }))
+
+    expect(getAsset).toHaveBeenCalledWith('a1', { as_of: '2026-04-17T10:45:00Z' })
+    expect(replayState.setAsOf).toHaveBeenCalledWith('2026-04-17T10:45:00Z')
+    expect(screen.getByTestId('location')).toHaveTextContent('/sites/site-asset?asset=a1')
   })
 })

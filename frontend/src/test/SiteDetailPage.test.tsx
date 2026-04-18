@@ -165,6 +165,12 @@ function SiteDetailHarness() {
       <button type="button" onClick={() => navigate('/sites/site-1')}>
         Clear task
       </button>
+      <button type="button" onClick={() => navigate('/sites/site-1?asset=asset-1')}>
+        Jump to asset 1
+      </button>
+      <button type="button" onClick={() => navigate('/sites/site-1')}>
+        Clear asset
+      </button>
       <SiteDetailPage />
     </>
   )
@@ -195,6 +201,26 @@ describe('SiteDetailPage task deep links', () => {
     await user.click(screen.getByRole('button', { name: 'Clear task' }))
     await waitFor(() => {
       expect(screen.queryByText('task:task-2')).not.toBeInTheDocument()
+    })
+  })
+
+  it('opens the asset drawer when the route carries an asset query param', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <MemoryRouter initialEntries={['/sites/site-1']}>
+        <Routes>
+          <Route path="/sites/:id" element={<SiteDetailHarness />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Jump to asset 1' }))
+    expect(await screen.findByText('asset:asset-1')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Clear asset' }))
+    await waitFor(() => {
+      expect(screen.queryByText('asset:asset-1')).not.toBeInTheDocument()
     })
   })
 

@@ -30,6 +30,15 @@ import SiteTimeline from '../components/SiteTimeline'
 import AlertChainDrawer from '../components/AlertChainDrawer'
 import RiskScoreChart from '../components/RiskScoreChart'
 
+function deriveEntityCardFromSearch(
+  taskQueryParam: string | null,
+  assetQueryParam: string | null,
+): { type: 'task' | 'asset'; id: string; title: string } | null {
+  if (taskQueryParam) return { type: 'task', id: taskQueryParam, title: 'Task' }
+  if (assetQueryParam) return { type: 'asset', id: assetQueryParam, title: 'Asset' }
+  return null
+}
+
 // ── main page ─────────────────────────────────────────────────────────────────
 
 export default function SiteDetailPage() {
@@ -38,13 +47,14 @@ export default function SiteDetailPage() {
   const [searchParams] = useSearchParams()
   const { asOf, isReplaying } = useReplay()
   const taskQueryParam = searchParams.get('task')
+  const assetQueryParam = searchParams.get('asset')
   const [tab, setTab]             = useState<string>('tasks')
   const [createTaskOpen, setCreateTaskOpen] = useState(false)
   const [editingGeofence, setEditingGeofence] = useState(false)
   const [geofenceInput, setGeofenceInput]     = useState('')
   const [chainMatch, setChainMatch]           = useState<import('../api/types').SignalRuleMatch | null>(null)
   const [entityCard, setEntityCard]           = useState<{ type: 'task' | 'asset'; id: string; title: string } | null>(() => {
-    return taskQueryParam ? { type: 'task', id: taskQueryParam, title: 'Task' } : null
+    return deriveEntityCardFromSearch(taskQueryParam, assetQueryParam)
   })
 
   const { isCommander, isOperator } = useRole()
@@ -79,14 +89,12 @@ export default function SiteDetailPage() {
     // Functional updater with equality guard prevents cascading renders; disable is intentional
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setEntityCard(current => {
-      if (taskQueryParam) {
-        if (current?.type === 'task' && current.id === taskQueryParam) return current
-        return { type: 'task', id: taskQueryParam, title: 'Task' }
-      }
-
-      return current?.type === 'task' ? null : current
+      const next = deriveEntityCardFromSearch(taskQueryParam, assetQueryParam)
+      if (!next) return null
+      if (current?.type === next.type && current.id === next.id) return current
+      return next
     })
-  }, [taskQueryParam])
+  }, [assetQueryParam, taskQueryParam])
 
   if (isPending) {
     return (

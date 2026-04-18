@@ -17,6 +17,6 @@ test('globe replay smoke: login, enter replay, and show replay-safe globe copy',
   await expect(page.locator('.replay-status-tag')).toContainText('REPLAY')
   await expect(page.locator('.replay-banner')).toContainText('Viewing historical state as of')
   await expect(page.locator('.globe-toolbar-hint')).toContainText(
-    'Replay mode hides live-only AO posture, chokepoint overlays, breach overlays, and live vessel enrichment data.',
+    'Replay mode keeps historical AO overlays, chokepoint overlays, breach overlays, and AIS vessel context visible.',
   )
 })
