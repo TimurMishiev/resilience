@@ -17,6 +17,7 @@ import LoginPage from './pages/LoginPage'
 const AlertTriagePage     = lazy(() => import('./pages/AlertTriagePage'))
 const AssetsPage          = lazy(() => import('./pages/AssetsPage'))
 const BriefingPage        = lazy(() => import('./pages/BriefingPage'))
+const DebriefPage         = lazy(() => import('./pages/DebriefPage'))
 const AreasPage           = lazy(() => import('./pages/AreasPage'))
 const CorrelationRulesPage = lazy(() => import('./pages/CorrelationRulesPage'))
 const GraphPage           = lazy(() => import('./pages/GraphPage'))
@@ -56,6 +57,7 @@ export default function App() {
               <Route path="graph" element={<PageErrorBoundary pageName="Graph"><GraphPage /></PageErrorBoundary>} />
               <Route path="globe" element={<PageErrorBoundary pageName="Globe"><GlobePage /></PageErrorBoundary>} />
               <Route path="briefing" element={<PageErrorBoundary pageName="Briefing"><BriefingPage /></PageErrorBoundary>} />
+              <Route path="debrief" element={<PageErrorBoundary pageName="Debrief"><DebriefPage /></PageErrorBoundary>} />
               <Route path="ontology" element={<PageErrorBoundary pageName="Ontology Query"><OntologyQueryPage /></PageErrorBoundary>} />
               <Route path="incidents" element={<PageErrorBoundary pageName="Incidents"><IncidentsPage /></PageErrorBoundary>} />
               <Route path="incidents/:id" element={<PageErrorBoundary pageName="Incident Detail"><IncidentDetailPage /></PageErrorBoundary>} />

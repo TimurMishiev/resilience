@@ -18,6 +18,7 @@ export function useRole() {
     isOperator,
     isViewer,
     canAccessBriefing: isCommander,
+    canAccessDebrief: isCommander,
     canAccessOntologyQuery: isCommander,
     canManageAreas: isCommander,
     canManageCorrelationRules: isCommander,

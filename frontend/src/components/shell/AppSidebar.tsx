@@ -30,6 +30,7 @@ export function AppSidebar() {
   const { pathname, search } = useLocation()
   const role = useRole()
   const canAccessBriefing = role.canAccessBriefing ?? role.isCommander
+  const canAccessDebrief = role.canAccessDebrief ?? role.isCommander
   const canAccessOntologyQuery = role.canAccessOntologyQuery ?? role.isCommander
   const canManageRules = role.canManageCorrelationRules ?? role.isCommander
   const canManageAreas = role.canManageAreas ?? role.isCommander
@@ -81,6 +82,13 @@ export function AppSidebar() {
           active={pathname.startsWith('/briefing')}
           onClick={() => navigate('/briefing')}
           labelElement={!canAccessBriefing ? <LockLabel /> : undefined}
+        />
+        <MenuItem
+          icon="history"
+          text="Debrief"
+          active={pathname.startsWith('/debrief')}
+          onClick={() => navigate('/debrief')}
+          labelElement={!canAccessDebrief ? <LockLabel /> : undefined}
         />
         <MenuItem
           icon="search"
