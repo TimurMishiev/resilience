@@ -71,6 +71,80 @@ RSpec.describe "Api::AuditEvents", type: :request do
       expect(ids).to contain_exactly(event_b.id)
     end
 
+    it "filters by from / to time range" do
+      get "/api/audit_events",
+          params: { from: 150.minutes.ago.iso8601, to: 30.minutes.ago.iso8601 },
+          headers: auth_headers(current_user)
+
+      ids = JSON.parse(response.body).map { |event| event["id"] }
+      expect(ids).to contain_exactly(event_a.id)
+    end
+
+    it "ignores invalid from / to values" do
+      get "/api/audit_events",
+          params: { from: "not-a-date", to: "also-bad" },
+          headers: auth_headers(current_user)
+
+      expect(response).to have_http_status(:ok)
+      ids = JSON.parse(response.body).map { |event| event["id"] }
+      expect(ids).to include(event_a.id, event_b.id)
+    end
+
+    it "filters by event_types array" do
+      get "/api/audit_events",
+          params: { event_types: ["task.created"] },
+          headers: auth_headers(current_user)
+
+      ids = JSON.parse(response.body).map { |event| event["id"] }
+      expect(ids).to contain_exactly(event_a.id)
+    end
+
+    it "filters by entity_types array for cross-entity queries" do
+      get "/api/audit_events",
+          params: { entity_types: %w[Task Site] },
+          headers: auth_headers(current_user)
+
+      ids = JSON.parse(response.body).map { |event| event["id"] }
+      expect(ids).to include(event_a.id, event_b.id)
+    end
+
+    it "excludes events with non-matching entity_types" do
+      get "/api/audit_events",
+          params: { entity_types: ["Site"] },
+          headers: auth_headers(current_user)
+
+      ids = JSON.parse(response.body).map { |event| event["id"] }
+      expect(ids).to include(event_b.id)
+      expect(ids).not_to include(event_a.id)
+    end
+
+    it "forbids operators from using entity_types without a scoped entity" do
+      get "/api/audit_events",
+          params: { entity_types: ["Task"] },
+          headers: auth_headers(operator)
+
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "ignores entity_types when entity_type and entity_id are both present" do
+      get "/api/audit_events",
+          params: { entity_type: "Task", entity_id: task.id, entity_types: ["Site"] },
+          headers: auth_headers(current_user)
+
+      ids = JSON.parse(response.body).map { |event| event["id"] }
+      expect(ids).to contain_exactly(event_a.id)
+    end
+
+    it "applies as_of and to independently — tighter bound wins" do
+      # as_of=1h ago alone would include both events; to=2.5h ago is tighter, so only event_b qualifies
+      get "/api/audit_events",
+          params: { as_of: 1.hour.ago.iso8601, to: 2.5.hours.ago.iso8601 },
+          headers: auth_headers(current_user)
+
+      ids = JSON.parse(response.body).map { |event| event["id"] }
+      expect(ids).to contain_exactly(event_b.id)
+    end
+
     it "returns expected fields" do
       get "/api/audit_events", headers: auth_headers(current_user)
       event = JSON.parse(response.body).first

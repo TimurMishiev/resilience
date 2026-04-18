@@ -26,12 +26,25 @@ module Api
 
       events = AuditEvent.all.order(occurred_at: :desc)
       events = events.up_to(as_of) if as_of.present?
+
+      from_time = safe_parse_datetime(params[:from])
+      to_time   = safe_parse_datetime(params[:to])
+      events = events.where("occurred_at >= ?", from_time) if from_time
+      events = events.where("occurred_at <= ?", to_time) if to_time
+
+      event_types = array_param(:event_types)
+      events = events.where(event_type: event_types) if event_types.any?
+
       if access.entity_type.present? && access.entity_id.present?
+        # Singular entity_type + entity_id take precedence over entity_types[].
+        # The plural entity_types[] filter is only available in the broad (else) path.
         authorize_audit_entity!(access.entity_type, access.entity_id) unless current_user.commander?
         events = events.where(entity_type: access.entity_type, entity_id: access.entity_id)
       else
         events = events.where(entity_type: params[:entity_type]) if params[:entity_type].present?
         events = events.where(entity_id: params[:entity_id]) if params[:entity_id].present?
+        entity_types = array_param(:entity_types)
+        events = events.where(entity_type: entity_types) if entity_types.any?
         events = scope_audit_events_by_org(events)
       end
 
@@ -40,6 +53,12 @@ module Api
     end
 
     private
+
+    def array_param(key)
+      raw = params[key]
+      return [] if raw.blank?
+      Array(raw).map(&:to_s).reject(&:blank?)
+    end
 
     def authorize_audit_entity!(entity_type, entity_id)
       model = ENTITY_ACCESS_MODELS[entity_type]
