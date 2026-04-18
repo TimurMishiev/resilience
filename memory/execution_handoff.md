@@ -16,9 +16,9 @@ Phase 4 — Debrief
 
 ## Current Slice
 
-Phase 4 Slice 3 hardening — post-review P2/P3 follow-ups on click-to-reconstruct — IN PROGRESS (uncommitted)
+Phase 4 Slice 3 hardening — post-review P2/P3 follow-ups on click-to-reconstruct — COMPLETE
 
-(Phase 4 Slice 3 — click-to-reconstruct from debrief timeline rows — shipped in `45906cb`. Phase 4 Slice 4 is still the next roadmap slice once this hardening round lands.)
+(Phase 4 Slice 3 proper shipped in `45906cb`. First hardening pass shipped in `d202532`; second hardening pass — post-push mentor follow-ups — shipped in `67caf3b`. Phase 4 Slice 4 is the next roadmap slice.)
 
 ## Objective
 
@@ -29,8 +29,12 @@ Close post-push mentor findings on the debrief reconstruction flow without widen
 
 ## Completed This Session
 
-- `frontend/src/components/DebriefPanel.tsx` — added `ReconstructableEntityType` + `isReconstructable` type guard; `resolveReconstructionTarget` is now narrowed and exhaustive. Added `AppToaster` danger toast on lookup failure (replay still enters so the operator can navigate manually). Added a monotonic `latestClickToken` ref so only the newest click applies `setAsOf` + `navigate`; older resolutions (success or failure) are abandoned.
-- `frontend/src/test/DebriefPanel.test.tsx` — added proof that a failed task lookup shows a danger toast with the API error message, keeps replay entered, and does not navigate; added proof that a newer asset click wins over an older in-flight task lookup (stale result does not overwrite navigation or `setAsOf`).
+- `d202532` — first hardening pass on click-to-reconstruct:
+  - `DebriefPanel.tsx` — `ReconstructableEntityType` + `isReconstructable` type guard; `resolveReconstructionTarget` narrowed and exhaustive. `AppToaster` danger toast on lookup failure (replay still enters so the operator can navigate manually). Monotonic `latestClickToken` ref so only the newest click applies `setAsOf` + `navigate`; older resolutions (success or failure) are abandoned.
+  - `DebriefPanel.test.tsx` — proof that a failed task lookup shows a danger toast, keeps replay entered, and does not navigate; proof that a newer asset click wins over an older in-flight task lookup.
+- `67caf3b` — post-push mentor follow-ups on the same tranche:
+  - `DebriefPanel.tsx` — derived `ReconstructableEntityType` from the const-array (`typeof RECONSTRUCTABLE_ENTITY_TYPES[number]`) so the union and the runtime check cannot drift. Terminated the fire-and-forget `AppToaster` chain with `.catch(() => {})` so a rejected toaster promise cannot surface as an unhandled rejection.
+  - `DebriefPanel.test.tsx` — replaced `new Promise((r) => setTimeout(r, 0))` in the stale-click test with `act(async () => resolveTask(...))` plus a `waitFor` steady-state assertion; the negative assertion no longer races React's concurrent scheduler.
 
 ## Shipped in `45906cb` (Slice 3 proper)
 
@@ -46,14 +50,13 @@ Close post-push mentor findings on the debrief reconstruction flow without widen
 
 ## Next
 
-- Commit this hardening round, then move to Phase 4 Slice 4.
 - Phase 4 Slice 4: temporal diff between moments — establish at least one meaningful operator diff flow on top of the debrief/replay foundation without turning replay into a generic time machine.
 - Keep debrief reconstruction scoped to the existing route model unless Slice 4 explicitly justifies a broader shared-detail surface.
 
-## Files Changed This Slice (hardening round, uncommitted)
+## Files Changed This Slice (hardening round, shipped)
 
-- `frontend/src/components/DebriefPanel.tsx`
-- `frontend/src/test/DebriefPanel.test.tsx`
+- `frontend/src/components/DebriefPanel.tsx` (d202532 + 67caf3b)
+- `frontend/src/test/DebriefPanel.test.tsx` (d202532 + 67caf3b)
 
 ## Currently Locked Files
 
@@ -71,8 +74,8 @@ git diff --check
 
 ## Last Validation Results
 
-- Focused frontend tests: 10/10 pass (`DebriefPanel.test.tsx`, including new toaster + single-flight race coverage)
-- Full Vitest suite: 526 tests across 73 files, 0 failures
+- Focused frontend tests: 10/10 pass (`DebriefPanel.test.tsx`, including toaster + single-flight race coverage; stale-click test now `act`-wrapped with `waitFor` steady window)
+- Full Vitest suite: 526 tests across 73 files, 0 failures (5 consecutive clean runs after `67caf3b`)
 - TypeScript (`tsconfig.app.json`): 0 errors
 - ESLint on touched frontend files: 0 errors, 0 warnings
 - `git diff --check`: clean
