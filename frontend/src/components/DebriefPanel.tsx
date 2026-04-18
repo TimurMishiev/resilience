@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Button, Callout, HTMLSelect, NonIdealState, Spinner, Tag } from '@blueprintjs/core'
 import { useNavigate } from 'react-router-dom'
 import { getAsset } from '../api/assets'
@@ -8,6 +8,8 @@ import type { AuditEvent } from '../api/types'
 import { useReplay } from '../context/ReplayContext'
 import { AppToaster } from '../lib/toaster'
 import { humanize } from '../utils/humanize'
+import DebriefEventDiff from './DebriefEventDiff'
+import { diffSnapshots, isDiffEmpty } from '../utils/diffSnapshots'
 import {
   DEBRIEF_RANGE_OPTIONS,
   useDebriefTimeline,
@@ -57,12 +59,26 @@ async function resolveReconstructionTarget(event: ReconstructableEvent): Promise
 export default function DebriefPanel() {
   const [range, setRange] = useState<DebriefRange>('24h')
   const [pendingEventId, setPendingEventId] = useState<string | null>(null)
+  const [diffEvent, setDiffEvent] = useState<AuditEvent | null>(null)
   const navigate = useNavigate()
   const { setAsOf } = useReplay()
   const { events, error, isPending, hasMore, loadMore, isLoadingMore } = useDebriefTimeline({ range })
 
   // Monotonic token so a newer click supersedes any in-flight lookup.
   const latestClickToken = useRef(0)
+
+  // Events that actually mutate stored fields deserve a "Show changes" affordance.
+  // Pure creation/read events with no before and an empty after are suppressed so the
+  // action is only offered when the diff drawer will have something useful to say.
+  const eventsWithDiff = useMemo(() => {
+    const set = new Set<string>()
+    for (const event of events ?? []) {
+      if (!isDiffEmpty(diffSnapshots(event.before_snapshot, event.after_snapshot))) {
+        set.add(event.id)
+      }
+    }
+    return set
+  }, [events])
 
   async function handleReconstruct(event: AuditEvent) {
     if (!isReconstructable(event)) return
@@ -145,22 +161,37 @@ export default function DebriefPanel() {
                 </>
               )
 
+              const hasDiff = eventsWithDiff.has(event.id)
+
               return (
                 <li key={event.id} className="timeline-item">
-                  {reconstructable ? (
-                    <button
-                      type="button"
-                      className="debrief-timeline-button"
-                      onClick={() => void handleReconstruct(event)}
-                      disabled={pendingEventId === event.id}
-                      aria-label={`Enter replay from ${event.entity_type} event`}
-                      title="Enter replay from this event"
-                    >
-                      {rowBody}
-                    </button>
-                  ) : (
-                    rowBody
-                  )}
+                  <div className="debrief-timeline-row">
+                    {reconstructable ? (
+                      <button
+                        type="button"
+                        className="debrief-timeline-button"
+                        onClick={() => void handleReconstruct(event)}
+                        disabled={pendingEventId === event.id}
+                        aria-label={`Enter replay from ${event.entity_type} event`}
+                        title="Enter replay from this event"
+                      >
+                        {rowBody}
+                      </button>
+                    ) : (
+                      rowBody
+                    )}
+                    {hasDiff && (
+                      <button
+                        type="button"
+                        className="debrief-diff-action"
+                        onClick={() => setDiffEvent(event)}
+                        aria-label={`Show changes for ${event.entity_type} event`}
+                        title="Show field-level changes for this event"
+                      >
+                        Show changes
+                      </button>
+                    )}
+                  </div>
                 </li>
               )
             })}
@@ -178,6 +209,8 @@ export default function DebriefPanel() {
           )}
         </>
       )}
+
+      <DebriefEventDiff event={diffEvent} onClose={() => setDiffEvent(null)} />
     </div>
   )
 }

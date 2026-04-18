@@ -11,6 +11,7 @@ import {
 import IntelChainPanel from '../components/IntelChainPanel'
 import ProsecutionPanel from '../components/ProsecutionPanel'
 import IncidentAlertsTab from '../components/incident-detail/IncidentAlertsTab'
+import IncidentCompareTab from '../components/incident-detail/IncidentCompareTab'
 import IncidentTasksTab from '../components/incident-detail/IncidentTasksTab'
 import { PostureBadge } from '../components/PostureBadge'
 import { useAuth } from '../context/AuthContext'
@@ -341,6 +342,18 @@ export default function IncidentDetailPage() {
               entityType="Incident"
               entityId={incident.id}
               asOf={asOf}
+            />
+          }
+        />
+        <Tab
+          id="compare"
+          title="Compare"
+          disabled={isReplaying}
+          panel={
+            <IncidentCompareTab
+              incidentId={incident.id}
+              openedAt={incident.opened_at}
+              latestAt={incident.updated_at}
             />
           }
         />

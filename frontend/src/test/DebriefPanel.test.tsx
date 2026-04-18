@@ -386,6 +386,56 @@ describe('DebriefPanel', () => {
     expect(screen.getByTestId('location')).toHaveTextContent('/debrief')
   })
 
+  it('offers a "Show changes" action on events with field diffs and opens the diff drawer', async () => {
+    const user = userEvent.setup()
+    const { getAuditEventsPage } = await import('../api/audit_events')
+    ;(getAuditEventsPage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      data: [
+        {
+          id: 'e-task-diff',
+          schema_version: 1,
+          actor: 'op@example.com',
+          entity_type: 'Task',
+          entity_id: 't1',
+          event_type: 'task.transitioned',
+          action: 'resolved',
+          before_snapshot: { workflow_status: 'new' },
+          after_snapshot: { workflow_status: 'resolved' },
+          metadata: null,
+          correlation_id: 'ct',
+          occurred_at: '2026-04-17T11:30:00Z',
+        },
+        {
+          id: 'e-empty',
+          schema_version: 1,
+          actor: 'cmdr@example.com',
+          entity_type: 'Incident',
+          entity_id: 'i1',
+          event_type: 'incident.viewed',
+          action: null,
+          before_snapshot: null,
+          after_snapshot: {},
+          metadata: null,
+          correlation_id: 'cv',
+          occurred_at: '2026-04-17T11:00:00Z',
+        },
+      ],
+      meta: { limit: 200, has_more: false, next_cursor: null },
+    })
+
+    renderPanel()
+
+    // Row with a real before→after delta gets the action.
+    const showChanges = await screen.findByRole('button', { name: /Show changes for Task event/i })
+    // Row with no field changes does not.
+    expect(screen.queryByRole('button', { name: /Show changes for Incident event/i })).not.toBeInTheDocument()
+
+    await user.click(showChanges)
+
+    expect(await screen.findByText('Task changes')).toBeInTheDocument()
+    expect(screen.getByText('workflow status')).toBeInTheDocument()
+  })
+
   it('ignores a stale in-flight lookup when a newer row is clicked', async () => {
     const user = userEvent.setup()
     const { getAuditEventsPage } = await import('../api/audit_events')

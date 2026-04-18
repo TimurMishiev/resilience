@@ -342,6 +342,171 @@ body {
   letter-spacing: 0.04em;
 }
 
+.debrief-timeline-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.debrief-timeline-row .debrief-timeline-button {
+  flex: 1;
+  min-width: 0;
+}
+
+.debrief-diff-action {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: transparent;
+  color: #48aff0;
+  border: 1px solid rgba(72, 175, 240, 0.4);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.debrief-diff-action:hover,
+.debrief-diff-action:focus-visible {
+  background: rgba(72, 175, 240, 0.12);
+  outline: none;
+}
+
+.debrief-diff-action:focus-visible {
+  outline: 2px solid #48aff0;
+  outline-offset: 2px;
+}
+
+/* ── Debrief event diff drawer ─────────────────────────────── */
+
+.debrief-diff-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.debrief-diff-timestamp {
+  font-size: 11px;
+}
+
+.debrief-diff-section {
+  margin-bottom: 20px;
+}
+
+.debrief-diff-heading {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+  opacity: 0.8;
+}
+
+.debrief-diff-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.debrief-diff-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  background: var(--bp6-app-background-color, #30404d);
+  border-radius: 4px;
+  border-left: 3px solid transparent;
+}
+
+.debrief-diff-row--changed { border-left-color: #f0b726; }
+.debrief-diff-row--added   { border-left-color: #3dcc91; }
+.debrief-diff-row--removed { border-left-color: #f55656; }
+
+.debrief-diff-key {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: capitalize;
+  opacity: 0.85;
+}
+
+.debrief-diff-values {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.debrief-diff-before,
+.debrief-diff-after {
+  font-family: monospace;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  word-break: break-all;
+}
+
+.debrief-diff-before {
+  color: #f08080;
+  text-decoration: line-through;
+  text-decoration-color: rgba(245, 86, 86, 0.5);
+}
+
+.debrief-diff-after {
+  color: #8ddb9d;
+}
+
+.debrief-diff-arrow {
+  opacity: 0.55;
+  font-size: 12px;
+}
+
+/* ── Incident A-B compare tab ──────────────────────────────── */
+
+.incident-compare {
+  padding: 12px 0;
+}
+
+.incident-compare-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.incident-compare-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.incident-compare-field input.bp6-input {
+  min-width: 220px;
+}
+
+.incident-compare-validation {
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+
+.incident-compare-hint {
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+
+.incident-compare-loading {
+  display: flex;
+  justify-content: center;
+  padding: 16px 0;
+}
+
 /* ── Risk Score Chart (SiteDetailPage header) ─────────────── */
 
 .risk-chart-shell {
