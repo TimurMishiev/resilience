@@ -17,6 +17,7 @@ export interface MapSiteLayersInput {
   tasksBySite: Record<string, Task[]>
   selectedSiteId: string | null
   linkedSiteId: string | null
+  evidenceSiteIds: string[]
 }
 
 export function useMapSiteLayers({
@@ -26,6 +27,7 @@ export function useMapSiteLayers({
   tasksBySite,
   selectedSiteId,
   linkedSiteId,
+  evidenceSiteIds,
 }: MapSiteLayersInput): void {
   // Source + layer init
   useEffect(() => {
@@ -64,6 +66,23 @@ export function useMapSiteLayers({
           'circle-blur': 0.15,
         },
         filter: ['==', ['get', 'id'], ''],
+      })
+    }
+
+    if (!map.getLayer('site-evidence-ring')) {
+      map.addLayer({
+        id: 'site-evidence-ring',
+        type: 'circle',
+        source: 'site-points',
+        paint: {
+          'circle-radius': 14,
+          'circle-color': 'rgba(0,0,0,0)',
+          'circle-stroke-width': 1.5,
+          'circle-stroke-color': '#f5a623',
+          'circle-stroke-opacity': 0.8,
+          'circle-blur': 0.2,
+        },
+        filter: ['in', ['get', 'id'], ['literal', []]],
       })
     }
 
@@ -113,6 +132,18 @@ export function useMapSiteLayers({
       ['==', ['get', 'id'], selectedSiteId ?? ''],
     )
   }, [mapLoaded, selectedSiteId, mapRef])
+
+  // Evidence ring filter (sites linked to a selected signal via rule matches)
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapLoaded || !map.getLayer('site-evidence-ring')) return
+    map.setFilter(
+      'site-evidence-ring',
+      evidenceSiteIds.length > 0
+        ? ['in', ['get', 'id'], ['literal', evidenceSiteIds]]
+        : ['in', ['get', 'id'], ['literal', []]],
+    )
+  }, [mapLoaded, evidenceSiteIds, mapRef])
 
   // Linked highlight ring filter (e.g. asset's home site when asset is selected)
   useEffect(() => {

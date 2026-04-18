@@ -17,6 +17,7 @@ import { useAssetTrails } from '../hooks/useAssetTrails'
 import { useMapE2EBridge } from '../hooks/useMapE2EBridge'
 import { useEntitySelectionSync } from '../hooks/useEntitySelectionSync'
 import { useMapLibreEngine, type MapStyleKey } from '../hooks/useMapLibreEngine'
+import { useEvidenceLinkedIds } from '../hooks/useEvidenceLinkedIds'
 import type { Task } from '../api/types'
 import { useLocation } from 'react-router-dom'
 import { assetDisplayPosition, getLiveTelemetryReading } from '../lib/assetPresentation'
@@ -94,6 +95,8 @@ export default function MapPage() {
     assetsLoaded: assetsQuery.isSuccess,
     isReplaying, asOf,
   })
+
+  const { evidenceSignalIds, evidenceSiteIds } = useEvidenceLinkedIds(selectedSiteId, selectedSignalId, asOf)
 
   const selectedSignal = selectedSignalId ? (signals.find(signal => signal.id === selectedSignalId) ?? null) : null
   const selectedVesselMmsi = selectedSignal?.signal_type === 'vessel_position' ? selectedSignal.external_id : null
@@ -179,6 +182,8 @@ export default function MapPage() {
     selectedSiteId,
     selectedAssetId,
     selectedSignalId,
+    evidenceSignalIds,
+    evidenceSiteIds,
     onSiteClick,
     onAssetClick,
     onSignalClick,

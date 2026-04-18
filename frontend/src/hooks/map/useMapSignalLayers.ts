@@ -25,6 +25,7 @@ export interface MapSignalLayersInput {
   showSignals:       boolean
   showHeatmap:       boolean
   onSignalClickRef:  MutableRefObject<(signalId: string | null) => void>
+  evidenceSignalIds: string[]
 }
 
 export function useMapSignalLayers({
@@ -37,6 +38,7 @@ export function useMapSignalLayers({
   showSignals,
   showHeatmap,
   onSignalClickRef,
+  evidenceSignalIds,
 }: MapSignalLayersInput) {
   const signalsRef = useRef<Signal[]>([])
   const selectedSignalIdRef = useRef<string | null>(selectedSignalId)
@@ -83,6 +85,7 @@ export function useMapSignalLayers({
       'selected-signal-glow',
       'selected-signal-circle',
       'selected-signal-symbol',
+      'signal-evidence-ring',
     ]
 
     for (const layerId of signalLayerIds) {
@@ -91,6 +94,36 @@ export function useMapSignalLayers({
 
     if (!showSignals) onSignalClickRef.current(null)
   }, [showSignals, mapLoaded, mapRef, onSignalClickRef])
+
+  // Evidence ring layer — highlights signals linked to a selected site via rule matches
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapLoaded) return
+
+    if (!map.getLayer('signal-evidence-ring')) {
+      map.addLayer({
+        id: 'signal-evidence-ring',
+        type: 'circle',
+        source: 'signal-points',
+        filter: ['all', ['!', ['has', 'point_count']], ['in', ['get', 'id'], ['literal', []]]],
+        paint: {
+          'circle-radius': 12,
+          'circle-color': 'rgba(0,0,0,0)',
+          'circle-stroke-width': 1.5,
+          'circle-stroke-color': '#f5a623',
+          'circle-stroke-opacity': 0.8,
+          'circle-blur': 0.2,
+        },
+      })
+    }
+
+    map.setFilter(
+      'signal-evidence-ring',
+      evidenceSignalIds.length > 0
+        ? ['all', ['!', ['has', 'point_count']], ['in', ['get', 'id'], ['literal', evidenceSignalIds]]]
+        : ['all', ['!', ['has', 'point_count']], ['in', ['get', 'id'], ['literal', []]]],
+    )
+  }, [mapLoaded, evidenceSignalIds, mapRef])
 
   // Heatmap visibility
   useEffect(() => {

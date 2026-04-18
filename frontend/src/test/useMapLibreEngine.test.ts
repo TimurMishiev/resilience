@@ -194,6 +194,8 @@ function defaultInput(
     selectedSiteId: null,
     selectedAssetId: null,
     selectedSignalId: null,
+    evidenceSignalIds: [],
+    evidenceSiteIds: [],
     onSiteClick: vi.fn(),
     onAssetClick: vi.fn(),
     onSignalClick: vi.fn(),
@@ -596,6 +598,86 @@ describe('useMapLibreEngine adapter', () => {
 
       expect(facade.layerIds.has('site-linked-ring')).toBe(true)
       expect(facade.layerIds.has('asset-linked-ring')).toBe(true)
+    })
+  })
+
+  describe('evidence-linked highlighting', () => {
+    it('creates site-evidence-ring and signal-evidence-ring layers on init', async () => {
+      const containerRef = makeContainerRef()
+      await bootMap(facade, containerRef, defaultInput(containerRef))
+
+      expect(facade.layerIds.has('site-evidence-ring')).toBe(true)
+      expect(facade.layerIds.has('signal-evidence-ring')).toBe(true)
+    })
+
+    it('updates site-evidence-ring filter when evidenceSiteIds change', async () => {
+      const containerRef = makeContainerRef()
+      const hook = await bootMap(facade, containerRef, defaultInput(containerRef))
+
+      await act(async () => {
+        hook.rerender(defaultInput(containerRef, {
+          evidenceSiteIds: ['site-a', 'site-b'],
+        }))
+        await Promise.resolve()
+      })
+
+      const filterCall = facade.calls.filter(
+        c => c.method === 'setFilter' && c.args[0] === 'site-evidence-ring',
+      ).pop()
+      expect(filterCall).toBeDefined()
+      expect(filterCall!.args[1]).toEqual(
+        ['in', ['get', 'id'], ['literal', ['site-a', 'site-b']]],
+      )
+    })
+
+    it('updates signal-evidence-ring filter when evidenceSignalIds change', async () => {
+      const containerRef = makeContainerRef()
+      const hook = await bootMap(facade, containerRef, defaultInput(containerRef))
+
+      await act(async () => {
+        hook.rerender(defaultInput(containerRef, {
+          evidenceSignalIds: ['sig-1', 'sig-2'],
+        }))
+        await Promise.resolve()
+      })
+
+      const filterCall = facade.calls.filter(
+        c => c.method === 'setFilter' && c.args[0] === 'signal-evidence-ring',
+      ).pop()
+      expect(filterCall).toBeDefined()
+      expect(filterCall!.args[1]).toEqual(
+        ['all', ['!', ['has', 'point_count']], ['in', ['get', 'id'], ['literal', ['sig-1', 'sig-2']]]],
+      )
+    })
+
+    it('clears evidence filters when IDs become empty', async () => {
+      const containerRef = makeContainerRef()
+      const hook = await bootMap(facade, containerRef, defaultInput(containerRef, {
+        evidenceSiteIds: ['site-a'],
+        evidenceSignalIds: ['sig-1'],
+      }))
+
+      await act(async () => {
+        hook.rerender(defaultInput(containerRef, {
+          evidenceSiteIds: [],
+          evidenceSignalIds: [],
+        }))
+        await Promise.resolve()
+      })
+
+      const siteFilter = facade.calls.filter(
+        c => c.method === 'setFilter' && c.args[0] === 'site-evidence-ring',
+      ).pop()
+      expect(siteFilter!.args[1]).toEqual(
+        ['in', ['get', 'id'], ['literal', []]],
+      )
+
+      const signalFilter = facade.calls.filter(
+        c => c.method === 'setFilter' && c.args[0] === 'signal-evidence-ring',
+      ).pop()
+      expect(signalFilter!.args[1]).toEqual(
+        ['all', ['!', ['has', 'point_count']], ['in', ['get', 'id'], ['literal', []]]],
+      )
     })
   })
 

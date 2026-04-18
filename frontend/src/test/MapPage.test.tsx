@@ -95,6 +95,10 @@ const routerState = vi.hoisted(() => ({
   navigate: null as null | ((to: string) => void),
 }))
 
+const evidenceLinkedIdsState = vi.hoisted(() => ({
+  useEvidenceLinkedIds: vi.fn(),
+}))
+
 vi.mock('../hooks/useSites', () => ({
   useSites: () => ({
     data: { data: mockState.sites },
@@ -164,6 +168,11 @@ vi.mock('../hooks/useSignalRuleMatches', () => ({
   useActiveBreachSiteIds: () => ({
     data: { site_ids: ['site-1'] },
   }),
+  useSignalRuleMatches: () => ({ data: null }),
+}))
+
+vi.mock('../hooks/useEvidenceLinkedIds', () => ({
+  useEvidenceLinkedIds: (...args: unknown[]) => evidenceLinkedIdsState.useEvidenceLinkedIds(...args),
 }))
 
 vi.mock('../hooks/useRole', () => ({
@@ -369,8 +378,10 @@ describe('MapPage selection routing', () => {
     mockReplay.signalQueryParams = {}
     vesselHookState.useVessels.mockReset()
     vesselHookState.useVesselTracks.mockReset()
+    evidenceLinkedIdsState.useEvidenceLinkedIds.mockReset()
     vesselHookState.useVessels.mockReturnValue({ data: { data: [] } })
     vesselHookState.useVesselTracks.mockReturnValue({ data: { data: [] } })
+    evidenceLinkedIdsState.useEvidenceLinkedIds.mockReturnValue({ evidenceSignalIds: [], evidenceSiteIds: [] })
     window.localStorage.clear()
   })
 
@@ -645,6 +656,22 @@ describe('MapPage selection routing', () => {
     expect(engineState.latestInput?.chokepoints).toHaveLength(1)
     expect(engineState.latestInput?.breachedSiteIds.has('site-1')).toBe(true)
     expect(screen.getByText(/Historical AO overlays, risk shading, chokepoint overlays, geofence breach rings, and AIS vessel context remain available during replay/i)).toBeInTheDocument()
+  })
+
+  it('passes replay as_of into evidence-linked highlighting queries', async () => {
+    mockReplay.asOf = '2026-03-24T12:00:00.000Z'
+    mockReplay.isReplaying = true
+    mockReplay.asOfParam = { as_of: mockReplay.asOf }
+    mockReplay.signalQueryParams = { to: mockReplay.asOf, as_of: mockReplay.asOf }
+
+    renderMapPage('/map?site_id=site-1')
+
+    expect(await screen.findByTestId('map-site-panel')).toHaveTextContent('Site One')
+    expect(evidenceLinkedIdsState.useEvidenceLinkedIds).toHaveBeenLastCalledWith(
+      'site-1',
+      null,
+      '2026-03-24T12:00:00.000Z',
+    )
   })
 
   it('keeps selected-vessel trail queries replay-aware', () => {

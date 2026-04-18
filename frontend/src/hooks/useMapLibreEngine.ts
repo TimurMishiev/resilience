@@ -83,6 +83,10 @@ export interface MapEngineInput {
   selectedAssetId:  string | null
   selectedSignalId: string | null
 
+  // Evidence-linked entity IDs (from signal rule matches)
+  evidenceSignalIds: string[]
+  evidenceSiteIds:   string[]
+
   // Selection callbacks — hook fires, page owns state
   onSiteClick:   (siteId: string | null) => void
   onAssetClick:  (assetId: string | null) => void
@@ -133,6 +137,8 @@ export function useMapLibreEngine({
   selectedSiteId,
   selectedAssetId,
   selectedSignalId,
+  evidenceSignalIds,
+  evidenceSiteIds,
   onSiteClick,
   onAssetClick,
   onSignalClick,
@@ -214,6 +220,7 @@ export function useMapLibreEngine({
   useMapSiteLayers({
     mapRef, mapLoaded, sites, tasksBySite, selectedSiteId,
     linkedSiteId: selectedAssetHomeSiteId,
+    evidenceSiteIds,
   })
 
   useMapAssetLayers({
@@ -234,6 +241,7 @@ export function useMapLibreEngine({
   useMapSignalLayers({
     mapRef, maplibreRef, mapLoaded, signals, selectedSignalId, referenceTimeMs,
     showSignals, showHeatmap, onSignalClickRef,
+    evidenceSignalIds,
   })
 
   // ---------------------------------------------------------------------------
