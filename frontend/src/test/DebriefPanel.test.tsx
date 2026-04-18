@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { type ReactNode } from 'react'
@@ -453,29 +453,34 @@ describe('DebriefPanel', () => {
     })
     expect(replayState.setAsOf).toHaveBeenLastCalledWith('2026-04-17T10:45:00Z')
 
-    // Now resolve the stale task lookup — it must NOT overwrite navigation or setAsOf.
-    resolveTask({
-      id: 't1',
-      site_id: 'site-task',
-      asset_id: null,
-      title: 'Resolve outage',
-      description: null,
-      priority: 'high',
-      workflow_status: 'new',
-      blocked_reason: null,
-      resolved_at: null,
-      created_at: '2026-04-17T11:30:00Z',
-      updated_at: '2026-04-17T11:30:00Z',
-      site_name: 'Task Site',
-      ao_id: 'ao-1',
-      ao_posture: 'defensive',
+    // Resolve the stale task lookup inside act() so React flushes any state update
+    // it *would* have produced before we assert. If the token guard is working, this
+    // flush is a no-op on navigation and setAsOf.
+    await act(async () => {
+      resolveTask({
+        id: 't1',
+        site_id: 'site-task',
+        asset_id: null,
+        title: 'Resolve outage',
+        description: null,
+        priority: 'high',
+        workflow_status: 'new',
+        blocked_reason: null,
+        resolved_at: null,
+        created_at: '2026-04-17T11:30:00Z',
+        updated_at: '2026-04-17T11:30:00Z',
+        site_name: 'Task Site',
+        ao_id: 'ao-1',
+        ao_posture: 'defensive',
+      })
     })
 
-    // Give the stale promise a tick to settle.
-    await new Promise((r) => setTimeout(r, 0))
-
-    expect(screen.getByTestId('location')).toHaveTextContent('/sites/site-asset?asset=a1')
-    expect(replayState.setAsOf).toHaveBeenLastCalledWith('2026-04-17T10:45:00Z')
-    expect(replayState.setAsOf).not.toHaveBeenCalledWith('2026-04-17T11:30:00Z')
+    // Stable-state assertion: the stale resolution never overwrites navigation or setAsOf.
+    // waitFor retries the negative for its default window, catching any late scheduler flip.
+    await waitFor(() => {
+      expect(screen.getByTestId('location')).toHaveTextContent('/sites/site-asset?asset=a1')
+      expect(replayState.setAsOf).toHaveBeenLastCalledWith('2026-04-17T10:45:00Z')
+      expect(replayState.setAsOf).not.toHaveBeenCalledWith('2026-04-17T11:30:00Z')
+    })
   })
 })

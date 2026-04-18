@@ -14,10 +14,9 @@ import {
   type DebriefRange,
 } from '../hooks/useDebriefTimeline'
 
-type ReconstructableEntityType = 'Incident' | 'Site' | 'Task' | 'Asset'
-type ReconstructableEvent = AuditEvent & { entity_type: ReconstructableEntityType }
-
 const RECONSTRUCTABLE_ENTITY_TYPES = ['Incident', 'Site', 'Task', 'Asset'] as const
+type ReconstructableEntityType = (typeof RECONSTRUCTABLE_ENTITY_TYPES)[number]
+type ReconstructableEvent = AuditEvent & { entity_type: ReconstructableEntityType }
 
 function isReconstructable(event: AuditEvent): event is ReconstructableEvent {
   return (RECONSTRUCTABLE_ENTITY_TYPES as readonly string[]).includes(event.entity_type)
@@ -88,7 +87,7 @@ export default function DebriefPanel() {
           icon: 'error',
           timeout: 4000,
         }),
-      )
+      ).catch(() => {})
       setAsOf(event.occurred_at)
     }
   }
