@@ -12,32 +12,21 @@ Last updated: 2026-04-19
 
 Phase 6 — Performance Characterization
 
-(Phase 4 — Debrief closed. Phase 5 — Evidence Threading complete. Phase 6 active; Slices 6-1A + 6-1B shipped, 6-1C implemented and validated in-session — pending commit; 6-1D defined.)
+(Phase 4 — Debrief closed. Phase 5 — Evidence Threading complete. Phase 6 active; Slices 6-1A + 6-1B + 6-1C shipped; 6-1D next.)
 
 ## Current Slice
 
-**6-1C — baseline + paint-completion instrumentation + CI gate.** Implemented in-session; product + CI + spec changes uncommitted on the working tree. Ready for `/gate` + commit.
-
-6-1C revised scope (from original plan):
-- Added paint-completion measurement via double-rAF in [useMapSignalLayers.ts](frontend/src/hooks/map/useMapSignalLayers.ts): `durationMs` now captures operator-felt time-to-paint; `jsMs` stays in event details as the synchronous-reconcile cost.
-- Spec gate switched to asserting on `jsMs` (deterministic, swiftshader-independent); `paintMs` is reported in the summary attachment for observability and local-GPU comparison but not asserted.
-- Found + fixed a selection-event loss bug: the effect originally committed `previousSignalCountRef` / `previousSelectedSignalIdRef` synchronously, so a concurrent ref-time or signals update that preempted the double-rAF would swallow the `selection_set` event. Refs now commit only inside the second rAF callback alongside `recordPerfEvent`.
-- Maplibre chunk-split removed from [vite.config.ts](frontend/vite.config.ts) — vite 8 / rolldown was re-wrapping the UMD bundle in a way that broke `maplibre_gl_exports` at runtime and prevented `mapLoaded` from ever becoming `true` in the built bundle. Temporary; restore once rolldown has a fix.
+**None active — 6-1C shipped.** Next actionable slice is **6-1D — multi-scale characterization (1k / 10k / 100k signals)** (see `Next` below). 6-1C landed paint-completion measurement, the deterministic `jsMs` CI gate, the rAF-preemption fix in [useMapSignalLayers.ts](frontend/src/hooks/map/useMapSignalLayers.ts), and wired `benchmark:map` into the `frontend-perf` CI job.
 
 ## Current Repo State
 
-- Latest shipped slice: `605b963` — Phase 6 Slice 6-1B: Playwright benchmark:map spec + npm script
-- Working tree (uncommitted, all 6-1C):
-  - [frontend/src/hooks/map/useMapSignalLayers.ts](frontend/src/hooks/map/useMapSignalLayers.ts) — double-rAF paint-completion recording + ref commit inside rAF
-  - [frontend/src/test/useMapSignalLayersPerf.test.ts](frontend/src/test/useMapSignalLayersPerf.test.ts) — synchronous rAF mock, `jsMs`-in-details assertions, paint-vs-js separation test, deferred-rAF preemption regression guard for the ref-commit-inside-rAF fix
-  - [frontend/e2e/map-benchmark.spec.ts](frontend/e2e/map-benchmark.spec.ts) — asserts on `jsMs`, reports `paintMs`, budgets re-anchored to the 6-1C baseline with 15/30/50ms floors; env overrides renamed `MAP_BENCH_MAX_JS_{MEAN,P95,SINGLE_SAMPLE}_MS`
-  - [frontend/vite.config.ts](frontend/vite.config.ts) — maplibre `manualChunks` split removed (rolldown UMD-wrap workaround)
-  - [.github/workflows/ci.yml](.github/workflows/ci.yml) — `frontend-perf` job renamed to "Globe + map benchmarks", runs `yarn benchmark:map` after globe, uploads `frontend/test-results/` as `frontend-perf-report` artifact
+- Latest shipped slice: `6bcaa2d` — Phase 6 Slice 6-1C: paint-completion measurement + jsMs CI gate (followup `465c4f9` — comment + whitespace P3 cleanup)
+- Working tree: clean on product; handoff commit pending
 - For the literal tip SHA, run `git log -1` — it is intentionally not recorded here (self-referential with the commit that writes it).
 
 ## Phase 6 — Slice Plan
 
-Sequenced per `Next` below: **6-1A** (instrumentation + bridge, shipped in `19020f3`) → **6-1B** (Playwright spec + `benchmark:map` script, shipped in `605b963`) → **6-1C** (paint-completion instrumentation + baseline + CI gate, implemented in-session, pending commit) → **6-1D** (multi-scale characterization at 1k/10k/100k signals, not started).
+Sequenced per `Next` below: **6-1A** (instrumentation + bridge, shipped in `19020f3`) → **6-1B** (Playwright spec + `benchmark:map` script, shipped in `605b963`) → **6-1C** (paint-completion instrumentation + baseline + CI gate, shipped in `6bcaa2d` + `465c4f9`) → **6-1D** (multi-scale characterization at 1k/10k/100k signals, next).
 
 ## 6-1C Baseline (local, 5 runs × 10 samples, Apple M-series + swiftshader, 315 seeded signals)
 
@@ -56,6 +45,8 @@ Floors can be lowered once the baseline holds stably across several real CI runs
 - `19020f3` — Phase 6 Slice 6-1A: map signal-reconcile instrumentation + benchmark bridge
 - `39008b6` — Phase 6 Slice 6-1A followup: document trigger priority, drop redundant bench field
 - `605b963` — Phase 6 Slice 6-1B: Playwright benchmark:map spec + npm script (reshapes bench API to signal-focused)
+- `6bcaa2d` — Phase 6 Slice 6-1C: paint-completion measurement + jsMs CI gate (double-rAF in `useMapSignalLayers`, refs commit inside rAF, spec asserts on `jsMs`, `benchmark:map` wired into `frontend-perf` CI job, maplibre `manualChunks` removed as rolldown UMD-wrap workaround)
+- `465c4f9` — Phase 6 Slice 6-1C followup: vite maplibre comment + test whitespace P3 cleanup
 
 ## Shipped In Phase 5 (closed)
 
@@ -78,12 +69,12 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 
 ## In Progress
 
-- **6-1C — paint-completion + baseline + CI gate — implemented in-session, pending commit.** All validation green locally (focused Vitest 6 pass, full Vitest 592 pass, tsc 0 errors, ESLint 0 issues, `git diff --check` clean; 5 local benchmark runs all pass jsMs gate). Known caveat for first CI run: `frontend-perf` now brings up Docker twice through its lifecycle (globe then map), each ~5 local baseline runs shows stable jsMs but paintMs varies widely under swiftshader (not gated).
+- _(none — 6-1C shipped; 6-1D is the next actionable slice.)_
 
 ## Next
 
-- **Commit 6-1C** with a message that names the scope changes (paint-completion measurement, jsMs gate, maplibre chunk-split workaround, CI wiring). Run `/gate` first.
-- **6-1D — multi-scale characterization (1k / 10k / 100k signals).** Not started. Current baseline is against the `db:seed`-produced 315-signal dataset. Scale characterization requires a seed-scaling helper (env-flagged, e.g. `BENCHMARK_SIGNAL_COUNT=10000 rails db:seed`) that inflates `vessel_position` / `seismic_event` / etc. without distorting other seeded entities, plus a parameterized variant of `map-benchmark.spec.ts` that records jsMs and paintMs per scale tier. Goal: confirm `useMapSignalLayers` reconcile cost scales sub-linearly through operator-relevant densities and flag the point where paint time crosses operator-felt budgets on real GPU.
+- **6-1D — multi-scale characterization (1k / 10k / 100k signals).** Not started. Current baseline is against the `db:seed`-produced 315-signal dataset. Scale characterization requires a seed-scaling helper (env-flagged, e.g. `BENCHMARK_SIGNAL_COUNT=10000 rails db:seed`) that inflates `vessel_position` / `seismic_event` / etc. without distorting other seeded entities, plus a parameterized variant of `map-benchmark.spec.ts` that records jsMs and paintMs per scale tier. Goal: confirm `useMapSignalLayers` reconcile cost scales sub-linearly through operator-relevant densities and flag the point where paint time crosses operator-felt budgets on real GPU. First-CI-run learning from 6-1C should also feed into 6-1D's per-tier budget anchoring (env overrides `MAP_BENCH_MAX_JS_*` or per-tier floors).
+- **Watch-item (not yet a slice):** if the first real CI run of `frontend-perf` shows wall-time pressure from running globe + map sequentially against the same Docker bring-up, split into a job matrix. Don't pre-emptively split — wait for actual numbers.
 - Phase 7 (advanced geospatial tools — measurement, annotation, temporary overlays) remains unstarted and is intentionally sequenced after Phase 6.
 
 ## Currently Locked Files
@@ -100,18 +91,20 @@ cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint e2e/map-be
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (Phase 6 Slice 6-1C, 2026-04-19, pre-commit)
+## Last Validation Results (Phase 6 Slice 6-1C + followup, 2026-04-19, post-push)
 
-- Focused Vitest (`useMapSignalLayersPerf`): **6 tests, 0 failures** (added preemption regression guard for the ref-commit-inside-rAF fix)
-- Full Vitest suite: **592 tests across 82 files, 0 failures**
+- Post-push automated gate suite (after `465c4f9`): **all green** — RSpec, TypeScript, ESLint, Brakeman (0 warnings, 0 errors), bundler-audit, frontend build.
+- Focused Vitest (`useMapSignalLayersPerf`): **6 tests, 0 failures** (preemption regression guard for the ref-commit-inside-rAF fix included)
+- Full Vitest suite (pre-push): **592 tests across 82 files, 0 failures**
 - TypeScript (`--noEmit`): **0 errors**
 - ESLint (touched files): **0 issues**
 - `yarn benchmark:map` × 5 local runs against seeded backend + vite preview (127.0.0.1:4178): **all 5 pass**; jsMs combined mean 1.97–2.03ms, p95 2.1–2.5ms, max 2.1–2.5ms — well under the 15/30/50ms gate.
+- Frontend build output confirms maplibre-gl is auto-chunked at `dist/assets/maplibre-gl-*.js  ~1024 kB` (272 kB gzip), at the `chunkSizeWarningLimit` floor of 1100 kB — expected, lazy-loaded only on `/map`.
 - `git diff --check`: clean
 
 ## Known Risks / Blockers
 
-- **Maplibre `manualChunks` split is temporarily disabled in [vite.config.ts](frontend/vite.config.ts).** Under vite 8 / rolldown the UMD wrapper produces `Export 'maplibre_gl_exports' is not defined in module` at runtime, leaving `mapLoaded:false` permanently in the built bundle (including the benchmark build). Re-enable once rolldown fixes the UMD re-wrap; until then maplibre-gl inlines and [vite.config.ts](frontend/vite.config.ts) tracks the issue via the `ON_DEMAND_EXPERIENCE_ASSET_GLOBS` comments.
+- **Maplibre `manualChunks` name removed from [vite.config.ts](frontend/vite.config.ts).** Under vite 8 / rolldown, manually naming the maplibre chunk re-wraps its UMD bundle and produces `Export 'maplibre_gl_exports' is not defined in module` at runtime, leaving `mapLoaded:false` permanently in the built bundle. The dynamic `import('maplibre-gl')` boundary at the MapPage call site already auto-chunks maplibre into `dist/assets/maplibre-gl-*.js` (~1024 kB), so removing the manual name preserves the lazy-load boundary while sidestepping the UMD re-wrap. Re-introduce a manual name only once rolldown handles UMD re-wrap correctly.
 - **CI `frontend-perf` job now runs two benchmarks (globe + map) against the same Docker app.** First run is likely to expose CI-runner variance in both jsMs and paintMs. If jsMs gate is too tight on GitHub-hosted runners, raise the spec floors (NOT the multiplier) and re-anchor per real CI numbers, or use the env overrides (`MAP_BENCH_MAX_JS_*`). Don't skip the spec on CI pre-emptively — confirm by running.
 - **paintMs is reported but not asserted.** Under swiftshader it ranges 100–1444ms across 50 local samples; any operator-felt-time regression detection needs a real-GPU run (local dev, staging, or a future CI runner with GPU pass-through). paintMs numbers in `frontend-perf-report` artifact are for observability only.
 - Backend local validation still needs the repo Ruby path:
@@ -144,4 +137,7 @@ git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 - Phase 5 Slice 2-A-followup — replay fired_at filter on alert evidence labels
 - Phase 5 Slice 2-B — map alert evidence chain affordance
 - Phase 5 Slice 2-C — stale-basis surfacing on alert evidence
+- Phase 6 Slice 6-1A — map signal-reconcile instrumentation + benchmark bridge
+- Phase 6 Slice 6-1B — Playwright benchmark:map spec + npm script
+- Phase 6 Slice 6-1C — paint-completion measurement + jsMs CI gate (incl. rAF-preemption fix and maplibre `manualChunks` removal)
 - project-skill consolidation / deep-review removal / repo-managed `.claude/skills`
