@@ -13,13 +13,29 @@ type MapBenchmarkTarget = {
   globalSignalCount: number
 }
 
-// Initial budgets are intentionally loose — 6-1B just needs a passing spec.
-// 6-1C establishes a baseline on real data and tightens these, and wires
-// CI to fail on regression. Override per-env via MAP_BENCH_MAX_MEAN_MS /
-// MAP_BENCH_MAX_P95_MS / MAP_BENCH_MAX_SINGLE_SAMPLE_MS if needed.
-const DEFAULT_MAX_MEAN_MS = 15
-const DEFAULT_MAX_P95_MS = 30
-const DEFAULT_MAX_SINGLE_SAMPLE_MS = 50
+// The CI gate asserts on jsMs — the deterministic synchronous reconcile cost
+// in `useMapSignalLayers` — because paintMs (the full rAF→paint→commit cycle)
+// is dominated by swiftshader software rasterization on CI and has too much
+// variance (100–1400ms across 5 local baseline runs) to gate on reliably.
+// jsMs at the seeded 315-signal dataset is sub-3ms; paintMs is still captured
+// and reported for observability / local-GPU comparison.
+//
+// 6-1C baseline across 5 local runs (Apple M-series, swiftshader):
+//   jsMs combined  — mean 2.0ms, p95 2.5ms, max 2.5ms
+//   paintMs combined — mean 261–410ms, max up to 1444ms (swiftshader-bound)
+//
+// Budgets are 2.5× mean / 2.5× p95 / 3× max of the baseline, with 15/30/50ms
+// floors so a faster-than-expected machine or future optimization doesn't
+// silently ratchet the gate below the historical 6-1B defaults (which are a
+// practical noise floor for cross-runner variance).  The floors currently
+// win — raise the multiplier numbers ahead of the floor only once a tighter
+// baseline has been demonstrated to hold across multiple CI runs.
+//
+// Override per-env via MAP_BENCH_MAX_JS_MEAN_MS / MAP_BENCH_MAX_JS_P95_MS /
+// MAP_BENCH_MAX_JS_SINGLE_SAMPLE_MS.
+const DEFAULT_MAX_JS_MEAN_MS = 15
+const DEFAULT_MAX_JS_P95_MS = 30
+const DEFAULT_MAX_JS_SINGLE_SAMPLE_MS = 50
 
 function readBudget(envKey: string, fallback: number): number {
   const raw = process.env[envKey]
@@ -40,12 +56,30 @@ function percentile(values: number[], percentileRank: number): number {
   return sorted[index]
 }
 
+type SampleStats = {
+  samples: number
+  minMs: number
+  maxMs: number
+  meanMs: number
+  p95Ms: number
+}
+
+function summarize(values: number[]): SampleStats {
+  return {
+    samples: values.length,
+    minMs: values.length ? Math.min(...values) : 0,
+    maxMs: values.length ? Math.max(...values) : 0,
+    meanMs: mean(values),
+    p95Ms: percentile(values, 95),
+  }
+}
+
 test('benchmark map signal-reconcile on selection set/clear', async ({ page }, testInfo) => {
   // MapLibre cold-start under swiftshader plus seeded data fetch can be slow
   // on shared CI runners.  The reconcile itself is JS-only (see
-  // frontend/src/hooks/map/useMapSignalLayers.ts:55-83 — it manipulates
-  // GeoJSON source data, not the GL canvas) so the samples measured below
-  // are typically sub-millisecond; the extra timeout covers setup only.
+  // frontend/src/hooks/map/useMapSignalLayers.ts — it manipulates GeoJSON
+  // source data, not the GL canvas) so jsMs is sub-5ms; the extra timeout
+  // covers setup and paint-completion rAF waits only.
   test.setTimeout(180_000)
 
   await primeAuthenticatedSession(page)
@@ -72,8 +106,10 @@ test('benchmark map signal-reconcile on selection set/clear', async ({ page }, t
   expect(benchmarkTarget).not.toBeNull()
 
   const target = benchmarkTarget as MapBenchmarkTarget
-  const selectionSetDurations: number[] = []
-  const selectionClearedDurations: number[] = []
+  const selectionSetJs: number[] = []
+  const selectionSetPaint: number[] = []
+  const selectionClearedJs: number[] = []
+  const selectionClearedPaint: number[] = []
 
   for (let i = 0; i < 5; i += 1) {
     await page.evaluate(() => {
@@ -90,7 +126,8 @@ test('benchmark map signal-reconcile on selection set/clear', async ({ page }, t
     })
 
     const selectionSetEvent = await selectionSetHandle.jsonValue() as PerfEvent
-    selectionSetDurations.push(Number(selectionSetEvent.durationMs ?? 0))
+    selectionSetJs.push(Number((selectionSetEvent.details as { jsMs?: unknown }).jsMs ?? 0))
+    selectionSetPaint.push(Number(selectionSetEvent.durationMs ?? 0))
 
     await page.evaluate(() => {
       const bench = (window as Window & { __resilienceMapBench?: { clearPerf: () => void; clearSelection: () => void } }).__resilienceMapBench
@@ -106,64 +143,51 @@ test('benchmark map signal-reconcile on selection set/clear', async ({ page }, t
     })
 
     const selectionClearedEvent = await selectionClearedHandle.jsonValue() as PerfEvent
-    selectionClearedDurations.push(Number(selectionClearedEvent.durationMs ?? 0))
+    selectionClearedJs.push(Number((selectionClearedEvent.details as { jsMs?: unknown }).jsMs ?? 0))
+    selectionClearedPaint.push(Number(selectionClearedEvent.durationMs ?? 0))
   }
 
-  const allDurations = [...selectionSetDurations, ...selectionClearedDurations]
+  const allJs = [...selectionSetJs, ...selectionClearedJs]
+  const allPaint = [...selectionSetPaint, ...selectionClearedPaint]
 
   const summary = {
     benchmarkTarget: target,
-    samples: allDurations.length,
-    selectionSet: {
-      samples: selectionSetDurations.length,
-      minMs: Math.min(...selectionSetDurations),
-      maxMs: Math.max(...selectionSetDurations),
-      meanMs: mean(selectionSetDurations),
-      p95Ms: percentile(selectionSetDurations, 95),
+    samples: allJs.length,
+    jsMs: {
+      selectionSet:     summarize(selectionSetJs),
+      selectionCleared: summarize(selectionClearedJs),
+      combined:         summarize(allJs),
     },
-    selectionCleared: {
-      samples: selectionClearedDurations.length,
-      minMs: Math.min(...selectionClearedDurations),
-      maxMs: Math.max(...selectionClearedDurations),
-      meanMs: mean(selectionClearedDurations),
-      p95Ms: percentile(selectionClearedDurations, 95),
-    },
-    combined: {
-      minMs: Math.min(...allDurations),
-      maxMs: Math.max(...allDurations),
-      meanMs: mean(allDurations),
-      p95Ms: percentile(allDurations, 95),
+    paintMs: {
+      selectionSet:     summarize(selectionSetPaint),
+      selectionCleared: summarize(selectionClearedPaint),
+      combined:         summarize(allPaint),
     },
   }
 
-  const maxMeanMs = readBudget('MAP_BENCH_MAX_MEAN_MS', DEFAULT_MAX_MEAN_MS)
-  const maxP95Ms = readBudget('MAP_BENCH_MAX_P95_MS', DEFAULT_MAX_P95_MS)
-  const maxSingleSampleMs = readBudget('MAP_BENCH_MAX_SINGLE_SAMPLE_MS', DEFAULT_MAX_SINGLE_SAMPLE_MS)
+  const maxJsMeanMs         = readBudget('MAP_BENCH_MAX_JS_MEAN_MS',          DEFAULT_MAX_JS_MEAN_MS)
+  const maxJsP95Ms          = readBudget('MAP_BENCH_MAX_JS_P95_MS',           DEFAULT_MAX_JS_P95_MS)
+  const maxJsSingleSampleMs = readBudget('MAP_BENCH_MAX_JS_SINGLE_SAMPLE_MS', DEFAULT_MAX_JS_SINGLE_SAMPLE_MS)
+
+  const report = {
+    ...summary,
+    budgets: {
+      maxJsMeanMs,
+      maxJsP95Ms,
+      maxJsSingleSampleMs,
+    },
+  }
 
   await testInfo.attach('map-benchmark-summary', {
-    body: Buffer.from(JSON.stringify({
-      ...summary,
-      budgets: {
-        maxMeanMs,
-        maxP95Ms,
-        maxSingleSampleMs,
-      },
-    }, null, 2)),
+    body: Buffer.from(JSON.stringify(report, null, 2)),
     contentType: 'application/json',
   })
 
-  console.log(`map-benchmark ${JSON.stringify({
-    ...summary,
-    budgets: {
-      maxMeanMs,
-      maxP95Ms,
-      maxSingleSampleMs,
-    },
-  })}`)
+  console.log(`map-benchmark ${JSON.stringify(report)}`)
 
-  expect(selectionSetDurations.length).toBe(5)
-  expect(selectionClearedDurations.length).toBe(5)
-  expect(summary.combined.meanMs).toBeLessThanOrEqual(maxMeanMs)
-  expect(summary.combined.p95Ms).toBeLessThanOrEqual(maxP95Ms)
-  expect(summary.combined.maxMs).toBeLessThanOrEqual(maxSingleSampleMs)
+  expect(selectionSetJs.length).toBe(5)
+  expect(selectionClearedJs.length).toBe(5)
+  expect(summary.jsMs.combined.meanMs).toBeLessThanOrEqual(maxJsMeanMs)
+  expect(summary.jsMs.combined.p95Ms).toBeLessThanOrEqual(maxJsP95Ms)
+  expect(summary.jsMs.combined.maxMs).toBeLessThanOrEqual(maxJsSingleSampleMs)
 })

@@ -131,7 +131,7 @@ jobs:
         run: bundle exec rspec --format progress
 
   frontend-perf:
-    name: Frontend — Globe benchmark
+    name: Frontend — Globe + map benchmarks
     runs-on: ubuntu-latest
 
     steps:
@@ -169,6 +169,18 @@ jobs:
       - name: Run globe benchmark
         run: E2E_BASE_URL=http://127.0.0.1:3000 yarn benchmark:globe
         working-directory: frontend
+
+      - name: Run map benchmark
+        run: E2E_BASE_URL=http://127.0.0.1:3000 yarn benchmark:map
+        working-directory: frontend
+
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-perf-report
+          path: frontend/test-results/
+          retention-days: 14
 
       - name: Stop Dockerized app
         if: always()

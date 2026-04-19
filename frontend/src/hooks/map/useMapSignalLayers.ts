@@ -59,32 +59,56 @@ export function useMapSignalLayers({
     const startedAt = perfEnabled ? nowMs() : 0
     const { clusterable, selected } = buildMapSignalRenderCollections(signals, selectedSignalId, referenceTimeMs)
     updateSignalSources(map, clusterable, selected, buildMapSignalFeatureCollection(signals, referenceTimeMs))
-    if (perfEnabled) {
-      const previousSignalCount = previousSignalCountRef.current
-      const previousSelectedSignalId = previousSelectedSignalIdRef.current
-      const signalCountDelta = signals.length - previousSignalCount
-      const selectionChanged = selectedSignalId !== previousSelectedSignalId
-      // Trigger priority when multiple inputs change in the same render:
-      // selection change > signal-count change > reference-time change.
-      // The Playwright `benchmark:map` spec filters to `selection_set`, so
-      // this ordering guarantees selection-driven samples aren't masked by
-      // a concurrent signal-array or replay-clock update.
-      recordPerfEvent(
-        'map.signal_reconcile',
-        {
-          signalCount: signals.length,
-          signalCountDelta,
-          selectedSignalId,
-          selectionChanged,
-          trigger:
-            selectionChanged ? (selectedSignalId ? 'selection_set' : 'selection_cleared')
-            : signalCountDelta !== 0 ? 'signals_changed'
-            : 'reference_time_changed',
-        },
-        nowMs() - startedAt,
-      )
+    if (!perfEnabled) return
+
+    const jsMs = nowMs() - startedAt
+    const previousSignalCount = previousSignalCountRef.current
+    const previousSelectedSignalId = previousSelectedSignalIdRef.current
+    const signalCountDelta = signals.length - previousSignalCount
+    const selectionChanged = selectedSignalId !== previousSelectedSignalId
+    // Trigger priority when multiple inputs change in the same render:
+    // selection change > signal-count change > reference-time change.
+    // The Playwright `benchmark:map` spec filters to `selection_set`, so
+    // this ordering guarantees selection-driven samples aren't masked by
+    // a concurrent signal-array or replay-clock update.
+    const trigger =
+      selectionChanged ? (selectedSignalId ? 'selection_set' : 'selection_cleared')
+      : signalCountDelta !== 0 ? 'signals_changed'
+      : 'reference_time_changed'
+
+    const details = { signalCount: signals.length, signalCountDelta, selectedSignalId, selectionChanged, trigger, jsMs }
+
+    // Wait two animation frames before recording so durationMs captures
+    // operator-felt time-to-paint (JS reconcile + style/layout + composite),
+    // not just the synchronous bookkeeping cost.  The first rAF fires
+    // before paint; the second fires after paint of the first frame.  jsMs
+    // remains in details so a regression in the synchronous reconcile is
+    // still observable even though the headline number is paint-bound.
+    //
+    // Refs only commit on successful paint-completion — if this effect is
+    // torn down before rAF fires (e.g. a concurrent signals/ref-time render
+    // preempts the paint), the selection change survives into the next fire
+    // and is still reported as selection_set rather than silently swallowed.
+    const raf  = typeof window !== 'undefined' ? window.requestAnimationFrame : undefined
+    const caf  = typeof window !== 'undefined' ? window.cancelAnimationFrame  : undefined
+    if (!raf || !caf) {
       previousSignalCountRef.current = signals.length
       previousSelectedSignalIdRef.current = selectedSignalId
+      recordPerfEvent('map.signal_reconcile', details, jsMs)
+      return
+    }
+
+    let inner = 0
+    const outer = raf(() => {
+      inner = raf(() => {
+        previousSignalCountRef.current = signals.length
+        previousSelectedSignalIdRef.current = selectedSignalId
+        recordPerfEvent('map.signal_reconcile', details, nowMs() - startedAt)
+      })
+    })
+    return () => {
+      caf(outer)
+      if (inner) caf(inner)
     }
   }, [mapLoaded, selectedSignalId, signals, referenceTimeMs, mapRef])
 

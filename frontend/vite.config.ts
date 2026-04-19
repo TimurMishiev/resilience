@@ -127,15 +127,10 @@ export default defineConfig({
     // continues to flag unexpected growth elsewhere instead of this stable,
     // lazy-loaded dependency.
     chunkSizeWarningLimit: ON_DEMAND_VENDOR_WARNING_LIMIT_KB,
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (id.includes('/node_modules/maplibre-gl/')) {
-            return 'maplibre-gl'
-          }
-          return undefined
-        },
-      },
-    },
+    // manualChunks split for maplibre-gl temporarily disabled — vite 8 /
+    // rolldown re-wraps the maplibre UMD bundle in a way that fails to
+    // expose `maplibre_gl_exports`, leaving the runtime chunk import broken.
+    // Restore once rolldown has a fix; for now keep maplibre inline so the
+    // /map page actually loads in the production build (incl. benchmark).
   },
 })

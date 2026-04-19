@@ -57,10 +57,16 @@ describe('useMapSignalLayers — perf instrumentation', () => {
   beforeEach(() => {
     recordPerfEvent.mockReset()
     window.localStorage.clear()
+    // Synchronous double-rAF so paint-completion recording is deterministic.
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(((cb: FrameRequestCallback) => {
+      cb(0); return 1
+    }) as typeof window.requestAnimationFrame)
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((() => {}) as typeof window.cancelAnimationFrame)
   })
 
   afterEach(() => {
     window.localStorage.clear()
+    vi.restoreAllMocks()
   })
 
   it('records nothing when perf is disabled', () => {
@@ -80,9 +86,21 @@ describe('useMapSignalLayers — perf instrumentation', () => {
       selectedSignalId: null,
       selectionChanged: false,
       trigger: 'signals_changed',
+      jsMs: 0,
     })
     expect(durationMs).toBe(0)
   })
+
+  it('records jsMs separately from durationMs (paint-completion total)', () => {
+    window.localStorage.setItem('resilience.perf', '1')
+    renderHook(() => useMapSignalLayers(buildInput({ signals: [buildSignal()] })))
+    const [, details, durationMs] = recordPerfEvent.mock.calls[0]
+    // Under the mocked nowMs both are zero; the contract being asserted is
+    // that jsMs is present in details and durationMs is reported separately.
+    expect(details).toMatchObject({ jsMs: 0 })
+    expect(durationMs).toBe(0)
+  })
+
 
   it('reports selection_set on first selection and selection_cleared on clear', () => {
     window.localStorage.setItem('resilience.perf', '1')
@@ -109,5 +127,57 @@ describe('useMapSignalLayers — perf instrumentation', () => {
     rerender(buildInput({ signals, referenceTimeMs: baseTime + 60_000 }))
     const triggers = recordPerfEvent.mock.calls.map(call => (call[1] as { trigger: string }).trigger)
     expect(triggers).toEqual(['signals_changed', 'reference_time_changed'])
+  })
+
+  // Regression guard for the rAF-preemption bug found while landing 6-1C:
+  // previousSignalCountRef / previousSelectedSignalIdRef must commit INSIDE
+  // the inner rAF callback, not synchronously alongside the trigger compute.
+  // If refs commit synchronously, a cancelled rAF (effect torn down before
+  // paint) still mutates previous-state, and the next effect mis-classifies a
+  // surviving selection change as `reference_time_changed`, silently dropping
+  // it from the benchmark sample (which filters on `selection_set`).
+  it('preserves selection_set across rAF preemption (refs commit inside rAF)', () => {
+    window.localStorage.setItem('resilience.perf', '1')
+
+    const queue = new Map<number, FrameRequestCallback>()
+    let nextId = 1
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(((cb: FrameRequestCallback) => {
+      const id = nextId++
+      queue.set(id, cb)
+      return id
+    }) as typeof window.requestAnimationFrame)
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(((id: number) => {
+      queue.delete(id)
+    }) as typeof window.cancelAnimationFrame)
+
+    const flushQueue = () => {
+      while (queue.size > 0) {
+        const [id, cb] = queue.entries().next().value as [number, FrameRequestCallback]
+        queue.delete(id)
+        cb(0)
+      }
+    }
+
+    const signals = [buildSignal()]
+    const baseTime = Date.parse('2026-04-19T00:00:01Z')
+    const { rerender } = renderHook(
+      (props: MapSignalLayersInput) => useMapSignalLayers(props),
+      { initialProps: buildInput({ signals, referenceTimeMs: baseTime }) },
+    )
+
+    // Selection rerender — schedules outer rAF for selection_set; do NOT flush.
+    rerender(buildInput({ signals, selectedSignalId: 'sig-1', referenceTimeMs: baseTime }))
+
+    // Preempting rerender — React runs the prior effect's cleanup first
+    // (cancelling its queued rAF), then the new effect runs and queues its own
+    // rAF.  Because refs are committed inside the rAF, the cancelled effect
+    // never advanced previousSelectedSignalIdRef past `null`, so the surviving
+    // effect still sees the selection change.
+    rerender(buildInput({ signals, selectedSignalId: 'sig-1', referenceTimeMs: baseTime + 60_000 }))
+
+    flushQueue()
+
+    const triggers = recordPerfEvent.mock.calls.map(call => (call[1] as { trigger: string }).trigger)
+    expect(triggers).toEqual(['selection_set'])
   })
 })
