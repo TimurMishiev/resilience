@@ -16,7 +16,7 @@ Phase 5 — Evidence Threading
 
 ## Current Slice
 
-**None active.** 5-2B shipped; awaiting user direction for next tranche. See "Remaining Options" below.
+**None active — 5-2C is the proposed next slice.** Phase 5 validation checklist is 4-of-5 complete; only "stale evidence/basis can be surfaced" remains before Phase 5 can honestly close. Prerequisite satisfied: `FreshnessState` / `deriveFreshness` / `connectionToFreshness` already exist in `frontend/src/lib/freshness.ts` (Phase 1). 5-2C reuses that model — no new API or type required.
 
 Scope note for completed 5-2B: `/globe` was intentionally excluded. `GlobeInspectorPanel` does not render `SignalRuleMatch` rows today (it shows nearest `Signal`s, not alerts). Adding alert rows to the globe is a separate slice, not part of 5-2B.
 
@@ -55,8 +55,9 @@ Slice 1 delivered incident → alert threading. Slice 2-A-full delivered rec →
 
 ## Next
 
-- Roadmap-truth audit requested — see `execution_context.md` Phase 5 deliverables to assess what remains before Phase 5 can honestly close.
-- Candidate tranches after 5-2B: 5-2C (stale-basis surfacing) or close Phase 5 and open Phase 6 (Performance Characterization) per roadmap sequence.
+- **5-2C — stale-basis surfacing.** Annotate evidence rows in `AlertChainDrawer` (and/or `EvidenceDrawer`) with a stale-basis indicator when the backing signal/rule/site has aged past its freshness window. Reuse `lib/freshness.ts` (`deriveFreshness`, `FreshnessState`). Do not introduce a new API — thresholds already exist (agingMs: 30_000, staleMs: 120_000). Scope: drawer labels + at most one ambient cue on the alert row itself; do not repaint spatial trust (that is Phase 3's surface). Replay: stale-basis must be computed off `fired_at` / `occurred_at` relative to the same reference clock the drawer already uses — never wall-clock.
+- After 5-2C lands, close Phase 5 and open Phase 6 (Performance Characterization). Phase 6 gap: `yarn benchmark:map` script + spec do not exist yet (`benchmark:globe` does); documented budgets + CI threshold assertions also pending.
+- Phase 7 (advanced geospatial tools — measurement, annotation, temporary overlays) remains unstarted and is intentionally sequenced after Phase 6.
 
 ## Currently Locked Files
 
