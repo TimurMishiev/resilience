@@ -147,6 +147,16 @@ describe('IncidentDetailPage', () => {
     })
   })
 
+  it('disables the Compare tab during replay to prevent stacked temporal semantics', async () => {
+    mockState.isReplaying = true
+    await renderPage()
+    await waitFor(() => {
+      expect(screen.getByText('Port Alpha')).toBeTruthy()
+    })
+    const compareTab = screen.getByRole('tab', { name: /Compare/i })
+    expect(compareTab).toHaveAttribute('aria-disabled', 'true')
+  })
+
   it('hides mutation controls for viewer role', async () => {
     mockState.currentUser = { id: 'viewer-1', email: 'viewer@test.com', role: 'viewer' }
 

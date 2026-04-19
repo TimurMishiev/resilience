@@ -152,6 +152,13 @@ vi.mock('../components/RiskScoreChart', () => ({
   default: ({ siteId, asOf }: { siteId: string; asOf?: string | null }) => <div>{`risk:${siteId}:${asOf ?? 'live'}`}</div>,
 }))
 
+// SiteCompareTab issues its own TanStack useQuery calls directly (not via mocked
+// hooks). Stub it so this harness doesn't need a QueryClientProvider — the Compare
+// tab's own behavior is covered in SiteCompareTab.test.tsx.
+vi.mock('../components/site-detail/SiteCompareTab', () => ({
+  default: () => <div>compare-tab</div>,
+}))
+
 import SiteDetailPage from '../pages/SiteDetailPage'
 
 function SiteDetailHarness() {
@@ -238,5 +245,20 @@ describe('SiteDetailPage task deep links', () => {
     expect(await screen.findByText(/Historical risk trends, breaches, tasks, signals/i)).toBeInTheDocument()
     expect(screen.getByText(`risk:site-1:${replayState.asOf}`)).toBeInTheDocument()
     expect(screen.getByText(`timeline:site-1:${replayState.asOf}`)).toBeInTheDocument()
+  })
+
+  it('disables the Compare tab during replay to prevent stacked temporal semantics', async () => {
+    replayState.isReplaying = true
+
+    render(
+      <MemoryRouter initialEntries={['/sites/site-1']}>
+        <Routes>
+          <Route path="/sites/:id" element={<SiteDetailHarness />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    const compareTab = await screen.findByRole('tab', { name: /Compare/i })
+    expect(compareTab).toHaveAttribute('aria-disabled', 'true')
   })
 })

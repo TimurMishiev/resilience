@@ -89,9 +89,9 @@ export default function IncidentCompareTab({ incidentId, openedAt, latestAt }: I
   const fetchError = active ? t1Query.error ?? t2Query.error : null
 
   return (
-    <div className="incident-compare">
-      <div className="incident-compare-controls">
-        <label className="incident-compare-field">
+    <div className="compare-tab">
+      <div className="compare-tab-controls">
+        <label className="compare-tab-field">
           <span className="bp6-text-muted">T1 (earlier)</span>
           <input
             type="datetime-local"
@@ -101,7 +101,7 @@ export default function IncidentCompareTab({ incidentId, openedAt, latestAt }: I
             aria-label="Compare T1 timestamp"
           />
         </label>
-        <label className="incident-compare-field">
+        <label className="compare-tab-field">
           <span className="bp6-text-muted">T2 (later)</span>
           <input
             type="datetime-local"
@@ -122,13 +122,13 @@ export default function IncidentCompareTab({ incidentId, openedAt, latestAt }: I
       </div>
 
       {validationError && (
-        <Callout intent="warning" className="incident-compare-validation">
+        <Callout intent="warning" className="compare-tab-validation">
           {validationError}
         </Callout>
       )}
 
       {isLoading && (
-        <div className="incident-compare-loading">
+        <div className="compare-tab-loading">
           <Spinner size={20} />
         </div>
       )}
@@ -140,7 +140,7 @@ export default function IncidentCompareTab({ incidentId, openedAt, latestAt }: I
       )}
 
       {!isLoading && !fetchError && !active && (
-        <Callout intent="none" icon="info-sign" className="incident-compare-hint">
+        <Callout intent="none" icon="info-sign" className="compare-tab-hint">
           Pick two timestamps and press Compare to see what changed on this incident between them.
         </Callout>
       )}

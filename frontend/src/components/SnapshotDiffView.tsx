@@ -22,20 +22,20 @@ export default function SnapshotDiffView({
   }
 
   return (
-    <div className="debrief-diff">
+    <div className="snapshot-diff">
       {diff.changed.length > 0 && (
-        <section className="debrief-diff-section">
-          <h4 className="bp6-heading debrief-diff-heading">Changed</h4>
-          <ul className="debrief-diff-list">
+        <section className="snapshot-diff-section">
+          <h4 className="bp6-heading snapshot-diff-heading">Changed</h4>
+          <ul className="snapshot-diff-list">
             {diff.changed.map((entry) => (
-              <li key={`c-${entry.key}`} className="debrief-diff-row debrief-diff-row--changed">
-                <div className="debrief-diff-key">{formatKey(entry.key)}</div>
-                <div className="debrief-diff-values">
-                  <code className="debrief-diff-before" data-testid="diff-before">
+              <li key={`c-${entry.key}`} className="snapshot-diff-row snapshot-diff-row--changed">
+                <div className="snapshot-diff-key">{formatKey(entry.key)}</div>
+                <div className="snapshot-diff-values">
+                  <code className="snapshot-diff-before" data-testid="diff-before">
                     {formatDiffValue(entry.before)}
                   </code>
-                  <span className="debrief-diff-arrow" aria-hidden="true">→</span>
-                  <code className="debrief-diff-after" data-testid="diff-after">
+                  <span className="snapshot-diff-arrow" aria-hidden="true">→</span>
+                  <code className="snapshot-diff-after" data-testid="diff-after">
                     {formatDiffValue(entry.after)}
                   </code>
                 </div>
@@ -45,14 +45,14 @@ export default function SnapshotDiffView({
         </section>
       )}
       {diff.added.length > 0 && (
-        <section className="debrief-diff-section">
-          <h4 className="bp6-heading debrief-diff-heading">Added</h4>
-          <ul className="debrief-diff-list">
+        <section className="snapshot-diff-section">
+          <h4 className="bp6-heading snapshot-diff-heading">Added</h4>
+          <ul className="snapshot-diff-list">
             {diff.added.map((entry) => (
-              <li key={`a-${entry.key}`} className="debrief-diff-row debrief-diff-row--added">
-                <div className="debrief-diff-key">{formatKey(entry.key)}</div>
-                <div className="debrief-diff-values">
-                  <code className="debrief-diff-after" data-testid="diff-after">
+              <li key={`a-${entry.key}`} className="snapshot-diff-row snapshot-diff-row--added">
+                <div className="snapshot-diff-key">{formatKey(entry.key)}</div>
+                <div className="snapshot-diff-values">
+                  <code className="snapshot-diff-after" data-testid="diff-after">
                     {formatDiffValue(entry.after)}
                   </code>
                 </div>
@@ -62,14 +62,14 @@ export default function SnapshotDiffView({
         </section>
       )}
       {diff.removed.length > 0 && (
-        <section className="debrief-diff-section">
-          <h4 className="bp6-heading debrief-diff-heading">Removed</h4>
-          <ul className="debrief-diff-list">
+        <section className="snapshot-diff-section">
+          <h4 className="bp6-heading snapshot-diff-heading">Removed</h4>
+          <ul className="snapshot-diff-list">
             {diff.removed.map((entry) => (
-              <li key={`r-${entry.key}`} className="debrief-diff-row debrief-diff-row--removed">
-                <div className="debrief-diff-key">{formatKey(entry.key)}</div>
-                <div className="debrief-diff-values">
-                  <code className="debrief-diff-before" data-testid="diff-before">
+              <li key={`r-${entry.key}`} className="snapshot-diff-row snapshot-diff-row--removed">
+                <div className="snapshot-diff-key">{formatKey(entry.key)}</div>
+                <div className="snapshot-diff-values">
+                  <code className="snapshot-diff-before" data-testid="diff-before">
                     {formatDiffValue(entry.before)}
                   </code>
                 </div>

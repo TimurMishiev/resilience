@@ -377,7 +377,7 @@ body {
   outline-offset: 2px;
 }
 
-/* ── Debrief event diff drawer ─────────────────────────────── */
+/* ── Debrief event diff drawer chrome (drawer-specific header) ───── */
 
 .debrief-diff-meta {
   display: flex;
@@ -391,11 +391,13 @@ body {
   font-size: 11px;
 }
 
-.debrief-diff-section {
+/* ── Shared snapshot-diff renderer (debrief drawer + compare tabs) ── */
+
+.snapshot-diff-section {
   margin-bottom: 20px;
 }
 
-.debrief-diff-heading {
+.snapshot-diff-heading {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -403,7 +405,7 @@ body {
   opacity: 0.8;
 }
 
-.debrief-diff-list {
+.snapshot-diff-list {
   list-style: none;
   padding: 0;
   margin: 0;
@@ -412,7 +414,7 @@ body {
   gap: 6px;
 }
 
-.debrief-diff-row {
+.snapshot-diff-row {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -422,18 +424,18 @@ body {
   border-left: 3px solid transparent;
 }
 
-.debrief-diff-row--changed { border-left-color: #f0b726; }
-.debrief-diff-row--added   { border-left-color: #3dcc91; }
-.debrief-diff-row--removed { border-left-color: #f55656; }
+.snapshot-diff-row--changed { border-left-color: #f0b726; }
+.snapshot-diff-row--added   { border-left-color: #3dcc91; }
+.snapshot-diff-row--removed { border-left-color: #f55656; }
 
-.debrief-diff-key {
+.snapshot-diff-key {
   font-size: 11px;
   font-weight: 600;
   text-transform: capitalize;
   opacity: 0.85;
 }
 
-.debrief-diff-values {
+.snapshot-diff-values {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -441,8 +443,8 @@ body {
   flex-wrap: wrap;
 }
 
-.debrief-diff-before,
-.debrief-diff-after {
+.snapshot-diff-before,
+.snapshot-diff-after {
   font-family: monospace;
   font-size: 11px;
   padding: 2px 6px;
@@ -451,28 +453,28 @@ body {
   word-break: break-all;
 }
 
-.debrief-diff-before {
+.snapshot-diff-before {
   color: #f08080;
   text-decoration: line-through;
   text-decoration-color: rgba(245, 86, 86, 0.5);
 }
 
-.debrief-diff-after {
+.snapshot-diff-after {
   color: #8ddb9d;
 }
 
-.debrief-diff-arrow {
+.snapshot-diff-arrow {
   opacity: 0.55;
   font-size: 12px;
 }
 
-/* ── Incident A-B compare tab ──────────────────────────────── */
+/* ── Shared A-B compare tab chrome (incident + site) ─────────── */
 
-.incident-compare {
+.compare-tab {
   padding: 12px 0;
 }
 
-.incident-compare-controls {
+.compare-tab-controls {
   display: flex;
   align-items: flex-end;
   gap: 12px;
@@ -480,28 +482,28 @@ body {
   flex-wrap: wrap;
 }
 
-.incident-compare-field {
+.compare-tab-field {
   display: flex;
   flex-direction: column;
   gap: 4px;
   font-size: 11px;
 }
 
-.incident-compare-field input.bp6-input {
+.compare-tab-field input.bp6-input {
   min-width: 220px;
 }
 
-.incident-compare-validation {
+.compare-tab-validation {
   margin-bottom: 12px;
   font-size: 12px;
 }
 
-.incident-compare-hint {
+.compare-tab-hint {
   margin-bottom: 12px;
   font-size: 12px;
 }
 
-.incident-compare-loading {
+.compare-tab-loading {
   display: flex;
   justify-content: center;
   padding: 16px 0;

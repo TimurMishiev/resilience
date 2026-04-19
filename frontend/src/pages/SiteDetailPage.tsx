@@ -18,6 +18,7 @@ import SiteTasksTab from '../components/site-detail/SiteTasksTab'
 import SiteSignalsTab from '../components/site-detail/SiteSignalsTab'
 import SiteRuleFiresTab from '../components/site-detail/SiteRuleFiresTab'
 import SiteAssetsTab from '../components/site-detail/SiteAssetsTab'
+import SiteCompareTab from '../components/site-detail/SiteCompareTab'
 import CreateTaskDialog from '../components/site-detail/CreateTaskDialog'
 import { useSite, useUnflagSite, useToggleSiteStatus, useUpdateSiteGeofence } from '../hooks/useSite'
 import { useSignalRuleMatches } from '../hooks/useSignalRuleMatches'
@@ -338,6 +339,18 @@ export default function SiteDetailPage() {
             }}>NEW</span>
           </span>
         } panel={<SiteTimeline siteId={site.id} asOf={asOf} />} />
+        <Tab
+          id="compare"
+          title="Compare"
+          disabled={isReplaying}
+          panel={
+            <SiteCompareTab
+              siteId={site.id}
+              openedAt={site.created_at}
+              latestAt={site.updated_at}
+            />
+          }
+        />
         <Tab id="audit" title="Audit Trail" panel={
           <div style={{ paddingTop: 12 }}>
             <AuditTimeline entityType="Site" entityId={site.id} asOf={asOf} />

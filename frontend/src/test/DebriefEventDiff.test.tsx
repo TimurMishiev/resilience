@@ -23,8 +23,13 @@ function makeEvent(overrides: Partial<AuditEvent> = {}): AuditEvent {
 
 describe('DebriefEventDiff', () => {
   it('renders nothing when event is null (drawer closed)', () => {
-    const { container } = render(<DebriefEventDiff event={null} onClose={vi.fn()} />)
-    expect(container.querySelector('.debrief-diff')).not.toBeInTheDocument()
+    render(<DebriefEventDiff event={null} onClose={vi.fn()} />)
+    // Drawer closed → no diff body rendered (no section headings, no testid cells).
+    expect(screen.queryByText('Changed')).not.toBeInTheDocument()
+    expect(screen.queryByText('Added')).not.toBeInTheDocument()
+    expect(screen.queryByText('Removed')).not.toBeInTheDocument()
+    expect(screen.queryAllByTestId('diff-before')).toHaveLength(0)
+    expect(screen.queryAllByTestId('diff-after')).toHaveLength(0)
   })
 
   it('renders changed, added, and removed sections with field values', () => {
