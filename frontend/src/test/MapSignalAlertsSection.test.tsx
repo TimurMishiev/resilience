@@ -46,6 +46,11 @@ vi.mock('../hooks/useReplayParams', () => ({
   }),
 }))
 
+vi.mock('../components/AlertChainDrawer', () => ({
+  default: ({ match }: { match: SignalRuleMatch | null }) =>
+    match ? <div data-testid="alert-chain-drawer">{`Chain drawer: ${match.id}`}</div> : null,
+}))
+
 import { MapSignalAlertsSection } from '../components/MapSignalAlertsSection'
 
 const REFERENCE_MS = Date.parse('2026-04-15T12:00:00Z')
@@ -241,5 +246,16 @@ describe('MapSignalAlertsSection', () => {
     hookState.error = new Error('Network error')
     renderSection()
     expect(screen.getByText('Failed to load alerts.')).toBeInTheDocument()
+  })
+
+  it('opens the alert chain drawer when the Chain button is clicked', () => {
+    hookState.data = {
+      data: [buildMatch()],
+      meta: { page: 1, per_page: 5, total: 1, total_pages: 1 },
+    }
+    renderSection()
+    expect(screen.queryByTestId('alert-chain-drawer')).toBeNull()
+    fireEvent.click(screen.getByTestId('map-signal-alert-chain'))
+    expect(screen.getByTestId('alert-chain-drawer')).toHaveTextContent('Chain drawer: match-1')
   })
 })

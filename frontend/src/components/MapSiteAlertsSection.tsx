@@ -8,6 +8,7 @@ import { timeAgo } from '../lib/formatters'
 import { priorityIntent, workflowIntent } from '../lib/taskIntents'
 import type { SignalRuleMatch } from '../api/types'
 import { humanize } from '../utils/humanize'
+import AlertChainDrawer from './AlertChainDrawer'
 
 const TRIAGE_LIMIT = 5
 
@@ -34,6 +35,7 @@ export function MapSiteAlertsSection({
   const transition = useTransitionAlert()
   const [pendingAckId, setPendingAckId] = useState<string | null>(null)
   const [failedAckId, setFailedAckId]   = useState<string | null>(null)
+  const [chainMatch, setChainMatch]     = useState<SignalRuleMatch | null>(null)
 
   const handleAck = useCallback(
     (id: string) => {
@@ -106,6 +108,7 @@ export function MapSiteAlertsSection({
               hasFailed={failedAckId === match.id}
               onSelectSignal={onSelectSignal}
               onAck={handleAck}
+              onShowChain={setChainMatch}
             />
           ))}
         </ul>
@@ -116,6 +119,8 @@ export function MapSiteAlertsSection({
           View all {total} →
         </Link>
       )}
+
+      <AlertChainDrawer match={chainMatch} onClose={() => setChainMatch(null)} />
     </section>
   )
 }
@@ -128,6 +133,7 @@ interface MapSiteAlertRowProps {
   hasFailed: boolean
   onSelectSignal: (signalId: string) => void
   onAck: (id: string) => void
+  onShowChain: (match: SignalRuleMatch) => void
 }
 
 function MapSiteAlertRow({
@@ -138,6 +144,7 @@ function MapSiteAlertRow({
   hasFailed,
   onSelectSignal,
   onAck,
+  onShowChain,
 }: MapSiteAlertRowProps) {
   const conf = typeof match.confidence === 'number' ? match.confidence : null
   const ruleName =
@@ -202,6 +209,16 @@ function MapSiteAlertRow({
             Inspect signal
           </Button>
         )}
+        <Button
+          small
+          minimal
+          icon="data-lineage"
+          onClick={() => onShowChain(match)}
+          aria-label={`Show evidence chain for alert ${match.id}`}
+          data-testid="map-site-alert-chain"
+        >
+          Chain
+        </Button>
         {canTriage && (
           <Button
             small

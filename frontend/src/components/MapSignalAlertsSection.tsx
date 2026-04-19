@@ -6,6 +6,7 @@ import { timeAgo } from '../lib/formatters'
 import { priorityIntent, workflowIntent } from '../lib/taskIntents'
 import type { SignalRuleMatch } from '../api/types'
 import { humanize } from '../utils/humanize'
+import AlertChainDrawer from './AlertChainDrawer'
 
 const TRIAGE_LIMIT = 5
 
@@ -32,6 +33,7 @@ export function MapSignalAlertsSection({
   const transition = useTransitionAlert()
   const [pendingAckId, setPendingAckId] = useState<string | null>(null)
   const [failedAckId, setFailedAckId]   = useState<string | null>(null)
+  const [chainMatch, setChainMatch]     = useState<SignalRuleMatch | null>(null)
 
   const handleAck = useCallback(
     (id: string) => {
@@ -96,10 +98,13 @@ export function MapSignalAlertsSection({
               hasFailed={failedAckId === match.id}
               onSelectSite={onSelectSite}
               onAck={handleAck}
+              onShowChain={setChainMatch}
             />
           ))}
         </ul>
       )}
+
+      <AlertChainDrawer match={chainMatch} onClose={() => setChainMatch(null)} />
     </section>
   )
 }
@@ -112,6 +117,7 @@ function SignalAlertRow({
   hasFailed,
   onSelectSite,
   onAck,
+  onShowChain,
 }: {
   match: SignalRuleMatch
   referenceTimeMs: number
@@ -120,6 +126,7 @@ function SignalAlertRow({
   hasFailed: boolean
   onSelectSite: (siteId: string) => void
   onAck: (id: string) => void
+  onShowChain: (match: SignalRuleMatch) => void
 }) {
   const conf = typeof match.confidence === 'number' ? match.confidence : null
   const ruleName =
@@ -186,6 +193,16 @@ function SignalAlertRow({
             Inspect site
           </Button>
         )}
+        <Button
+          small
+          minimal
+          icon="data-lineage"
+          onClick={() => onShowChain(match)}
+          aria-label={`Show evidence chain for alert ${match.id}`}
+          data-testid="map-signal-alert-chain"
+        >
+          Chain
+        </Button>
         {canTriage && match.workflow_status === 'unacknowledged' && (
           <Button
             small

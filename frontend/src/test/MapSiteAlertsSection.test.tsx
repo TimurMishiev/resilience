@@ -40,6 +40,11 @@ vi.mock('../hooks/useReplayParams', () => ({
   }),
 }))
 
+vi.mock('../components/AlertChainDrawer', () => ({
+  default: ({ match }: { match: SignalRuleMatch | null }) =>
+    match ? <div data-testid="alert-chain-drawer">{`Chain drawer: ${match.id}`}</div> : null,
+}))
+
 import { MapSiteAlertsSection } from '../components/MapSiteAlertsSection'
 
 const REFERENCE_MS = Date.parse('2026-04-15T12:00:00Z')
@@ -216,5 +221,16 @@ describe('MapSiteAlertsSection', () => {
     hookState.replay = { isReplaying: true, asOf: '2026-04-10T09:00:00Z' }
     const { container } = renderSection()
     expect(container.firstChild).toBeNull()
+  })
+
+  it('opens the alert chain drawer when the Chain button is clicked', () => {
+    hookState.data = {
+      data: [buildMatch()],
+      meta: { page: 1, per_page: 5, total: 1, total_pages: 1 },
+    }
+    renderSection()
+    expect(screen.queryByTestId('alert-chain-drawer')).toBeNull()
+    fireEvent.click(screen.getByTestId('map-site-alert-chain'))
+    expect(screen.getByTestId('alert-chain-drawer')).toHaveTextContent('Chain drawer: match-1')
   })
 })
