@@ -10,35 +10,37 @@ Last updated: 2026-04-19
 
 ## Current Phase
 
-Phase 5 — Evidence Threading
+Phase 6 — Performance Characterization
 
-(Phase 4 — Debrief closed. Phase 5 — Evidence Threading **complete**. Slices shipped: Slice 1 (`e1632fc`), Slice 2-A-full (`024af49`), Slice 2-A-followup (`9b8614c`), Slice 2-B (`0ffec30`), Slice 2-C (`1eb1c61`).)
+(Phase 4 — Debrief closed. Phase 5 — Evidence Threading complete. Phase 6 active; Slice 6-1A shipped, 6-1B next.)
 
 ## Current Slice
 
-**None active — Phase 5 closed.** Validation checklist is 5-of-5 complete as of 2026-04-19 (`1eb1c61`). Next phase is Phase 6 — Performance Characterization. See `memory/execution_context.md` for the canonical Phase 6 scope.
-
-Scope note for completed 5-2B: `/globe` was intentionally excluded. `GlobeInspectorPanel` does not render `SignalRuleMatch` rows today (it shows nearest `Signal`s, not alerts). Adding alert rows to the globe is a separate slice, not part of 5-2B.
+**None active — 6-1A shipped.** Next actionable slice is **6-1B — Playwright `benchmark:map` spec + npm script** (see `Next` below). 6-1A landed `map.signal_reconcile` instrumentation in [useMapSignalLayers.ts:54-83](frontend/src/hooks/map/useMapSignalLayers.ts#L54-L83) and the `__resilienceMapBench` bridge in [useMapBenchmarkBridge.ts](frontend/src/hooks/useMapBenchmarkBridge.ts) (types in [components/map/types.ts](frontend/src/components/map/types.ts), mounted from [MapPage.tsx](frontend/src/pages/MapPage.tsx)).
 
 ## Current Repo State
 
-- Latest shipped slice: `1eb1c61` — Phase 5 Slice 2-C: stale-basis surfacing on alert evidence
-- Working tree: clean
+- Latest shipped slice: `19020f3` — Phase 6 Slice 6-1A: map signal-reconcile instrumentation + benchmark bridge
+- Working tree: clean on product; handoff commit pending
 - For the literal tip SHA, run `git log -1` — it is intentionally not recorded here (self-referential with the commit that writes it).
 
-## Phase 5 — Closed
+## Phase 6 — Slice Plan
 
-Slice 1 delivered incident → alert threading. Slice 2-A-full delivered rec → evidence-label + rec → alert-chain threading. Slice 2-B delivered map alert-row → alert-chain. Slice 2-C delivered stale-basis surfacing. All five Phase 5 validation items are now met.
+Sequenced per `Next` below: **6-1A** (instrumentation + bridge, shipped in `19020f3`) → **6-1B** (Playwright spec + `benchmark:map` script, next) → **6-1C** (baseline run, documented budgets, CI threshold assertions).
 
-Deferred: **5-2B-globe (optional) — globe alert evidence context**. Would require first adding alert rows to `GlobeInspectorPanel` (not present today — it shows nearest `Signal`s, not alerts). Not a natural Phase 5 increment; treat as a separate slice only if an operator use-case warrants it.
+## Shipped In This Phase (Phase 6)
 
-## Shipped In This Phase
+- `19020f3` — Phase 6 Slice 6-1A: map signal-reconcile instrumentation + benchmark bridge
+
+## Shipped In Phase 5 (closed)
 
 - `e1632fc` — Phase 5 Slice 1: incident alert evidence access
 - `024af49` — Phase 5 Slice 2-A-full: recommendation evidence access (labels + alert chain drill-through)
 - `9b8614c` — Phase 5 Slice 2-A-followup: apply replay `fired_at <= as_of` filter uniformly to alert evidence labels (closes gate-flagged P3)
 - `0ffec30` — Phase 5 Slice 2-B: wire AlertChainDrawer into map alert rows (site + signal panels)
 - `1eb1c61` — Phase 5 Slice 2-C: stale-basis surfacing on alert evidence (AlertChainDrawer signal node + map section row tags)
+
+Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context**. Would require first adding alert rows to `GlobeInspectorPanel` (not present today — it shows nearest `Signal`s, not alerts). Treat as a separate slice only if an operator use-case warrants it.
 
 ## Shipped In Prior Phases (Phase 4 context)
 
@@ -51,15 +53,12 @@ Deferred: **5-2B-globe (optional) — globe alert evidence context**. Would requ
 
 ## In Progress
 
-- None. Awaiting direction for next slice.
+- _(none — 6-1A shipped; 6-1B is the next actionable slice.)_
 
 ## Next
 
-- **Phase 6 — Performance Characterization.** Phase 5 is closed; Phase 6 is the natural next target.
-  - **Known gap 1 — `yarn benchmark:map` script + spec do not exist yet.** `benchmark:globe` already exists; the map equivalent has not been written. Scope: a repeatable headless render/pan/zoom benchmark for the `/map` surface capturing FPS + interaction latency on a representative dataset.
-  - **Known gap 2 — documented budgets.** Phase 6 requires explicit latency/FPS budgets for map and globe, committed to the repo so regressions are observable.
-  - **Known gap 3 — CI threshold assertions.** Once budgets exist, CI should fail when a benchmark regresses past the threshold. Until then the benchmarks are informational only.
-  - **Sequencing:** start with the benchmark script (no budget needed to run it), use first runs to establish a realistic baseline, then commit budgets, then wire CI assertion last. Do not short-circuit by guessing numbers.
+- **6-1B — Playwright `benchmark:map` spec + npm script.** Mirror [globe-benchmark.spec.ts](frontend/e2e/globe-benchmark.spec.ts): 5 trials of `bench.focusBenchmarkSite()` → wait for `map.signal_reconcile` event with `trigger === 'selection_set'` → `bench.clearSelection()` → wait for `selection_cleared`. Compute mean / p95 / max, attach JSON summary, and assert against generous initial budgets (env-overridable via `MAP_BENCH_MAX_MEAN_MS` / `MAP_BENCH_MAX_P95_MS` / `MAP_BENCH_MAX_SINGLE_SAMPLE_MS`). Add `"benchmark:map": "playwright test e2e/map-benchmark.spec.ts"` to [frontend/package.json](frontend/package.json). Do not tighten budgets in 6-1B — that's 6-1C.
+- **6-1C — baseline run + documented budgets + CI assertion.** Run `yarn benchmark:map` locally several times, document the realistic numbers in a Phase 6 budgets file (or extend `memory/execution_context.md` Phase 6 entry), tighten the in-spec defaults, then wire the benchmark into CI as a fail-on-regression check. Keep CI thresholds slightly looser than local baseline to absorb runner variance.
 - Phase 7 (advanced geospatial tools — measurement, annotation, temporary overlays) remains unstarted and is intentionally sequenced after Phase 6.
 
 ## Currently Locked Files
@@ -69,17 +68,17 @@ Deferred: **5-2B-globe (optional) — globe alert evidence context**. Would requ
 ## Validation Commands
 
 ```bash
-cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run src/test/AlertChainDrawer.test.tsx src/test/MapSiteAlertsSection.test.tsx src/test/MapSignalAlertsSection.test.tsx
+cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run src/test/useMapBenchmarkBridge.test.ts src/test/useMapSignalLayersPerf.test.ts
 cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run
 cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx tsc -p tsconfig.app.json --noEmit
-cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/components/AlertChainDrawer.tsx src/components/MapSiteAlertsSection.tsx src/components/MapSignalAlertsSection.tsx src/test/AlertChainDrawer.test.tsx src/test/MapSiteAlertsSection.test.tsx src/test/MapSignalAlertsSection.test.tsx
+cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/lib/perfInstrumentation.ts src/hooks/map/useMapSignalLayers.ts src/hooks/useMapBenchmarkBridge.ts src/components/map/types.ts src/pages/MapPage.tsx src/test/useMapBenchmarkBridge.test.ts src/test/useMapSignalLayersPerf.test.ts
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (Phase 5 Slice 2-C, 2026-04-19, pre-commit)
+## Last Validation Results (Phase 6 Slice 6-1A, 2026-04-19, pre-commit)
 
-- Focused Vitest (`AlertChainDrawer` + `MapSiteAlertsSection` + `MapSignalAlertsSection`): **39 examples, 0 failures** (+12 new for 5-2C)
-- Full Vitest suite: **576 tests across 80 files, 0 failures** (was 564/79 on 5-2B)
+- Focused Vitest (`useMapBenchmarkBridge` + `useMapSignalLayersPerf`): **14 examples, 0 failures** (+14 new for 6-1A)
+- Full Vitest suite: **590 tests across 82 files, 0 failures** (was 576/80 on 5-2C)
 - TypeScript (`tsconfig.app.json`): **0 errors**
 - ESLint on touched files: **0 issues**
 - `git diff --check`: **clean**
