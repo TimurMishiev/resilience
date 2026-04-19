@@ -12,30 +12,33 @@ Last updated: 2026-04-19
 
 Phase 5 — Evidence Threading
 
-(Phase 4 — Debrief closed. Slices shipped so far in Phase 5: Slice 1 (`e1632fc`), Slice 2-A-full (`024af49`), Slice 2-A-followup (`9b8614c`).)
+(Phase 4 — Debrief closed. Slices shipped so far in Phase 5: Slice 1 (`e1632fc`), Slice 2-A-full (`024af49`), Slice 2-A-followup (`9b8614c`), Slice 2-B (`0ffec30`).)
 
 ## Current Slice
 
-**None active.** 5-2A-full + 5-2A-followup shipped; awaiting user direction on 5-2B or 5-2C before starting another tranche.
+**None active.** 5-2B shipped; awaiting user direction for next tranche. See "Remaining Options" below.
+
+Scope note for completed 5-2B: `/globe` was intentionally excluded. `GlobeInspectorPanel` does not render `SignalRuleMatch` rows today (it shows nearest `Signal`s, not alerts). Adding alert rows to the globe is a separate slice, not part of 5-2B.
 
 ## Current Repo State
 
-- Latest shipped slice: `9b8614c` — Phase 5 Slice 2-A-followup: replay fired_at filter on alert evidence labels
+- Latest shipped slice: `0ffec30` — Phase 5 Slice 2-B: map alert evidence chain affordance
 - Working tree: clean
 - For the literal tip SHA, run `git log -1` — it is intentionally not recorded here (self-referential with the commit that writes it).
 
 ## Phase 5 Slice 2 — Remaining Options
 
-Slice 1 delivered incident → alert threading. Slice 2-A-full delivered rec → evidence-label + rec → alert-chain threading. Remaining candidates, to be picked with the user, not autonomously:
+Slice 1 delivered incident → alert threading. Slice 2-A-full delivered rec → evidence-label + rec → alert-chain threading. Slice 2-B delivered map alert-row → alert-chain. Remaining candidates:
 
-- **5-2B — map/globe alert evidence context:** wire `AlertChainDrawer` into alert selection on `/map` or `/globe` so the same drawer is one click from a spatial alert marker. Prerequisite: confirm map/globe selection panels already resolve alerts to `SignalRuleMatch` shape.
-- **5-2C — stale-basis surfacing:** annotate evidence (rec or alert drawer) with a stale-evidence indicator when the backing signal/rule/site has aged past its freshness window, reusing the existing trust/freshness model. Prerequisite: confirm where staleness is computed today and whether the drawer already has the inputs.
+- **5-2C — stale-basis surfacing:** annotate evidence (rec or alert drawer) with a stale-evidence indicator when the backing signal/rule/site has aged past its freshness window, reusing the Phase 1 trust/freshness model. Prerequisite: confirm where staleness is computed today and whether the drawer already has the inputs.
+- **5-2B-globe (optional) — globe alert evidence context:** would require first adding alert rows to the globe inspector (not present today). Not a natural 5-2B increment; treat as a separate slice only if an operator use-case warrants it.
 
 ## Shipped In This Phase
 
 - `e1632fc` — Phase 5 Slice 1: incident alert evidence access
 - `024af49` — Phase 5 Slice 2-A-full: recommendation evidence access (labels + alert chain drill-through)
 - `9b8614c` — Phase 5 Slice 2-A-followup: apply replay `fired_at <= as_of` filter uniformly to alert evidence labels (closes gate-flagged P3)
+- `0ffec30` — Phase 5 Slice 2-B: wire AlertChainDrawer into map alert rows (site + signal panels)
 
 ## Shipped In Prior Phases (Phase 4 context)
 
@@ -48,12 +51,12 @@ Slice 1 delivered incident → alert threading. Slice 2-A-full delivered rec →
 
 ## In Progress
 
-- None.
+- None. Awaiting direction for next slice.
 
 ## Next
 
-- Push HEAD to origin.
-- Confirm direction for 5-2B or 5-2C with the user before starting another tranche. Do not autonomously pick.
+- Roadmap-truth audit requested — see `execution_context.md` Phase 5 deliverables to assess what remains before Phase 5 can honestly close.
+- Candidate tranches after 5-2B: 5-2C (stale-basis surfacing) or close Phase 5 and open Phase 6 (Performance Characterization) per roadmap sequence.
 
 ## Currently Locked Files
 
@@ -63,19 +66,20 @@ Slice 1 delivered incident → alert threading. Slice 2-A-full delivered rec →
 
 ```bash
 cd /Users/timurmishiev/Desktop/Code/resilience/backend && TEST_DATABASE_PORT=5434 /Users/timurmishiev/.rbenv/shims/bundle exec rspec spec/requests/api/recommendations_spec.rb
-cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run src/test/EvidenceDrawer.test.tsx src/test/RecommendationsPage.test.tsx src/test/IncidentAlertsTab.test.tsx
+cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run src/test/MapSiteAlertsSection.test.tsx src/test/MapSignalAlertsSection.test.tsx
 cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run
 cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx tsc -p tsconfig.app.json --noEmit
-cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/components/EvidenceDrawer.tsx src/api/recommendations.ts src/test/EvidenceDrawer.test.tsx
+cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/components/MapSiteAlertsSection.tsx src/components/MapSignalAlertsSection.tsx src/test/MapSiteAlertsSection.test.tsx src/test/MapSignalAlertsSection.test.tsx
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (Phase 5 Slice 2-A-followup, 2026-04-19)
+## Last Validation Results (Phase 5 Slice 2-B, 2026-04-19, post-commit via `/gate`)
 
-- Backend focused request spec (`api/recommendations_spec.rb`): **21 examples, 0 failures**
-- Full RSpec suite: **2169 examples, 0 failures**
-- Full Vitest suite: **560 tests across 79 files, 0 failures**
+- Focused Vitest (`MapSiteAlertsSection` + `MapSignalAlertsSection`): **25 examples, 0 failures** (+2 new)
+- Full Vitest suite: **562 tests across 79 files, 0 failures** (was 560 on 5-2A-followup)
 - TypeScript (`tsconfig.app.json`): **0 errors**
+- ESLint on touched files: **0 issues**
+- Full RSpec suite: **2169 examples, 0 failures**
 - `git diff --check`: **clean**
 
 ## Known Risks / Blockers
@@ -86,8 +90,9 @@ git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 - Frontend type-check must continue using:
   - `npx tsc -p tsconfig.app.json --noEmit`
   - the loose root `tsc --noEmit` is not authoritative for this repo
+- **`AlertChainDrawer` mount convention on `/map`.** Each of `MapSignalAlertsSection` and `MapSiteAlertsSection` mounts its own `AlertChainDrawer` instance with local state. Safe today because `MapSignalPanel` and `MapSitePanel` are mutually exclusive in `MapSelectionPanels` — only one is rendered at any time, so only one drawer exists in the tree. If a future slice mounts both panels simultaneously, or mounts `EvidenceDrawer` on `/map` (which itself nests an `AlertChainDrawer`), reconcile to a single coordinator at `MapPage` or `MapSelectionPanels` level. Same reconciliation note as 5-2A.
+- Both sections already null-render during replay (`if (isReplaying) return null`). The Chain button therefore never appears in replay, which matches `AlertChainDrawer`'s existing design (never opened from a replay context). If a future surface renders alert rows during replay, the chain drawer's replay semantics need to be re-evaluated.
 - Evidence resolution is scoped to the `/api/recommendations` surface only. It does **not** widen any other API that happens to render raw `evidence` JSONB.
-- `EvidenceDrawer` mounts `AlertChainDrawer` as a sibling inside the same component tree. Fine for its single consumer today (`/recommendations`). If a future slice opens `EvidenceDrawer` from a surface that already mounts `AlertChainDrawer`, reconcile coordinator ownership rather than nesting two instances.
 - Replay intentionally returns both `alert: null` and `label: null` for matches whose `fired_at > as_of`. Do not "helpfully" fall back to live state — that would leak future state into replay.
 - Handoff never records the tip SHA — it would be self-referential with the commit that writes it. Product-commit SHAs live in "Shipped In This Phase"; run `git log -1` for the literal tip.
 
@@ -106,4 +111,5 @@ git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 - Phase 5 Slice 1 — incident alert evidence access
 - Phase 5 Slice 2-A-full — recommendation evidence access
 - Phase 5 Slice 2-A-followup — replay fired_at filter on alert evidence labels
+- Phase 5 Slice 2-B — map alert evidence chain affordance
 - project-skill consolidation / deep-review removal / repo-managed `.claude/skills`
