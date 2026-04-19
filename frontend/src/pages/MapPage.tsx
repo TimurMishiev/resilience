@@ -9,6 +9,7 @@ import { useAssets } from '../hooks/useAssets'
 import { useTelemetry } from '../hooks/useTelemetry'
 import { useAreasOfOperation } from '../hooks/useAreasOfOperation'
 import { useSignalsLive } from '../hooks/useSignals'
+import { buildSyntheticBenchSignals, readBenchSignalCount } from '../lib/benchSyntheticSignals'
 import { useVessels, useVesselTracks } from '../hooks/useVessels'
 import { useRiskScores } from '../hooks/useRiskScores'
 import { useActiveBreachSiteIds } from '../hooks/useSignalRuleMatches'
@@ -21,7 +22,7 @@ import { useMapE2EBridge } from '../hooks/useMapE2EBridge'
 import { useEntitySelectionSync } from '../hooks/useEntitySelectionSync'
 import { useMapLibreEngine, type MapStyleKey } from '../hooks/useMapLibreEngine'
 import { useEvidenceLinkedIds } from '../hooks/useEvidenceLinkedIds'
-import type { Task } from '../api/types'
+import type { Signal, Task } from '../api/types'
 import { useLocation } from 'react-router-dom'
 import { assetDisplayPosition, getLiveTelemetryReading } from '../lib/assetPresentation'
 import { buildCoverageCircles } from '../lib/coverage'
@@ -75,11 +76,29 @@ export default function MapPage() {
   const loading  = sitesQuery.isLoading || tasksQuery.isLoading
   const error    = sitesQuery.error?.message ?? tasksQuery.error?.message ?? null
 
-  const { signals, connected: signalsConnected, error: signalError } = useSignalsLive({
-    enabled: true,
+  // Bench-mode synthetic-signal override.  When the map-scale benchmark sets
+  // both `resilience.perf` and `resilience.perf.bench_signal_count`, we bypass
+  // /api/signals (server-capped at per_page=200) and feed a deterministic
+  // synthetic array straight into the signal pipeline so reconcile cost can be
+  // characterized at 1k / 10k / 100k.  Read once at mount so changing the flag
+  // requires a reload (matches the other perf flags).
+  const benchSignalCount = useMemo(
+    () => (isPerfEnabled() ? readBenchSignalCount() : null),
+    [],
+  )
+  const syntheticBenchSignals = useMemo<Signal[] | null>(
+    () => (benchSignalCount === null ? null : buildSyntheticBenchSignals(benchSignalCount)),
+    [benchSignalCount],
+  )
+
+  const liveSignals = useSignalsLive({
+    enabled: syntheticBenchSignals === null,
     asOf,
     replayParams: signalQueryParams,
   })
+  const signals          = syntheticBenchSignals ?? liveSignals.signals
+  const signalsConnected = syntheticBenchSignals !== null ? true : liveSignals.connected
+  const signalError      = syntheticBenchSignals !== null ? null : liveSignals.error
 
   // ---------------------------------------------------------------------------
   // Entity selection sync — shared with GlobePage

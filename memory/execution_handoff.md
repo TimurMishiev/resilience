@@ -16,12 +16,12 @@ Phase 6 — Performance Characterization
 
 ## Current Slice
 
-**None active — 6-1C shipped.** Next actionable slice is **6-1D — multi-scale characterization (1k / 10k / 100k signals)** (see `Next` below). 6-1C landed paint-completion measurement, the deterministic `jsMs` CI gate, the rAF-preemption fix in [useMapSignalLayers.ts](frontend/src/hooks/map/useMapSignalLayers.ts), and wired `benchmark:map` into the `frontend-perf` CI job.
+**6-1D — multi-scale characterization (1k / 10k / 100k signals), IN PROGRESS (uncommitted).** Infrastructure landed on disk; baseline numbers not yet captured. The original scope (`BENCHMARK_SIGNAL_COUNT=N rails db:seed` + DB-backed scale) was abandoned after discovery that `useSignalsLive` caps `vessel_position` at 50 and the `/api/signals` server caps `per_page` at 200 — seeding 100k rows would still render only 50 on `/map`. Pivoted to a synthetic-signal override: MapPage reads `localStorage.resilience.perf.bench_signal_count` (gated behind `resilience.perf`), and when set, bypasses `useSignalsLive` entirely and feeds a deterministic `buildSyntheticBenchSignals(N)` array straight into the reconcile pipeline. Prod data flow is untouched.
 
 ## Current Repo State
 
 - Latest shipped slice: `6bcaa2d` — Phase 6 Slice 6-1C: paint-completion measurement + jsMs CI gate (followup `465c4f9` — comment + whitespace P3 cleanup)
-- Working tree: clean on product; handoff commit pending
+- Working tree: **dirty** — 6-1D infrastructure (new [benchSyntheticSignals.ts](frontend/src/lib/benchSyntheticSignals.ts), new [benchSyntheticSignals.test.ts](frontend/src/test/benchSyntheticSignals.test.ts), new [map-scale-benchmark.spec.ts](frontend/e2e/map-scale-benchmark.spec.ts), edits to [MapPage.tsx](frontend/src/pages/MapPage.tsx) + [package.json](frontend/package.json))
 - For the literal tip SHA, run `git log -1` — it is intentionally not recorded here (self-referential with the commit that writes it).
 
 ## Phase 6 — Slice Plan
@@ -39,6 +39,21 @@ Budgets (spec defaults, floors in effect — multiplier products are smaller):
 - 3× max ≈ 7.5ms → floor 50ms wins
 
 Floors can be lowered once the baseline holds stably across several real CI runs.
+
+## 6-1D Baseline (local, 1 run × 5 cycles × 2 triggers = 10 samples per tier, Apple M-series + swiftshader, synthetic signals)
+
+| Tier  | jsMs mean | jsMs p95 | jsMs max | paintMs mean | paintMs max |
+|-------|----------:|---------:|---------:|-------------:|------------:|
+| 1k    | 6.02      | 10.0     | 10.0     | 321.8        | 1189.1      |
+| 10k   | 49.02     | 57.1     | 57.1     | 301.4        | 790.4       |
+| 100k  | 189.5     | 1057.2   | 1057.2   | 632.5        | 1788.6      |
+
+- **1k → 10k**: jsMs mean 8.1× for 10× data — near-linear.
+- **10k → 100k**: jsMs mean 3.86× for 10× data — strongly sublinear (indexed Map ops paying off).
+- **100k has a single 1057ms outlier.** Range min 26.7ms → max 1057ms over 10 samples. Most samples are sub-200ms; one worst-case sample crossed the 1s operator-felt threshold. Likely GC pause or browser contention. Treat as known worst case, not a steady-state failure — would need ≥5 runs to characterize tail shape properly.
+- paintMs is noisy under swiftshader (100k hit 1.79s max); keep reporting, don't gate. Real-GPU baselines would be needed before any paintMs gate.
+- 6-1C seeded-pipeline baseline (315 signals, mean 2.0ms) sits squarely on the 1k synthetic curve — synthetic path is not artificially fast.
+- CI wiring for `benchmark:map:scale` is intentionally **not yet added**. See 6-1E in `Next`.
 
 ## Shipped In This Phase (Phase 6)
 
@@ -69,11 +84,12 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 
 ## In Progress
 
-- _(none — 6-1C shipped; 6-1D is the next actionable slice.)_
+- **6-1D — multi-scale characterization (1k / 10k / 100k signals).** Infrastructure on disk, baseline captured (see `6-1D Baseline` above). Ready to commit. CI wiring intentionally deferred to 6-1E.
 
 ## Next
 
-- **6-1D — multi-scale characterization (1k / 10k / 100k signals).** Not started. Current baseline is against the `db:seed`-produced 315-signal dataset. Scale characterization requires a seed-scaling helper (env-flagged, e.g. `BENCHMARK_SIGNAL_COUNT=10000 rails db:seed`) that inflates `vessel_position` / `seismic_event` / etc. without distorting other seeded entities, plus a parameterized variant of `map-benchmark.spec.ts` that records jsMs and paintMs per scale tier. Goal: confirm `useMapSignalLayers` reconcile cost scales sub-linearly through operator-relevant densities and flag the point where paint time crosses operator-felt budgets on real GPU. First-CI-run learning from 6-1C should also feed into 6-1D's per-tier budget anchoring (env overrides `MAP_BENCH_MAX_JS_*` or per-tier floors).
+- **Commit 6-1D.** Files: [benchSyntheticSignals.ts](frontend/src/lib/benchSyntheticSignals.ts), [benchSyntheticSignals.test.ts](frontend/src/test/benchSyntheticSignals.test.ts), [map-scale-benchmark.spec.ts](frontend/e2e/map-scale-benchmark.spec.ts), [MapPage.tsx](frontend/src/pages/MapPage.tsx), [package.json](frontend/package.json), [execution_handoff.md](memory/execution_handoff.md).
+- **6-1E — CI wiring + 100k tail characterization.** Two work items: (1) wire `benchmark:map:scale` into the `frontend-perf` CI job — either report-only (attach JSON per tier to artifact, no gates) or gate only 1k + 10k because their spreads are tight (p95/max within 10% of mean); 100k should be report-only unless multi-run p95 proves stable. (2) Run `benchmark:map:scale` five times locally to characterize the 100k tail — one 1057ms outlier in a 10-sample run doesn't prove a real p95, and gating decisions need ≥50 samples.
 - **Watch-item (not yet a slice):** if the first real CI run of `frontend-perf` shows wall-time pressure from running globe + map sequentially against the same Docker bring-up, split into a job matrix. Don't pre-emptively split — wait for actual numbers.
 - Phase 7 (advanced geospatial tools — measurement, annotation, temporary overlays) remains unstarted and is intentionally sequenced after Phase 6.
 
@@ -91,19 +107,23 @@ cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint e2e/map-be
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (Phase 6 Slice 6-1C + followup, 2026-04-19, post-push)
+## Last Validation Results (Phase 6 Slice 6-1D infrastructure, 2026-04-19, uncommitted)
+
+- Full Vitest suite: **600 tests across 83 files, 0 failures** (8 new `benchSyntheticSignals` tests: determinism, Signal shape, bounding box, count floor, localStorage parse edges)
+- TypeScript (`npx tsc -p tsconfig.app.json --noEmit`): **0 errors**
+- ESLint on touched files (benchSyntheticSignals.ts, benchSyntheticSignals.test.ts, MapPage.tsx, map-scale-benchmark.spec.ts): **0 issues**
+- Frontend build (`yarn build`): **success**; MapPage chunk unchanged (72.42 kB), maplibre-gl still auto-chunked at 1024 kB (272 kB gzip)
+- Per-tier `yarn benchmark:map:scale` (one local run, 5 cycles × 2 triggers per tier): **all 3 tiers pass in 33.2s total**; jsMs mean 6.02 / 49.02 / 189.5 ms (1k / 10k / 100k). Full table recorded in `6-1D Baseline` above.
+
+### Preceding validation (Phase 6 Slice 6-1C + followup, shipped)
 
 - Post-push automated gate suite (after `465c4f9`): **all green** — RSpec, TypeScript, ESLint, Brakeman (0 warnings, 0 errors), bundler-audit, frontend build.
-- Focused Vitest (`useMapSignalLayersPerf`): **6 tests, 0 failures** (preemption regression guard for the ref-commit-inside-rAF fix included)
-- Full Vitest suite (pre-push): **592 tests across 82 files, 0 failures**
-- TypeScript (`--noEmit`): **0 errors**
-- ESLint (touched files): **0 issues**
 - `yarn benchmark:map` × 5 local runs against seeded backend + vite preview (127.0.0.1:4178): **all 5 pass**; jsMs combined mean 1.97–2.03ms, p95 2.1–2.5ms, max 2.1–2.5ms — well under the 15/30/50ms gate.
-- Frontend build output confirms maplibre-gl is auto-chunked at `dist/assets/maplibre-gl-*.js  ~1024 kB` (272 kB gzip), at the `chunkSizeWarningLimit` floor of 1100 kB — expected, lazy-loaded only on `/map`.
-- `git diff --check`: clean
 
 ## Known Risks / Blockers
 
+- **Map signal caps block DB-backed scale testing.** `useSignalsLive` in [useSignals.ts](frontend/src/hooks/useSignals.ts) clamps `vessel_position` to 50 (see [liveSignals.ts](frontend/src/lib/liveSignals.ts) `LIVE_SIGNAL_LIMITS`), and `/api/signals` caps `per_page` at 200 ([base_controller.rb:144](backend/app/controllers/api/base_controller.rb#L144)). 6-1D sidesteps both via a `resilience.perf.bench_signal_count` localStorage override that feeds a synthetic `Signal[]` straight into MapPage, gated behind `resilience.perf`. The benchmark deliberately bypasses the live pipeline because reconcile cost, not ingestion, is the object of study. Do NOT lift either cap for prod — the cap is a product-deliberate noise guard, not an accidental limit.
+- **Synthetic bench IDs produce 404s downstream.** Selecting a `bench-sig-NNNNNN` fires async fetches in `useEvidenceLinkedIds` and `useVessels` that 404. Harmless for the benchmark (jsMs is recorded before these resolve), but be aware if you extend the spec to assert on downstream state.
 - **Maplibre `manualChunks` name removed from [vite.config.ts](frontend/vite.config.ts).** Under vite 8 / rolldown, manually naming the maplibre chunk re-wraps its UMD bundle and produces `Export 'maplibre_gl_exports' is not defined in module` at runtime, leaving `mapLoaded:false` permanently in the built bundle. The dynamic `import('maplibre-gl')` boundary at the MapPage call site already auto-chunks maplibre into `dist/assets/maplibre-gl-*.js` (~1024 kB), so removing the manual name preserves the lazy-load boundary while sidestepping the UMD re-wrap. Re-introduce a manual name only once rolldown handles UMD re-wrap correctly.
 - **CI `frontend-perf` job now runs two benchmarks (globe + map) against the same Docker app.** First run is likely to expose CI-runner variance in both jsMs and paintMs. If jsMs gate is too tight on GitHub-hosted runners, raise the spec floors (NOT the multiplier) and re-anchor per real CI numbers, or use the env overrides (`MAP_BENCH_MAX_JS_*`). Don't skip the spec on CI pre-emptively — confirm by running.
 - **paintMs is reported but not asserted.** Under swiftshader it ranges 100–1444ms across 50 local samples; any operator-felt-time regression detection needs a real-GPU run (local dev, staging, or a future CI runner with GPU pass-through). paintMs numbers in `frontend-perf-report` artifact are for observability only.
