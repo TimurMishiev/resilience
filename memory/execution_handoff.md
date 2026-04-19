@@ -20,7 +20,7 @@ No active slice. Phase 5 Slice 1 shipped as `e1632fc`. Awaiting user direction o
 
 ## Current Repo State
 
-- `HEAD`: `e1632fc` — `Add incident alert evidence access`
+- `HEAD`: `1df87b2` — `Update handoff after Phase 5 Slice 1 ship` (handoff-refresh commit on top of Slice 1 ship `e1632fc`)
 - No active product-code tranche is in progress
 - If the working tree is dirty, treat this handoff file itself as the only expected maintenance change unless `git status` proves otherwise
 - A takeover model should confirm Phase 5 Slice 2 direction with the user before writing code
@@ -88,7 +88,9 @@ cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/compon
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (2026-04-19)
+## Last Validation Results (Phase 5 Slice 1 pre-commit, 2026-04-19)
+
+These numbers are from the validation run that gated `e1632fc`. They are not a re-run against the handoff-refresh commit `1df87b2`; the post-push hook re-ran the full gate suite on `1df87b2` (Brakeman / bundler-audit / RSpec / vitest / tsc / ESLint / vite build) and all reported clean.
 
 - Backend focused request spec: **51 examples, 0 failures**
 - Frontend focused tests: **11/11 pass**
