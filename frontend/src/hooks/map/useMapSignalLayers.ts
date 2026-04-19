@@ -64,6 +64,11 @@ export function useMapSignalLayers({
       const previousSelectedSignalId = previousSelectedSignalIdRef.current
       const signalCountDelta = signals.length - previousSignalCount
       const selectionChanged = selectedSignalId !== previousSelectedSignalId
+      // Trigger priority when multiple inputs change in the same render:
+      // selection change > signal-count change > reference-time change.
+      // The Playwright `benchmark:map` spec filters to `selection_set`, so
+      // this ordering guarantees selection-driven samples aren't masked by
+      // a concurrent signal-array or replay-clock update.
       recordPerfEvent(
         'map.signal_reconcile',
         {

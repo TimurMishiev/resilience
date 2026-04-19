@@ -15,7 +15,7 @@ function buildState(overrides: Partial<MapBenchmarkState> = {}): MapBenchmarkSta
     showSignals: true,
     showHeatmap: false,
     showCoverage: true,
-    benchmarkTarget: { siteId: 'site-1', siteName: 'Site Alpha', signalCountAtFocus: 3, globalSignalCount: 3 },
+    benchmarkTarget: { siteId: 'site-1', siteName: 'Site Alpha', globalSignalCount: 3 },
     ...overrides,
   }
 }
@@ -69,7 +69,7 @@ describe('useMapBenchmarkBridge', () => {
     expect(bench?.getState().selectedSiteId).toBe('site-2')
     expect(bench?.getState().siteCount).toBe(2)
     expect(bench?.getBenchmarkTarget()).toEqual({
-      siteId: 'site-1', siteName: 'Site Alpha', signalCountAtFocus: 3, globalSignalCount: 3,
+      siteId: 'site-1', siteName: 'Site Alpha', globalSignalCount: 3,
     })
     expect(bench?.getSites().map(s => s.id)).toEqual(['site-1', 'site-2'])
   })

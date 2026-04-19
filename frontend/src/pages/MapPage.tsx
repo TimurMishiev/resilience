@@ -358,7 +358,6 @@ export default function MapPage() {
     return {
       siteId: firstSite.id,
       siteName: firstSite.name,
-      signalCountAtFocus: signals.length,
       globalSignalCount: signals.length,
     }
   }, [sites, signals.length])
