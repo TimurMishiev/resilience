@@ -39,8 +39,11 @@ frontend/e2e/.auth/
 *.swp
 *.swo
 
-# Claude Code local config (machine-specific, not for source control)
-.claude/
+# Claude Code local config
+/.claude/**
+!/.claude/skills/
+!/.claude/skills/**
+frontend/.claude/
 
 # Gems installed locally
 backend/vendor/bundle/
