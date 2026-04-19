@@ -12,56 +12,37 @@ Last updated: 2026-04-19
 
 Phase 5 — Evidence Threading
 
-(Phase 4 — Debrief is functionally complete enough to move on. The prior 4c-followup tranche shipped as `7ba0155`; the old handoff state that still marked it uncommitted was stale.)
+(Phase 4 — Debrief closed. Phase 5 Slice 1 shipped as `e1632fc`. No product-code slice is currently active. If `git status` is dirty right now, it should only be this handoff update until it is committed.)
 
 ## Current Slice
 
-Phase 5 Slice 1 — incident alert evidence access — IN PROGRESS (uncommitted)
+No active slice. Phase 5 Slice 1 shipped as `e1632fc`. Awaiting user direction on Phase 5 Slice 2.
 
-## Objective (Phase 5 Slice 1)
+## Current Repo State
 
-Expose a real evidence/provenance action inside the incident Evidence tab without inventing new APIs or a second evidence UI. Reuse the existing `AlertChainDrawer`, make the incident show alert payload chain-ready, and keep replay behavior historically correct.
+- `HEAD`: `e1632fc` — `Add incident alert evidence access`
+- No active product-code tranche is in progress
+- If the working tree is dirty, treat this handoff file itself as the only expected maintenance change unless `git status` proves otherwise
+- A takeover model should confirm Phase 5 Slice 2 direction with the user before writing code
 
-In scope:
-- enrich incident-detail alert rows with the fields the chain drawer already needs
-- preserve replay clipping for future tasks and historical alert workflow state
-- add a direct "Show evidence" action in `IncidentAlertsTab`
-- add focused backend + frontend proof
+## Phase 5 Slice 2 — Direction To Confirm
 
-Out of scope:
-- new incident evidence endpoint
-- recommendation evidence redesign
-- map/globe evidence changes
-- stale-basis badges / warnings
-- navigation from the evidence drawer into other surfaces
+Phase 5's goal in `execution_context.md` is to make operational conclusions explainable and traceable. Slice 1 delivered the first threading point (incident → alert → `AlertChainDrawer`). The next slice should be one of these concrete options, decided with the user rather than picked autonomously:
 
-## Completed This Session
+- **5-2A — recommendation evidence access:** add a "Show evidence" affordance on `/briefing` (or the ontology recommendations surface) that surfaces the signals/alerts/rules backing the recommendation. Prerequisite: confirm the recommendation payload already carries the right provenance IDs, or define the minimum contract extension.
+- **5-2B — map/globe alert evidence context:** wire `AlertChainDrawer` into alert selection on `/map` or `/globe` so the same drawer is one click from a spatial alert marker. Prerequisite: confirm map/globe selection panels already resolve alerts to `SignalRuleMatch` shape.
+- **5-2C — stale-basis surfacing:** annotate the drawer (or its callers) with a stale-evidence indicator when the backing signal/rule/site has aged past its freshness window, reusing the existing trust/freshness model. Prerequisite: confirm where staleness is computed today and whether the drawer already has the inputs.
 
-- **MODIFIED** `backend/app/controllers/api/incidents_controller.rb`
-  - incident show now preloads `signal_rule_matches` with `task`, `acknowledged_by`, and `site`
-  - replay incident serialization now passes task/site snapshots into alert serialization
-- **MODIFIED** `backend/app/controllers/concerns/incident_serialization.rb`
-  - `serialize_alert` now returns chain-ready fields:
-    - `acknowledged_at`
-    - `acknowledged_by`
-    - `notes`
-    - `metadata`
-    - `site`
-    - `task`
-  - replay path keeps task nil when the task did not yet exist at `as_of`
-- **MODIFIED** `backend/spec/requests/api/incidents_spec.rb`
-  - added request proof that detailed incident alerts include chain-ready evidence fields
-  - extended replay proof so nested alerts hide future task payload and post-`as_of` acknowledgement fields
-- **MODIFIED** `frontend/src/api/incidents.ts`
-  - `IncidentAlert` now matches the shared alert shape closely enough to drive `AlertChainDrawer`
-- **MODIFIED** `frontend/src/components/incident-detail/IncidentAlertsTab.tsx`
-  - added row-level `Show evidence` action
-  - reuses existing `AlertChainDrawer` locally inside the incident Evidence tab
-- **NEW** `frontend/src/test/IncidentAlertsTab.test.tsx`
-  - empty state proof
-  - evidence drawer open-path proof
+**Do not jump to a generalized `EvidenceContext` / `useEvidenceSource` abstraction.** `AlertChainDrawer` currently has four real UI consumers: `AlertTriagePage`, `SiteDetailPage`, `AlertsPanel` on `DashboardPage`, and `IncidentAlertsTab`. It still fits as a prop-driven component. Wait for a fifth distinct evidence surface before formalizing a shared evidence interface.
 
-## Previously Shipped This Phase
+## Shipped In This Phase
+
+- `e1632fc` — Phase 5 Slice 1: incident alert evidence access
+  - backend: detailed `/api/incidents/:id` alert rows now carry `site`, `task`, `acknowledged_by`, `notes`, `metadata`; replay path routes task/site snapshots through `serialize_alert`; new `serialize_alert_site` / `serialize_alert_task` helpers mirror the existing rule/site snapshot patterns; task visibility follows the `task_visible` rule (hides tasks created after `as_of`)
+  - frontend: `IncidentAlert` collapsed onto `SignalRuleMatch & { geofence_breach: boolean }`; `IncidentAlertsTab` adds a row-level "Show evidence" button wired to `AlertChainDrawer`
+  - tests: one happy-path spec on the detailed response (metadata, site, task, ack_by, notes); existing replay spec extended to assert `acknowledged_at` / `acknowledged_by` / `notes` are all nil when the ack happened after `as_of` (closes the P3 from `/gate`); new `IncidentAlertsTab.test.tsx` covers empty-state + drawer-open
+
+## Shipped In Prior Phases (Phase 4 context)
 
 - `2c49a3c` — Phase 4 Slice 1: debrief audit-events API prerequisites
 - `afd68b7` — Phase 4 Slice 2: commander-only debrief timeline page
@@ -72,27 +53,25 @@ Out of scope:
 
 ## In Progress
 
-- Phase 5 Slice 1 is implemented in the working tree and validated.
-- No backend schema change, no new route, no new shared state.
-- Ready for `/gate`.
+- No active implementation slice.
+- Phase 5 Slice 1 is shipped.
+- If the repo is currently dirty, that should only be this handoff update until it is persisted.
 
 ## Next
 
-- Gate + commit Phase 5 Slice 1.
-- Then continue Phase 5 with the next smallest evidence-threading slice.
-  - likely candidates:
-    - extend evidence access coherently to another major surface already carrying evidence-ish data
-    - add provenance/stale-basis cues where the payload already exists
-  - do **not** jump straight to a generalized evidence framework unless a fourth consumer forces it
+- **Awaiting user direction** between 5-2A / 5-2B / 5-2C above. Do not start a Phase 5 Slice 2 tranche without explicit selection — each option has different blast radius and different prerequisite verification work.
+- If direction is unclear after user input, re-read `execution_context.md` Phase 5 validation checklist and ask which unchecked item feels most operationally useful next.
 
 ## Files Changed This Slice
 
-- `backend/app/controllers/api/incidents_controller.rb`
-- `backend/app/controllers/concerns/incident_serialization.rb`
-- `backend/spec/requests/api/incidents_spec.rb`
-- `frontend/src/api/incidents.ts`
-- `frontend/src/components/incident-detail/IncidentAlertsTab.tsx`
-- `frontend/src/test/IncidentAlertsTab.test.tsx`
+- No active working-tree implementation slice.
+- The most recently shipped slice (`e1632fc`) changed:
+  - `backend/app/controllers/api/incidents_controller.rb`
+  - `backend/app/controllers/concerns/incident_serialization.rb`
+  - `backend/spec/requests/api/incidents_spec.rb`
+  - `frontend/src/api/incidents.ts`
+  - `frontend/src/components/incident-detail/IncidentAlertsTab.tsx`
+  - `frontend/src/test/IncidentAlertsTab.test.tsx`
 
 ## Currently Locked Files
 
