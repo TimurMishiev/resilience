@@ -3,6 +3,7 @@ import { Button, Callout, Spinner } from '@blueprintjs/core'
 import { useIncident } from '../../hooks/useIncidents'
 import type { Incident } from '../../api/incidents'
 import { diffSnapshots } from '../../utils/diffSnapshots'
+import { toDatetimeLocal, fromDatetimeLocal } from '../../utils/datetimeLocal'
 import SnapshotDiffView from '../SnapshotDiffView'
 
 // Fields that are either computed at response time (collection counts built from
@@ -26,34 +27,35 @@ function stripIgnored(incident: Incident): Record<string, unknown> {
   return out
 }
 
-function toDatetimeLocal(iso: string): string {
-  // `datetime-local` needs the form YYYY-MM-DDTHH:mm in the browser's local zone.
-  const d = new Date(iso)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return (
-    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T` +
-    `${pad(d.getHours())}:${pad(d.getMinutes())}`
-  )
-}
-
-function fromDatetimeLocal(value: string): string {
-  // datetime-local is interpreted in the local zone; convert to an ISO instant for
-  // the API, which expects UTC.
-  return new Date(value).toISOString()
-}
-
 interface IncidentCompareTabProps {
   incidentId: string
   openedAt: string
-  latestAt: string
+  // Seed value for T2 — the operator can shift T2 freely; this is not an upper bound.
+  defaultLatestAt: string
 }
 
-export default function IncidentCompareTab({ incidentId, openedAt, latestAt }: IncidentCompareTabProps) {
+export default function IncidentCompareTab({ incidentId, openedAt, defaultLatestAt }: IncidentCompareTabProps) {
   // Sensible defaults: T1 at open, T2 at latest. The operator can narrow or
   // shift the window from there.
   const [t1Input, setT1Input] = useState(() => toDatetimeLocal(openedAt))
-  const [t2Input, setT2Input] = useState(() => toDatetimeLocal(latestAt))
+  const [t2Input, setT2Input] = useState(() => toDatetimeLocal(defaultLatestAt))
   const [active, setActive] = useState<{ t1: string; t2: string } | null>(null)
+
+  // Stale-compare guard: if the operator edits T1/T2 after pressing Compare, the
+  // previously-rendered diff is for the OLD window. In an operator/replay
+  // context, leaving the stale diff visible is a silent correctness failure —
+  // they could read the wrong window's delta and make a wrong call. Clear
+  // `active` on any input edit so the hint returns and the operator must
+  // re-press Compare to see fresh data. (Done at the onChange layer rather than
+  // in a useEffect to avoid a setState-in-effect cascade.)
+  function handleT1Change(value: string) {
+    setT1Input(value)
+    if (active) setActive(null)
+  }
+  function handleT2Change(value: string) {
+    setT2Input(value)
+    if (active) setActive(null)
+  }
 
   const t1Query = useIncident(
     active ? incidentId : undefined,
@@ -97,7 +99,7 @@ export default function IncidentCompareTab({ incidentId, openedAt, latestAt }: I
             type="datetime-local"
             className="bp6-input"
             value={t1Input}
-            onChange={(e) => setT1Input(e.target.value)}
+            onChange={(e) => handleT1Change(e.target.value)}
             aria-label="Compare T1 timestamp"
           />
         </label>
@@ -107,7 +109,7 @@ export default function IncidentCompareTab({ incidentId, openedAt, latestAt }: I
             type="datetime-local"
             className="bp6-input"
             value={t2Input}
-            onChange={(e) => setT2Input(e.target.value)}
+            onChange={(e) => handleT2Change(e.target.value)}
             aria-label="Compare T2 timestamp"
           />
         </label>

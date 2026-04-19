@@ -59,7 +59,7 @@ describe('IncidentCompareTab', () => {
         <IncidentCompareTab
           incidentId="inc-1"
           openedAt="2026-04-10T10:00:00Z"
-          latestAt="2026-04-11T12:00:00Z"
+          defaultLatestAt="2026-04-11T12:00:00Z"
         />,
       ),
     )
@@ -75,7 +75,7 @@ describe('IncidentCompareTab', () => {
         <IncidentCompareTab
           incidentId="inc-1"
           openedAt="2026-04-10T10:00:00Z"
-          latestAt="2026-04-11T12:00:00Z"
+          defaultLatestAt="2026-04-11T12:00:00Z"
         />,
       ),
     )
@@ -108,7 +108,7 @@ describe('IncidentCompareTab', () => {
         <IncidentCompareTab
           incidentId="inc-1"
           openedAt="2026-04-10T10:00:00Z"
-          latestAt="2026-04-11T12:00:00Z"
+          defaultLatestAt="2026-04-11T12:00:00Z"
         />,
       ),
     )
@@ -150,7 +150,7 @@ describe('IncidentCompareTab', () => {
         <IncidentCompareTab
           incidentId="inc-1"
           openedAt="2026-04-10T10:00:00Z"
-          latestAt="2026-04-11T12:00:00Z"
+          defaultLatestAt="2026-04-11T12:00:00Z"
         />,
       ),
     )
@@ -161,6 +161,48 @@ describe('IncidentCompareTab', () => {
     expect(screen.queryByText('updated at')).not.toBeInTheDocument()
     expect(screen.queryByText('alerts')).not.toBeInTheDocument()
     expect(screen.queryByText('tasks')).not.toBeInTheDocument()
+  })
+
+  it('clears the rendered diff when the operator edits T1/T2 after pressing Compare', async () => {
+    const user = userEvent.setup()
+
+    mockGetIncident.mockImplementation((_id: string, params?: { as_of?: string }) => {
+      const asOf = params?.as_of
+      if (asOf?.startsWith('2026-04-10')) {
+        return Promise.resolve(baseIncident({ status: 'open', severity: 'moderate' }))
+      }
+      return Promise.resolve(baseIncident({ status: 'contained', severity: 'high' }))
+    })
+
+    render(
+      wrap(
+        <IncidentCompareTab
+          incidentId="inc-1"
+          openedAt="2026-04-10T10:00:00Z"
+          defaultLatestAt="2026-04-11T12:00:00Z"
+        />,
+      ),
+    )
+
+    // Press Compare — diff should render.
+    await user.click(screen.getByRole('button', { name: /Compare/i }))
+    expect(await screen.findByText('Changed')).toBeInTheDocument()
+
+    // Operator edits T1 — the previously-rendered diff is now for the OLD window.
+    // The stale-compare guard should clear `active`, so the hint returns and the
+    // diff disappears until the operator re-presses Compare.
+    const t1 = screen.getByLabelText(/Compare T1 timestamp/i) as HTMLInputElement
+    await user.clear(t1)
+    await user.type(t1, '2026-04-10T11:00')
+
+    await waitFor(() => {
+      expect(screen.queryByText('Changed')).not.toBeInTheDocument()
+    })
+    expect(screen.getByText(/Pick two timestamps and press Compare/i)).toBeInTheDocument()
+
+    // Re-press Compare — fresh diff should render against the new window.
+    await user.click(screen.getByRole('button', { name: /Compare/i }))
+    expect(await screen.findByText('Changed')).toBeInTheDocument()
   })
 
   it('shows the error callout when one of the snapshot fetches fails', async () => {
@@ -177,7 +219,7 @@ describe('IncidentCompareTab', () => {
         <IncidentCompareTab
           incidentId="inc-1"
           openedAt="2026-04-10T10:00:00Z"
-          latestAt="2026-04-11T12:00:00Z"
+          defaultLatestAt="2026-04-11T12:00:00Z"
         />,
       ),
     )

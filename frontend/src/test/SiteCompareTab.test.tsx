@@ -66,7 +66,7 @@ describe('SiteCompareTab', () => {
         <SiteCompareTab
           siteId="site-1"
           openedAt="2026-04-01T08:00:00Z"
-          latestAt="2026-04-15T08:00:00Z"
+          defaultLatestAt="2026-04-15T08:00:00Z"
         />,
       ),
     )
@@ -83,7 +83,7 @@ describe('SiteCompareTab', () => {
         <SiteCompareTab
           siteId="site-1"
           openedAt="2026-04-01T08:00:00Z"
-          latestAt="2026-04-15T08:00:00Z"
+          defaultLatestAt="2026-04-15T08:00:00Z"
         />,
       ),
     )
@@ -134,7 +134,7 @@ describe('SiteCompareTab', () => {
         <SiteCompareTab
           siteId="site-1"
           openedAt="2026-04-01T08:00:00Z"
-          latestAt="2026-04-15T08:00:00Z"
+          defaultLatestAt="2026-04-15T08:00:00Z"
         />,
       ),
     )
@@ -179,7 +179,7 @@ describe('SiteCompareTab', () => {
         <SiteCompareTab
           siteId="site-1"
           openedAt="2026-04-01T08:00:00Z"
-          latestAt="2026-04-15T08:00:00Z"
+          defaultLatestAt="2026-04-15T08:00:00Z"
         />,
       ),
     )
@@ -188,6 +188,50 @@ describe('SiteCompareTab', () => {
 
     expect(await screen.findByText(/No site changes/i)).toBeInTheDocument()
     expect(screen.queryByText('updated at')).not.toBeInTheDocument()
+  })
+
+  it('clears the rendered diff when the operator edits T1/T2 after pressing Compare', async () => {
+    const user = userEvent.setup()
+
+    // Key off T2's fixed prefix (2026-04-15) so both T1 values — the original
+    // seed AND the post-edit value — stay in the "inactive" branch and both
+    // Compare presses produce a non-empty diff.
+    mockGetSite.mockImplementation((_id: string, params?: { as_of?: string }) => {
+      if (params?.as_of?.startsWith('2026-04-15')) {
+        return Promise.resolve(baseSite({ status: 'active' }))
+      }
+      return Promise.resolve(baseSite({ status: 'inactive' }))
+    })
+    mockGetReadiness.mockResolvedValue([baseReadiness()])
+
+    render(
+      wrap(
+        <SiteCompareTab
+          siteId="site-1"
+          openedAt="2026-04-01T08:00:00Z"
+          defaultLatestAt="2026-04-15T08:00:00Z"
+        />,
+      ),
+    )
+
+    // Press Compare — diff should render.
+    await user.click(screen.getByRole('button', { name: /Compare/i }))
+    expect(await screen.findByText('Changed')).toBeInTheDocument()
+
+    // Operator edits T1 after pressing Compare. Stale-compare guard must clear
+    // `active` so the OLD window's diff does not linger on this operator surface.
+    const t1 = screen.getByLabelText(/Compare T1 timestamp/i) as HTMLInputElement
+    await user.clear(t1)
+    await user.type(t1, '2026-04-02T08:00')
+
+    await waitFor(() => {
+      expect(screen.queryByText('Changed')).not.toBeInTheDocument()
+    })
+    expect(screen.getByText(/Pick two timestamps and press Compare/i)).toBeInTheDocument()
+
+    // Re-press Compare — fresh diff renders against the new window.
+    await user.click(screen.getByRole('button', { name: /Compare/i }))
+    expect(await screen.findByText('Changed')).toBeInTheDocument()
   })
 
   it('shows the error callout when any of the four fetches fails', async () => {
@@ -204,7 +248,7 @@ describe('SiteCompareTab', () => {
         <SiteCompareTab
           siteId="site-1"
           openedAt="2026-04-01T08:00:00Z"
-          latestAt="2026-04-15T08:00:00Z"
+          defaultLatestAt="2026-04-15T08:00:00Z"
         />,
       ),
     )
@@ -229,7 +273,7 @@ describe('SiteCompareTab', () => {
         <SiteCompareTab
           siteId="site-1"
           openedAt="2026-04-01T08:00:00Z"
-          latestAt="2026-04-15T08:00:00Z"
+          defaultLatestAt="2026-04-15T08:00:00Z"
         />,
       ),
     )

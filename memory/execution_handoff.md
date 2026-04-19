@@ -16,66 +16,61 @@ Phase 4 — Debrief
 
 ## Current Slice
 
-Phase 4 Slice 4c — site readiness/tasks diff between two moments — IN PROGRESS (uncommitted)
+Phase 4 Slice 4c-followup — compare-tab hardening from post-push mentor review — IN PROGRESS (uncommitted)
 
-(Slice 4 is being shipped as three sequential, independently-reviewable tranches: 4a per-event diff, 4b incident-scoped A-B diff, 4c site readiness/tasks diff between two moments. 4a + 4b were committed together as `8ebedf9` (pushed). 4c now sits uncommitted in the working tree.)
+(Slice 4c itself shipped as `eec8439` — pushed. The automated post-push mentor review flagged P2/P3 items that apply to BOTH compare tabs; the "twice-shipped" pattern made these into cross-surface hardening, not one-off polish. This tranche lands those fixes and the matching tests.)
 
-## Objective (Slice 4c)
+## Objective (Slice 4c-followup)
 
-Give operators a way to see *what changed on a single site — including readiness posture — between two arbitrary timestamps* without leaving the site detail page:
-- a new "Compare" tab on `SiteDetailPage` next to Timeline / Audit,
-- two `datetime-local` inputs (T1 / T2) defaulting to `created_at` / `updated_at`,
-- a `Compare` button that fetches two site snapshots via `getSite(id, { as_of })` **plus** two readiness snapshots via `getReadiness({ as_of })` — no new API,
-- the delta rendered through the shared `SnapshotDiffView` so all three Slice 4 surfaces share one diff renderer,
-- deliberate field filter (`id`, `created_at`, `updated_at`, `latitude`, `longitude`) so the diff reflects operational state (status, flag, geofence, AO) and not serialization churn,
-- readiness flattened into scalar keys (`readiness_score`, `tasks_total`, `tasks_resolved`, `tasks_blocked`, `tasks_in_progress`, `tasks_new`, `tasks_triaged`) merged into the same diff as the site scalar fields, so operators see "status: inactive → active" and "tasks_resolved: 3 → 8" in one place,
-- tab disabled while the operator is in replay mode (stacked temporal semantics remain explicitly out of scope for Slice 4 tranches),
-- shared CSS renamed once, at the point of the third consumer: `.debrief-diff-*` → `.snapshot-diff-*` in `SnapshotDiffView`, and `.incident-compare-*` → `.compare-tab-*` on the tab chrome. This closes mentor P2 from the 4a+4b post-push review.
+Close the P2/P3 findings from the automated post-push mentor review on `eec8439`. These all apply to both `IncidentCompareTab` and `SiteCompareTab` — the review flagged that the second-ship of the pattern made them cross-surface hardening, not one-off polish. Specifically:
+- **P2-a (stale-compare UX):** any input edit after Compare now clears `active` so the previously-rendered diff can't linger as a misread signal for the new window. Implemented at the input `onChange` layer (not via `useEffect`) because the `react-hooks/set-state-in-effect` rule correctly rejects setState-cascade-in-effect, and onChange-driven clearing is the React-canonical way to respond to user input. New test on both tabs: press Compare → assert diff renders → edit T1 → assert diff gone + hint callout returns → re-press Compare → assert fresh diff renders.
+- **P2-b (shared datetime-local helpers):** `toDatetimeLocal` / `fromDatetimeLocal` were duplicated in both compare tabs. Extracted to `frontend/src/utils/datetimeLocal.ts`. Second consumer is the correct extraction threshold.
+- **P3-a (rename `latestAt` → `defaultLatestAt`):** makes the "this is a seed value, not a fixed bound" semantics explicit. Propagated through both compare tabs, both caller pages, and both test files.
+- **P3-b (empty-state copy on SiteCompareTab):** the NonIdealState description now enumerates the checked buckets ("status, flag, geofence, AO assignment, readiness score, task counts") and the exclusions ("coordinates and mechanical timestamps") so an operator can read the empty diff as "we checked X and nothing changed," not "we didn't check anything."
+- **P3-c (future-abstraction comment):** added a comment in `SiteCompareTab` naming the `useSnapshotAtMoment(entityFetcher, id, asOf, enabled)` extraction as the correct next step at the fourth compare consumer — not now, explicitly.
 
-Not in scope (4c): no per-task identity diff (which specific tasks were added / closed — would need a collection-diff utility), no cross-site comparison, no evidence-link diff. Those belong to a later slice.
+Not in scope (this tranche): P3-d (incremental loading per-fetch — deferred until an operator surfaces latency feedback). Deferred mentor P2 on `eventsWithDiff` short-circuit in `DebriefPanel` remains deferred.
 
 ## Completed This Session
 
-Slice 4c implementation (uncommitted, working tree):
-- **RENAMED** `frontend/src/components/SnapshotDiffView.tsx` — all internal class names from `.debrief-diff-*` → `.snapshot-diff-*`. `data-testid="diff-before"` / `data-testid="diff-after"` preserved.
-- **MODIFIED** `frontend/src/index.css` — split into three labeled sections: debrief-drawer-specific chrome (`.debrief-diff-meta`, `.debrief-diff-timestamp`, `.debrief-timeline-row`, `.debrief-diff-action`), shared snapshot-diff renderer (`.snapshot-diff-*`), and shared A-B compare tab chrome (`.compare-tab-*`).
-- **MODIFIED** `frontend/src/components/incident-detail/IncidentCompareTab.tsx` — class references updated from `incident-compare-*` → `compare-tab-*`. Logic unchanged.
-- **NEW** `frontend/src/components/site-detail/SiteCompareTab.tsx` — four `useQuery` calls (site T1/T2 + readiness T1/T2) with `enabled: !!active` and `refetchInterval: false`, `IGNORED_SITE_FIELDS = { id, created_at, updated_at, latitude, longitude }`, `readinessSnapshot()` helper that flattens `SiteReadiness.counts` into scalar `tasks_*` keys plus `readiness_score` and finds the current site's readiness entry by `site_id`, validation Callout on `T1 >= T2` / missing / unparseable, hint Callout before first Compare, Spinner while any of the four queries is pending, danger Callout on any failure, delegate to `SnapshotDiffView` once all four snapshots resolve. If readiness has no entry for this site on either side, those keys simply do not appear in the diff — we do not fabricate zero-counts the operator didn't ask for.
-- **MODIFIED** `frontend/src/pages/SiteDetailPage.tsx` — new `<Tab id="compare" title="Compare">` between Timeline and Audit, `disabled={isReplaying}`, passing `siteId` / `openedAt=site.created_at` / `latestAt=site.updated_at`.
-- **NEW** `frontend/src/test/SiteCompareTab.test.tsx` — 6 tests: hint + no fetches pre-Compare; `T1 >= T2` disables Compare + surfaces validation reason + still no fetches; Compare press fires both site fetches + both readiness fetches and renders Changed rows for `status` / `geofence radius km` / `readiness score` / `tasks resolved` / `tasks blocked` plus `flag reason` (Changed, not Added, because the key exists in both snapshots with null → value); ignored fields (`updated_at`) produce `No site changes`; readiness snapshot failure surfaces the error Callout; missing readiness entry for this site on both sides produces an empty diff (honest answer — no fabricated zero-counts). Uses `vi.hoisted(() => vi.fn())` + `vi.importActual` for `../api/sites` and `../api/readiness` so other exports stay intact.
-- **MODIFIED** `frontend/src/test/IncidentDetailPage.test.tsx` — new "disables the Compare tab during replay to prevent stacked temporal semantics" test, asserts `aria-disabled="true"` on the Compare tab when `mockState.isReplaying = true`.
-- **MODIFIED** `frontend/src/test/SiteDetailPage.test.tsx` — new matching replay-disabled test, plus `vi.mock('../components/site-detail/SiteCompareTab', ...)` stub so this deep-link harness doesn't need a QueryClientProvider (the Compare tab's own behavior is covered in `SiteCompareTab.test.tsx`).
+4c-followup hardening (uncommitted, working tree):
+- **NEW** `frontend/src/utils/datetimeLocal.ts` — shared `toDatetimeLocal(iso)` and `fromDatetimeLocal(value)` helpers, extracted from the duplicated definitions in both compare tabs (P2-b).
+- **MODIFIED** `frontend/src/components/incident-detail/IncidentCompareTab.tsx` — imports shared helpers, renames prop `latestAt` → `defaultLatestAt` (P3-a), adds `handleT1Change` / `handleT2Change` that clear `active` on any input edit after Compare (P2-a, onChange-based to satisfy `react-hooks/set-state-in-effect`).
+- **MODIFIED** `frontend/src/components/site-detail/SiteCompareTab.tsx` — same refactor as the incident tab (shared helpers import, `defaultLatestAt` rename, onChange-based stale-compare guard), plus the enumerated empty-state copy on `<SnapshotDiffView>` (P3-b) and the future-abstraction comment naming `useSnapshotAtMoment` as the extraction target at the fourth consumer (P3-c).
+- **MODIFIED** `frontend/src/pages/IncidentDetailPage.tsx` — `latestAt={incident.updated_at}` → `defaultLatestAt={incident.updated_at}`.
+- **MODIFIED** `frontend/src/pages/SiteDetailPage.tsx` — `latestAt={site.updated_at}` → `defaultLatestAt={site.updated_at}`.
+- **MODIFIED** `frontend/src/test/IncidentCompareTab.test.tsx` — 5 `latestAt=` → `defaultLatestAt=`, plus a new "clears the rendered diff when the operator edits T1/T2 after pressing Compare" test (Compare → assert Changed → edit T1 → assert Changed gone + hint returns → re-Compare → assert Changed back).
+- **MODIFIED** `frontend/src/test/SiteCompareTab.test.tsx` — 6 `latestAt=` → `defaultLatestAt=`, plus a matching stale-compare test. The mock keys off T2's fixed `2026-04-15` prefix (not T1's `2026-04-01`) so both the pre-edit and post-edit T1 values land in the same "inactive" branch and both Compare presses produce a non-empty diff.
 
-Nothing has been committed yet for 4c. No backend, route, or shared-context changes.
+No behavior change in `SnapshotDiffView`, `diffSnapshots`, backend, routes, or shared context. No new API.
 
 ## Previously Shipped This Phase
 
+- `eec8439` (Phase 4 Slice 4c — pushed) — `SiteCompareTab` with four-query site + readiness fetch, `SnapshotDiffView` + compare-tab CSS renamed at the third consumer, `SiteDetailPage` Compare tab disabled during replay, 6 new SiteCompareTab tests + replay-disabled tests on both detail pages.
 - `8ebedf9` (Phase 4 Slice 4a + 4b — pushed) — `diffSnapshots` utility, `DebriefEventDiff` drawer + `.debrief-diff-action` row button, `SnapshotDiffView` shared renderer, `IncidentCompareTab` with four-query setup + T1/T2 datetime-local inputs + field filter, Compare tab wired into `IncidentDetailPage` disabled during replay, 29 new focused tests (9 diffSnapshots + 4 DebriefEventDiff + 11 DebriefPanel updates + 5 IncidentCompareTab).
 - `2c49a3c` (earlier in Phase 4 Slice 1) — debrief audit events API prerequisites and backend plumbing.
 
 ## In Progress
 
-- Slice 4c uncommitted in working tree. Full Vitest + tsc + eslint green. Ready for `/gate` review.
+- 4c-followup hardening uncommitted in working tree. Full Vitest + tsc + eslint green. Ready for `/gate` review.
 
 ## Next
 
-- Gate + commit 4c.
+- Gate + commit 4c-followup.
 - Then Phase 4 Slice 5 (if the roadmap continues debrief expansion) or start the next phase in `execution_context.md`. Defer per-task identity diff ("which tasks changed between T1 and T2") until an operator surfaces an actual need — that work would require a new collection-diff utility and is explicitly out of 4c scope.
-- Mentor P2 items from the 4a+4b post-push review that remain open (deferred, not blocking):
-  - Optimize `eventsWithDiff` useMemo in `DebriefPanel` with a short-circuit helper so we don't build full diff objects just to check emptiness.
-  - Consider a stale-compare UX on both Compare tabs (clear `active` when the operator edits inputs, or badge the rendered diff as stale).
-  - Rename `latestAt` prop to `defaultLatestAt` to make the "this is a default seed, not a fixed bound" semantics explicit.
+- Remaining mentor P2/P3 items still deferred (not blocking):
+  - **P2 (from 4a+4b review):** optimize `eventsWithDiff` useMemo in `DebriefPanel` with a short-circuit helper so we don't build full diff objects just to check emptiness.
+  - **P3-d (from 4c review):** incremental loading per-fetch in `SiteCompareTab` (today all four queries must resolve before anything renders). Defer until an operator surfaces latency feedback.
 
-## Files Changed This Slice (4c, uncommitted)
+## Files Changed This Tranche (4c-followup, uncommitted)
 
-- `frontend/src/components/SnapshotDiffView.tsx` (renamed internal classes)
-- `frontend/src/components/incident-detail/IncidentCompareTab.tsx` (updated class references)
-- `frontend/src/components/site-detail/SiteCompareTab.tsx` (new)
-- `frontend/src/pages/SiteDetailPage.tsx` (new Compare tab)
-- `frontend/src/index.css` (rename + new site-compare styles, section headers added)
-- `frontend/src/test/SiteCompareTab.test.tsx` (new, 6 tests)
-- `frontend/src/test/SiteDetailPage.test.tsx` (replay-disabled test + SiteCompareTab stub)
-- `frontend/src/test/IncidentDetailPage.test.tsx` (replay-disabled test)
+- `frontend/src/utils/datetimeLocal.ts` (new)
+- `frontend/src/components/incident-detail/IncidentCompareTab.tsx` (shared-helper import, `defaultLatestAt` rename, onChange-based stale-compare guard)
+- `frontend/src/components/site-detail/SiteCompareTab.tsx` (shared-helper import, `defaultLatestAt` rename, onChange-based stale-compare guard, enumerated empty-state copy, future-abstraction comment)
+- `frontend/src/pages/IncidentDetailPage.tsx` (prop rename propagation)
+- `frontend/src/pages/SiteDetailPage.tsx` (prop rename propagation)
+- `frontend/src/test/IncidentCompareTab.test.tsx` (prop rename + stale-compare test)
+- `frontend/src/test/SiteCompareTab.test.tsx` (prop rename + stale-compare test)
 
 ## Currently Locked Files
 
@@ -84,20 +79,19 @@ Nothing has been committed yet for 4c. No backend, route, or shared-context chan
 ## Validation Commands
 
 ```bash
-cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run src/test/SiteCompareTab.test.tsx src/test/IncidentDetailPage.test.tsx src/test/SiteDetailPage.test.tsx src/test/IncidentCompareTab.test.tsx src/test/DebriefPanel.test.tsx
+cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run src/test/IncidentCompareTab.test.tsx src/test/SiteCompareTab.test.tsx
 cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run
 cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx tsc -p tsconfig.app.json --noEmit
-cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/components/site-detail/SiteCompareTab.tsx src/components/incident-detail/IncidentCompareTab.tsx src/components/SnapshotDiffView.tsx src/pages/SiteDetailPage.tsx src/test/SiteCompareTab.test.tsx src/test/SiteDetailPage.test.tsx src/test/IncidentDetailPage.test.tsx
+cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/components/incident-detail/IncidentCompareTab.tsx src/components/site-detail/SiteCompareTab.tsx src/utils/datetimeLocal.ts src/test/IncidentCompareTab.test.tsx src/test/SiteCompareTab.test.tsx src/pages/IncidentDetailPage.tsx src/pages/SiteDetailPage.tsx
 git diff --check
 ```
 
-## Last Validation Results (2026-04-18, after 4c)
+## Last Validation Results (2026-04-18, after 4c-followup)
 
-- Focused frontend tests: 35/35 pass (`SiteCompareTab.test.tsx` 6, `IncidentDetailPage.test.tsx` 9, `SiteDetailPage.test.tsx` 4, `IncidentCompareTab.test.tsx` 5, `DebriefPanel.test.tsx` 11)
-- Full Vitest suite: **553 tests across 77 files, 0 failures**
+- Focused frontend tests: 13/13 pass (`IncidentCompareTab.test.tsx` 6, `SiteCompareTab.test.tsx` 7 — each file gained one stale-compare test)
+- Full Vitest suite: **555 tests across 77 files, 0 failures**
 - TypeScript (`tsconfig.app.json`): 0 errors
 - ESLint on touched frontend files: 0 errors, 0 warnings
-- `git diff --check`: clean
 
 ## Known Risks / Blockers
 
@@ -119,6 +113,7 @@ git diff --check
 - Phase 3 Slices 1–4 (freshness rendering, cross-entity highlighting, evidence-linked highlighting)
 - Phase 4 Slice 1 — debrief audit events API prerequisites (shipped in `2c49a3c`)
 - Phase 4 Slices 4a + 4b — per-event snapshot diff drawer + incident-scoped A-B compare (shipped in `8ebedf9`)
+- Phase 4 Slice 4c — site readiness/tasks A-B compare (shipped in `eec8439`)
 - incident notes/prosecution standalone coverage slice
 - replay parity, auth hardening, and tenant-boundary cleanup
 - production blocker hardening tranche

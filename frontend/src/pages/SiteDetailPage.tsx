@@ -347,7 +347,7 @@ export default function SiteDetailPage() {
             <SiteCompareTab
               siteId={site.id}
               openedAt={site.created_at}
-              latestAt={site.updated_at}
+              defaultLatestAt={site.updated_at}
             />
           }
         />

@@ -5,6 +5,7 @@ import { getSite } from '../../api/sites'
 import { getReadiness } from '../../api/readiness'
 import type { Site, SiteReadiness } from '../../api/types'
 import { diffSnapshots } from '../../utils/diffSnapshots'
+import { toDatetimeLocal, fromDatetimeLocal } from '../../utils/datetimeLocal'
 import SnapshotDiffView from '../SnapshotDiffView'
 
 // Site fields that are immutable (id, created_at), volatile (updated_at), or
@@ -45,30 +46,33 @@ function readinessSnapshot(readiness: SiteReadiness | null): Record<string, unkn
   }
 }
 
-function toDatetimeLocal(iso: string): string {
-  const d = new Date(iso)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return (
-    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T` +
-    `${pad(d.getHours())}:${pad(d.getMinutes())}`
-  )
-}
-
-function fromDatetimeLocal(value: string): string {
-  return new Date(value).toISOString()
-}
-
 interface SiteCompareTabProps {
   siteId: string
   openedAt: string
-  latestAt: string
+  // Seed value for T2 — the operator can shift T2 freely; this is not an upper bound.
+  defaultLatestAt: string
 }
 
-export default function SiteCompareTab({ siteId, openedAt, latestAt }: SiteCompareTabProps) {
+export default function SiteCompareTab({ siteId, openedAt, defaultLatestAt }: SiteCompareTabProps) {
   const [t1Input, setT1Input] = useState(() => toDatetimeLocal(openedAt))
-  const [t2Input, setT2Input] = useState(() => toDatetimeLocal(latestAt))
+  const [t2Input, setT2Input] = useState(() => toDatetimeLocal(defaultLatestAt))
   const [active, setActive] = useState<{ t1: string; t2: string } | null>(null)
 
+  // Stale-compare guard: any input edit after Compare invalidates the window.
+  // See matching comment in IncidentCompareTab — silent stale state on an operator
+  // surface is a correctness failure, not just polish.
+  function handleT1Change(value: string) {
+    setT1Input(value)
+    if (active) setActive(null)
+  }
+  function handleT2Change(value: string) {
+    setT2Input(value)
+    if (active) setActive(null)
+  }
+
+  // future: extract useSnapshotAtMoment(entityFetcher, id, asOf, enabled) when a
+  // fourth compare surface appears (task-list, asset-list, cross-entity). One
+  // slice isn't enough to justify the abstraction — wait for the next consumer.
   const site1 = useQuery({
     queryKey: ['sites', siteId, { as_of: active?.t1 }],
     queryFn: () => getSite(siteId, { as_of: active!.t1 }),
@@ -132,7 +136,7 @@ export default function SiteCompareTab({ siteId, openedAt, latestAt }: SiteCompa
             type="datetime-local"
             className="bp6-input"
             value={t1Input}
-            onChange={(e) => setT1Input(e.target.value)}
+            onChange={(e) => handleT1Change(e.target.value)}
             aria-label="Compare T1 timestamp"
           />
         </label>
@@ -142,7 +146,7 @@ export default function SiteCompareTab({ siteId, openedAt, latestAt }: SiteCompa
             type="datetime-local"
             className="bp6-input"
             value={t2Input}
-            onChange={(e) => setT2Input(e.target.value)}
+            onChange={(e) => handleT2Change(e.target.value)}
             aria-label="Compare T2 timestamp"
           />
         </label>
@@ -184,7 +188,7 @@ export default function SiteCompareTab({ siteId, openedAt, latestAt }: SiteCompa
         <SnapshotDiffView
           diff={diff}
           emptyTitle="No site changes"
-          emptyDescription="None of this site's tracked fields or readiness counts changed between T1 and T2."
+          emptyDescription="Checked: status, flag, geofence, AO assignment, readiness score, task counts. Coordinates and mechanical timestamps are excluded."
         />
       )}
     </div>

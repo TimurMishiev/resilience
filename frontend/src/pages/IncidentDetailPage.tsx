@@ -353,7 +353,7 @@ export default function IncidentDetailPage() {
             <IncidentCompareTab
               incidentId={incident.id}
               openedAt={incident.opened_at}
-              latestAt={incident.updated_at}
+              defaultLatestAt={incident.updated_at}
             />
           }
         />
