@@ -1,6 +1,9 @@
-import { Drawer, DrawerSize, Tag, Icon, Classes } from '@blueprintjs/core'
+import { useState } from 'react'
+import { Button, Drawer, DrawerSize, Tag, Icon, Classes } from '@blueprintjs/core'
 import type { IconName } from '@blueprintjs/icons'
 import type { Recommendation, EvidenceItem } from '../api/recommendations'
+import type { SignalRuleMatch } from '../api/types'
+import AlertChainDrawer from './AlertChainDrawer'
 import { REC_TYPE_LABEL } from '../utils/recommendationLabels'
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -36,7 +39,10 @@ interface EvidenceDrawerProps {
 }
 
 export default function EvidenceDrawer({ rec, onClose }: EvidenceDrawerProps) {
+  const [chainMatch, setChainMatch] = useState<SignalRuleMatch | null>(null)
+
   return (
+    <>
     <Drawer
       isOpen={!!rec}
       onClose={onClose}
@@ -101,18 +107,40 @@ export default function EvidenceDrawer({ rec, onClose }: EvidenceDrawerProps) {
                       style={{ marginTop: 2, flexShrink: 0 }}
                     />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                         <Tag minimal intent={TYPE_INTENT[item.type] ?? 'none'} style={{ fontSize: 10 }}>
                           {item.type}
                         </Tag>
-                        <code className="mono" style={{ fontSize: 10, opacity: 0.7, wordBreak: 'break-all' }}>
-                          {item.id}
-                        </code>
+                        {item.label ? (
+                          <span style={{ fontSize: 12, fontWeight: 500 }}>{item.label}</span>
+                        ) : (
+                          <span className="bp6-text-muted" style={{ fontSize: 11, fontStyle: 'italic' }}>
+                            (unresolved)
+                          </span>
+                        )}
                       </div>
+                      <code
+                        className="mono"
+                        style={{ display: 'block', fontSize: 10, opacity: 0.55, wordBreak: 'break-all', marginTop: 2 }}
+                      >
+                        {item.id}
+                      </code>
                       {item.detail && (
                         <div className="bp6-text-muted" style={{ fontSize: 11, marginTop: 4 }}>
                           {item.detail}
                         </div>
+                      )}
+                      {item.type === 'alert' && item.alert && (
+                        <Button
+                          minimal
+                          small
+                          icon="data-lineage"
+                          onClick={() => setChainMatch(item.alert ?? null)}
+                          aria-label={`Show evidence chain for alert ${item.id}`}
+                          style={{ marginTop: 6, fontSize: 11 }}
+                        >
+                          Show chain
+                        </Button>
                       )}
                     </div>
                   </div>
@@ -141,5 +169,7 @@ export default function EvidenceDrawer({ rec, onClose }: EvidenceDrawerProps) {
         </div>
       )}
     </Drawer>
+    <AlertChainDrawer match={chainMatch} onClose={() => setChainMatch(null)} />
+    </>
   )
 }

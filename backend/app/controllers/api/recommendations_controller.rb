@@ -1,5 +1,7 @@
 module Api
   class RecommendationsController < BaseController
+    include IncidentSerialization
+
     before_action :require_commander!, only: %i[generate]
     after_action :verify_authorized
     after_action :verify_policy_scoped, only: :index
@@ -28,7 +30,8 @@ module Api
         recs = recs.active if params[:status].blank?
 
         records, meta = paginate(recs)
-        render json: { data: records.map { |r| serialize(r) }, meta: meta }
+        context = build_evidence_context(records, as_of: nil)
+        render json: { data: records.map { |r| serialize(r, evidence_context: context) }, meta: meta }
       end
     end
 
@@ -53,7 +56,7 @@ module Api
         return
       end
       rec.accept!(user: current_user, reason: params[:reason])
-      render json: serialize(rec)
+      render json: serialize(rec, evidence_context: build_evidence_context([rec], as_of: nil))
     end
 
     # POST /api/recommendations/:id/reject
@@ -65,7 +68,7 @@ module Api
         return
       end
       rec.reject!(user: current_user, reason: params[:reason])
-      render json: serialize(rec)
+      render json: serialize(rec, evidence_context: build_evidence_context([rec], as_of: nil))
     end
 
     # POST /api/recommendations/:id/defer
@@ -77,7 +80,7 @@ module Api
         return
       end
       rec.defer!(user: current_user, reason: params[:reason])
-      render json: serialize(rec)
+      render json: serialize(rec, evidence_context: build_evidence_context([rec], as_of: nil))
     end
 
     # POST /api/recommendations/:id/execute
@@ -106,7 +109,8 @@ module Api
       end
 
       if result&.success?
-        render json: serialize(rec.reload)
+        fresh = rec.reload
+        render json: serialize(fresh, evidence_context: build_evidence_context([fresh], as_of: nil))
       else
         render json: { errors: result&.errors || ["Execution failed"] }, status: :unprocessable_content
       end
@@ -153,7 +157,7 @@ module Api
 
     private
 
-    def serialize(rec, replay_state: nil)
+    def serialize(rec, replay_state: nil, evidence_context: nil)
       {
         id:                    rec.id,
         recommendation_type:   rec.recommendation_type,
@@ -161,7 +165,7 @@ module Api
         status:                replay_state ? replay_state[:status] : rec.status,
         confidence:            rec.confidence,
         rationale:             rec.rationale,
-        evidence:              rec.evidence,
+        evidence:              resolve_evidence(rec.evidence, context: evidence_context),
         action_payload:        rec.action_payload,
         affected_entity_type:  rec.affected_entity_type,
         affected_entity_id:    rec.affected_entity_id,
@@ -176,11 +180,145 @@ module Api
 
     def serialize_replay_recommendations(records, as_of:)
       replay_states = Replay::StateSerializer.recommendation_states(records, as_of: as_of)
-      serialized = records.map { |record| serialize(record, replay_state: replay_states.fetch(record.id)) }
+      context = build_evidence_context(records, as_of: as_of)
+      serialized = records.map do |record|
+        serialize(record, replay_state: replay_states.fetch(record.id), evidence_context: context)
+      end
 
       return serialized unless params[:status].present?
 
       serialized.select { |record| record[:status] == params[:status] }
+    end
+
+    # Builds a resolution context for evidence items across a batch of
+    # recommendations. Resolves entity labels (site/incident/task/asset name/title)
+    # and embeds full alert payloads for type=alert items so the frontend can
+    # drill through to the evidence chain without a follow-up fetch.
+    #
+    # Replay-aware: when as_of is provided, labels come from audit snapshots
+    # (falling back to current state if no snapshot exists), and alert payloads
+    # use match/rule/task/site snapshots. Alerts with no snapshot at as_of are
+    # returned as nil so the UI does not drill through to state that did not
+    # exist at the replay point.
+    def build_evidence_context(recs, as_of:)
+      ids_by_type = Hash.new { |h, k| h[k] = [] }
+      Array(recs).each do |rec|
+        next unless rec.evidence.is_a?(Array)
+        rec.evidence.each do |item|
+          type = (item["type"] || item[:type]).to_s
+          id   = item["id"]   || item[:id]
+          next if type.blank? || id.blank?
+          ids_by_type[type] << id
+        end
+      end
+      ids_by_type.each_value(&:uniq!)
+
+      {
+        labels: {
+          "site"     => resolve_labels(Site, "Site", "name", ids_by_type["site"], as_of: as_of),
+          "incident" => resolve_labels(Incident, "Incident", "title", ids_by_type["incident"], as_of: as_of),
+          "task"     => resolve_labels(Task, "Task", "title", ids_by_type["task"], as_of: as_of),
+          "asset"    => resolve_labels(Asset, "Asset", "name", ids_by_type["asset"], as_of: as_of),
+          "alert"    => resolve_alert_labels(ids_by_type["alert"], as_of: as_of),
+        },
+        alerts: resolve_alert_payloads(ids_by_type["alert"], as_of: as_of),
+      }
+    end
+
+    def resolve_labels(model, entity_type, field, ids, as_of:)
+      return {} if ids.blank?
+      records   = policy_scope(model).where(id: ids).index_by(&:id)
+      snapshots = as_of ? latest_audit_snapshots(entity_type: entity_type, entity_ids: ids, as_of: as_of) : {}
+
+      ids.each_with_object({}) do |id, out|
+        record   = records[id]
+        snapshot = snapshots[id]
+        next if record.nil? && snapshot.blank?
+        out[id] = snapshot_or_current(snapshot, field, record&.public_send(field))
+      end
+    end
+
+    def resolve_alert_labels(ids, as_of:)
+      return {} if ids.blank?
+      matches = policy_scope(SignalRuleMatch).includes(:correlation_rule).where(id: ids).index_by(&:id)
+
+      if as_of
+        rule_ids = matches.values.filter_map(&:correlation_rule_id).uniq
+        rule_snapshots = latest_audit_snapshots(entity_type: "CorrelationRule", entity_ids: rule_ids, as_of: as_of)
+        matches.each_with_object({}) do |(id, match), out|
+          rule_name = snapshot_or_current(rule_snapshots[match.correlation_rule_id], "name", match.correlation_rule&.name)
+          out[id] = rule_name if rule_name.present?
+        end
+      else
+        matches.each_with_object({}) do |(id, match), out|
+          out[id] = match.correlation_rule&.name if match.correlation_rule&.name.present?
+        end
+      end
+    end
+
+    def resolve_alert_payloads(ids, as_of:)
+      return {} if ids.blank?
+      matches = policy_scope(SignalRuleMatch)
+                  .includes(:correlation_rule, :signal, :task, :site, :acknowledged_by)
+                  .where(id: ids)
+
+      if as_of
+        # Matches that fired after as_of did not exist at the replay point and
+        # should not drill through. They still appear in the evidence row as a
+        # bare reference (via resolve_alert_labels) but without a payload.
+        visible = matches.select { |m| m.fired_at.present? && m.fired_at <= as_of }
+        return {} if visible.empty?
+
+        replay_states = Replay::StateSerializer.match_states(visible, as_of: as_of)
+        rule_snapshots = latest_audit_snapshots(
+          entity_type: "CorrelationRule",
+          entity_ids: visible.filter_map(&:correlation_rule_id).uniq,
+          as_of: as_of,
+        )
+        task_snapshots = latest_audit_snapshots(
+          entity_type: "Task",
+          entity_ids: visible.filter_map(&:task_id).uniq,
+          as_of: as_of,
+        )
+        site_snapshots = latest_audit_snapshots(
+          entity_type: "Site",
+          entity_ids: visible.filter_map(&:site_id).uniq,
+          as_of: as_of,
+        )
+
+        visible.each_with_object({}) do |match, out|
+          out[match.id] = serialize_alert(
+            match,
+            replay_state: replay_states[match.id],
+            rule_snapshot: rule_snapshots[match.correlation_rule_id],
+            task_snapshot: match.task_id.present? ? task_snapshots[match.task_id] : nil,
+            task_visible:  match.task_id.blank? || task_snapshots.key?(match.task_id),
+            site_snapshot: site_snapshots[match.site_id],
+          )
+        end
+      else
+        matches.each_with_object({}) { |m, out| out[m.id] = serialize_alert(m) }
+      end
+    end
+
+    def resolve_evidence(evidence, context:)
+      return evidence unless evidence.is_a?(Array)
+
+      evidence.map do |item|
+        type = (item["type"] || item[:type]).to_s
+        id   = item["id"]   || item[:id]
+        base = item.is_a?(Hash) ? item.dup : item
+
+        if context && id.present?
+          label = context.dig(:labels, type, id)
+          base["label"] = label if base.is_a?(Hash)
+          if type == "alert" && base.is_a?(Hash)
+            base["alert"] = context.dig(:alerts, id)
+          end
+        end
+
+        base
+      end
     end
 
   end

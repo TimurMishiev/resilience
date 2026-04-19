@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { PaginatedResponse } from './types'
+import type { PaginatedResponse, SignalRuleMatch } from './types'
 
 export type RecommendationType =
   | 'close_stale_alert'
@@ -24,6 +24,14 @@ export interface EvidenceItem {
   type:    'site' | 'incident' | 'alert' | 'task' | 'asset'
   id:      string
   detail?: string
+  // Server-resolved display label (site/asset name, incident/task title,
+  // alert rule name). Absent when the referenced entity has been deleted
+  // and no audit snapshot is available.
+  label?:  string | null
+  // Full alert payload embedded for type='alert' items so the evidence
+  // drawer can drill through to AlertChainDrawer without a second fetch.
+  // Null in replay mode when the match did not yet exist at as_of.
+  alert?:  SignalRuleMatch | null
 }
 
 export interface Recommendation {

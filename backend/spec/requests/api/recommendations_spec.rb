@@ -31,6 +31,63 @@ RSpec.describe "Api::Recommendations", type: :request do
       expect(response).to have_http_status(:unauthorized)
     end
 
+    describe "evidence resolution" do
+      let(:site)  { create(:site, name: "Alpha FOB") }
+      let(:match) { create(:signal_rule_match, site: site) }
+      let!(:rec_with_evidence) do
+        create(
+          :recommendation,
+          status:     "pending",
+          expires_at: 2.hours.from_now,
+          evidence: [
+            { "type" => "site",  "id" => site.id,  "detail" => "within 5km" },
+            { "type" => "alert", "id" => match.id, "detail" => "conf=0.8" },
+            { "type" => "site",  "id" => SecureRandom.uuid }, # missing entity
+          ],
+        )
+      end
+
+      it "attaches labels and embeds alert payload on live queries" do
+        get "/api/recommendations", headers: auth_headers(operator)
+        expect(response).to have_http_status(:ok)
+        rec_body = json["data"].find { |r| r["id"] == rec_with_evidence.id }
+        expect(rec_body).not_to be_nil
+
+        site_item  = rec_body["evidence"].find { |i| i["type"] == "site" && i["id"] == site.id }
+        alert_item = rec_body["evidence"].find { |i| i["type"] == "alert" }
+        missing    = rec_body["evidence"].find { |i| i["type"] == "site" && i["id"] != site.id }
+
+        expect(site_item["label"]).to eq("Alpha FOB")
+        expect(alert_item["label"]).to eq(match.correlation_rule.name)
+        expect(alert_item["alert"]).to be_a(Hash)
+        expect(alert_item["alert"]["id"]).to eq(match.id)
+        expect(alert_item["alert"]["correlation_rule"]["id"]).to eq(match.correlation_rule_id)
+        expect(missing["label"]).to be_nil
+      end
+
+      it "hides alert payloads that did not exist at as_of but retains the evidence row" do
+        replay_rec = create(
+          :recommendation,
+          status:     "pending",
+          expires_at: 4.hours.from_now,
+          evidence:   [{ "type" => "alert", "id" => match.id, "detail" => "conf=0.8" }],
+        )
+        # rec existed at as_of (4h ago <= 3h ago), but match.fired_at is now
+        # (after 3h ago) so its payload should be hidden in replay.
+        replay_rec.update_columns(created_at: 4.hours.ago, updated_at: 4.hours.ago)
+
+        get "/api/recommendations",
+            params: { as_of: 3.hours.ago.iso8601, affected_entity_id: replay_rec.affected_entity_id },
+            headers: auth_headers(operator)
+
+        expect(response).to have_http_status(:ok)
+        rec_body = json["data"].find { |r| r["id"] == replay_rec.id }
+        expect(rec_body).not_to be_nil
+        alert_item = rec_body["evidence"].find { |i| i["type"] == "alert" }
+        expect(alert_item["alert"]).to be_nil
+      end
+    end
+
     it "reconstructs recommendation status at as_of for replay queries" do
       replay_target = create(:recommendation, status: "pending", expires_at: 4.hours.from_now)
       replay_target.update_columns(created_at: 2.hours.ago, updated_at: 2.hours.ago)
