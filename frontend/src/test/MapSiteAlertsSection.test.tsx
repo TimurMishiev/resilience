@@ -255,4 +255,73 @@ describe('MapSiteAlertsSection', () => {
     fireEvent.click(screen.getByTestId('alert-chain-drawer-close'))
     expect(screen.queryByTestId('alert-chain-drawer')).toBeNull()
   })
+
+  it('renders no stale-basis tag when the signal is fresh', () => {
+    hookState.data = {
+      data: [
+        buildMatch({
+          signal: {
+            id: 'signal-1',
+            source: 'ais',
+            signal_type: 'vessel_position',
+            lat: 36.1,
+            lng: -5.4,
+            occurred_at: '2026-04-15T11:59:55Z',
+          },
+        }),
+      ],
+      meta: { page: 1, per_page: 5, total: 1, total_pages: 1 },
+    }
+    renderSection()
+    expect(screen.queryByTestId('map-site-alert-stale-basis')).toBeNull()
+  })
+
+  it('renders an aging stale-basis tag when the signal is older than agingMs', () => {
+    hookState.data = {
+      data: [
+        buildMatch({
+          signal: {
+            id: 'signal-1',
+            source: 'ais',
+            signal_type: 'vessel_position',
+            lat: 36.1,
+            lng: -5.4,
+            occurred_at: '2026-04-15T11:59:00Z',
+          },
+        }),
+      ],
+      meta: { page: 1, per_page: 5, total: 1, total_pages: 1 },
+    }
+    renderSection()
+    expect(screen.getByTestId('map-site-alert-stale-basis')).toHaveTextContent('aging')
+  })
+
+  it('renders a stale stale-basis tag when the signal is older than staleMs', () => {
+    hookState.data = {
+      data: [
+        buildMatch({
+          signal: {
+            id: 'signal-1',
+            source: 'ais',
+            signal_type: 'vessel_position',
+            lat: 36.1,
+            lng: -5.4,
+            occurred_at: '2026-04-15T11:57:00Z',
+          },
+        }),
+      ],
+      meta: { page: 1, per_page: 5, total: 1, total_pages: 1 },
+    }
+    renderSection()
+    expect(screen.getByTestId('map-site-alert-stale-basis')).toHaveTextContent('stale')
+  })
+
+  it('renders no stale-basis tag when the signal is missing', () => {
+    hookState.data = {
+      data: [buildMatch({ signal: null })],
+      meta: { page: 1, per_page: 5, total: 1, total_pages: 1 },
+    }
+    renderSection()
+    expect(screen.queryByTestId('map-site-alert-stale-basis')).toBeNull()
+  })
 })

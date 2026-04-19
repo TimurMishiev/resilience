@@ -4,9 +4,16 @@ import { useSignalRuleMatches, useTransitionAlert } from '../hooks/useSignalRule
 import { useReplayParams } from '../hooks/useReplayParams'
 import { timeAgo } from '../lib/formatters'
 import { priorityIntent, workflowIntent } from '../lib/taskIntents'
+import { deriveFreshness, type FreshnessState } from '../lib/freshness'
 import type { SignalRuleMatch } from '../api/types'
 import { humanize } from '../utils/humanize'
 import AlertChainDrawer from './AlertChainDrawer'
+
+function freshnessRowIntent(state: FreshnessState): 'warning' | 'danger' | 'none' {
+  if (state === 'aging') return 'warning'
+  if (state === 'stale' || state === 'unavailable') return 'danger'
+  return 'none'
+}
 
 const TRIAGE_LIMIT = 5
 
@@ -104,7 +111,11 @@ export function MapSignalAlertsSection({
         </ul>
       )}
 
-      <AlertChainDrawer match={chainMatch} onClose={() => setChainMatch(null)} />
+      <AlertChainDrawer
+        match={chainMatch}
+        onClose={() => setChainMatch(null)}
+        referenceTimeMs={referenceTimeMs}
+      />
     </section>
   )
 }
@@ -133,6 +144,11 @@ function SignalAlertRow({
     match.correlation_rule?.name ??
     (match.metadata?.geofence_breach ? 'Geofence breach' : 'Unknown rule')
 
+  const signalFreshness: FreshnessState | null = match.signal
+    ? deriveFreshness(Date.parse(match.signal.occurred_at), referenceTimeMs)
+    : null
+  const showStaleBasis = signalFreshness != null && signalFreshness !== 'fresh'
+
   return (
     <li className="map-site-alert-row" data-testid="map-signal-alert-row">
       <div className="map-site-alert-row-main">
@@ -143,6 +159,19 @@ function SignalAlertRow({
           <span className="map-site-alert-rule">{ruleName}</span>
           <span className="map-site-alert-meta bp6-text-muted">
             {timeAgo(match.fired_at, referenceTimeMs)}
+            {showStaleBasis && signalFreshness && (
+              <>
+                {' '}
+                <Tag
+                  minimal
+                  intent={freshnessRowIntent(signalFreshness)}
+                  style={{ fontSize: 10, marginLeft: 4 }}
+                  data-testid="map-signal-alert-stale-basis"
+                >
+                  {signalFreshness}
+                </Tag>
+              </>
+            )}
             {conf != null && (
               <>
                 {' · '}

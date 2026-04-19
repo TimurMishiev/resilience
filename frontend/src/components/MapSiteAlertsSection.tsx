@@ -6,9 +6,16 @@ import { useReplayParams } from '../hooks/useReplayParams'
 import { SIGNAL_ICON_NAME } from '../lib/signalIcons'
 import { timeAgo } from '../lib/formatters'
 import { priorityIntent, workflowIntent } from '../lib/taskIntents'
+import { deriveFreshness, type FreshnessState } from '../lib/freshness'
 import type { SignalRuleMatch } from '../api/types'
 import { humanize } from '../utils/humanize'
 import AlertChainDrawer from './AlertChainDrawer'
+
+function freshnessRowIntent(state: FreshnessState): 'warning' | 'danger' | 'none' {
+  if (state === 'aging') return 'warning'
+  if (state === 'stale' || state === 'unavailable') return 'danger'
+  return 'none'
+}
 
 const TRIAGE_LIMIT = 5
 
@@ -120,7 +127,11 @@ export function MapSiteAlertsSection({
         </Link>
       )}
 
-      <AlertChainDrawer match={chainMatch} onClose={() => setChainMatch(null)} />
+      <AlertChainDrawer
+        match={chainMatch}
+        onClose={() => setChainMatch(null)}
+        referenceTimeMs={referenceTimeMs}
+      />
     </section>
   )
 }
@@ -152,6 +163,11 @@ function MapSiteAlertRow({
     (match.metadata?.geofence_breach ? 'Geofence breach' : 'Unknown rule')
   const iconName = match.signal ? SIGNAL_ICON_NAME[match.signal.signal_type] ?? 'dot' : 'dot'
 
+  const signalFreshness: FreshnessState | null = match.signal
+    ? deriveFreshness(Date.parse(match.signal.occurred_at), referenceTimeMs)
+    : null
+  const showStaleBasis = signalFreshness != null && signalFreshness !== 'fresh'
+
   return (
     <li className="map-site-alert-row" data-testid="map-site-alert-row">
       <div className="map-site-alert-row-main">
@@ -162,6 +178,19 @@ function MapSiteAlertRow({
           <span className="map-site-alert-rule">{ruleName}</span>
           <span className="map-site-alert-meta bp6-text-muted">
             {timeAgo(match.fired_at, referenceTimeMs)}
+            {showStaleBasis && signalFreshness && (
+              <>
+                {' '}
+                <Tag
+                  minimal
+                  intent={freshnessRowIntent(signalFreshness)}
+                  style={{ fontSize: 10, marginLeft: 4 }}
+                  data-testid="map-site-alert-stale-basis"
+                >
+                  {signalFreshness}
+                </Tag>
+              </>
+            )}
             {conf != null && (
               <>
                 {' · '}

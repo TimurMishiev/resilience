@@ -10,6 +10,7 @@ import { Drawer, DrawerSize, Tag, Icon, Divider, Callout } from '@blueprintjs/co
 import type { SignalRuleMatch } from '../api/types'
 import { SIGNAL_ICON_NAME } from '../lib/signalIcons'
 import { humanize } from '../utils/humanize'
+import { deriveFreshness, type FreshnessState } from '../lib/freshness'
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -23,6 +24,12 @@ function ConfBadge({ value }: { value: number }) {
   const pct   = Math.round(value * 100)
   const intent = pct >= 70 ? 'success' : pct >= 40 ? 'warning' : 'danger'
   return <Tag minimal intent={intent}>{pct}% confidence</Tag>
+}
+
+function freshnessIntent(state: FreshnessState): 'warning' | 'danger' | 'none' {
+  if (state === 'aging') return 'warning'
+  if (state === 'stale' || state === 'unavailable') return 'danger'
+  return 'none'
 }
 
 // ── chain node ─────────────────────────────────────────────────────────────
@@ -69,14 +76,25 @@ function Arrow() {
 interface Props {
   match: SignalRuleMatch | null
   onClose: () => void
+  /**
+   * Reference clock used for freshness derivation on the Signal node.
+   * Callers with a replay-aware clock should pass `asOfMs` here;
+   * omit for live-only surfaces.
+   */
+  referenceTimeMs?: number
 }
 
-export default function AlertChainDrawer({ match, onClose }: Props) {
+export default function AlertChainDrawer({ match, onClose, referenceTimeMs }: Props) {
   if (!match) return null
 
   const isGeofence = Boolean(match.metadata?.geofence_breach)
   const distKm     = match.metadata?.distance_km as number | undefined
   const geofenceKm = match.metadata?.geofence_radius_km as number | undefined
+
+  const signalFreshness: FreshnessState | null =
+    match.signal && referenceTimeMs != null
+      ? deriveFreshness(Date.parse(match.signal.occurred_at), referenceTimeMs)
+      : null
 
   const alertStatusIntent: Record<string, 'danger' | 'warning' | 'primary' | 'success' | 'none'> = {
     unacknowledged: 'danger',
@@ -105,7 +123,22 @@ export default function AlertChainDrawer({ match, onClose }: Props) {
           {match.signal && (
             <>
               <div>Source: <code>{match.signal.source}</code></div>
-              <div>Occurred: {fmt(match.signal.occurred_at)}</div>
+              <div>
+                Occurred: {fmt(match.signal.occurred_at)}
+                {signalFreshness && signalFreshness !== 'fresh' && (
+                  <>
+                    {' '}
+                    <Tag
+                      minimal
+                      intent={freshnessIntent(signalFreshness)}
+                      style={{ fontSize: 10, marginLeft: 4 }}
+                      data-testid="alert-chain-signal-freshness"
+                    >
+                      {signalFreshness}
+                    </Tag>
+                  </>
+                )}
+              </div>
               <div>
                 Location: {Number(match.signal.lat).toFixed(3)}, {Number(match.signal.lng).toFixed(3)}
               </div>
