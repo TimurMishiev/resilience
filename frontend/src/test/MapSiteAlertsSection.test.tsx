@@ -41,8 +41,13 @@ vi.mock('../hooks/useReplayParams', () => ({
 }))
 
 vi.mock('../components/AlertChainDrawer', () => ({
-  default: ({ match }: { match: SignalRuleMatch | null }) =>
-    match ? <div data-testid="alert-chain-drawer">{`Chain drawer: ${match.id}`}</div> : null,
+  default: ({ match, onClose }: { match: SignalRuleMatch | null; onClose: () => void }) =>
+    match ? (
+      <div data-testid="alert-chain-drawer">
+        {`Chain drawer: ${match.id}`}
+        <button data-testid="alert-chain-drawer-close" onClick={onClose}>Close</button>
+      </div>
+    ) : null,
 }))
 
 import { MapSiteAlertsSection } from '../components/MapSiteAlertsSection'
@@ -230,7 +235,24 @@ describe('MapSiteAlertsSection', () => {
     }
     renderSection()
     expect(screen.queryByTestId('alert-chain-drawer')).toBeNull()
-    fireEvent.click(screen.getByTestId('map-site-alert-chain'))
+
+    const chainButton = screen.getByTestId('map-site-alert-chain')
+    expect(chainButton).toHaveAttribute('aria-label', 'Show evidence chain for alert match-1')
+
+    fireEvent.click(chainButton)
     expect(screen.getByTestId('alert-chain-drawer')).toHaveTextContent('Chain drawer: match-1')
+  })
+
+  it('closes the alert chain drawer when onClose is invoked', () => {
+    hookState.data = {
+      data: [buildMatch()],
+      meta: { page: 1, per_page: 5, total: 1, total_pages: 1 },
+    }
+    renderSection()
+    fireEvent.click(screen.getByTestId('map-site-alert-chain'))
+    expect(screen.getByTestId('alert-chain-drawer')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('alert-chain-drawer-close'))
+    expect(screen.queryByTestId('alert-chain-drawer')).toBeNull()
   })
 })
