@@ -20,7 +20,7 @@ Phase 6 — Performance Characterization
 
 ## Current Repo State
 
-- Latest shipped slice: `19020f3` — Phase 6 Slice 6-1A: map signal-reconcile instrumentation + benchmark bridge
+- Latest shipped slice: `39008b6` — Phase 6 Slice 6-1A followup: document trigger priority, drop redundant bench field
 - Working tree: clean on product; handoff commit pending
 - For the literal tip SHA, run `git log -1` — it is intentionally not recorded here (self-referential with the commit that writes it).
 
@@ -31,6 +31,7 @@ Sequenced per `Next` below: **6-1A** (instrumentation + bridge, shipped in `1902
 ## Shipped In This Phase (Phase 6)
 
 - `19020f3` — Phase 6 Slice 6-1A: map signal-reconcile instrumentation + benchmark bridge
+- `39008b6` — Phase 6 Slice 6-1A followup: document trigger priority, drop redundant bench field
 
 ## Shipped In Phase 5 (closed)
 
