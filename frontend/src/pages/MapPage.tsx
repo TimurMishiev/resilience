@@ -353,14 +353,14 @@ export default function MapPage() {
   const perfEnabled = useMemo(() => isPerfEnabled(), [])
 
   const benchmarkTarget: MapBenchmarkTarget | null = useMemo(() => {
-    if (sites.length === 0) return null
-    const firstSite = [...sites].sort((a, b) => a.id.localeCompare(b.id))[0]
+    if (signals.length === 0) return null
+    const firstSignal = [...signals].sort((a, b) => a.id.localeCompare(b.id))[0]
     return {
-      siteId: firstSite.id,
-      siteName: firstSite.name,
+      signalId: firstSignal.id,
+      signalType: firstSignal.signal_type,
       globalSignalCount: signals.length,
     }
-  }, [sites, signals.length])
+  }, [signals])
 
   const benchStateRef = useRef<MapBenchmarkState>({
     mapLoaded: false,

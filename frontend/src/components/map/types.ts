@@ -1,13 +1,15 @@
 import type { Site } from '../../api/types'
 
-// Map's signal-layer reconcile is not site-scoped — it rebuilds every signal
-// source regardless of selection — so there is no meaningful "signals near
-// focus" number to report. The globe bench target carries `focusedSignalCount`
-// because its benchmark picks a site with a small 2000km-local subset; that
-// intentionally does not apply here.
+// The map's `map.signal_reconcile` perf event fires on selectedSignalId
+// changes (the deps on useMapSignalLayers' source-data effect are
+// [mapLoaded, selectedSignalId, signals, referenceTimeMs, mapRef] —
+// see frontend/src/hooks/map/useMapSignalLayers.ts:84). Site selection
+// does not re-run the reconcile, so the benchmark target is signal-shaped,
+// not site-shaped. The globe analog is site-shaped because the globe
+// reconcile filters signals to a 2000km-local subset of the selected site.
 export type MapBenchmarkTarget = {
-  siteId:             string
-  siteName:           string
+  signalId:           string
+  signalType:         string
   globalSignalCount:  number
 }
 
@@ -25,14 +27,14 @@ export type MapBenchmarkState = {
 }
 
 export type MapBenchmarkApi = {
-  getState:            () => MapBenchmarkState
-  getBenchmarkTarget:  () => MapBenchmarkTarget | null
-  getSites:            () => Site[]
-  focusSite:           (siteId: string) => boolean
-  focusBenchmarkSite:  () => MapBenchmarkTarget | null
-  clearSelection:      () => void
-  clearPerf:           () => void
-  getPerfEvents:       () => unknown[]
+  getState:              () => MapBenchmarkState
+  getBenchmarkTarget:    () => MapBenchmarkTarget | null
+  getSites:              () => Site[]
+  focusSite:             (siteId: string) => boolean
+  focusBenchmarkSignal:  () => MapBenchmarkTarget | null
+  clearSelection:        () => void
+  clearPerf:             () => void
+  getPerfEvents:         () => unknown[]
 }
 
 declare global {

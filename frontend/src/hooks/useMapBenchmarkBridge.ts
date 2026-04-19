@@ -38,12 +38,12 @@ export function useMapBenchmarkBridge({
         setSelectedSignalId(null)
         return true
       },
-      focusBenchmarkSite: () => {
+      focusBenchmarkSignal: () => {
         const target = stateRef.current.benchmarkTarget
         if (!target) return null
-        setSelectedSiteId(target.siteId)
+        setSelectedSiteId(null)
         setSelectedAssetId(null)
-        setSelectedSignalId(null)
+        setSelectedSignalId(target.signalId)
         return target
       },
       clearSelection: () => {

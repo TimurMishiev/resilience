@@ -15,7 +15,7 @@ function buildState(overrides: Partial<MapBenchmarkState> = {}): MapBenchmarkSta
     showSignals: true,
     showHeatmap: false,
     showCoverage: true,
-    benchmarkTarget: { siteId: 'site-1', siteName: 'Site Alpha', globalSignalCount: 3 },
+    benchmarkTarget: { signalId: 'sig-1', signalType: 'vessel_position', globalSignalCount: 3 },
     ...overrides,
   }
 }
@@ -69,7 +69,7 @@ describe('useMapBenchmarkBridge', () => {
     expect(bench?.getState().selectedSiteId).toBe('site-2')
     expect(bench?.getState().siteCount).toBe(2)
     expect(bench?.getBenchmarkTarget()).toEqual({
-      siteId: 'site-1', siteName: 'Site Alpha', globalSignalCount: 3,
+      signalId: 'sig-1', signalType: 'vessel_position', globalSignalCount: 3,
     })
     expect(bench?.getSites().map(s => s.id)).toEqual(['site-1', 'site-2'])
   })
@@ -102,7 +102,7 @@ describe('useMapBenchmarkBridge', () => {
     expect(setSelectedSignalId).toHaveBeenCalledWith(null)
   })
 
-  it('focusBenchmarkSite resolves the recommended target and drives selection', () => {
+  it('focusBenchmarkSignal resolves the recommended target and drives signal selection', () => {
     const stateRef = { current: buildState() }
     const sitesRef = { current: buildSites() }
     renderHook(() => useMapBenchmarkBridge({
@@ -111,12 +111,14 @@ describe('useMapBenchmarkBridge', () => {
       setSelectedSiteId, setSelectedAssetId, setSelectedSignalId,
     }))
     const bench = window.__resilienceMapBench!
-    const target = bench.focusBenchmarkSite()
-    expect(target?.siteId).toBe('site-1')
-    expect(setSelectedSiteId).toHaveBeenCalledWith('site-1')
+    const target = bench.focusBenchmarkSignal()
+    expect(target?.signalId).toBe('sig-1')
+    expect(setSelectedSignalId).toHaveBeenCalledWith('sig-1')
+    expect(setSelectedSiteId).toHaveBeenCalledWith(null)
+    expect(setSelectedAssetId).toHaveBeenCalledWith(null)
   })
 
-  it('focusBenchmarkSite returns null when no target is available', () => {
+  it('focusBenchmarkSignal returns null when no target is available', () => {
     const stateRef = { current: buildState({ benchmarkTarget: null }) }
     const sitesRef = { current: [] }
     renderHook(() => useMapBenchmarkBridge({
@@ -124,8 +126,8 @@ describe('useMapBenchmarkBridge', () => {
       stateRef, sitesRef,
       setSelectedSiteId, setSelectedAssetId, setSelectedSignalId,
     }))
-    expect(window.__resilienceMapBench!.focusBenchmarkSite()).toBeNull()
-    expect(setSelectedSiteId).not.toHaveBeenCalled()
+    expect(window.__resilienceMapBench!.focusBenchmarkSignal()).toBeNull()
+    expect(setSelectedSignalId).not.toHaveBeenCalled()
   })
 
   it('clearSelection sets all three selection slots to null', () => {
