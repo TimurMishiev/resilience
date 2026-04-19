@@ -12,21 +12,21 @@ Last updated: 2026-04-19
 
 Phase 6 — Performance Characterization
 
-(Phase 4 — Debrief closed. Phase 5 — Evidence Threading complete. Phase 6 active; Slices 6-1A + 6-1B + 6-1C shipped; 6-1D next.)
+(Phase 4 — Debrief closed. Phase 5 — Evidence Threading complete. Phase 6 active; Slices 6-1A + 6-1B + 6-1C + 6-1D shipped; 6-1E next.)
 
 ## Current Slice
 
-**6-1D — multi-scale characterization (1k / 10k / 100k signals), IN PROGRESS (uncommitted).** Infrastructure landed on disk; baseline numbers not yet captured. The original scope (`BENCHMARK_SIGNAL_COUNT=N rails db:seed` + DB-backed scale) was abandoned after discovery that `useSignalsLive` caps `vessel_position` at 50 and the `/api/signals` server caps `per_page` at 200 — seeding 100k rows would still render only 50 on `/map`. Pivoted to a synthetic-signal override: MapPage reads `localStorage.resilience.perf.bench_signal_count` (gated behind `resilience.perf`), and when set, bypasses `useSignalsLive` entirely and feeds a deterministic `buildSyntheticBenchSignals(N)` array straight into the reconcile pipeline. Prod data flow is untouched.
+**6-1E — CI wiring + 100k tail characterization, NEXT.** Two work items: (1) characterize the 100k tier's tail by running `benchmark:map:scale` ≥5× locally so a real p95 (≥50 samples) replaces the single 1057ms outlier from 6-1D's 10-sample run; (2) wire `benchmark:map:scale` into the `frontend-perf` CI job — gate decision per tier driven by (1)'s spread (default lean: gate 1k+10k where p95/max sat within 10% of mean, report-only 100k until multi-run p95 proves stable).
 
 ## Current Repo State
 
-- Latest shipped slice: `6bcaa2d` — Phase 6 Slice 6-1C: paint-completion measurement + jsMs CI gate (followup `465c4f9` — comment + whitespace P3 cleanup)
-- Working tree: **dirty** — 6-1D infrastructure (new [benchSyntheticSignals.ts](frontend/src/lib/benchSyntheticSignals.ts), new [benchSyntheticSignals.test.ts](frontend/src/test/benchSyntheticSignals.test.ts), new [map-scale-benchmark.spec.ts](frontend/e2e/map-scale-benchmark.spec.ts), edits to [MapPage.tsx](frontend/src/pages/MapPage.tsx) + [package.json](frontend/package.json))
+- Latest shipped slice: `1527052` — Phase 6 Slice 6-1D: map signal-reconcile multi-scale characterization (1k / 10k / 100k synthetic-signal bypass + per-tier baseline)
+- Working tree: clean (handoff bump only, this session)
 - For the literal tip SHA, run `git log -1` — it is intentionally not recorded here (self-referential with the commit that writes it).
 
 ## Phase 6 — Slice Plan
 
-Sequenced per `Next` below: **6-1A** (instrumentation + bridge, shipped in `19020f3`) → **6-1B** (Playwright spec + `benchmark:map` script, shipped in `605b963`) → **6-1C** (paint-completion instrumentation + baseline + CI gate, shipped in `6bcaa2d` + `465c4f9`) → **6-1D** (multi-scale characterization at 1k/10k/100k signals, next).
+Sequenced per `Next` below: **6-1A** (instrumentation + bridge, shipped in `19020f3`) → **6-1B** (Playwright spec + `benchmark:map` script, shipped in `605b963`) → **6-1C** (paint-completion instrumentation + baseline + CI gate, shipped in `6bcaa2d` + `465c4f9`) → **6-1D** (multi-scale characterization at 1k/10k/100k signals via synthetic-signal override, shipped in `1527052`) → **6-1E** (CI wiring + 100k tail characterization, next).
 
 ## 6-1C Baseline (local, 5 runs × 10 samples, Apple M-series + swiftshader, 315 seeded signals)
 
@@ -62,6 +62,7 @@ Floors can be lowered once the baseline holds stably across several real CI runs
 - `605b963` — Phase 6 Slice 6-1B: Playwright benchmark:map spec + npm script (reshapes bench API to signal-focused)
 - `6bcaa2d` — Phase 6 Slice 6-1C: paint-completion measurement + jsMs CI gate (double-rAF in `useMapSignalLayers`, refs commit inside rAF, spec asserts on `jsMs`, `benchmark:map` wired into `frontend-perf` CI job, maplibre `manualChunks` removed as rolldown UMD-wrap workaround)
 - `465c4f9` — Phase 6 Slice 6-1C followup: vite maplibre comment + test whitespace P3 cleanup
+- `1527052` — Phase 6 Slice 6-1D: multi-scale characterization (1k / 10k / 100k synthetic signals via `localStorage.resilience.perf.bench_signal_count` override; new `buildSyntheticBenchSignals` + `benchmark:map:scale` Playwright spec; one Playwright test per tier; per-tier JSON report attached, no CI gates)
 
 ## Shipped In Phase 5 (closed)
 
@@ -84,12 +85,15 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 
 ## In Progress
 
-- **6-1D — multi-scale characterization (1k / 10k / 100k signals).** Infrastructure on disk, baseline captured (see `6-1D Baseline` above). Ready to commit. CI wiring intentionally deferred to 6-1E.
+- none (6-1D shipped in `1527052`; 6-1E is the next slice and not yet started in code).
 
 ## Next
 
-- **Commit 6-1D.** Files: [benchSyntheticSignals.ts](frontend/src/lib/benchSyntheticSignals.ts), [benchSyntheticSignals.test.ts](frontend/src/test/benchSyntheticSignals.test.ts), [map-scale-benchmark.spec.ts](frontend/e2e/map-scale-benchmark.spec.ts), [MapPage.tsx](frontend/src/pages/MapPage.tsx), [package.json](frontend/package.json), [execution_handoff.md](memory/execution_handoff.md).
-- **6-1E — CI wiring + 100k tail characterization.** Two work items: (1) wire `benchmark:map:scale` into the `frontend-perf` CI job — either report-only (attach JSON per tier to artifact, no gates) or gate only 1k + 10k because their spreads are tight (p95/max within 10% of mean); 100k should be report-only unless multi-run p95 proves stable. (2) Run `benchmark:map:scale` five times locally to characterize the 100k tail — one 1057ms outlier in a 10-sample run doesn't prove a real p95, and gating decisions need ≥50 samples.
+- **6-1E.a — multi-run characterization of the 100k tail.** Run `yarn benchmark:map:scale` ≥5× locally so the per-tier JSON aggregates to ≥50 samples for the 100k tier. Goal: replace the single-run 1057ms outlier with a real p95 / spread distribution. Capture combined per-tier stats in this handoff under a new `6-1E Baseline` section before doing CI wiring.
+- **6-1E.b — CI wiring for `benchmark:map:scale` in the `frontend-perf` job.** Decision tree, driven by 6-1E.a numbers:
+    - 1k + 10k tiers: gate `jsMs` per tier with the existing 6-1B/6-1C floor pattern (`MAP_BENCH_MAX_JS_*` style env overrides) if multi-run p95/max stays within ~10% of mean.
+    - 100k tier: report-only attachment (per-tier JSON to the `frontend-perf-report` artifact) unless multi-run p95 proves stable.
+    - paintMs remains report-only at all tiers (swiftshader noise).
 - **Watch-item (not yet a slice):** if the first real CI run of `frontend-perf` shows wall-time pressure from running globe + map sequentially against the same Docker bring-up, split into a job matrix. Don't pre-emptively split — wait for actual numbers.
 - Phase 7 (advanced geospatial tools — measurement, annotation, temporary overlays) remains unstarted and is intentionally sequenced after Phase 6.
 
@@ -107,13 +111,13 @@ cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint e2e/map-be
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (Phase 6 Slice 6-1D infrastructure, 2026-04-19, uncommitted)
+## Last Validation Results (Phase 6 Slice 6-1D, shipped in `1527052`, 2026-04-19)
 
 - Full Vitest suite: **600 tests across 83 files, 0 failures** (8 new `benchSyntheticSignals` tests: determinism, Signal shape, bounding box, count floor, localStorage parse edges)
 - TypeScript (`npx tsc -p tsconfig.app.json --noEmit`): **0 errors**
 - ESLint on touched files (benchSyntheticSignals.ts, benchSyntheticSignals.test.ts, MapPage.tsx, map-scale-benchmark.spec.ts): **0 issues**
 - Frontend build (`yarn build`): **success**; MapPage chunk unchanged (72.42 kB), maplibre-gl still auto-chunked at 1024 kB (272 kB gzip)
-- Per-tier `yarn benchmark:map:scale` (one local run, 5 cycles × 2 triggers per tier): **all 3 tiers pass in 33.2s total**; jsMs mean 6.02 / 49.02 / 189.5 ms (1k / 10k / 100k). Full table recorded in `6-1D Baseline` above.
+- Per-tier `yarn benchmark:map:scale` (one local run, 5 cycles × 2 triggers per tier): **all 3 tiers pass in 33.2s total**; jsMs mean 6.02 / 49.02 / 189.5 ms (1k / 10k / 100k). Full table recorded in `6-1D Baseline` above. 6-1E.a will multi-run this for tail characterization.
 
 ### Preceding validation (Phase 6 Slice 6-1C + followup, shipped)
 
@@ -160,4 +164,5 @@ git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 - Phase 6 Slice 6-1A — map signal-reconcile instrumentation + benchmark bridge
 - Phase 6 Slice 6-1B — Playwright benchmark:map spec + npm script
 - Phase 6 Slice 6-1C — paint-completion measurement + jsMs CI gate (incl. rAF-preemption fix and maplibre `manualChunks` removal)
+- Phase 6 Slice 6-1D — multi-scale characterization (1k / 10k / 100k synthetic-signal bypass + per-tier baseline capture)
 - project-skill consolidation / deep-review removal / repo-managed `.claude/skills`
