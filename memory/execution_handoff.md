@@ -12,15 +12,15 @@ Last updated: 2026-04-19
 
 Phase 5 — Evidence Threading
 
-(Phase 4 — Debrief closed. Slices shipped so far in Phase 5: Slice 1 (`e1632fc`), Slice 2-A-full (`024af49`).)
+(Phase 4 — Debrief closed. Slices shipped so far in Phase 5: Slice 1 (`e1632fc`), Slice 2-A-full (`024af49`), Slice 2-A-followup (`9b8614c`).)
 
 ## Current Slice
 
-**None active.** 5-2A-full shipped; awaiting user direction on 5-2B or 5-2C before starting another tranche.
+**None active.** 5-2A-full + 5-2A-followup shipped; awaiting user direction on 5-2B or 5-2C before starting another tranche.
 
 ## Current Repo State
 
-- Latest shipped slice: `024af49` — Phase 5 Slice 2-A-full: recommendation evidence access
+- Latest shipped slice: `9b8614c` — Phase 5 Slice 2-A-followup: replay fired_at filter on alert evidence labels
 - Working tree: clean
 - For the literal tip SHA, run `git log -1` — it is intentionally not recorded here (self-referential with the commit that writes it).
 
@@ -35,6 +35,7 @@ Slice 1 delivered incident → alert threading. Slice 2-A-full delivered rec →
 
 - `e1632fc` — Phase 5 Slice 1: incident alert evidence access
 - `024af49` — Phase 5 Slice 2-A-full: recommendation evidence access (labels + alert chain drill-through)
+- `9b8614c` — Phase 5 Slice 2-A-followup: apply replay `fired_at <= as_of` filter uniformly to alert evidence labels (closes gate-flagged P3)
 
 ## Shipped In Prior Phases (Phase 4 context)
 
@@ -69,13 +70,12 @@ cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/compon
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (Phase 5 Slice 2-A-full, 2026-04-19)
+## Last Validation Results (Phase 5 Slice 2-A-followup, 2026-04-19)
 
 - Backend focused request spec (`api/recommendations_spec.rb`): **21 examples, 0 failures**
-- Frontend focused tests (EvidenceDrawer + RecommendationsPage + IncidentAlertsTab): **7/7 pass**
-- Full Vitest suite: **560 tests across 79 files, 0 failures** (DebriefPanel.test.tsx flaked once under parallel load then passed clean in isolation and on re-run of the full suite; not caused by this slice)
+- Full RSpec suite: **2169 examples, 0 failures**
+- Full Vitest suite: **560 tests across 79 files, 0 failures**
 - TypeScript (`tsconfig.app.json`): **0 errors**
-- ESLint on touched frontend files: **0 errors, 0 warnings**
 - `git diff --check`: **clean**
 
 ## Known Risks / Blockers
@@ -88,7 +88,7 @@ git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
   - the loose root `tsc --noEmit` is not authoritative for this repo
 - Evidence resolution is scoped to the `/api/recommendations` surface only. It does **not** widen any other API that happens to render raw `evidence` JSONB.
 - `EvidenceDrawer` mounts `AlertChainDrawer` as a sibling inside the same component tree. Fine for its single consumer today (`/recommendations`). If a future slice opens `EvidenceDrawer` from a surface that already mounts `AlertChainDrawer`, reconcile coordinator ownership rather than nesting two instances.
-- Replay intentionally returns `alert: null` for matches whose `fired_at > as_of`. Do not "helpfully" fall back to live state — that would leak future state into replay. Open gate-flagged gap: `resolve_alert_labels` does not yet apply the same filter, so a post-as-of match still surfaces a rule-name label (no drill-through). Harden in 5-2B/5-2C or a follow-up.
+- Replay intentionally returns both `alert: null` and `label: null` for matches whose `fired_at > as_of`. Do not "helpfully" fall back to live state — that would leak future state into replay.
 - Handoff never records the tip SHA — it would be self-referential with the commit that writes it. Product-commit SHAs live in "Shipped In This Phase"; run `git log -1` for the literal tip.
 
 ## Do Not Reopen
@@ -105,4 +105,5 @@ git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 - Phase 4 Slice 4c-followup — compare-tab hardening
 - Phase 5 Slice 1 — incident alert evidence access
 - Phase 5 Slice 2-A-full — recommendation evidence access
+- Phase 5 Slice 2-A-followup — replay fired_at filter on alert evidence labels
 - project-skill consolidation / deep-review removal / repo-managed `.claude/skills`
