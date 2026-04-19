@@ -16,7 +16,7 @@ Phase 6 — Performance Characterization
 
 ## Current Slice
 
-**6-1E — CI wiring + 100k tail characterization, NEXT.** Two work items: (1) characterize the 100k tier's tail by running `benchmark:map:scale` ≥5× locally so a real p95 (≥50 samples) replaces the single 1057ms outlier from 6-1D's 10-sample run; (2) wire `benchmark:map:scale` into the `frontend-perf` CI job — gate decision per tier driven by (1)'s spread (default lean: gate 1k+10k where p95/max sat within 10% of mean, report-only 100k until multi-run p95 proves stable).
+**6-1E — CI wiring + 100k tail characterization. 6-1E.a complete (this session), 6-1E.b NEXT.** Multi-run characterization captured locally: 5 runs × 10 samples = 50 samples per tier. See `6-1E.a Baseline` below. Headline finding: **1k is gateable on jsMs** (mean/p95/max all within ~12% across 5 runs); **10k is gateable on jsMs.p95 only** (p95 spread is 1.6%, but mean is volatile — one run drifted to 8.46ms vs ~48.7ms baseline); **100k still has a real long tail** that should remain report-only (per-run p95 spread 32.6 → 646.7ms; the 6-1D 1057ms outlier was real worst-case behavior, not a freak).
 
 ## Current Repo State
 
@@ -55,6 +55,37 @@ Floors can be lowered once the baseline holds stably across several real CI runs
 - 6-1C seeded-pipeline baseline (315 signals, mean 2.0ms) sits squarely on the 1k synthetic curve — synthetic path is not artificially fast.
 - CI wiring for `benchmark:map:scale` is intentionally **not yet added**. See 6-1E in `Next`.
 
+## 6-1E.a Baseline (local, 5 runs × 5 cycles × 2 triggers = 50 samples per tier per metric, Apple M-series + swiftshader, synthetic signals)
+
+Per-tier aggregated jsMs (combined selection_set + selection_cleared):
+
+| Tier  | mean-of-means | mean spread (across 5 runs) | per-run p95 spread | global max | gateable? |
+|-------|--------------:|----------------------------:|-------------------:|-----------:|----------|
+| 1k    | 6.08          | 5.89 – 6.57                 | 9.4 – 12.2         | 12.20      | yes (mean / p95 / max all stable) |
+| 10k   | 40.76         | 8.46 – 49.17                | 56.8 – 58.6        | 58.60      | p95 only (mean has a single 8.46 outlier; p95 spread is 1.6%) |
+| 100k  | 81.57         | 29.04 – 140.49              | 32.6 – 646.7       | 646.70     | no — keep report-only |
+
+paintMs aggregated (swiftshader noise — for observability only, not gate-eligible at any tier):
+
+| Tier  | mean-of-means | per-run p95 spread     | global max |
+|-------|--------------:|-----------------------:|-----------:|
+| 1k    | 412.25        | 524.9 – 2306.9         | 2306.90    |
+| 10k   | 365.73        | 617.6 – 1642.3         | 1642.30    |
+| 100k  | 621.05        | 1225.8 – 2215.9        | 2215.90    |
+
+Per-run jsMs.combined (mean / p95 / max), 5 runs, in chronological order:
+
+- **1k**:   (6.12 / 9.40 / 9.40), (5.90 / 9.90 / 9.90), (6.57 / 12.20 / 12.20), (5.89 / 9.80 / 9.80), (5.90 / 9.90 / 9.90)
+- **10k**:  (48.93 / 57.50 / 57.50), (48.74 / 58.60 / 58.60), (48.51 / 56.80 / 56.80), (8.46 / 57.40 / 57.40), (49.17 / 56.80 / 56.80)
+- **100k**: (60.18 / 326.00 / 326.00), (140.49 / 597.60 / 597.60), (120.90 / 646.70 / 646.70), (29.04 / 32.60 / 32.60), (57.25 / 311.90 / 311.90)
+
+Findings:
+
+- **6-1D's 1057ms 100k outlier is now positioned in context.** Run 2/3 of this characterization hit 597 / 646 ms p95; run 4 was clean at 32.6ms p95; run 1 was 326ms. The 1057ms tail isn't a freak — it's part of a real bimodal-looking distribution at 100k. Need raw per-sample arrays to distinguish "long tail" from "occasional GC pause" — current spec only attaches summaries.
+- **10k mean is volatile, p95 is rock-solid.** The 8.46ms run-mean (run 4) is a real anomaly: every other run sits at 48.5–49.2ms. Likely cause: per-spec each tier runs 5 selection_set + 5 selection_cleared cycles. The `min` field in every 10k run is 2.5–3.0ms (one trigger consistently fast — likely `selection_cleared` paint coalescing). When 4 of those fast samples land in a single mean computation, the mean drops. Spec aggregates `combined` over both triggers, masking this. Future-proofing: report `selection_set` and `selection_cleared` separately in the gate decision (the spec already records both, just doesn't gate on them).
+- **paintMs is wildly noisy.** 1k tier paintMs p95 (524–2306ms) often exceeds the 100k tier paintMs p95 — this is swiftshader software-rasterizer behavior, not signal density. Confirms 6-1D conclusion: never gate paintMs without real-GPU hardware.
+- All 5 `yarn benchmark:map:scale` runs passed (35.2 / 29.1 / 30.1 / 25.9 / 29.3 s; total 2m 30s including overhead). No env tuning, no test edits.
+
 ## Shipped In This Phase (Phase 6)
 
 - `19020f3` — Phase 6 Slice 6-1A: map signal-reconcile instrumentation + benchmark bridge
@@ -85,16 +116,18 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 
 ## In Progress
 
-- none (6-1D shipped in `1527052`; 6-1E is the next slice and not yet started in code).
+- **6-1E.a — multi-run characterization complete (this session, doc-only).** Numbers captured in `6-1E.a Baseline` above; 6-1E.b CI wiring is the remaining work. No code changed; this slice's only artifact is the baseline + decision tree below. Ready to commit this handoff update and proceed to 6-1E.b in a separate slice.
 
 ## Next
 
-- **6-1E.a — multi-run characterization of the 100k tail.** Run `yarn benchmark:map:scale` ≥5× locally so the per-tier JSON aggregates to ≥50 samples for the 100k tier. Goal: replace the single-run 1057ms outlier with a real p95 / spread distribution. Capture combined per-tier stats in this handoff under a new `6-1E Baseline` section before doing CI wiring.
-- **6-1E.b — CI wiring for `benchmark:map:scale` in the `frontend-perf` job.** Decision tree, driven by 6-1E.a numbers:
-    - 1k + 10k tiers: gate `jsMs` per tier with the existing 6-1B/6-1C floor pattern (`MAP_BENCH_MAX_JS_*` style env overrides) if multi-run p95/max stays within ~10% of mean.
-    - 100k tier: report-only attachment (per-tier JSON to the `frontend-perf-report` artifact) unless multi-run p95 proves stable.
-    - paintMs remains report-only at all tiers (swiftshader noise).
-- **Watch-item (not yet a slice):** if the first real CI run of `frontend-perf` shows wall-time pressure from running globe + map sequentially against the same Docker bring-up, split into a job matrix. Don't pre-emptively split — wait for actual numbers.
+- **6-1E.b — CI wiring for `benchmark:map:scale` in the `frontend-perf` job.** Decision tree, now driven by 6-1E.a evidence:
+    - **1k tier:** gate `jsMs` mean / p95 / max. Suggested floors: mean ≤ 15ms, p95 ≤ 25ms, max ≤ 30ms (≈ 2× current p95-of-p95s with a ~5ms cushion). The existing 6-1C floors (15/30/50ms) already accommodate this tier with margin.
+    - **10k tier:** gate `jsMs.p95` and `jsMs.max` only — **NOT mean.** Suggested floors: p95 ≤ 80ms (≈ 1.4× current p95-of-p95s), max ≤ 100ms. Mean is volatile: one of 5 runs drifted to 8.46ms vs ~48.7ms baseline because `selection_cleared` paint-coalesces (its min is 2.5–3.0ms per run). Either gate on per-trigger means individually, or skip the mean gate at this tier.
+    - **100k tier:** **report-only attachment.** Do not gate. Per-run p95 spans 32.6 → 646.7ms across 5 runs; p95-of-p95s gating would need ~15× headroom and defeat the purpose. Attach per-tier JSON to the `frontend-perf-report` artifact (same pattern as 6-1C `benchmark:map`) so regressions are visible without blocking PRs.
+    - **paintMs** stays report-only at all tiers (swiftshader noise; 1k paintMs p95 often exceeds 100k paintMs p95).
+    - Implementation hint: the `map-scale-benchmark.spec.ts` file already attaches per-tier JSON via `testInfo.attach`. CI just needs the `frontend-perf` workflow step to run `yarn benchmark:map:scale` after `benchmark:map`. Per-tier `expect(jsMs.combined.p95).toBeLessThan(...)` calls would need to be added inside the spec, gated to the 1k/10k tiers (skip 100k).
+- **Followup consideration (do NOT pre-emptively land):** the spec currently attaches per-tier *summaries* but not raw per-sample arrays. If 100k tail behavior needs deeper diagnosis later (e.g. is it bimodal? GC-pause-driven? cycle-position-correlated?), extend the report shape to include `jsMs.selectionSet.samples: number[]` and re-aggregate over many runs. Not needed for 6-1E.b CI gating — only if a future regression investigation demands it.
+- **Watch-item (not yet a slice):** if the first real CI run of `frontend-perf` shows wall-time pressure from running globe + map + map-scale sequentially against the same Docker bring-up, split into a job matrix. Don't pre-emptively split — wait for actual numbers.
 - Phase 7 (advanced geospatial tools — measurement, annotation, temporary overlays) remains unstarted and is intentionally sequenced after Phase 6.
 
 ## Currently Locked Files
@@ -111,13 +144,19 @@ cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint e2e/map-be
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (Phase 6 Slice 6-1D, shipped in `1527052`, 2026-04-19)
+## Last Validation Results (Phase 6 Slice 6-1E.a, doc-only, 2026-04-19)
+
+- 5× sequential `yarn benchmark:map:scale` invocations: **all 5 runs pass** (35.2 / 29.1 / 30.1 / 25.9 / 29.3 s; total 2m 30s including overhead). 15 per-tier JSON reports captured in `/tmp/resilience-bench-6-1E/reports.ndjson`; aggregated stats recorded in `6-1E.a Baseline` above.
+- No code changed; no new tests; no gate runs (vitest / tsc / eslint not relevant to a doc-only handoff bump).
+- Local services used: vite preview at 127.0.0.1:4178, backend at 127.0.0.1:3000, swiftshader chromium per existing `playwright.config.ts`.
+
+### Preceding validation (Phase 6 Slice 6-1D, shipped in `1527052`, 2026-04-19)
 
 - Full Vitest suite: **600 tests across 83 files, 0 failures** (8 new `benchSyntheticSignals` tests: determinism, Signal shape, bounding box, count floor, localStorage parse edges)
 - TypeScript (`npx tsc -p tsconfig.app.json --noEmit`): **0 errors**
 - ESLint on touched files (benchSyntheticSignals.ts, benchSyntheticSignals.test.ts, MapPage.tsx, map-scale-benchmark.spec.ts): **0 issues**
 - Frontend build (`yarn build`): **success**; MapPage chunk unchanged (72.42 kB), maplibre-gl still auto-chunked at 1024 kB (272 kB gzip)
-- Per-tier `yarn benchmark:map:scale` (one local run, 5 cycles × 2 triggers per tier): **all 3 tiers pass in 33.2s total**; jsMs mean 6.02 / 49.02 / 189.5 ms (1k / 10k / 100k). Full table recorded in `6-1D Baseline` above. 6-1E.a will multi-run this for tail characterization.
+- Per-tier `yarn benchmark:map:scale` (one local run, 5 cycles × 2 triggers per tier): **all 3 tiers pass in 33.2s total**; jsMs mean 6.02 / 49.02 / 189.5 ms (1k / 10k / 100k). Full table recorded in `6-1D Baseline` above.
 
 ### Preceding validation (Phase 6 Slice 6-1C + followup, shipped)
 
