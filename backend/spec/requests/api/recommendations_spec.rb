@@ -65,7 +65,7 @@ RSpec.describe "Api::Recommendations", type: :request do
         expect(missing["label"]).to be_nil
       end
 
-      it "hides alert payloads that did not exist at as_of but retains the evidence row" do
+      it "hides both alert label and payload for matches that did not exist at as_of, retaining only the bare evidence row" do
         replay_rec = create(
           :recommendation,
           status:     "pending",
@@ -73,7 +73,7 @@ RSpec.describe "Api::Recommendations", type: :request do
           evidence:   [{ "type" => "alert", "id" => match.id, "detail" => "conf=0.8" }],
         )
         # rec existed at as_of (4h ago <= 3h ago), but match.fired_at is now
-        # (after 3h ago) so its payload should be hidden in replay.
+        # (after 3h ago) so neither label nor payload should surface in replay.
         replay_rec.update_columns(created_at: 4.hours.ago, updated_at: 4.hours.ago)
 
         get "/api/recommendations",
@@ -85,6 +85,7 @@ RSpec.describe "Api::Recommendations", type: :request do
         expect(rec_body).not_to be_nil
         alert_item = rec_body["evidence"].find { |i| i["type"] == "alert" }
         expect(alert_item["alert"]).to be_nil
+        expect(alert_item["label"]).to be_nil
       end
     end
 

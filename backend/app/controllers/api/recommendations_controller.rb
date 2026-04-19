@@ -213,16 +213,35 @@ module Api
       end
       ids_by_type.each_value(&:uniq!)
 
+      # Load alert matches once; labels and payloads share the same collection.
+      # In replay, matches whose fired_at > as_of are filtered out uniformly so
+      # a post-as-of match produces neither a label nor a drill-through payload.
+      alert_matches = load_alert_matches(ids_by_type["alert"])
+      visible_alert_matches =
+        if as_of
+          alert_matches.select { |m| m.fired_at.present? && m.fired_at <= as_of }
+        else
+          alert_matches
+        end
+
       {
         labels: {
           "site"     => resolve_labels(Site, "Site", "name", ids_by_type["site"], as_of: as_of),
           "incident" => resolve_labels(Incident, "Incident", "title", ids_by_type["incident"], as_of: as_of),
           "task"     => resolve_labels(Task, "Task", "title", ids_by_type["task"], as_of: as_of),
           "asset"    => resolve_labels(Asset, "Asset", "name", ids_by_type["asset"], as_of: as_of),
-          "alert"    => resolve_alert_labels(ids_by_type["alert"], as_of: as_of),
+          "alert"    => resolve_alert_labels(visible_alert_matches, as_of: as_of),
         },
-        alerts: resolve_alert_payloads(ids_by_type["alert"], as_of: as_of),
+        alerts: resolve_alert_payloads(visible_alert_matches, as_of: as_of),
       }
+    end
+
+    def load_alert_matches(ids)
+      return [] if ids.blank?
+      policy_scope(SignalRuleMatch)
+        .includes(:correlation_rule, :signal, :task, :site, :acknowledged_by)
+        .where(id: ids)
+        .to_a
     end
 
     def resolve_labels(model, entity_type, field, ids, as_of:)
@@ -238,55 +257,45 @@ module Api
       end
     end
 
-    def resolve_alert_labels(ids, as_of:)
-      return {} if ids.blank?
-      matches = policy_scope(SignalRuleMatch).includes(:correlation_rule).where(id: ids).index_by(&:id)
+    def resolve_alert_labels(matches, as_of:)
+      return {} if matches.blank?
 
       if as_of
-        rule_ids = matches.values.filter_map(&:correlation_rule_id).uniq
+        rule_ids = matches.filter_map(&:correlation_rule_id).uniq
         rule_snapshots = latest_audit_snapshots(entity_type: "CorrelationRule", entity_ids: rule_ids, as_of: as_of)
-        matches.each_with_object({}) do |(id, match), out|
+        matches.each_with_object({}) do |match, out|
           rule_name = snapshot_or_current(rule_snapshots[match.correlation_rule_id], "name", match.correlation_rule&.name)
-          out[id] = rule_name if rule_name.present?
+          out[match.id] = rule_name if rule_name.present?
         end
       else
-        matches.each_with_object({}) do |(id, match), out|
-          out[id] = match.correlation_rule&.name if match.correlation_rule&.name.present?
+        matches.each_with_object({}) do |match, out|
+          out[match.id] = match.correlation_rule&.name if match.correlation_rule&.name.present?
         end
       end
     end
 
-    def resolve_alert_payloads(ids, as_of:)
-      return {} if ids.blank?
-      matches = policy_scope(SignalRuleMatch)
-                  .includes(:correlation_rule, :signal, :task, :site, :acknowledged_by)
-                  .where(id: ids)
+    def resolve_alert_payloads(matches, as_of:)
+      return {} if matches.blank?
 
       if as_of
-        # Matches that fired after as_of did not exist at the replay point and
-        # should not drill through. They still appear in the evidence row as a
-        # bare reference (via resolve_alert_labels) but without a payload.
-        visible = matches.select { |m| m.fired_at.present? && m.fired_at <= as_of }
-        return {} if visible.empty?
-
-        replay_states = Replay::StateSerializer.match_states(visible, as_of: as_of)
+        replay_states = Replay::StateSerializer.match_states(matches, as_of: as_of)
         rule_snapshots = latest_audit_snapshots(
           entity_type: "CorrelationRule",
-          entity_ids: visible.filter_map(&:correlation_rule_id).uniq,
+          entity_ids: matches.filter_map(&:correlation_rule_id).uniq,
           as_of: as_of,
         )
         task_snapshots = latest_audit_snapshots(
           entity_type: "Task",
-          entity_ids: visible.filter_map(&:task_id).uniq,
+          entity_ids: matches.filter_map(&:task_id).uniq,
           as_of: as_of,
         )
         site_snapshots = latest_audit_snapshots(
           entity_type: "Site",
-          entity_ids: visible.filter_map(&:site_id).uniq,
+          entity_ids: matches.filter_map(&:site_id).uniq,
           as_of: as_of,
         )
 
-        visible.each_with_object({}) do |match, out|
+        matches.each_with_object({}) do |match, out|
           out[match.id] = serialize_alert(
             match,
             replay_state: replay_states[match.id],
