@@ -118,6 +118,26 @@ RSpec.describe "Api::Incidents", type: :request do
       expect(json).to have_key("tasks")
     end
 
+    it "returns chain-ready alert evidence fields in the detailed response" do
+      match = create(:signal_rule_match, incident: incident, site: site)
+      match.update!(
+        workflow_status: "acknowledged",
+        acknowledged_at: 10.minutes.ago,
+        acknowledged_by: commander,
+        notes: "Operator reviewed the breach",
+      )
+
+      get "/api/incidents/#{incident.id}", headers: auth_headers(operator)
+
+      expect(response).to have_http_status(:ok)
+      alert = JSON.parse(response.body).fetch("alerts").find { |row| row.fetch("id") == match.id }
+      expect(alert.fetch("metadata")).to include("distance_km" => 42.5)
+      expect(alert.dig("site", "id")).to eq(site.id)
+      expect(alert.dig("task", "id")).to eq(match.task.id)
+      expect(alert.dig("acknowledged_by", "id")).to eq(commander.id)
+      expect(alert.fetch("notes")).to eq("Operator reviewed the breach")
+    end
+
     it "deduplicates shared tasks in the detailed response while preserving match order" do
       shared_task = create(:task, site: site, title: "Shared task")
       trailing_task = create(:task, site: site, title: "Trailing task")
@@ -171,7 +191,12 @@ RSpec.describe "Api::Incidents", type: :request do
       body = JSON.parse(response.body)
       expect(body.fetch("alert_count")).to eq(1)
       expect(body.fetch("task_count")).to eq(0)
-      expect(body.fetch("alerts").first.fetch("workflow_status")).to eq("unacknowledged")
+      alert = body.fetch("alerts").first
+      expect(alert.fetch("workflow_status")).to eq("unacknowledged")
+      expect(alert.fetch("acknowledged_at")).to be_nil
+      expect(alert.fetch("acknowledged_by")).to be_nil
+      expect(alert.fetch("notes")).to be_nil
+      expect(alert.fetch("task")).to be_nil
       expect(body.fetch("tasks")).to eq([])
     end
 

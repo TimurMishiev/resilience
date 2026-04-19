@@ -44,7 +44,7 @@ module Api
           :area_of_operation,
           :assigned_to,
           :tasks,
-          { signal_rule_matches: [:signal, :correlation_rule] },
+          { signal_rule_matches: [:signal, :correlation_rule, :task, :acknowledged_by, :site] },
         ]
       )
       authorize incident
@@ -340,6 +340,15 @@ module Api
         entity_ids: records.filter_map(&:area_of_operation_id).uniq,
         as_of: as_of
       )
+      match_site_snapshots = if detailed
+        latest_audit_snapshots(
+          entity_type: "Site",
+          entity_ids: matches_by_incident.values.flatten.filter_map(&:site_id).uniq,
+          as_of: as_of
+        )
+      else
+        {}
+      end
       rule_snapshots = if detailed
         latest_audit_snapshots(
           entity_type: "CorrelationRule",
@@ -365,7 +374,10 @@ module Api
             serialize_alert(
               match,
               replay_state: replay_match_states[match.id],
-              rule_snapshot: rule_snapshots[match.correlation_rule_id]
+              rule_snapshot: rule_snapshots[match.correlation_rule_id],
+              task_snapshot: match.task_id.present? ? task_snapshots[match.task_id] : nil,
+              task_visible: match.task_id.blank? || task_snapshots.key?(match.task_id),
+              site_snapshot: match_site_snapshots[match.site_id]
             )
           } : nil,
           tasks: detailed ? task_ids.filter_map { |task_id| serialize_task_snapshot(task_snapshots[task_id]) } : nil

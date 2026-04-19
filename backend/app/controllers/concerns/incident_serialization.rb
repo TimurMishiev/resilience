@@ -75,14 +75,23 @@ module IncidentSerialization
     }
   end
 
-  def serialize_alert(m, replay_state: nil, rule_snapshot: nil)
+  def serialize_alert(m, replay_state: nil, rule_snapshot: nil, task_snapshot: nil, task_visible: true, site_snapshot: nil)
     {
       id:               m.id,
       fired_at:         m.fired_at,
       workflow_status:  replay_state ? replay_state[:workflow_status] : m.workflow_status,
+      acknowledged_at:  replay_state ? replay_state[:acknowledged_at] : m.acknowledged_at,
+      acknowledged_by:  replay_state ? replay_state[:acknowledged_by] : (m.acknowledged_by ? {
+        id: m.acknowledged_by.id,
+        email: m.acknowledged_by.email,
+      } : nil),
+      notes:            replay_state ? replay_state[:notes] : m.notes,
       confidence:       m.confidence,
+      metadata:         m.metadata,
       geofence_breach:  m.metadata["geofence_breach"] == true,
       correlation_rule: serialize_alert_rule(m, snapshot: rule_snapshot),
+      site: serialize_alert_site(m, snapshot: site_snapshot),
+      task: serialize_alert_task(m, snapshot: task_snapshot, visible: task_visible),
       signal: m.signal ? {
         id: m.signal.id, signal_type: m.signal.signal_type,
         source: m.signal.source, lat: m.signal.lat, lng: m.signal.lng,
@@ -97,6 +106,35 @@ module IncidentSerialization
     {
       id: match.correlation_rule_id || match.correlation_rule&.id,
       name: snapshot_or_current(snapshot, "name", match.correlation_rule&.name),
+    }
+  end
+
+  def serialize_alert_site(match, snapshot: nil)
+    return nil if match.site_id.blank? && match.site.blank? && snapshot.blank?
+
+    {
+      id: match.site_id || match.site&.id,
+      name: snapshot_or_current(snapshot, "name", match.site&.name),
+    }
+  end
+
+  def serialize_alert_task(match, snapshot: nil, visible: true)
+    return nil unless visible
+    if snapshot.present?
+      return {
+        id: snapshot_value(snapshot, "id"),
+        title: snapshot_value(snapshot, "title"),
+        workflow_status: snapshot_value(snapshot, "workflow_status"),
+        priority: snapshot_value(snapshot, "priority"),
+      }
+    end
+    return nil unless match.task
+
+    {
+      id: match.task.id,
+      title: match.task.title,
+      workflow_status: match.task.workflow_status,
+      priority: match.task.priority,
     }
   end
 

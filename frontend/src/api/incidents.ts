@@ -1,6 +1,7 @@
 import { api } from './client'
 import type { QueryParams } from './client'
 import type { PaginatedResponse, PaginationParams } from './types'
+import type { SignalRuleMatch } from './types'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -20,21 +21,8 @@ export interface IncidentNote {
   created_at: string
 }
 
-export interface IncidentAlert {
-  id:               string
-  fired_at:         string
-  workflow_status:  string
-  confidence:       number
-  geofence_breach:  boolean
-  correlation_rule: { id: string; name: string } | null
-  signal: {
-    id:          string
-    signal_type: string
-    source:      string
-    lat:         string | number
-    lng:         string | number
-    occurred_at: string
-  } | null
+export type IncidentAlert = SignalRuleMatch & {
+  geofence_breach: boolean
 }
 
 export interface IncidentTask {
