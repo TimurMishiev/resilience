@@ -101,7 +101,6 @@ describe('useMapSignalLayers — perf instrumentation', () => {
     expect(durationMs).toBe(0)
   })
 
-
   it('reports selection_set on first selection and selection_cleared on clear', () => {
     window.localStorage.setItem('resilience.perf', '1')
     const initial = buildInput({ signals: [buildSignal()] })

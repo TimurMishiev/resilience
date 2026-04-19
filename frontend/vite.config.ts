@@ -127,10 +127,12 @@ export default defineConfig({
     // continues to flag unexpected growth elsewhere instead of this stable,
     // lazy-loaded dependency.
     chunkSizeWarningLimit: ON_DEMAND_VENDOR_WARNING_LIMIT_KB,
-    // manualChunks split for maplibre-gl temporarily disabled — vite 8 /
-    // rolldown re-wraps the maplibre UMD bundle in a way that fails to
-    // expose `maplibre_gl_exports`, leaving the runtime chunk import broken.
-    // Restore once rolldown has a fix; for now keep maplibre inline so the
-    // /map page actually loads in the production build (incl. benchmark).
+    // No manual `manualChunks` for maplibre-gl: the dynamic `import('maplibre-gl')`
+    // at the MapPage call site already produces a dedicated on-demand chunk
+    // (see `dist/assets/maplibre-gl-*.js` in the build output).  Adding a
+    // manual chunk name on top of that under vite 8 / rolldown re-wraps the
+    // UMD bundle and fails to expose `maplibre_gl_exports`, leaving the
+    // runtime chunk import broken and `mapLoaded:false` in production.
+    // Re-introduce a manual name only once rolldown handles UMD re-wrap.
   },
 })
