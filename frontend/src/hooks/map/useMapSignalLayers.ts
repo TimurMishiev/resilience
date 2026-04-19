@@ -13,6 +13,7 @@ import type { Map as MapLibreMap } from 'maplibre-gl'
 import type { Signal } from '../../api/types'
 import { ensureSignalLayers, updateSignalSources } from '../../lib/mapEngineSignalLayers'
 import { buildMapSignalFeatureCollection, buildMapSignalRenderCollections } from '../../lib/mapSignalRendering'
+import { isPerfEnabled, nowMs, recordPerfEvent } from '../../lib/perfInstrumentation'
 import type { MapLibreModule } from '../useMapLibreEngine'
 
 export interface MapSignalLayersInput {
@@ -49,11 +50,37 @@ export function useMapSignalLayers({
   useEffect(() => { referenceTimeMsRef.current = referenceTimeMs }, [referenceTimeMs])
 
   // Signal GeoJSON source data
+  const previousSignalCountRef = useRef<number>(0)
+  const previousSelectedSignalIdRef = useRef<string | null>(null)
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapLoaded) return
+    const perfEnabled = isPerfEnabled()
+    const startedAt = perfEnabled ? nowMs() : 0
     const { clusterable, selected } = buildMapSignalRenderCollections(signals, selectedSignalId, referenceTimeMs)
     updateSignalSources(map, clusterable, selected, buildMapSignalFeatureCollection(signals, referenceTimeMs))
+    if (perfEnabled) {
+      const previousSignalCount = previousSignalCountRef.current
+      const previousSelectedSignalId = previousSelectedSignalIdRef.current
+      const signalCountDelta = signals.length - previousSignalCount
+      const selectionChanged = selectedSignalId !== previousSelectedSignalId
+      recordPerfEvent(
+        'map.signal_reconcile',
+        {
+          signalCount: signals.length,
+          signalCountDelta,
+          selectedSignalId,
+          selectionChanged,
+          trigger:
+            selectionChanged ? (selectedSignalId ? 'selection_set' : 'selection_cleared')
+            : signalCountDelta !== 0 ? 'signals_changed'
+            : 'reference_time_changed',
+        },
+        nowMs() - startedAt,
+      )
+      previousSignalCountRef.current = signals.length
+      previousSelectedSignalIdRef.current = selectedSignalId
+    }
   }, [mapLoaded, selectedSignalId, signals, referenceTimeMs, mapRef])
 
   // Signal GeoJSON layers + interactions — set up once per style load

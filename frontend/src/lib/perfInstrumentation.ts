@@ -2,6 +2,7 @@ type PerfEventName =
   | 'globe.signal_reconcile'
   | 'globe.signal_visibility'
   | 'globe.pick'
+  | 'map.signal_reconcile'
 
 type PerfEvent = {
   name: PerfEventName

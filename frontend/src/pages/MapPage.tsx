@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { isPerfEnabled } from '../lib/perfInstrumentation'
+import { useMapBenchmarkBridge } from '../hooks/useMapBenchmarkBridge'
+import type { MapBenchmarkState, MapBenchmarkTarget } from '../components/map/types'
 import { useSites } from '../hooks/useSites'
 import { useTasks } from '../hooks/useTasks'
 import { useAssets } from '../hooks/useAssets'
@@ -340,6 +343,62 @@ export default function MapPage() {
     sites,
     projectPosition,
     inspectCanvasPosition,
+  })
+
+  // ---------------------------------------------------------------------------
+  // Benchmark bridge — exposes window.__resilienceMapBench when localStorage
+  // 'resilience.perf' is '1'.  Used by e2e/map-benchmark.spec.ts to drive
+  // deterministic selection-change reconciles and read perf events back.
+  // ---------------------------------------------------------------------------
+  const perfEnabled = useMemo(() => isPerfEnabled(), [])
+
+  const benchmarkTarget: MapBenchmarkTarget | null = useMemo(() => {
+    if (sites.length === 0) return null
+    const firstSite = [...sites].sort((a, b) => a.id.localeCompare(b.id))[0]
+    return {
+      siteId: firstSite.id,
+      siteName: firstSite.name,
+      signalCountAtFocus: signals.length,
+      globalSignalCount: signals.length,
+    }
+  }, [sites, signals.length])
+
+  const benchStateRef = useRef<MapBenchmarkState>({
+    mapLoaded: false,
+    siteCount: 0,
+    signalCount: 0,
+    selectedSiteId: null,
+    selectedAssetId: null,
+    selectedSignalId: null,
+    showSignals: true,
+    showHeatmap: false,
+    showCoverage: true,
+    benchmarkTarget: null,
+  })
+  const benchSitesRef = useRef(sites)
+  useEffect(() => {
+    benchStateRef.current = {
+      mapLoaded,
+      siteCount: sites.length,
+      signalCount: signals.length,
+      selectedSiteId,
+      selectedAssetId,
+      selectedSignalId,
+      showSignals,
+      showHeatmap,
+      showCoverage,
+      benchmarkTarget,
+    }
+    benchSitesRef.current = sites
+  }, [mapLoaded, sites, signals.length, selectedSiteId, selectedAssetId, selectedSignalId, showSignals, showHeatmap, showCoverage, benchmarkTarget])
+
+  useMapBenchmarkBridge({
+    perfEnabled,
+    stateRef: benchStateRef,
+    sitesRef: benchSitesRef,
+    setSelectedSiteId,
+    setSelectedAssetId,
+    setSelectedSignalId,
   })
 
   // ---------------------------------------------------------------------------
