@@ -83,11 +83,13 @@ const engineState = vi.hoisted(() => ({
     showSignals: boolean
     showHeatmap: boolean
     showChokepoints: boolean
+    measurementMode: boolean
     chokepoints: Array<{ id: string }>
     breachedSiteIds: Set<string>
     onSiteClick: (siteId: string | null) => void
     onAssetClick: (assetId: string | null) => void
     onSignalClick: (signalId: string | null) => void
+    onMapCoordinateClick: (point: { lng: number; lat: number }) => void
   },
 }))
 
@@ -196,11 +198,13 @@ vi.mock('../hooks/useMapLibreEngine', () => ({
     showSignals: boolean
     showHeatmap: boolean
     showChokepoints: boolean
+    measurementMode: boolean
     chokepoints: Array<{ id: string }>
     breachedSiteIds: Set<string>
     onSiteClick: (siteId: string | null) => void
     onAssetClick: (assetId: string | null) => void
     onSignalClick: (signalId: string | null) => void
+    onMapCoordinateClick: (point: { lng: number; lat: number }) => void
   }) => {
     engineState.latestInput = input
     return {
@@ -812,5 +816,59 @@ describe('MapPage selection routing', () => {
 
     expect(await screen.findByRole('complementary', { name: 'Map selection detail' })).toBeInTheDocument()
     expect(screen.getByTestId('panel-resize-handle')).toBeInTheDocument()
+  })
+
+  it('captures and clears a session-local map measurement without changing route selection', async () => {
+    renderMapPage('/map')
+
+    expect(screen.queryByTestId('map-measure-panel')).toBeNull()
+    expect(engineState.latestInput?.measurementMode).toBe(false)
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Toggle map measurement tool' }).click()
+    })
+
+    expect(await screen.findByTestId('map-measure-panel')).toHaveTextContent('Click an anchor point on the map')
+    expect(engineState.latestInput?.measurementMode).toBe(true)
+
+    await act(async () => {
+      engineState.latestInput?.onMapCoordinateClick({ lat: 37.7749, lng: -122.4194 })
+    })
+
+    expect(screen.getByTestId('map-measure-panel')).toHaveTextContent('37.7749, -122.4194')
+    expect(screen.getByTestId('location-search')).toBeEmptyDOMElement()
+
+    await act(async () => {
+      engineState.latestInput?.onMapCoordinateClick({ lat: 34.0522, lng: -118.2437 })
+    })
+
+    expect(screen.getByTestId('map-measure-panel')).toHaveTextContent('Distance')
+    expect(screen.getByTestId('map-measure-panel')).toHaveTextContent('Bearing')
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Clear' }).click()
+    })
+
+    expect(screen.getByTestId('map-measure-panel')).toHaveTextContent('Click an anchor point on the map')
+    expect(screen.queryByText('Distance')).not.toBeInTheDocument()
+  })
+
+  it('turns measurement mode off on Escape before closing the docked panel', async () => {
+    renderMapPage('/map?site_id=site-1')
+
+    expect(await screen.findByRole('complementary', { name: 'Map selection detail' })).toBeInTheDocument()
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Toggle map measurement tool' }).click()
+    })
+
+    expect(await screen.findByTestId('map-measure-panel')).toBeInTheDocument()
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    })
+
+    expect(screen.queryByTestId('map-measure-panel')).toBeNull()
+    expect(screen.getByRole('complementary', { name: 'Map selection detail' })).toBeInTheDocument()
   })
 })

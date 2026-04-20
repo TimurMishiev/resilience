@@ -49,6 +49,7 @@ function buildMapFacade() {
   const layerIds = new Set<string>()
   const sources: Record<string, { setData: (d: unknown) => void }> = {}
   const canvas = { style: { cursor: '' } }
+  let queryRenderedFeaturesResult: unknown[] = []
 
   function track(method: string, ...args: unknown[]) {
     calls.push({ method, args })
@@ -138,7 +139,7 @@ function buildMapFacade() {
     queryRenderedFeatures(point?: unknown, opts?: unknown): unknown[] {
       void point
       void opts
-      return []
+      return queryRenderedFeaturesResult
     },
     project(lngLat: unknown) {
       void lngLat
@@ -146,6 +147,9 @@ function buildMapFacade() {
     },
     getZoom() { return 1.5 },
     flyTo(opts: unknown) { track('flyTo', opts) },
+    setQueryRenderedFeaturesResult(features: unknown[]) {
+      queryRenderedFeaturesResult = features
+    },
   }
 
   return facade
@@ -194,11 +198,14 @@ function defaultInput(
     selectedSiteId: null,
     selectedAssetId: null,
     selectedSignalId: null,
+    measurementMode: false,
+    measurementPoints: [],
     evidenceSignalIds: [],
     evidenceSiteIds: [],
     onSiteClick: vi.fn(),
     onAssetClick: vi.fn(),
     onSignalClick: vi.fn(),
+    onMapCoordinateClick: vi.fn(),
     ...overrides,
   }
 }
@@ -456,6 +463,99 @@ describe('useMapLibreEngine adapter', () => {
       )
       expect(call).toBeDefined()
       expect(call?.args[1]).toEqual(['==', ['get', 'id'], 'asset-xyz'])
+    })
+  })
+
+  describe('measurement mode', () => {
+    it('creates measurement layers on init', async () => {
+      const containerRef = makeContainerRef()
+      await bootMap(facade, containerRef, defaultInput(containerRef))
+
+      expect(facade.layerIds.has('measurement-line')).toBe(true)
+      expect(facade.layerIds.has('measurement-points')).toBe(true)
+      expect(facade.layerIds.has('measurement-point-labels')).toBe(true)
+    })
+
+    it('updates measurement sources when measurement points change', async () => {
+      const containerRef = makeContainerRef()
+      const hook = await bootMap(facade, containerRef, defaultInput(containerRef))
+
+      facade.calls.length = 0
+
+      await act(async () => {
+        hook.rerender(defaultInput(containerRef, {
+          measurementPoints: [
+            { lat: 37.7749, lng: -122.4194 },
+            { lat: 34.0522, lng: -118.2437 },
+          ],
+        }))
+      })
+
+      expect(facade.calls).toContainEqual({
+        method: 'setData',
+        args: [
+          'measurement-points',
+          expect.objectContaining({
+            type: 'FeatureCollection',
+            features: [
+              expect.objectContaining({
+                properties: expect.objectContaining({ label: 'A', role: 'anchor' }),
+              }),
+              expect.objectContaining({
+                properties: expect.objectContaining({ label: 'B', role: 'target' }),
+              }),
+            ],
+          }),
+        ],
+      })
+
+      expect(facade.calls).toContainEqual({
+        method: 'setData',
+        args: [
+          'measurement-line',
+          expect.objectContaining({
+            type: 'FeatureCollection',
+            features: [
+              expect.objectContaining({
+                geometry: expect.objectContaining({
+                  type: 'LineString',
+                  coordinates: [
+                    [-122.4194, 37.7749],
+                    [-118.2437, 34.0522],
+                  ],
+                }),
+              }),
+            ],
+          }),
+        ],
+      })
+    })
+
+    it('routes map clicks to measurement capture instead of selection when measurement mode is active', async () => {
+      const onMapCoordinateClick = vi.fn()
+      const onSiteClick = vi.fn()
+      const containerRef = makeContainerRef()
+
+      await bootMap(facade, containerRef, defaultInput(containerRef, {
+        measurementMode: true,
+        onMapCoordinateClick,
+        onSiteClick,
+      }))
+
+      facade.setQueryRenderedFeaturesResult([{
+        layer: { id: 'site-circles' },
+        properties: { id: 'site-1' },
+      }])
+
+      await act(async () => {
+        facade.fire('click', {
+          point: { x: 40, y: 60 },
+          lngLat: { lng: -122.4194, lat: 37.7749 },
+        })
+      })
+
+      expect(onMapCoordinateClick).toHaveBeenCalledWith({ lng: -122.4194, lat: 37.7749 })
+      expect(onSiteClick).not.toHaveBeenCalled()
     })
   })
 

@@ -10,24 +10,59 @@ Last updated: 2026-04-20
 
 ## Current Phase
 
-Phase 6 — Performance Characterization
+Phase 7 — Advanced Geospatial Tools
 
-(Phase 4 — Debrief closed. Phase 5 — Evidence Threading complete. Phase 6 Slice 6-1 fully shipped: 6-1A + 6-1B + 6-1C + 6-1D + 6-1E. Phase 6 closes here unless a new performance characterization slice is added; Phase 7 sequenced after.)
+(Phase 4 — Debrief closed. Phase 5 — Evidence Threading complete. Phase 6 Slice 6-1 fully shipped and closed in `aa07c91`; `0a01fff` is the follow-up handoff-only commit that marked that closure.)
 
 ## Current Slice
 
-**None active.** Phase 6 Slice 6-1 is fully shipped (6-1A + 6-1B + 6-1C + 6-1D + 6-1E.a + 6-1E.b). Next actionable work is Phase 7 (advanced geospatial tools — measurement, annotation, temporary overlays) per `memory/execution_context.md`; not scoped yet, awaiting explicit direction before the next slice begins.
+**Phase 7 Slice 7-1A — `/map` measurement tool (UNCOMMITTED).**
+
+Objective: add a small, explicit operator-grade measurement tool to `/map` without introducing persistence, backend changes, route state, or globe parity.
+
+Current implementation state:
+- explicit `MEASURE` mode now exists on `/map`
+- while measurement mode is active, map clicks capture arbitrary anchor/target points instead of selection
+- the map renders a session-local measurement line plus labeled endpoint markers
+- the overlay reports anchor/target coordinates, distance in km + nm, and initial bearing
+- `Escape` exits measurement mode before touching the docked context panel
+- third click restarts the measurement from a fresh anchor; `Clear` wipes the current measurement while staying in the tool
+
+Boundaries held:
+- no backend changes
+- no replay/trust/audit contract changes
+- no URL sync for measurement state
+- no globe implementation in this slice
+- no persistence / collaboration / annotation semantics in this slice
 
 ## Current Repo State
 
-- Latest committed slice: `aa07c91` — Phase 6 Slice 6-1E.b: per-tier CI gates for `benchmark:map:scale`
-- Working tree: clean
-- Branch state: `main` even with `origin/main`; post-push gate suite ran green (RSpec ✓ / TypeScript ✓ / ESLint ✓ / Brakeman 0 warnings ✓ / bundler-audit ✓ / frontend build ✓)
-- For the literal tip SHA, run `git log -1` — it is intentionally not recorded here (self-referential with the commit that writes it).
+- Latest committed product slice: `aa07c91` — Phase 6 Slice 6-1E.b: per-tier CI gates for `benchmark:map:scale`
+- Current tip commit: `0a01fff` — handoff-only bump that marked Phase 6 closed; no product code after `aa07c91` is committed yet
+- Working tree: dirty on the active Phase 7 Slice 7-1A tranche plus this handoff update
+- Branch state: `main`; last committed gate suite on the product tree was green
+- Dirty/tranche files right now:
+  - `frontend/src/pages/MapPage.tsx`
+  - `frontend/src/components/map/MapOverlayControls.tsx`
+  - `frontend/src/hooks/useMapLibreEngine.ts`
+  - `frontend/src/hooks/map/useMapMeasurementLayers.ts`
+  - `frontend/src/lib/mapMeasurement.ts`
+  - `frontend/src/index.css`
+  - `frontend/src/test/MapPage.test.tsx`
+  - `frontend/src/test/useMapLibreEngine.test.ts`
+  - `frontend/src/test/mapMeasurement.test.ts`
+  - `memory/execution_handoff.md`
 
-## Phase 6 — Slice Plan
+## Phase 7 — Slice Plan
 
-Sequenced: **6-1A** (instrumentation + bridge, shipped in `19020f3`) → **6-1B** (Playwright spec + `benchmark:map` script, shipped in `605b963`) → **6-1C** (paint-completion instrumentation + baseline + CI gate, shipped in `6bcaa2d` + `465c4f9`) → **6-1D** (multi-scale characterization at 1k/10k/100k signals via synthetic-signal override, shipped in `1527052`) → **6-1E.a** (multi-run baseline, shipped in `5fb620b`) → **6-1E.b** (CI wiring + per-tier gates from 6-1E.a evidence, shipped in `aa07c91`). Phase 6 Slice 6-1 is now closed.
+Sequenced:
+- **7-1A** — `/map` measurement tool (current uncommitted slice)
+- **7-1B** — temporary map annotations (candidate next slice after 7-1A commit)
+- **7-1C** — other justified geospatial utilities only if they solve a real operator problem and are explicitly scoped
+
+## Phase 6 — Closed Slice Plan (historical context)
+
+Sequenced: **6-1A** (instrumentation + bridge, shipped in `19020f3`) → **6-1B** (Playwright spec + `benchmark:map` script, shipped in `605b963`) → **6-1C** (paint-completion instrumentation + baseline + CI gate, shipped in `6bcaa2d` + `465c4f9`) → **6-1D** (multi-scale characterization at 1k/10k/100k signals via synthetic-signal override, shipped in `1527052`) → **6-1E.a** (multi-run baseline, shipped in `5fb620b`) → **6-1E.b** (CI wiring + per-tier gates from 6-1E.a evidence, shipped in `aa07c91`). Phase 6 Slice 6-1 is closed.
 
 ## 6-1C Baseline (local, 5 runs × 10 samples, Apple M-series + swiftshader, 315 seeded signals)
 
@@ -120,11 +155,17 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 
 ## In Progress
 
-- none. Phase 6 Slice 6-1 is closed; no slice is currently active.
+- **Phase 7 Slice 7-1A — `/map` measurement tool**
+  - explicit measurement mode is implemented but uncommitted
+  - focused + full frontend validation is green
+  - handoff is being rotated to the Phase 7 state
+  - next immediate step is `gate`, then commit if review stays clean
 
 ## Next
 
-- **Phase 7 (advanced geospatial tools — measurement, annotation, temporary overlays) is the next roadmap phase per `memory/execution_context.md`.** Not scoped yet; awaiting explicit direction. Per the active-slice rule in `.claude/skills/resilience-execution/SKILL.md`, do not invent a Phase 7 slice without explicit user scoping.
+- **Immediate next step:** run `gate` on Phase 7 Slice 7-1A, then commit if the slice stays clean.
+- **After 7-1A ships, recommended next slice:** **7-1B — temporary map annotations** (still session-local, still `/map` only, still no persistence/collaboration).
+- **Explicit boundary for post-7-1A work:** do not jump straight to a generalized geospatial workspace or shared overlay system. Keep Phase 7 additive and tool-specific.
 - **Watch the first real `frontend-perf` CI run on `aa07c91` (or its first PR descendant).** Watch points:
     - 1k tier: budgets are 15/25/30ms; current local p95-of-p95s is 10.2ms. Headroom is ~2×. CI runner variance may eat into that.
     - 10k tier: p95 budget is 120ms; current p95-of-p95s is 57.4ms. Headroom is ~2.1× (raised from 80ms after gate flagged that ~1.4× was tight for ubuntu-latest). Should hold first time; re-anchor via env if real CI numbers prove otherwise.
@@ -141,14 +182,25 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 ## Validation Commands
 
 ```bash
-cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run src/test/useMapBenchmarkBridge.test.ts src/test/useMapSignalLayersPerf.test.ts
 cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run
 cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx tsc -p tsconfig.app.json --noEmit
-cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint e2e/map-benchmark.spec.ts src/components/map/types.ts src/hooks/useMapBenchmarkBridge.ts src/pages/MapPage.tsx src/test/useMapBenchmarkBridge.test.ts
+cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run src/test/mapMeasurement.test.ts src/test/MapPage.test.tsx src/test/useMapLibreEngine.test.ts
+cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/pages/MapPage.tsx src/components/map/MapOverlayControls.tsx src/hooks/useMapLibreEngine.ts src/hooks/map/useMapMeasurementLayers.ts src/lib/mapMeasurement.ts src/test/MapPage.test.tsx src/test/useMapLibreEngine.test.ts src/test/mapMeasurement.test.ts
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (Phase 6 Slice 6-1E.b, shipped in `aa07c91`, 2026-04-19)
+## Last Validation Results (Phase 7 Slice 7-1A, uncommitted, 2026-04-20)
+
+- Focused measurement validation:
+  - `npx vitest run src/test/mapMeasurement.test.ts src/test/MapPage.test.tsx src/test/useMapLibreEngine.test.ts` → **68 / 68 pass**
+- Full frontend validation:
+  - `npx vitest run` → **608 / 608 pass across 84 files**
+  - `npx tsc -p tsconfig.app.json --noEmit` → **0 errors**
+  - touched-file ESLint on measurement slice files → **0 issues**
+  - `git diff --check` → **clean**
+- No backend validation was required for this slice because the tranche is frontend-only and introduces no API/schema/runtime-backend changes.
+
+### Most recent committed product validation (Phase 6 Slice 6-1E.b, shipped in `aa07c91`, 2026-04-19)
 
 - Pre-commit local validation:
     - TypeScript (`npx tsc -p tsconfig.app.json --noEmit`): **0 errors**
@@ -183,6 +235,9 @@ git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 
 ## Known Risks / Blockers
 
+- **Phase 7 Slice 7-1A is intentionally `/map`-only and session-local.** There is no persistence, no URL state, no globe parity, and no collaboration semantics. Do not accidentally treat the measurement state model as the foundation for annotation/overlay persistence in a follow-up slice.
+- **Measurement mode intentionally owns map clicks.** While active, map clicks no longer select sites/assets/signals; they capture arbitrary coordinates instead. This is deliberate for operator clarity. If a future slice needs concurrent selection + measurement, design that explicitly instead of silently weakening the mode boundary.
+- **Measurement geometry is great-circle enough for the current operator problem, not survey-grade.** Distance uses haversine and bearing uses initial great-circle bearing; there is no terrain, path snapping, or route-following logic in this slice.
 - **Map signal caps block DB-backed scale testing.** `useSignalsLive` in [useSignals.ts](frontend/src/hooks/useSignals.ts) clamps `vessel_position` to 50 (see [liveSignals.ts](frontend/src/lib/liveSignals.ts) `LIVE_SIGNAL_LIMITS`), and `/api/signals` caps `per_page` at 200 ([base_controller.rb:144](backend/app/controllers/api/base_controller.rb#L144)). 6-1D sidesteps both via a `resilience.perf.bench_signal_count` localStorage override that feeds a synthetic `Signal[]` straight into MapPage, gated behind `resilience.perf`. The benchmark deliberately bypasses the live pipeline because reconcile cost, not ingestion, is the object of study. Do NOT lift either cap for prod — the cap is a product-deliberate noise guard, not an accidental limit.
 - **Synthetic bench IDs produce 404s downstream.** Selecting a `bench-sig-NNNNNN` fires async fetches in `useEvidenceLinkedIds` and `useVessels` that 404. Harmless for the benchmark (jsMs is recorded before these resolve), but be aware if you extend the spec to assert on downstream state.
 - **Maplibre `manualChunks` name removed from [vite.config.ts](frontend/vite.config.ts).** Under vite 8 / rolldown, manually naming the maplibre chunk re-wraps its UMD bundle and produces `Export 'maplibre_gl_exports' is not defined in module` at runtime, leaving `mapLoaded:false` permanently in the built bundle. The dynamic `import('maplibre-gl')` boundary at the MapPage call site already auto-chunks maplibre into `dist/assets/maplibre-gl-*.js` (~1024 kB), so removing the manual name preserves the lazy-load boundary while sidestepping the UMD re-wrap. Re-introduce a manual name only once rolldown handles UMD re-wrap correctly.

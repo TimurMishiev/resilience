@@ -35,6 +35,7 @@ import { useMapOverlays } from './map/useMapOverlays'
 import { useMapSiteLayers } from './map/useMapSiteLayers'
 import { useMapAssetLayers } from './map/useMapAssetLayers'
 import { useMapTrackLayers } from './map/useMapTrackLayers'
+import { useMapMeasurementLayers } from './map/useMapMeasurementLayers'
 import { useMapSignalLayers } from './map/useMapSignalLayers'
 import { expandMapSignalCluster } from '../lib/mapSignalClustering'
 import { MAP_STYLE_CONFIGS, type MapStyleKey } from '../lib/mapEngineStyles'
@@ -47,6 +48,7 @@ import {
 import { preloadMapRuntime } from '../lib/preloadRoutes'
 import type { AssetTrail } from '../lib/telemetry'
 import type { TelemetryMap } from '../lib/telemetry'
+import type { MapMeasurementPoint } from '../lib/mapMeasurement'
 
 export type MapLibreModule = typeof import('maplibre-gl')
 
@@ -82,6 +84,8 @@ export interface MapEngineInput {
   selectedSiteId:   string | null
   selectedAssetId:  string | null
   selectedSignalId: string | null
+  measurementMode:  boolean
+  measurementPoints: MapMeasurementPoint[]
 
   // Evidence-linked entity IDs (from signal rule matches)
   evidenceSignalIds: string[]
@@ -91,7 +95,7 @@ export interface MapEngineInput {
   onSiteClick:   (siteId: string | null) => void
   onAssetClick:  (assetId: string | null) => void
   onSignalClick: (signalId: string | null) => void
-
+  onMapCoordinateClick: (point: MapMeasurementPoint) => void
 }
 
 export interface MapEngineReturn {
@@ -137,11 +141,14 @@ export function useMapLibreEngine({
   selectedSiteId,
   selectedAssetId,
   selectedSignalId,
+  measurementMode,
+  measurementPoints,
   evidenceSignalIds,
   evidenceSiteIds,
   onSiteClick,
   onAssetClick,
   onSignalClick,
+  onMapCoordinateClick,
 }: MapEngineInput): MapEngineReturn {
   const mapRef           = useRef<MapLibreMap | null>(null)
   const maplibreRef      = useRef<MapLibreModule | null>(null)
@@ -154,9 +161,13 @@ export function useMapLibreEngine({
   const onSiteClickRef   = useRef(onSiteClick)
   const onAssetClickRef  = useRef(onAssetClick)
   const onSignalClickRef = useRef(onSignalClick)
+  const onMapCoordinateClickRef = useRef(onMapCoordinateClick)
+  const measurementModeRef = useRef(measurementMode)
   useEffect(() => { onSiteClickRef.current   = onSiteClick   }, [onSiteClick])
   useEffect(() => { onAssetClickRef.current  = onAssetClick  }, [onAssetClick])
   useEffect(() => { onSignalClickRef.current = onSignalClick }, [onSignalClick])
+  useEffect(() => { onMapCoordinateClickRef.current = onMapCoordinateClick }, [onMapCoordinateClick])
+  useEffect(() => { measurementModeRef.current = measurementMode }, [measurementMode])
   useEffect(() => { mapStyleRef.current = mapStyle }, [mapStyle])
 
   // ---------------------------------------------------------------------------
@@ -238,6 +249,12 @@ export function useMapLibreEngine({
     mapRef, mapLoaded, vesselTracks, assetTrails, showTrails,
   })
 
+  useMapMeasurementLayers({
+    mapRef,
+    mapLoaded,
+    points: measurementPoints,
+  })
+
   useMapSignalLayers({
     mapRef, maplibreRef, mapLoaded, signals, selectedSignalId, referenceTimeMs,
     showSignals, showHeatmap, onSignalClickRef,
@@ -252,6 +269,14 @@ export function useMapLibreEngine({
     if (!map || !mapLoaded) return
 
     const handleMapClick = (event: MapMouseEvent) => {
+      if (measurementModeRef.current) {
+        onMapCoordinateClickRef.current({
+          lng: event.lngLat.lng,
+          lat: event.lngLat.lat,
+        })
+        return
+      }
+
       const interactiveLayers = MAP_INTERACTIVE_LAYER_IDS.filter(layerId => map.getLayer(layerId))
       const features = map.queryRenderedFeatures(event.point, { layers: interactiveLayers })
       const resolved = resolveMapClickCandidate(features)

@@ -2022,6 +2022,140 @@ body {
   background: linear-gradient(135deg, #20a39e, #ef4444);
 }
 
+.map-measure-toggle {
+  position: absolute;
+  bottom: 36px;
+  left: 250px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(28, 33, 39, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  color: #8f99a8;
+  user-select: none;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.map-measure-toggle:hover {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.map-measure-toggle--active {
+  color: #d8f0ff;
+  border-color: rgba(143, 214, 255, 0.45);
+}
+
+.map-measure-toggle-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.map-measure-panel {
+  position: absolute;
+  bottom: 64px;
+  left: 304px;
+  z-index: 10;
+  width: 312px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: rgba(20, 24, 32, 0.94);
+  border: 1px solid rgba(143, 214, 255, 0.18);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(8px);
+}
+
+.map-measure-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.map-measure-panel-title {
+  color: #d8f0ff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.map-measure-panel-action {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  color: #c7d2da;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 9px;
+  cursor: pointer;
+}
+
+.map-measure-panel-action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.map-measure-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.map-measure-panel-row {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.map-measure-panel-label,
+.map-measure-panel-metric-label {
+  min-width: 54px;
+  color: #8ea2b2;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.map-measure-panel-value,
+.map-measure-panel-metric-value {
+  color: #ecf3f8;
+  font-size: 12px;
+}
+
+.map-measure-panel-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+}
+
+.map-measure-panel-metric {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.map-measure-panel-hint {
+  margin: 0;
+  color: #b9c7d3;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 /* Trail window selector — displayed next to TRAILS toggle during replay */
 .map-trail-window-select,
 .globe-trail-window-select {

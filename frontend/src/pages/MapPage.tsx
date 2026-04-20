@@ -29,6 +29,7 @@ import { buildCoverageCircles } from '../lib/coverage'
 import { parseEntitySelectionRoute } from '../lib/entitySelectionRoute'
 import { computeReadiness } from '../lib/formatters'
 import { buildReplayVessel } from '../lib/replayVessel'
+import type { MapMeasurementPoint } from '../lib/mapMeasurement'
 import { MapOverlayControls } from '../components/map/MapOverlayControls'
 import { MapSelectionPanels } from '../components/map/MapSelectionPanels'
 
@@ -51,6 +52,8 @@ export default function MapPage() {
   const [showTrails,      setShowTrails]      = useState(true)
   const [trailWindowMinutes, setTrailWindowMinutes] = useState(30)
   const [mapStyle,        setMapStyle]        = useState<MapStyleKey>('tactical')
+  const [measurementMode, setMeasurementMode] = useState(false)
+  const [measurementPoints, setMeasurementPoints] = useState<MapMeasurementPoint[]>([])
 
   // ---------------------------------------------------------------------------
   // Data queries
@@ -204,11 +207,16 @@ export default function MapPage() {
     selectedSiteId,
     selectedAssetId,
     selectedSignalId,
+    measurementMode,
+    measurementPoints,
     evidenceSignalIds,
     evidenceSiteIds,
     onSiteClick,
     onAssetClick,
     onSignalClick,
+    onMapCoordinateClick: point => {
+      setMeasurementPoints(previous => (previous.length >= 2 ? [point] : [...previous, point]))
+    },
   })
 
   // ---------------------------------------------------------------------------
@@ -288,6 +296,25 @@ export default function MapPage() {
     updateSelectionRoute({ siteId: null, assetId: null, signalId: null })
   }, [setSelectedSiteId, setSelectedAssetId, setSelectedSignalId, updateSelectionRoute])
 
+  const clearMeasurement = useCallback(() => {
+    setMeasurementPoints([])
+  }, [])
+
+  const disableMeasurement = useCallback(() => {
+    setMeasurementMode(false)
+    setMeasurementPoints([])
+  }, [])
+
+  const toggleMeasurement = useCallback(() => {
+    if (measurementMode) {
+      disableMeasurement()
+      return
+    }
+
+    setMeasurementMode(true)
+    setMeasurementPoints([])
+  }, [disableMeasurement, measurementMode])
+
   const closePanel = useCallback(() => {
     setPanelForceOpen(false)
     clearSelection()
@@ -316,13 +343,19 @@ export default function MapPage() {
         }
         return
       }
-      if (event.key === 'Escape' && contextPanelOpen) {
-        closePanel()
+      if (event.key === 'Escape') {
+        if (measurementMode) {
+          disableMeasurement()
+          return
+        }
+        if (contextPanelOpen) {
+          closePanel()
+        }
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [contextPanelOpen, closePanel])
+  }, [contextPanelOpen, closePanel, disableMeasurement, measurementMode])
 
   // Resize handle drag — reads starting width from the DOM so the callback
   // has no panelWidth dep and doesn't re-render on every mousemove frame.
@@ -440,6 +473,8 @@ export default function MapPage() {
         trailWindowMinutes={trailWindowMinutes}
         showSignals={showSignals}
         showHeatmap={showHeatmap}
+        measurementMode={measurementMode}
+        measurementPoints={measurementPoints}
         onMapStyleChange={setMapStyle}
         onToggleCoverage={() => setShowCoverage(v => !v)}
         onToggleChokepoints={() => setShowChokepoints(v => !v)}
@@ -447,6 +482,8 @@ export default function MapPage() {
         onTrailWindowChange={setTrailWindowMinutes}
         onToggleSignals={() => setShowSignals(v => !v)}
         onToggleHeatmap={() => setShowHeatmap(v => !v)}
+        onToggleMeasurement={toggleMeasurement}
+        onClearMeasurement={clearMeasurement}
       />
       </div>
 

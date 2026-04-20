@@ -1,6 +1,12 @@
 import { Callout, Spinner } from '@blueprintjs/core'
 import { MAP_STYLE_CONFIGS, type MapStyleKey } from '../../hooks/useMapLibreEngine'
 import { SIGNAL_COLORS, SIGNAL_LABELS } from '../../lib/signalConfig'
+import {
+  measurementBearingCardinal,
+  measurementBearingDegrees,
+  measurementDistanceKm,
+  type MapMeasurementPoint,
+} from '../../lib/mapMeasurement'
 
 interface MapOverlayControlsProps {
   loading: boolean
@@ -15,6 +21,8 @@ interface MapOverlayControlsProps {
   trailWindowMinutes: number
   showSignals: boolean
   showHeatmap: boolean
+  measurementMode: boolean
+  measurementPoints: MapMeasurementPoint[]
   onMapStyleChange: (style: MapStyleKey) => void
   onToggleCoverage: () => void
   onToggleChokepoints: () => void
@@ -22,6 +30,8 @@ interface MapOverlayControlsProps {
   onTrailWindowChange: (minutes: number) => void
   onToggleSignals: () => void
   onToggleHeatmap: () => void
+  onToggleMeasurement: () => void
+  onClearMeasurement: () => void
 }
 
 export function MapOverlayControls({
@@ -37,6 +47,8 @@ export function MapOverlayControls({
   trailWindowMinutes,
   showSignals,
   showHeatmap,
+  measurementMode,
+  measurementPoints,
   onMapStyleChange,
   onToggleCoverage,
   onToggleChokepoints,
@@ -44,7 +56,17 @@ export function MapOverlayControls({
   onTrailWindowChange,
   onToggleSignals,
   onToggleHeatmap,
+  onToggleMeasurement,
+  onClearMeasurement,
 }: MapOverlayControlsProps) {
+  const anchor = measurementPoints[0] ?? null
+  const target = measurementPoints[1] ?? null
+  const distanceKm = anchor && target ? measurementDistanceKm(anchor, target) : null
+  const distanceNm = distanceKm === null ? null : distanceKm / 1.852
+  const bearingDegrees = anchor && target ? measurementBearingDegrees(anchor, target) : null
+  const bearingLabel = bearingDegrees === null ? null : measurementBearingCardinal(bearingDegrees)
+  const formatPoint = (point: MapMeasurementPoint) => `${point.lat.toFixed(4)}, ${point.lng.toFixed(4)}`
+
   return (
     <>
       {loading && (
@@ -232,6 +254,78 @@ export function MapOverlayControls({
         <span className="map-heatmap-toggle-dot" />
         HEATMAP {showHeatmap ? 'ON' : 'OFF'}
       </div>
+
+      <div
+        className={`map-measure-toggle${measurementMode ? ' map-measure-toggle--active' : ''}`}
+        onClick={onToggleMeasurement}
+        role="button"
+        aria-label="Toggle map measurement tool"
+      >
+        <span className="map-measure-toggle-dot" />
+        MEASURE {measurementMode ? 'ON' : 'OFF'}
+      </div>
+
+      {measurementMode && (
+        <div className="map-measure-panel" data-testid="map-measure-panel">
+          <div className="map-measure-panel-header">
+            <span className="map-measure-panel-title">MEASUREMENT TOOL</span>
+            <button
+              type="button"
+              className="map-measure-panel-action"
+              onClick={onClearMeasurement}
+              disabled={measurementPoints.length === 0}
+            >
+              Clear
+            </button>
+          </div>
+
+          {measurementPoints.length === 0 && (
+            <div className="map-measure-panel-body">
+              <p className="map-measure-panel-hint">
+                Click an anchor point on the map. While measurement mode is active, map clicks capture distance and bearing instead of selection.
+              </p>
+            </div>
+          )}
+
+          {measurementPoints.length === 1 && anchor && (
+            <div className="map-measure-panel-body">
+              <p className="map-measure-panel-hint">
+                Anchor locked. Click a second point to complete the measurement.
+              </p>
+              <div className="map-measure-panel-row">
+                <span className="map-measure-panel-label">A</span>
+                <span className="map-measure-panel-value mono">{formatPoint(anchor)}</span>
+              </div>
+            </div>
+          )}
+
+          {measurementPoints.length >= 2 && anchor && target && distanceKm !== null && distanceNm !== null && bearingDegrees !== null && bearingLabel !== null && (
+            <div className="map-measure-panel-body">
+              <div className="map-measure-panel-row">
+                <span className="map-measure-panel-label">A</span>
+                <span className="map-measure-panel-value mono">{formatPoint(anchor)}</span>
+              </div>
+              <div className="map-measure-panel-row">
+                <span className="map-measure-panel-label">B</span>
+                <span className="map-measure-panel-value mono">{formatPoint(target)}</span>
+              </div>
+              <div className="map-measure-panel-metrics">
+                <div className="map-measure-panel-metric">
+                  <span className="map-measure-panel-metric-label">Distance</span>
+                  <span className="map-measure-panel-metric-value">{distanceKm.toFixed(1)} km · {distanceNm.toFixed(1)} nm</span>
+                </div>
+                <div className="map-measure-panel-metric">
+                  <span className="map-measure-panel-metric-label">Bearing</span>
+                  <span className="map-measure-panel-metric-value">{bearingDegrees.toFixed(0).padStart(3, '0')}° {bearingLabel}</span>
+                </div>
+              </div>
+              <p className="map-measure-panel-hint">
+                The next map click starts a new measurement from a fresh anchor.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
     </>
   )
 }
