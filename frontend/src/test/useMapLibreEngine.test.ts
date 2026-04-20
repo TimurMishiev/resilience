@@ -476,6 +476,19 @@ describe('useMapLibreEngine adapter', () => {
       expect(facade.layerIds.has('measurement-point-labels')).toBe(true)
     })
 
+    it('adds measurement layers after the signal stack so measurements stay visible over dense signals', async () => {
+      const containerRef = makeContainerRef()
+      await bootMap(facade, containerRef, defaultInput(containerRef))
+
+      const addedLayerIds = facade.calls
+        .filter(call => call.method === 'addLayer')
+        .map(call => String(call.args[0]))
+
+      expect(addedLayerIds.indexOf('measurement-line')).toBeGreaterThan(addedLayerIds.indexOf('signal-symbols'))
+      expect(addedLayerIds.indexOf('measurement-points')).toBeGreaterThan(addedLayerIds.indexOf('selected-signal-symbol'))
+      expect(addedLayerIds.indexOf('measurement-point-labels')).toBeGreaterThan(addedLayerIds.indexOf('selected-signal-symbol'))
+    })
+
     it('updates measurement sources when measurement points change', async () => {
       const containerRef = makeContainerRef()
       const hook = await bootMap(facade, containerRef, defaultInput(containerRef))

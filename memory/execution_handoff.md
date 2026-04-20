@@ -12,51 +12,41 @@ Last updated: 2026-04-20
 
 Phase 7 — Advanced Geospatial Tools
 
-(Phase 4 — Debrief closed. Phase 5 — Evidence Threading complete. Phase 6 Slice 6-1 fully shipped and closed in `aa07c91`; `0a01fff` is the follow-up handoff-only commit that marked that closure.)
+(Phase 4 — Debrief closed. Phase 5 — Evidence Threading complete. Phase 6 Slice 6-1 fully shipped and closed in `aa07c91`. Phase 7 Slice 7-1A shipped in `4ea3def`; the current dirty tree is a narrow follow-up hardening tranche on top of that commit.)
 
 ## Current Slice
 
-**Phase 7 Slice 7-1A — `/map` measurement tool (UNCOMMITTED).**
+**Phase 7 Slice 7-1A-followup — measurement overlay paint-order hardening (UNCOMMITTED).**
 
-Objective: add a small, explicit operator-grade measurement tool to `/map` without introducing persistence, backend changes, route state, or globe parity.
+Objective: keep the newly shipped `/map` measurement geometry visible over dense signal layers by moving measurement rendering above the signal stack and pinning that ordering with a direct adapter test.
 
 Current implementation state:
-- explicit `MEASURE` mode now exists on `/map`
-- while measurement mode is active, map clicks capture arbitrary anchor/target points instead of selection
-- the map renders a session-local measurement line plus labeled endpoint markers
-- the overlay reports anchor/target coordinates, distance in km + nm, and initial bearing
-- `Escape` exits measurement mode before touching the docked context panel
-- third click restarts the measurement from a fresh anchor; `Clear` wipes the current measurement while staying in the tool
+- `useMapMeasurementLayers` now runs after `useMapSignalLayers`, so measurement line / A-B markers paint above the signal stack
+- adapter coverage now asserts measurement layers are added after the signal layers
+- no product behavior changed beyond visual stacking order
 
 Boundaries held:
 - no backend changes
 - no replay/trust/audit contract changes
-- no URL sync for measurement state
-- no globe implementation in this slice
-- no persistence / collaboration / annotation semantics in this slice
+- no new UI state or route semantics
+- no defensive hardening of the theoretical partial-source branch in `useMapMeasurementLayers` (not a confirmed bug)
 
 ## Current Repo State
 
-- Latest committed product slice: `aa07c91` — Phase 6 Slice 6-1E.b: per-tier CI gates for `benchmark:map:scale`
-- Current tip commit: `0a01fff` — handoff-only bump that marked Phase 6 closed; no product code after `aa07c91` is committed yet
-- Working tree: dirty on the active Phase 7 Slice 7-1A tranche plus this handoff update
-- Branch state: `main`; last committed gate suite on the product tree was green
+- Latest committed product slice: `4ea3def` — Phase 7 Slice 7-1A: `/map` measurement tool
+- Current tip commit: `4ea3def`
+- Working tree: dirty on the active 7-1A follow-up tranche plus this handoff update
+- Branch state: `main` even with `origin/main`
 - Dirty/tranche files right now:
-  - `frontend/src/pages/MapPage.tsx`
-  - `frontend/src/components/map/MapOverlayControls.tsx`
   - `frontend/src/hooks/useMapLibreEngine.ts`
-  - `frontend/src/hooks/map/useMapMeasurementLayers.ts`
-  - `frontend/src/lib/mapMeasurement.ts`
-  - `frontend/src/index.css`
-  - `frontend/src/test/MapPage.test.tsx`
   - `frontend/src/test/useMapLibreEngine.test.ts`
-  - `frontend/src/test/mapMeasurement.test.ts`
   - `memory/execution_handoff.md`
 
 ## Phase 7 — Slice Plan
 
 Sequenced:
-- **7-1A** — `/map` measurement tool (current uncommitted slice)
+- **7-1A** — `/map` measurement tool (**shipped** in `4ea3def`)
+- **7-1A-followup** — measurement overlay paint-order hardening (current uncommitted tranche)
 - **7-1B** — temporary map annotations (candidate next slice after 7-1A commit)
 - **7-1C** — other justified geospatial utilities only if they solve a real operator problem and are explicitly scoped
 
@@ -155,16 +145,16 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 
 ## In Progress
 
-- **Phase 7 Slice 7-1A — `/map` measurement tool**
-  - explicit measurement mode is implemented but uncommitted
+- **Phase 7 Slice 7-1A-followup — measurement overlay paint-order hardening**
+  - measurement geometry now paints above signal layers by hook-order design
+  - adapter coverage proves that layer-add order directly
   - focused + full frontend validation is green
-  - handoff is being rotated to the Phase 7 state
   - next immediate step is `gate`, then commit if review stays clean
 
 ## Next
 
-- **Immediate next step:** run `gate` on Phase 7 Slice 7-1A, then commit if the slice stays clean.
-- **After 7-1A ships, recommended next slice:** **7-1B — temporary map annotations** (still session-local, still `/map` only, still no persistence/collaboration).
+- **Immediate next step:** run `gate` on the 7-1A follow-up tranche, then commit if the slice stays clean.
+- **After the 7-1A follow-up ships, recommended next slice:** **7-1B — temporary map annotations** (still session-local, still `/map` only, still no persistence/collaboration).
 - **Explicit boundary for post-7-1A work:** do not jump straight to a generalized geospatial workspace or shared overlay system. Keep Phase 7 additive and tool-specific.
 - **Watch the first real `frontend-perf` CI run on `aa07c91` (or its first PR descendant).** Watch points:
     - 1k tier: budgets are 15/25/30ms; current local p95-of-p95s is 10.2ms. Headroom is ~2×. CI runner variance may eat into that.
@@ -184,12 +174,23 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 ```bash
 cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run
 cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx tsc -p tsconfig.app.json --noEmit
-cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run src/test/mapMeasurement.test.ts src/test/MapPage.test.tsx src/test/useMapLibreEngine.test.ts
-cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/pages/MapPage.tsx src/components/map/MapOverlayControls.tsx src/hooks/useMapLibreEngine.ts src/hooks/map/useMapMeasurementLayers.ts src/lib/mapMeasurement.ts src/test/MapPage.test.tsx src/test/useMapLibreEngine.test.ts src/test/mapMeasurement.test.ts
+cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run src/test/useMapLibreEngine.test.ts src/test/MapPage.test.tsx
+cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/hooks/useMapLibreEngine.ts src/test/useMapLibreEngine.test.ts
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (Phase 7 Slice 7-1A, uncommitted, 2026-04-20)
+## Last Validation Results (Phase 7 Slice 7-1A-followup, uncommitted, 2026-04-20)
+
+- Focused follow-up validation:
+  - `npx vitest run src/test/useMapLibreEngine.test.ts src/test/MapPage.test.tsx` → **66 / 66 pass**
+- Full frontend validation:
+  - `npx vitest run` → **609 / 609 pass across 84 files**
+  - `npx tsc -p tsconfig.app.json --noEmit` → **0 errors**
+  - touched-file ESLint on follow-up files → **0 issues**
+  - `git diff --check` → **clean**
+- No backend validation was required for this slice because the tranche is frontend-only and introduces no API/schema/runtime-backend changes.
+
+### Most recent committed product validation (Phase 7 Slice 7-1A, shipped in `4ea3def`, 2026-04-20)
 
 - Focused measurement validation:
   - `npx vitest run src/test/mapMeasurement.test.ts src/test/MapPage.test.tsx src/test/useMapLibreEngine.test.ts` → **68 / 68 pass**
@@ -200,7 +201,7 @@ git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
   - `git diff --check` → **clean**
 - No backend validation was required for this slice because the tranche is frontend-only and introduces no API/schema/runtime-backend changes.
 
-### Most recent committed product validation (Phase 6 Slice 6-1E.b, shipped in `aa07c91`, 2026-04-19)
+### Prior committed product validation (Phase 6 Slice 6-1E.b, shipped in `aa07c91`, 2026-04-19)
 
 - Pre-commit local validation:
     - TypeScript (`npx tsc -p tsconfig.app.json --noEmit`): **0 errors**

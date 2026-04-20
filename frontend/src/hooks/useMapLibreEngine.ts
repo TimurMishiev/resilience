@@ -249,16 +249,16 @@ export function useMapLibreEngine({
     mapRef, mapLoaded, vesselTracks, assetTrails, showTrails,
   })
 
-  useMapMeasurementLayers({
-    mapRef,
-    mapLoaded,
-    points: measurementPoints,
-  })
-
   useMapSignalLayers({
     mapRef, maplibreRef, mapLoaded, signals, selectedSignalId, referenceTimeMs,
     showSignals, showHeatmap, onSignalClickRef,
     evidenceSignalIds,
+  })
+
+  useMapMeasurementLayers({
+    mapRef,
+    mapLoaded,
+    points: measurementPoints,
   })
 
   // ---------------------------------------------------------------------------
