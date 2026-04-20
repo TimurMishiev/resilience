@@ -12,21 +12,21 @@ Last updated: 2026-04-19
 
 Phase 6 — Performance Characterization
 
-(Phase 4 — Debrief closed. Phase 5 — Evidence Threading complete. Phase 6 active; Slices 6-1A + 6-1B + 6-1C + 6-1D shipped; 6-1E next.)
+(Phase 4 — Debrief closed. Phase 5 — Evidence Threading complete. Phase 6 Slice 6-1 fully shipped: 6-1A + 6-1B + 6-1C + 6-1D + 6-1E. Phase 6 closes here unless a new performance characterization slice is added; Phase 7 sequenced after.)
 
 ## Current Slice
 
-**6-1E — CI wiring + 100k tail characterization. 6-1E.a complete (this session), 6-1E.b NEXT.** Multi-run characterization captured locally: 5 runs × 10 samples = 50 samples per tier. See `6-1E.a Baseline` below. Headline finding: **1k is gateable on jsMs** (mean/p95/max all within ~12% across 5 runs); **10k is gateable on jsMs.p95 only** (p95 spread is 1.6%, but mean is volatile — one run drifted to 8.46ms vs ~48.7ms baseline); **100k still has a real long tail** that should remain report-only (per-run p95 spread 32.6 → 646.7ms; the 6-1D 1057ms outlier was real worst-case behavior, not a freak).
+**None active.** Slice 6-1E.b shipped this session (uncommitted at time of writing) — wired `benchmark:map:scale` into the `frontend-perf` CI job with per-tier gates derived from the 6-1E.a baseline. Phase 6 Slice 6-1 is done. Next actionable work is Phase 7 (advanced geospatial tools — measurement, annotation, temporary overlays), which has not been scoped yet.
 
 ## Current Repo State
 
-- Latest shipped slice: `1527052` — Phase 6 Slice 6-1D: map signal-reconcile multi-scale characterization (1k / 10k / 100k synthetic-signal bypass + per-tier baseline)
-- Working tree: clean (handoff bump only, this session)
+- Latest committed slice: `5fb620b` — Phase 6 Slice 6-1E.a: 100k tail characterization (5 runs × 50 samples)
+- Working tree: **dirty** — 6-1E.b uncommitted (edits to [map-scale-benchmark.spec.ts](frontend/e2e/map-scale-benchmark.spec.ts), [ci.yml](.github/workflows/ci.yml), [execution_handoff.md](memory/execution_handoff.md))
 - For the literal tip SHA, run `git log -1` — it is intentionally not recorded here (self-referential with the commit that writes it).
 
 ## Phase 6 — Slice Plan
 
-Sequenced per `Next` below: **6-1A** (instrumentation + bridge, shipped in `19020f3`) → **6-1B** (Playwright spec + `benchmark:map` script, shipped in `605b963`) → **6-1C** (paint-completion instrumentation + baseline + CI gate, shipped in `6bcaa2d` + `465c4f9`) → **6-1D** (multi-scale characterization at 1k/10k/100k signals via synthetic-signal override, shipped in `1527052`) → **6-1E** (CI wiring + 100k tail characterization, next).
+Sequenced: **6-1A** (instrumentation + bridge, shipped in `19020f3`) → **6-1B** (Playwright spec + `benchmark:map` script, shipped in `605b963`) → **6-1C** (paint-completion instrumentation + baseline + CI gate, shipped in `6bcaa2d` + `465c4f9`) → **6-1D** (multi-scale characterization at 1k/10k/100k signals via synthetic-signal override, shipped in `1527052`) → **6-1E.a** (multi-run baseline, shipped in `5fb620b`) → **6-1E.b** (CI wiring + per-tier gates from 6-1E.a evidence, shipped this session, uncommitted at time of writing).
 
 ## 6-1C Baseline (local, 5 runs × 10 samples, Apple M-series + swiftshader, 315 seeded signals)
 
@@ -94,6 +94,9 @@ Findings:
 - `6bcaa2d` — Phase 6 Slice 6-1C: paint-completion measurement + jsMs CI gate (double-rAF in `useMapSignalLayers`, refs commit inside rAF, spec asserts on `jsMs`, `benchmark:map` wired into `frontend-perf` CI job, maplibre `manualChunks` removed as rolldown UMD-wrap workaround)
 - `465c4f9` — Phase 6 Slice 6-1C followup: vite maplibre comment + test whitespace P3 cleanup
 - `1527052` — Phase 6 Slice 6-1D: multi-scale characterization (1k / 10k / 100k synthetic signals via `localStorage.resilience.perf.bench_signal_count` override; new `buildSyntheticBenchSignals` + `benchmark:map:scale` Playwright spec; one Playwright test per tier; per-tier JSON report attached, no CI gates)
+- `cea12a5` — Handoff bump: mark 6-1D shipped and 6-1E next (doc-only)
+- `5fb620b` — Phase 6 Slice 6-1E.a: 100k tail characterization (5 runs × 50 samples per tier baseline + per-tier gating decision tree, doc-only)
+- (uncommitted) Phase 6 Slice 6-1E.b: per-tier gates in `map-scale-benchmark.spec.ts` (1k: jsMs mean ≤ 15 / p95 ≤ 25 / max ≤ 30; 10k: p95 ≤ 120 / max ≤ 150; 100k: report-only) + `benchmark:map:scale` step in `frontend-perf` CI job; env overrides per-tier per-metric (`MAP_SCALE_BENCH_{1K,10K,100K}_MAX_JS_{MEAN,P95,MAX}_MS`); custom tiers via `MAP_SCALE_BENCH_TIERS` are documented as report-only unless their per-tier envars are also set
 
 ## Shipped In Phase 5 (closed)
 
@@ -116,19 +119,19 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 
 ## In Progress
 
-- **6-1E.a — multi-run characterization complete (this session, doc-only).** Numbers captured in `6-1E.a Baseline` above; 6-1E.b CI wiring is the remaining work. No code changed; this slice's only artifact is the baseline + decision tree below. Ready to commit this handoff update and proceed to 6-1E.b in a separate slice.
+- none. 6-1E.b is the last slice of Phase 6 Slice 6-1; it is implemented and validated locally, and pending commit.
 
 ## Next
 
-- **6-1E.b — CI wiring for `benchmark:map:scale` in the `frontend-perf` job.** Decision tree, now driven by 6-1E.a evidence:
-    - **1k tier:** gate `jsMs` mean / p95 / max. Suggested floors: mean ≤ 15ms, p95 ≤ 25ms, max ≤ 30ms (≈ 2× current p95-of-p95s with a ~5ms cushion). The existing 6-1C floors (15/30/50ms) already accommodate this tier with margin.
-    - **10k tier:** gate `jsMs.p95` and `jsMs.max` only — **NOT mean.** Suggested floors: p95 ≤ 80ms (≈ 1.4× current p95-of-p95s), max ≤ 100ms. Mean is volatile: one of 5 runs drifted to 8.46ms vs ~48.7ms baseline because `selection_cleared` paint-coalesces (its min is 2.5–3.0ms per run). Either gate on per-trigger means individually, or skip the mean gate at this tier.
-    - **100k tier:** **report-only attachment.** Do not gate. Per-run p95 spans 32.6 → 646.7ms across 5 runs; p95-of-p95s gating would need ~15× headroom and defeat the purpose. Attach per-tier JSON to the `frontend-perf-report` artifact (same pattern as 6-1C `benchmark:map`) so regressions are visible without blocking PRs.
-    - **paintMs** stays report-only at all tiers (swiftshader noise; 1k paintMs p95 often exceeds 100k paintMs p95).
-    - Implementation hint: the `map-scale-benchmark.spec.ts` file already attaches per-tier JSON via `testInfo.attach`. CI just needs the `frontend-perf` workflow step to run `yarn benchmark:map:scale` after `benchmark:map`. Per-tier `expect(jsMs.combined.p95).toBeLessThan(...)` calls would need to be added inside the spec, gated to the 1k/10k tiers (skip 100k).
-- **Followup consideration (do NOT pre-emptively land):** the spec currently attaches per-tier *summaries* but not raw per-sample arrays. If 100k tail behavior needs deeper diagnosis later (e.g. is it bimodal? GC-pause-driven? cycle-position-correlated?), extend the report shape to include `jsMs.selectionSet.samples: number[]` and re-aggregate over many runs. Not needed for 6-1E.b CI gating — only if a future regression investigation demands it.
-- **Watch-item (not yet a slice):** if the first real CI run of `frontend-perf` shows wall-time pressure from running globe + map + map-scale sequentially against the same Docker bring-up, split into a job matrix. Don't pre-emptively split — wait for actual numbers.
-- Phase 7 (advanced geospatial tools — measurement, annotation, temporary overlays) remains unstarted and is intentionally sequenced after Phase 6.
+- **Commit 6-1E.b.** Files: [map-scale-benchmark.spec.ts](frontend/e2e/map-scale-benchmark.spec.ts), [.github/workflows/ci.yml](.github/workflows/ci.yml), [memory/execution_handoff.md](memory/execution_handoff.md).
+- **First real `frontend-perf` CI run after 6-1E.b lands.** Watch points:
+    - 1k tier: budgets are 15/25/30ms; current local p95-of-p95s is 10.2ms. Headroom is ~2×. CI runner variance may eat into that.
+    - 10k tier: p95 budget is 120ms; current p95-of-p95s is 57.4ms. Headroom is ~2.1× (raised from 80ms after gate flagged that ~1.4× was tight for ubuntu-latest). Should hold first time; re-anchor via env if real CI numbers prove otherwise.
+    - 100k tier: ungated; per-tier JSON attaches to `frontend-perf-report` artifact for observability.
+    - If any tier flakes, raise the floor in `DEFAULT_BUDGETS` or set a per-env override (`MAP_SCALE_BENCH_{TIER}_MAX_JS_{METRIC}_MS`). Do **NOT** widen the budget multiplier-style — re-anchor to the actual CI numbers.
+- **Watch-item (not yet a slice):** if the first real CI run shows wall-time pressure from running globe + map + map-scale sequentially against the same Docker bring-up, split `frontend-perf` into a job matrix. Don't pre-emptively split — wait for actual numbers.
+- **Followup consideration (do NOT pre-emptively land):** the spec attaches per-tier *summaries* but not raw per-sample arrays. If 100k tail behavior ever needs deeper diagnosis (bimodal? GC-pause? cycle-position?), extend the report shape to include `jsMs.{trigger}.samples: number[]`. Not needed for current CI gating.
+- **Phase 7 (advanced geospatial tools — measurement, annotation, temporary overlays)** remains unstarted and is intentionally sequenced after Phase 6.
 
 ## Currently Locked Files
 
@@ -144,7 +147,18 @@ cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint e2e/map-be
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (Phase 6 Slice 6-1E.a, doc-only, 2026-04-19)
+## Last Validation Results (Phase 6 Slice 6-1E.b, uncommitted, 2026-04-19)
+
+- TypeScript (`npx tsc -p tsconfig.app.json --noEmit`): **0 errors**
+- ESLint on touched spec (`npx eslint e2e/map-scale-benchmark.spec.ts`): **0 issues**
+- Whitespace check (`git diff --check`): **clean**
+- `yarn benchmark:map:scale` × 1 (post-gate-revision: 10k budgets widened from 80/100 → 120/150 to address gate P2 finding; custom-tier behavior documented in header per gate P3 finding): **all 3 tiers pass in 54.8s**:
+    - 1k tier: jsMs mean 6.46 ≤ 15 ✓, p95 10.1 ≤ 25 ✓, max 10.1 ≤ 30 ✓
+    - 10k tier: jsMs p95 59.8 ≤ 120 ✓, max 59.8 ≤ 150 ✓ (mean ungated by design)
+    - 100k tier: report-only (no expects fired); jsMs mean 27.8 / p95 34.1 / max 34.1
+- No vitest run (no `frontend/src/` files touched; spec changes only).
+
+### Preceding validation (Phase 6 Slice 6-1E.a, shipped in `5fb620b`, 2026-04-19)
 
 - 5× sequential `yarn benchmark:map:scale` invocations: **all 5 runs pass** (35.2 / 29.1 / 30.1 / 25.9 / 29.3 s; total 2m 30s including overhead). 15 per-tier JSON reports captured in `/tmp/resilience-bench-6-1E/reports.ndjson`; aggregated stats recorded in `6-1E.a Baseline` above.
 - No code changed; no new tests; no gate runs (vitest / tsc / eslint not relevant to a doc-only handoff bump).
@@ -204,4 +218,6 @@ git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 - Phase 6 Slice 6-1B — Playwright benchmark:map spec + npm script
 - Phase 6 Slice 6-1C — paint-completion measurement + jsMs CI gate (incl. rAF-preemption fix and maplibre `manualChunks` removal)
 - Phase 6 Slice 6-1D — multi-scale characterization (1k / 10k / 100k synthetic-signal bypass + per-tier baseline capture)
+- Phase 6 Slice 6-1E.a — multi-run baseline (5 runs × 50 samples per tier) + per-tier gating decision tree
+- Phase 6 Slice 6-1E.b — per-tier CI gates in `map-scale-benchmark.spec.ts` (1k mean+p95+max, 10k p95+max, 100k report-only) + `benchmark:map:scale` step in `frontend-perf` workflow
 - project-skill consolidation / deep-review removal / repo-managed `.claude/skills`

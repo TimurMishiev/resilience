@@ -24,18 +24,66 @@ type MapBenchmarkTarget = {
 // from DB seed size, letting us characterize 1k / 10k / 100k deterministically
 // on any runner.
 //
-// No CI budget gates here — this spec is a characterization tool, not a gate.
-// First real run is the baseline.  6-1E will decide CI wiring (likely a
-// report-only attachment with a per-tier budget added only if variance is
-// tight enough to gate on).
+// Per-tier gates are driven by the 6-1E.a baseline (5 local runs × 50 samples
+// per tier per metric, recorded in memory/execution_handoff.md):
+//   1k:   gate jsMs mean / p95 / max — all stable across runs.  budgets
+//         (15/25/30ms) sit ~2.5× over local ceilings (mean 6.6 / p95 12.2 /
+//         max 12.2) to absorb runner noise.
+//   10k:  gate jsMs p95 + max only.  combined-mean is volatile because
+//         `selection_cleared` paint-coalesces below 3ms; one of 5 runs drifted
+//         to 8.46ms vs ~48.7ms baseline.  per-run p95 spread is 1.6% locally,
+//         but ubuntu-latest is noisier than local: budgets (120/150ms) give
+//         ~2× headroom over the 58.6ms local p95 ceiling so first CI runs do
+//         not flake.  re-anchor via env override once a real runner baseline
+//         exists.
+//   100k: report-only.  per-run p95 spans 32.6 → 646.7ms; gating would need
+//         ~15× headroom and defeat the purpose.  attached JSON makes
+//         regressions visible in the frontend-perf-report artifact.
+// paintMs stays report-only at all tiers — swiftshader noise dominates
+// (1k tier paintMs p95 of 2306ms exceeds 100k paintMs p95).
+//
+// Each gateable budget has an env override so CI can re-anchor to runner
+// numbers without code changes.  Custom tiers supplied via MAP_SCALE_BENCH_TIERS
+// (e.g. "5000,50000") are not in DEFAULT_BUDGETS, so they fall through to
+// all-null = report-only unless their budgets are explicitly set via
+// MAP_SCALE_BENCH_<LABEL>_MAX_JS_{MEAN,P95,MAX}_MS envars.
 
 type Tier = { label: string; count: number }
+
+type TierBudget = {
+  maxJsMeanMs: number | null
+  maxJsP95Ms:  number | null
+  maxJsMaxMs:  number | null
+}
 
 const DEFAULT_TIERS: Tier[] = [
   { label: '1k',   count: 1_000 },
   { label: '10k',  count: 10_000 },
   { label: '100k', count: 100_000 },
 ]
+
+const DEFAULT_BUDGETS: Record<string, TierBudget> = {
+  '1k':   { maxJsMeanMs: 15,   maxJsP95Ms: 25,   maxJsMaxMs: 30   },
+  '10k':  { maxJsMeanMs: null, maxJsP95Ms: 120,  maxJsMaxMs: 150  },
+  '100k': { maxJsMeanMs: null, maxJsP95Ms: null, maxJsMaxMs: null },
+}
+
+function readBudget(envKey: string, fallback: number | null): number | null {
+  const raw = process.env[envKey]
+  if (!raw) return fallback
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
+function tierBudget(label: string): TierBudget {
+  const upper = label.toUpperCase()
+  const fallback = DEFAULT_BUDGETS[label] ?? { maxJsMeanMs: null, maxJsP95Ms: null, maxJsMaxMs: null }
+  return {
+    maxJsMeanMs: readBudget(`MAP_SCALE_BENCH_${upper}_MAX_JS_MEAN_MS`, fallback.maxJsMeanMs),
+    maxJsP95Ms:  readBudget(`MAP_SCALE_BENCH_${upper}_MAX_JS_P95_MS`,  fallback.maxJsP95Ms),
+    maxJsMaxMs:  readBudget(`MAP_SCALE_BENCH_${upper}_MAX_JS_MAX_MS`,  fallback.maxJsMaxMs),
+  }
+}
 
 function parseTiers(raw: string | undefined): Tier[] {
   if (!raw) return DEFAULT_TIERS
@@ -146,6 +194,7 @@ for (const tier of TIERS) {
       selectionClearedPaint.push(Number(selectionClearedEvent.durationMs ?? 0))
     }
 
+    const budget = tierBudget(tier.label)
     const report = {
       tier: tier.label,
       signalCount: tier.count,
@@ -160,6 +209,7 @@ for (const tier of TIERS) {
         selectionCleared: summarize(selectionClearedPaint),
         combined:         summarize([...selectionSetPaint, ...selectionClearedPaint]),
       },
+      budgets: budget,
     }
 
     await testInfo.attach(`map-scale-benchmark-${tier.label}`, {
@@ -171,5 +221,15 @@ for (const tier of TIERS) {
 
     expect(selectionSetJs.length).toBe(SAMPLE_CYCLES)
     expect(selectionClearedJs.length).toBe(SAMPLE_CYCLES)
+
+    if (budget.maxJsMeanMs !== null) {
+      expect(report.jsMs.combined.meanMs).toBeLessThanOrEqual(budget.maxJsMeanMs)
+    }
+    if (budget.maxJsP95Ms !== null) {
+      expect(report.jsMs.combined.p95Ms).toBeLessThanOrEqual(budget.maxJsP95Ms)
+    }
+    if (budget.maxJsMaxMs !== null) {
+      expect(report.jsMs.combined.maxMs).toBeLessThanOrEqual(budget.maxJsMaxMs)
+    }
   })
 }
