@@ -29,6 +29,12 @@ import { buildCoverageCircles } from '../lib/coverage'
 import { parseEntitySelectionRoute } from '../lib/entitySelectionRoute'
 import { computeReadiness } from '../lib/formatters'
 import { buildReplayVessel } from '../lib/replayVessel'
+import {
+  DEFAULT_BEARING_LINE_DEGREES_INPUT,
+  DEFAULT_BEARING_LINE_DISTANCE_INPUT,
+  parseBearingLineDegrees,
+  parseBearingLineDistanceKm,
+} from '../lib/mapBearingLine'
 import type { MapPoint } from '../lib/mapPoint'
 import type { MapAnnotation } from '../lib/mapAnnotations'
 import {
@@ -66,12 +72,25 @@ export default function MapPage() {
   const [rangeRingAnchor, setRangeRingAnchor] = useState<MapPoint | null>(null)
   const [rangeRingInputs, setRangeRingInputs] = useState<string[]>(() => [...DEFAULT_RANGE_RING_INPUTS])
   const [rangeRingUnit, setRangeRingUnit] = useState<RangeRingUnit>(DEFAULT_RANGE_RING_UNIT)
+  const [bearingLineMode, setBearingLineMode] = useState(false)
+  const [bearingLineAnchor, setBearingLineAnchor] = useState<MapPoint | null>(null)
+  const [bearingLineDegreesInput, setBearingLineDegreesInput] = useState(DEFAULT_BEARING_LINE_DEGREES_INPUT)
+  const [bearingLineDistanceInput, setBearingLineDistanceInput] = useState(DEFAULT_BEARING_LINE_DISTANCE_INPUT)
+  const [bearingLineUnit, setBearingLineUnit] = useState<RangeRingUnit>(DEFAULT_RANGE_RING_UNIT)
   const [measurementMode, setMeasurementMode] = useState(false)
   const [measurementPoints, setMeasurementPoints] = useState<MapPoint[]>([])
   const nextAnnotationIdRef = useRef(1)
   const rangeRingRadiiKm = useMemo(
     () => parseRangeRingInputs(rangeRingInputs, rangeRingUnit),
     [rangeRingInputs, rangeRingUnit],
+  )
+  const bearingLineDegrees = useMemo(
+    () => parseBearingLineDegrees(bearingLineDegreesInput),
+    [bearingLineDegreesInput],
+  )
+  const bearingLineDistanceKm = useMemo(
+    () => parseBearingLineDistanceKm(bearingLineDistanceInput, bearingLineUnit),
+    [bearingLineDistanceInput, bearingLineUnit],
   )
 
   // ---------------------------------------------------------------------------
@@ -232,6 +251,11 @@ export default function MapPage() {
     rangeRingAnchor,
     rangeRingRadiiKm,
     rangeRingUnit,
+    bearingLineMode,
+    bearingLineAnchor,
+    bearingLineDegrees,
+    bearingLineDistanceKm,
+    bearingLineUnit,
     measurementMode,
     measurementPoints,
     evidenceSignalIds,
@@ -250,6 +274,9 @@ export default function MapPage() {
     },
     onMapRangeRingAnchorClick: point => {
       setRangeRingAnchor(point)
+    },
+    onMapBearingLineAnchorClick: point => {
+      setBearingLineAnchor(point)
     },
     onMapCoordinateClick: point => {
       setMeasurementPoints(previous => (previous.length >= 2 ? [point] : [...previous, point]))
@@ -378,6 +405,30 @@ export default function MapPage() {
     setRangeRingMode(false)
   }, [])
 
+  const clearBearingLine = useCallback(() => {
+    setBearingLineAnchor(null)
+  }, [])
+
+  const updateBearingLineDegreesInput = useCallback((value: string) => {
+    setBearingLineDegreesInput(value)
+  }, [])
+
+  const updateBearingLineDistanceInput = useCallback((value: string) => {
+    setBearingLineDistanceInput(value)
+  }, [])
+
+  const setBearingLineDisplayUnit = useCallback((nextUnit: RangeRingUnit) => {
+    if (nextUnit === bearingLineUnit) return
+    setBearingLineDistanceInput(previous => (
+      convertRangeRingInputValue(previous, bearingLineUnit, nextUnit)
+    ))
+    setBearingLineUnit(nextUnit)
+  }, [bearingLineUnit])
+
+  const disableBearingLine = useCallback(() => {
+    setBearingLineMode(false)
+  }, [])
+
   const disableMeasurement = useCallback(() => {
     setMeasurementMode(false)
     setMeasurementPoints([])
@@ -393,7 +444,8 @@ export default function MapPage() {
     setMeasurementPoints([])
     disableRangeRings()
     disableAnnotations()
-  }, [disableAnnotations, disableMeasurement, disableRangeRings, measurementMode])
+    disableBearingLine()
+  }, [disableAnnotations, disableBearingLine, disableMeasurement, disableRangeRings, measurementMode])
 
   const toggleAnnotations = useCallback(() => {
     if (annotationMode) {
@@ -403,8 +455,9 @@ export default function MapPage() {
 
     disableMeasurement()
     disableRangeRings()
+    disableBearingLine()
     setAnnotationMode(true)
-  }, [annotationMode, disableAnnotations, disableMeasurement, disableRangeRings])
+  }, [annotationMode, disableAnnotations, disableBearingLine, disableMeasurement, disableRangeRings])
 
   const toggleRangeRings = useCallback(() => {
     if (rangeRingMode) {
@@ -414,8 +467,21 @@ export default function MapPage() {
 
     disableMeasurement()
     disableAnnotations()
+    disableBearingLine()
     setRangeRingMode(true)
-  }, [disableAnnotations, disableMeasurement, disableRangeRings, rangeRingMode])
+  }, [disableAnnotations, disableBearingLine, disableMeasurement, disableRangeRings, rangeRingMode])
+
+  const toggleBearingLine = useCallback(() => {
+    if (bearingLineMode) {
+      disableBearingLine()
+      return
+    }
+
+    disableMeasurement()
+    disableAnnotations()
+    disableRangeRings()
+    setBearingLineMode(true)
+  }, [bearingLineMode, disableAnnotations, disableBearingLine, disableMeasurement, disableRangeRings])
 
   const closePanel = useCallback(() => {
     setPanelForceOpen(false)
@@ -458,6 +524,10 @@ export default function MapPage() {
           disableRangeRings()
           return
         }
+        if (bearingLineMode) {
+          disableBearingLine()
+          return
+        }
         if (contextPanelOpen) {
           closePanel()
         }
@@ -465,7 +535,7 @@ export default function MapPage() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [annotationMode, contextPanelOpen, closePanel, disableAnnotations, disableMeasurement, disableRangeRings, measurementMode, rangeRingMode])
+  }, [annotationMode, bearingLineMode, contextPanelOpen, closePanel, disableAnnotations, disableBearingLine, disableMeasurement, disableRangeRings, measurementMode, rangeRingMode])
 
   // Resize handle drag — reads starting width from the DOM so the callback
   // has no panelWidth dep and doesn't re-render on every mousemove frame.
@@ -590,6 +660,13 @@ export default function MapPage() {
         rangeRingInputs={rangeRingInputs}
         rangeRingRadiiKm={rangeRingRadiiKm}
         rangeRingUnit={rangeRingUnit}
+        bearingLineMode={bearingLineMode}
+        bearingLineAnchor={bearingLineAnchor}
+        bearingLineDegreesInput={bearingLineDegreesInput}
+        bearingLineDegrees={bearingLineDegrees}
+        bearingLineDistanceInput={bearingLineDistanceInput}
+        bearingLineDistanceKm={bearingLineDistanceKm}
+        bearingLineUnit={bearingLineUnit}
         measurementMode={measurementMode}
         measurementPoints={measurementPoints}
         onMapStyleChange={setMapStyle}
@@ -607,6 +684,11 @@ export default function MapPage() {
         onClearRangeRings={clearRangeRings}
         onUpdateRangeRingInput={updateRangeRingInput}
         onSetRangeRingUnit={setRangeRingDisplayUnit}
+        onToggleBearingLine={toggleBearingLine}
+        onClearBearingLine={clearBearingLine}
+        onUpdateBearingLineDegreesInput={updateBearingLineDegreesInput}
+        onUpdateBearingLineDistanceInput={updateBearingLineDistanceInput}
+        onSetBearingLineUnit={setBearingLineDisplayUnit}
         onToggleMeasurement={toggleMeasurement}
         onClearMeasurement={clearMeasurement}
       />

@@ -12,22 +12,22 @@ Last updated: 2026-04-21
 
 Phase 7 — Advanced Geospatial Tools
 
-(Phase 4 — Debrief closed. Phase 5 — Evidence Threading complete. Phase 6 Slice 6-1 fully shipped and closed in `aa07c91`. Phase 7 Slice 7-1A shipped in `4ea3def`, Phase 7 Slice 7-1A-followup shipped in `37f7a40`, Phase 7 Slice 7-1B shipped in `5260480`, and Phase 7 Slice 7-1B-followup shipped in `df19f42`.)
+(Phase 4 — Debrief closed. Phase 5 — Evidence Threading complete. Phase 6 Slice 6-1 fully shipped and closed in `aa07c91`. Phase 7 Slice 7-1A shipped in `4ea3def`, Phase 7 Slice 7-1A-followup shipped in `37f7a40`, Phase 7 Slice 7-1B shipped in `5260480`, Phase 7 Slice 7-1B-followup shipped in `df19f42`, and Phase 7 Slice 7-1C shipped in `45b09b8`.)
 
 ## Current Slice
 
-**Phase 7 Slice 7-1C — session-local `/map` range rings (UNCOMMITTED).**
+**Phase 7 Slice 7-1D — session-local `/map` bearing line / azimuth tool (UNCOMMITTED).**
 
-Objective: add a third justified geospatial tool on `/map`: session-local range rings with a click-set anchor, editable radii, and km/nm units, without widening into persistence, collaboration, or globe parity.
+Objective: add a fourth justified geospatial tool on `/map`: a session-local bearing line with a click-set anchor, operator-entered heading and extent, and km/nm units, without widening into persistence, collaboration, or globe parity.
 
 Current implementation state:
-- `/map` now has an explicit RANGE tool alongside ANNOTATE and MEASURE
-- range-ring mode owns map clicks while active and sets or repositions a session-local anchor without changing selection or route state
-- a dedicated `mapRangeRings.ts` helper owns unit conversion, ring geometry, and label feature generation
-- `useMapRangeRingLayers.ts` renders ring lines, an anchor point, and labels above signals but below annotations and measurement geometry
-- the panel supports three editable radii, unit switching between NM and KM, and clear/reset of the active anchor
-- the page now enforces mutual exclusivity across all three tools: annotations, range rings, and measurement
-- the three tool toggles now share a responsive overlay row, and the active tool panel stays reachable on mobile-width layouts instead of relying on fixed absolute `left` offsets
+- `/map` now has an explicit BEARING tool alongside ANNOTATE, RANGE, and MEASURE
+- bearing-line mode owns map clicks while active and sets or repositions a session-local anchor without changing selection or route state
+- a dedicated `mapBearingLine.ts` helper owns heading parsing, distance conversion, line geometry, and endpoint-label feature generation
+- `useMapBearingLineLayers.ts` renders the line, anchor/endpoint points, and endpoint label above range rings but below annotations and measurement geometry
+- the panel supports heading input, extent input, and unit switching between NM and KM, while preserving session-local-only semantics
+- the page now enforces mutual exclusivity across all four tools: annotations, range rings, bearing lines, and measurement
+- the shared responsive tool row still keeps every active tool reachable on mobile-width layouts
 
 Boundaries held:
 - no backend changes
@@ -38,19 +38,19 @@ Boundaries held:
 
 ## Current Repo State
 
-- Latest committed product slice: `df19f42` — Phase 7 Slice 7-1B-followup: annotation-tool hardening
-- Current tip commit: `df19f42`
-- Working tree: dirty on the active 7-1C tranche plus this handoff update
+- Latest committed product slice: `45b09b8` — Phase 7 Slice 7-1C: `/map` range rings
+- Current tip commit: `45b09b8`
+- Working tree: dirty on the active 7-1D tranche plus this handoff update
 - Branch state: `main` even with `origin/main`
 - Dirty/tranche files right now:
   - `frontend/src/components/map/MapOverlayControls.tsx`
-  - `frontend/src/hooks/map/useMapRangeRingLayers.ts` (new)
+  - `frontend/src/hooks/map/useMapBearingLineLayers.ts` (new)
   - `frontend/src/hooks/useMapLibreEngine.ts`
   - `frontend/src/index.css`
-  - `frontend/src/lib/mapRangeRings.ts` (new)
+  - `frontend/src/lib/mapBearingLine.ts` (new)
   - `frontend/src/pages/MapPage.tsx`
   - `frontend/src/test/MapPage.test.tsx`
-  - `frontend/src/test/mapRangeRings.test.ts` (new)
+  - `frontend/src/test/mapBearingLine.test.ts` (new)
   - `frontend/src/test/useMapLibreEngine.test.ts`
   - `memory/execution_handoff.md`
 
@@ -61,8 +61,9 @@ Sequenced:
 - **7-1A-followup** — measurement overlay paint-order hardening (**shipped** in `37f7a40`)
 - **7-1B** — temporary map annotations (**shipped** in `5260480`)
 - **7-1B-followup** — post-push hardening: `MapPoint` extraction, static aria-label + maxLength, keyboard a11y on both map tool toggles, hook-order comment, style-swap persistence test (**shipped** in `df19f42`)
-- **7-1C** — session-local `/map` range rings with editable radii and NM/KM units (**current uncommitted tranche**)
-- **7-1D** — other justified geospatial utilities only if they solve a real operator problem and are explicitly scoped (**not yet chosen**)
+- **7-1C** — session-local `/map` range rings with editable radii and NM/KM units (**shipped** in `45b09b8`)
+- **7-1D** — session-local `/map` bearing line / azimuth tool with operator-entered heading and extent (**current uncommitted tranche**)
+- **7-1E** — other justified geospatial utilities only if they solve a real operator problem and are explicitly scoped (**not yet chosen**)
 
 ## Shipped In This Phase (Phase 7)
 
@@ -70,6 +71,7 @@ Sequenced:
 - `37f7a40` — Phase 7 Slice 7-1A-followup: measurement overlay paint-order hardening (measurement geometry paints above dense signal layers; direct adapter proof added)
 - `5260480` — Phase 7 Slice 7-1B: temporary map annotations (session-local pins with editable labels, explicit annotation mode, paint-order guard, mutual-exclusivity proof, and clear-all counter reset)
 - `df19f42` — Phase 7 Slice 7-1B-followup: annotation-tool hardening (`MapPoint` extraction, annotation input hardening, keyboard-operable ANNOTATE/MEASURE toggles, and style-swap persistence proof)
+- `45b09b8` — Phase 7 Slice 7-1C: `/map` range rings (session-local range-ring anchor, editable radii, NM/KM units, range-ring paint-order proof, and responsive tool-row fallback)
 
 ## Phase 6 — Closed Slice Plan (historical context)
 
@@ -166,21 +168,20 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 
 ## In Progress
 
-- **Phase 7 Slice 7-1C — session-local `/map` range rings**
-  - new RANGE tool is wired through `MapPage`, `MapOverlayControls`, and `useMapLibreEngine`
-  - `frontend/src/lib/mapRangeRings.ts` owns unit conversion, input parsing, ring geometry, and label placement
-  - `frontend/src/hooks/map/useMapRangeRingLayers.ts` renders ring lines, an anchor point, and labels above signals
-  - page-level tests now cover range-ring capture, tool mutual exclusivity, and Escape behavior
-  - adapter tests now cover range-ring paint order, click routing, and style-swap persistence
-  - responsive tool-row fallback is now in place for mobile-width layouts
+- **Phase 7 Slice 7-1D — session-local `/map` bearing line / azimuth tool**
+  - new BEARING tool is wired through `MapPage`, `MapOverlayControls`, and `useMapLibreEngine`
+  - `frontend/src/lib/mapBearingLine.ts` owns heading parsing, unit conversion, geodesic endpoint projection, and endpoint-label generation
+  - `frontend/src/hooks/map/useMapBearingLineLayers.ts` renders the line, anchor/endpoint points, and label above range rings but below annotations and measurement geometry
+  - page-level tests now cover bearing-line capture, four-tool mutual exclusivity, and Escape behavior
+  - adapter tests now cover bearing-line paint order, click routing, and style-swap persistence
   - focused + full frontend validation is green
   - next immediate step is `gate`, then commit if review stays clean
 
 ## Next
 
-- **Immediate next step:** `gate` this 7-1C tranche, then commit if the review stays clean.
-- **After 7-1C ships:** choose a concrete `7-1D` scope before further implementation.
-- **Explicit boundary for post-7-1C work:** do not jump straight to persistence, collaboration, or a generalized geospatial workspace. Keep Phase 7 additive and tool-specific.
+- **Immediate next step:** `gate` this 7-1D tranche, then commit if the review stays clean.
+- **After 7-1D ships:** choose a concrete `7-1E` scope before further implementation.
+- **Explicit boundary for post-7-1D work:** do not jump straight to persistence, collaboration, or a generalized geospatial workspace. Keep Phase 7 additive and tool-specific.
 - **Watch the first real `frontend-perf` CI run on `aa07c91` (or its first PR descendant).** Watch points:
     - 1k tier: budgets are 15/25/30ms; current local p95-of-p95s is 10.2ms. Headroom is ~2×. CI runner variance may eat into that.
     - 10k tier: p95 budget is 120ms; current p95-of-p95s is 57.4ms. Headroom is ~2.1× (raised from 80ms after gate flagged that ~1.4× was tight for ubuntu-latest). Should hold first time; re-anchor via env if real CI numbers prove otherwise.
@@ -199,19 +200,30 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 ```bash
 cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run
 cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx tsc -p tsconfig.app.json --noEmit
-cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run src/test/mapRangeRings.test.ts src/test/MapPage.test.tsx src/test/useMapLibreEngine.test.ts
-cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/pages/MapPage.tsx src/components/map/MapOverlayControls.tsx src/hooks/useMapLibreEngine.ts src/hooks/map/useMapRangeRingLayers.ts src/lib/mapRangeRings.ts src/test/MapPage.test.tsx src/test/useMapLibreEngine.test.ts src/test/mapRangeRings.test.ts
+cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run src/test/mapBearingLine.test.ts src/test/MapPage.test.tsx src/test/useMapLibreEngine.test.ts
+cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/pages/MapPage.tsx src/components/map/MapOverlayControls.tsx src/hooks/useMapLibreEngine.ts src/hooks/map/useMapBearingLineLayers.ts src/lib/mapBearingLine.ts src/test/MapPage.test.tsx src/test/useMapLibreEngine.test.ts src/test/mapBearingLine.test.ts
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (Phase 7 Slice 7-1C, uncommitted, 2026-04-21)
+## Last Validation Results (Phase 7 Slice 7-1D, uncommitted, 2026-04-21)
 
-- Focused responsive follow-up validation:
-  - `npx vitest run src/test/MapPage.test.tsx` → **32 / 32 pass**
+- Focused bearing-line validation:
+  - `npx vitest run src/test/mapBearingLine.test.ts src/test/MapPage.test.tsx src/test/useMapLibreEngine.test.ts` → **87 / 87 pass**
+- Full frontend validation:
+  - `npx vitest run` → **633 / 633 pass across 86 files**
+  - `npx tsc -p tsconfig.app.json --noEmit` → **0 errors**
+  - touched-file ESLint on 7-1D files → **0 issues**
+  - `git diff --check` → **clean**
+- No backend validation was required for this slice because the tranche is frontend-only and introduces no API/schema/runtime-backend changes.
+
+### Prior committed product validation (Phase 7 Slice 7-1C, shipped in `45b09b8`, 2026-04-21)
+
+- Focused range-ring validation:
+  - `npx vitest run src/test/mapRangeRings.test.ts src/test/MapPage.test.tsx src/test/useMapLibreEngine.test.ts` → **82 / 82 pass**
 - Full frontend validation:
   - `npx vitest run` → **625 / 625 pass across 85 files**
   - `npx tsc -p tsconfig.app.json --noEmit` → **0 errors**
-  - touched-file ESLint on `MapOverlayControls.tsx` → **0 issues**
+  - touched-file ESLint on 7-1C files → **0 issues**
   - `git diff --check` → **clean**
 - No backend validation was required for this slice because the tranche is frontend-only and introduces no API/schema/runtime-backend changes.
 

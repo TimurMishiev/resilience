@@ -204,6 +204,11 @@ function defaultInput(
     rangeRingAnchor: null,
     rangeRingRadiiKm: [],
     rangeRingUnit: 'nm',
+    bearingLineMode: false,
+    bearingLineAnchor: null,
+    bearingLineDegrees: 45,
+    bearingLineDistanceKm: 37.04,
+    bearingLineUnit: 'nm',
     measurementMode: false,
     measurementPoints: [],
     evidenceSignalIds: [],
@@ -213,6 +218,7 @@ function defaultInput(
     onSignalClick: vi.fn(),
     onMapAnnotationClick: vi.fn(),
     onMapRangeRingAnchorClick: vi.fn(),
+    onMapBearingLineAnchorClick: vi.fn(),
     onMapCoordinateClick: vi.fn(),
     ...overrides,
   }
@@ -808,6 +814,134 @@ describe('useMapLibreEngine adapter', () => {
       const rangeRingAddSourceCalls = facade.calls
         .filter(call => call.method === 'addSource' && call.args[0] === 'map-range-rings')
       expect(rangeRingAddSourceCalls.length).toBeGreaterThanOrEqual(2)
+    })
+  })
+
+  describe('bearing line mode', () => {
+    it('creates bearing-line layers on init and updates sources when anchor data changes', async () => {
+      const containerRef = makeContainerRef()
+      const hook = await bootMap(facade, containerRef, defaultInput(containerRef))
+
+      expect(facade.layerIds.has('map-bearing-line')).toBe(true)
+      expect(facade.layerIds.has('map-bearing-points')).toBe(true)
+      expect(facade.layerIds.has('map-bearing-labels')).toBe(true)
+
+      facade.calls.length = 0
+
+      await act(async () => {
+        hook.rerender(defaultInput(containerRef, {
+          bearingLineAnchor: { lat: 37.7749, lng: -122.4194 },
+          bearingLineDegrees: 120,
+          bearingLineDistanceKm: 22.224,
+          bearingLineUnit: 'nm',
+        }))
+      })
+
+      expect(facade.calls).toContainEqual({
+        method: 'setData',
+        args: [
+          'map-bearing-line',
+          expect.objectContaining({
+            type: 'FeatureCollection',
+            features: expect.arrayContaining([
+              expect.objectContaining({
+                geometry: expect.objectContaining({ type: 'LineString' }),
+              }),
+            ]),
+          }),
+        ],
+      })
+      expect(facade.calls).toContainEqual({
+        method: 'setData',
+        args: [
+          'map-bearing-labels',
+          expect.objectContaining({
+            type: 'FeatureCollection',
+            features: expect.arrayContaining([
+              expect.objectContaining({
+                properties: expect.objectContaining({ label: '120° · 12 NM' }),
+              }),
+            ]),
+          }),
+        ],
+      })
+    })
+
+    it('adds bearing-line layers after range rings but before annotations and measurement', async () => {
+      const containerRef = makeContainerRef()
+      await bootMap(facade, containerRef, defaultInput(containerRef))
+
+      const addedLayerIds = facade.calls
+        .filter(call => call.method === 'addLayer')
+        .map(call => String(call.args[0]))
+
+      expect(addedLayerIds.indexOf('map-bearing-line')).toBeGreaterThan(addedLayerIds.indexOf('signal-symbols'))
+      expect(addedLayerIds.indexOf('map-bearing-line')).toBeGreaterThan(addedLayerIds.indexOf('map-range-rings'))
+      expect(addedLayerIds.indexOf('map-bearing-line')).toBeLessThan(addedLayerIds.indexOf('map-annotation-points'))
+      expect(addedLayerIds.indexOf('map-bearing-line')).toBeLessThan(addedLayerIds.indexOf('measurement-line'))
+    })
+
+    it('routes map clicks to bearing-line anchor capture instead of selection when bearing-line mode is active', async () => {
+      const onMapBearingLineAnchorClick = vi.fn()
+      const onSiteClick = vi.fn()
+      const containerRef = makeContainerRef()
+
+      await bootMap(facade, containerRef, defaultInput(containerRef, {
+        bearingLineMode: true,
+        onMapBearingLineAnchorClick,
+        onSiteClick,
+      }))
+
+      facade.setQueryRenderedFeaturesResult([{
+        layer: { id: 'site-circles' },
+        properties: { id: 'site-1' },
+      }])
+
+      await act(async () => {
+        facade.fire('click', {
+          point: { x: 40, y: 60 },
+          lngLat: { lng: -122.4194, lat: 37.7749 },
+        })
+      })
+
+      expect(onMapBearingLineAnchorClick).toHaveBeenCalledWith({ lng: -122.4194, lat: 37.7749 })
+      expect(onSiteClick).not.toHaveBeenCalled()
+    })
+
+    it('re-adds bearing-line layers and reseeds the current anchor after a style swap', async () => {
+      const containerRef = makeContainerRef()
+      const hook = await bootMap(facade, containerRef, defaultInput(containerRef, {
+        bearingLineAnchor: { lat: 37.7749, lng: -122.4194 },
+        bearingLineDegrees: 75,
+        bearingLineDistanceKm: 18.52,
+        bearingLineUnit: 'nm',
+      }))
+
+      expect(facade.layerIds.has('map-bearing-line')).toBe(true)
+      expect(facade.layerIds.has('map-bearing-labels')).toBe(true)
+
+      await act(async () => {
+        hook.rerender(defaultInput(containerRef, {
+          mapStyle: 'satellite',
+          bearingLineAnchor: { lat: 37.7749, lng: -122.4194 },
+          bearingLineDegrees: 75,
+          bearingLineDistanceKm: 18.52,
+          bearingLineUnit: 'nm',
+        }))
+        await Promise.resolve()
+      })
+
+      await act(async () => {
+        facade.fire('style.load')
+        await Promise.resolve()
+      })
+
+      expect(facade.layerIds.has('map-bearing-line')).toBe(true)
+      expect(facade.layerIds.has('map-bearing-labels')).toBe(true)
+
+      const bearingLineAddSourceCalls = facade.calls
+        .filter(call => call.method === 'addSource' && call.args[0] === 'map-bearing-line')
+      expect(bearingLineAddSourceCalls.length).toBeGreaterThanOrEqual(2)
     })
   })
 

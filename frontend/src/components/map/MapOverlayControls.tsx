@@ -1,12 +1,13 @@
 import { Callout, Spinner } from '@blueprintjs/core'
 import { MAP_STYLE_CONFIGS, type MapStyleKey } from '../../hooks/useMapLibreEngine'
 import { SIGNAL_COLORS, SIGNAL_LABELS } from '../../lib/signalConfig'
+import { formatBearingLineDegrees } from '../../lib/mapBearingLine'
 import {
   measurementBearingCardinal,
   measurementBearingDegrees,
   measurementDistanceKm,
 } from '../../lib/mapMeasurement'
-import type { RangeRingUnit } from '../../lib/mapRangeRings'
+import { formatRangeRingInputValue, type RangeRingUnit } from '../../lib/mapRangeRings'
 import type { MapPoint } from '../../lib/mapPoint'
 import type { MapAnnotation } from '../../lib/mapAnnotations'
 
@@ -30,6 +31,13 @@ interface MapOverlayControlsProps {
   rangeRingInputs: string[]
   rangeRingRadiiKm: number[]
   rangeRingUnit: RangeRingUnit
+  bearingLineMode: boolean
+  bearingLineAnchor: MapPoint | null
+  bearingLineDegreesInput: string
+  bearingLineDegrees: number | null
+  bearingLineDistanceInput: string
+  bearingLineDistanceKm: number | null
+  bearingLineUnit: RangeRingUnit
   measurementMode: boolean
   measurementPoints: MapPoint[]
   onMapStyleChange: (style: MapStyleKey) => void
@@ -47,6 +55,11 @@ interface MapOverlayControlsProps {
   onClearRangeRings: () => void
   onUpdateRangeRingInput: (index: number, value: string) => void
   onSetRangeRingUnit: (unit: RangeRingUnit) => void
+  onToggleBearingLine: () => void
+  onClearBearingLine: () => void
+  onUpdateBearingLineDegreesInput: (value: string) => void
+  onUpdateBearingLineDistanceInput: (value: string) => void
+  onSetBearingLineUnit: (unit: RangeRingUnit) => void
   onToggleMeasurement: () => void
   onClearMeasurement: () => void
 }
@@ -71,6 +84,13 @@ export function MapOverlayControls({
   rangeRingInputs,
   rangeRingRadiiKm,
   rangeRingUnit,
+  bearingLineMode,
+  bearingLineAnchor,
+  bearingLineDegreesInput,
+  bearingLineDegrees,
+  bearingLineDistanceInput,
+  bearingLineDistanceKm,
+  bearingLineUnit,
   measurementMode,
   measurementPoints,
   onMapStyleChange,
@@ -88,6 +108,11 @@ export function MapOverlayControls({
   onClearRangeRings,
   onUpdateRangeRingInput,
   onSetRangeRingUnit,
+  onToggleBearingLine,
+  onClearBearingLine,
+  onUpdateBearingLineDegreesInput,
+  onUpdateBearingLineDistanceInput,
+  onSetBearingLineUnit,
   onToggleMeasurement,
   onClearMeasurement,
 }: MapOverlayControlsProps) {
@@ -98,6 +123,11 @@ export function MapOverlayControls({
   const bearingDegrees = anchor && target ? measurementBearingDegrees(anchor, target) : null
   const bearingLabel = bearingDegrees === null ? null : measurementBearingCardinal(bearingDegrees)
   const rangeRingCount = rangeRingRadiiKm.length
+  const bearingLineHeading = bearingLineDegrees === null ? null : formatBearingLineDegrees(bearingLineDegrees)
+  const bearingLineCardinal = bearingLineDegrees === null ? null : measurementBearingCardinal(bearingLineDegrees)
+  const bearingLineDistanceLabel = bearingLineDistanceKm === null
+    ? null
+    : `${formatRangeRingInputValue(bearingLineDistanceKm, bearingLineUnit)} ${bearingLineUnit.toUpperCase()}`
   const formatPoint = (point: MapPoint) => `${point.lat.toFixed(4)}, ${point.lng.toFixed(4)}`
 
   return (
@@ -327,6 +357,24 @@ export function MapOverlayControls({
           </div>
 
           <div
+            className={`map-bearing-toggle${bearingLineMode ? ' map-bearing-toggle--active' : ''}`}
+            onClick={onToggleBearingLine}
+            onKeyDown={event => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                onToggleBearingLine()
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            aria-pressed={bearingLineMode}
+            aria-label="Toggle map bearing line tool"
+          >
+            <span className="map-bearing-toggle-dot" />
+            BEARING {bearingLineMode ? 'ON' : 'OFF'}
+          </div>
+
+          <div
             className={`map-measure-toggle${measurementMode ? ' map-measure-toggle--active' : ''}`}
             onClick={onToggleMeasurement}
             onKeyDown={event => {
@@ -465,6 +513,107 @@ export function MapOverlayControls({
               {rangeRingAnchor && rangeRingCount > 0 && (
                 <p className="map-range-panel-hint">
                   Showing {rangeRingCount} ring{rangeRingCount === 1 ? '' : 's'}. The next map click repositions the anchor.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {bearingLineMode && (
+          <div className="map-bearing-panel" data-testid="map-bearing-panel">
+            <div className="map-bearing-panel-header">
+              <span className="map-bearing-panel-title">BEARING LINE</span>
+              <button
+                type="button"
+                className="map-bearing-panel-action"
+                onClick={onClearBearingLine}
+                disabled={!bearingLineAnchor}
+              >
+                Clear
+              </button>
+            </div>
+
+            <div className="map-bearing-panel-body">
+              <p className="map-bearing-panel-hint">
+                Click the map to place or reposition a session-local anchor. Bearing lines stay on this client only and do not change selection or route state.
+              </p>
+
+              <div className="map-bearing-panel-units" role="group" aria-label="Bearing line units">
+                {(['nm', 'km'] as const).map(unit => (
+                  <button
+                    key={unit}
+                    type="button"
+                    className={`map-bearing-panel-unit-btn${bearingLineUnit === unit ? ' map-bearing-panel-unit-btn--active' : ''}`}
+                    onClick={() => onSetBearingLineUnit(unit)}
+                    aria-pressed={bearingLineUnit === unit}
+                  >
+                    {unit.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+
+              {bearingLineAnchor ? (
+                <div className="map-bearing-panel-row">
+                  <span className="map-bearing-panel-label">Anchor</span>
+                  <span className="map-bearing-panel-value mono">{formatPoint(bearingLineAnchor)}</span>
+                </div>
+              ) : (
+                <p className="map-bearing-panel-hint">No bearing anchor yet.</p>
+              )}
+
+              <label className="map-bearing-panel-item">
+                <span className="map-bearing-panel-label">Bearing</span>
+                <div className="map-bearing-panel-input-row">
+                  <input
+                    type="number"
+                    min="0"
+                    max="360"
+                    step="1"
+                    className="map-bearing-panel-input"
+                    aria-label="Bearing degrees"
+                    value={bearingLineDegreesInput}
+                    onChange={event => onUpdateBearingLineDegreesInput(event.target.value)}
+                  />
+                  <span className="map-bearing-panel-unit-label">DEG</span>
+                </div>
+              </label>
+
+              <label className="map-bearing-panel-item">
+                <span className="map-bearing-panel-label">Extent</span>
+                <div className="map-bearing-panel-input-row">
+                  <input
+                    type="number"
+                    min="0.1"
+                    step={bearingLineUnit === 'nm' ? '0.5' : '1'}
+                    className="map-bearing-panel-input"
+                    aria-label="Bearing line extent"
+                    value={bearingLineDistanceInput}
+                    onChange={event => onUpdateBearingLineDistanceInput(event.target.value)}
+                  />
+                  <span className="map-bearing-panel-unit-label">{bearingLineUnit.toUpperCase()}</span>
+                </div>
+              </label>
+
+              {bearingLineAnchor && bearingLineHeading !== null && bearingLineCardinal !== null && bearingLineDistanceLabel !== null && (
+                <div className="map-bearing-panel-summary">
+                  <div className="map-bearing-panel-row">
+                    <span className="map-bearing-panel-label">Heading</span>
+                    <span className="map-bearing-panel-value">{bearingLineHeading} {bearingLineCardinal}</span>
+                  </div>
+                  <div className="map-bearing-panel-row">
+                    <span className="map-bearing-panel-label">Extent</span>
+                    <span className="map-bearing-panel-value">{bearingLineDistanceLabel}</span>
+                  </div>
+                </div>
+              )}
+
+              {bearingLineAnchor && (bearingLineHeading === null || bearingLineDistanceLabel === null) && (
+                <p className="map-bearing-panel-hint">Enter a bearing between 0 and 360 degrees and a positive extent to render the line.</p>
+              )}
+
+              {bearingLineAnchor && bearingLineHeading !== null && bearingLineDistanceLabel !== null && (
+                <p className="map-bearing-panel-hint">
+                  Showing {bearingLineHeading} for {bearingLineDistanceLabel}. The next map click repositions the anchor.
                 </p>
               )}
             </div>
