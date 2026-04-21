@@ -2022,11 +2022,27 @@ body {
   background: linear-gradient(135deg, #20a39e, #ef4444);
 }
 
-.map-measure-toggle,
-.map-annotate-toggle {
+.map-tool-overlay {
   position: absolute;
+  left: 250px;
   bottom: 36px;
   z-index: 10;
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.map-tool-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.map-measure-toggle,
+.map-annotate-toggle,
+.map-range-toggle {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -2043,16 +2059,9 @@ body {
   transition: border-color 0.15s ease, color 0.15s ease;
 }
 
-.map-measure-toggle {
-  left: 250px;
-}
-
-.map-annotate-toggle {
-  left: 364px;
-}
-
 .map-measure-toggle:hover,
-.map-annotate-toggle:hover {
+.map-annotate-toggle:hover,
+.map-range-toggle:hover {
   border-color: rgba(255, 255, 255, 0.25);
 }
 
@@ -2066,8 +2075,14 @@ body {
   border-color: rgba(249, 115, 22, 0.45);
 }
 
+.map-range-toggle--active {
+  color: #e7ffc8;
+  border-color: rgba(184, 245, 116, 0.45);
+}
+
 .map-measure-toggle-dot,
-.map-annotate-toggle-dot {
+.map-annotate-toggle-dot,
+.map-range-toggle-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -2075,11 +2090,8 @@ body {
 }
 
 .map-measure-panel,
-.map-annotate-panel {
-  position: absolute;
-  bottom: 64px;
-  left: 304px;
-  z-index: 10;
+.map-annotate-panel,
+.map-range-panel {
   width: 312px;
   display: flex;
   flex-direction: column;
@@ -2100,8 +2112,13 @@ body {
   border-color: rgba(249, 115, 22, 0.2);
 }
 
+.map-range-panel {
+  border-color: rgba(184, 245, 116, 0.22);
+}
+
 .map-measure-panel-header,
-.map-annotate-panel-header {
+.map-annotate-panel-header,
+.map-range-panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2122,8 +2139,16 @@ body {
   letter-spacing: 0.08em;
 }
 
+.map-range-panel-title {
+  color: #e7ffc8;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
 .map-measure-panel-action,
-.map-annotate-panel-action {
+.map-annotate-panel-action,
+.map-range-panel-action {
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(255, 255, 255, 0.04);
   border-radius: 6px;
@@ -2135,13 +2160,15 @@ body {
 }
 
 .map-measure-panel-action:disabled,
-.map-annotate-panel-action:disabled {
+.map-annotate-panel-action:disabled,
+.map-range-panel-action:disabled {
   opacity: 0.45;
   cursor: default;
 }
 
 .map-measure-panel-body,
-.map-annotate-panel-body {
+.map-annotate-panel-body,
+.map-range-panel-body {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -2191,13 +2218,21 @@ body {
   line-height: 1.45;
 }
 
+.map-range-panel-hint {
+  margin: 0;
+  color: #cadbb2;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .map-annotate-panel-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.map-annotate-panel-item {
+.map-annotate-panel-item,
+.map-range-panel-item {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -2219,6 +2254,73 @@ body {
 .map-annotate-panel-coordinates {
   color: #cbd5df;
   font-size: 11px;
+}
+
+.map-range-panel-row {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.map-range-panel-label {
+  min-width: 54px;
+  color: #9fb27f;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.map-range-panel-value {
+  color: #ecf3f8;
+  font-size: 12px;
+}
+
+.map-range-panel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.map-range-panel-input-row,
+.map-range-panel-units {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.map-range-panel-input {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(17, 24, 39, 0.72);
+  border-radius: 6px;
+  color: #ecf3f8;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.map-range-panel-unit-btn {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 999px;
+  color: #c7d2da;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.map-range-panel-unit-btn--active {
+  color: #e7ffc8;
+  border-color: rgba(184, 245, 116, 0.45);
+  background: rgba(184, 245, 116, 0.08);
+}
+
+.map-range-panel-unit-label {
+  color: #9fb27f;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
 }
 
 /* Trail window selector — displayed next to TRAILS toggle during replay */
@@ -2692,6 +2794,37 @@ body {
     flex-wrap: wrap;
     gap: 8px;
     margin-bottom: 12px;
+  }
+
+  .map-tool-overlay {
+    left: 12px;
+    right: 12px;
+    bottom: 72px;
+    gap: 10px;
+  }
+
+  .map-tool-row {
+    width: 100%;
+    gap: 8px;
+  }
+
+  .map-measure-toggle,
+  .map-annotate-toggle,
+  .map-range-toggle {
+    flex: 1 1 calc(33.333% - 6px);
+    justify-content: center;
+    min-width: 96px;
+  }
+
+  .map-measure-panel,
+  .map-annotate-panel,
+  .map-range-panel {
+    width: min(100%, 360px);
+    max-width: 100%;
+  }
+
+  .map-range-panel-units {
+    flex-wrap: wrap;
   }
 
   .page-header h2 {

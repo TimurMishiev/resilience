@@ -200,6 +200,10 @@ function defaultInput(
     selectedSignalId: null,
     annotationMode: false,
     annotations: [],
+    rangeRingMode: false,
+    rangeRingAnchor: null,
+    rangeRingRadiiKm: [],
+    rangeRingUnit: 'nm',
     measurementMode: false,
     measurementPoints: [],
     evidenceSignalIds: [],
@@ -208,6 +212,7 @@ function defaultInput(
     onAssetClick: vi.fn(),
     onSignalClick: vi.fn(),
     onMapAnnotationClick: vi.fn(),
+    onMapRangeRingAnchorClick: vi.fn(),
     onMapCoordinateClick: vi.fn(),
     ...overrides,
   }
@@ -678,6 +683,131 @@ describe('useMapLibreEngine adapter', () => {
       const annotationAddSourceCalls = facade.calls
         .filter(call => call.method === 'addSource' && call.args[0] === 'map-annotations')
       expect(annotationAddSourceCalls.length).toBeGreaterThanOrEqual(2)
+    })
+  })
+
+  describe('range ring mode', () => {
+    it('creates range-ring layers on init and updates range-ring sources when anchor data changes', async () => {
+      const containerRef = makeContainerRef()
+      const hook = await bootMap(facade, containerRef, defaultInput(containerRef))
+
+      expect(facade.layerIds.has('map-range-rings')).toBe(true)
+      expect(facade.layerIds.has('map-range-ring-anchor')).toBe(true)
+      expect(facade.layerIds.has('map-range-ring-labels')).toBe(true)
+
+      facade.calls.length = 0
+
+      await act(async () => {
+        hook.rerender(defaultInput(containerRef, {
+          rangeRingAnchor: { lat: 37.7749, lng: -122.4194 },
+          rangeRingRadiiKm: [9.26, 18.52],
+          rangeRingUnit: 'nm',
+        }))
+      })
+
+      expect(facade.calls).toContainEqual({
+        method: 'setData',
+        args: [
+          'map-range-rings',
+          expect.objectContaining({
+            type: 'FeatureCollection',
+            features: expect.arrayContaining([
+              expect.objectContaining({
+                geometry: expect.objectContaining({ type: 'LineString' }),
+              }),
+            ]),
+          }),
+        ],
+      })
+      expect(facade.calls).toContainEqual({
+        method: 'setData',
+        args: [
+          'map-range-ring-labels',
+          expect.objectContaining({
+            type: 'FeatureCollection',
+            features: expect.arrayContaining([
+              expect.objectContaining({
+                properties: expect.objectContaining({ label: '5 NM' }),
+              }),
+            ]),
+          }),
+        ],
+      })
+    })
+
+    it('adds range-ring layers after the signal stack but before annotations and measurement', async () => {
+      const containerRef = makeContainerRef()
+      await bootMap(facade, containerRef, defaultInput(containerRef))
+
+      const addedLayerIds = facade.calls
+        .filter(call => call.method === 'addLayer')
+        .map(call => String(call.args[0]))
+
+      expect(addedLayerIds.indexOf('map-range-rings')).toBeGreaterThan(addedLayerIds.indexOf('signal-symbols'))
+      expect(addedLayerIds.indexOf('map-range-ring-anchor')).toBeGreaterThan(addedLayerIds.indexOf('selected-signal-symbol'))
+      expect(addedLayerIds.indexOf('map-range-rings')).toBeLessThan(addedLayerIds.indexOf('map-annotation-points'))
+      expect(addedLayerIds.indexOf('map-range-rings')).toBeLessThan(addedLayerIds.indexOf('measurement-line'))
+    })
+
+    it('routes map clicks to range-ring anchor capture instead of selection when range-ring mode is active', async () => {
+      const onMapRangeRingAnchorClick = vi.fn()
+      const onSiteClick = vi.fn()
+      const containerRef = makeContainerRef()
+
+      await bootMap(facade, containerRef, defaultInput(containerRef, {
+        rangeRingMode: true,
+        onMapRangeRingAnchorClick,
+        onSiteClick,
+      }))
+
+      facade.setQueryRenderedFeaturesResult([{
+        layer: { id: 'site-circles' },
+        properties: { id: 'site-1' },
+      }])
+
+      await act(async () => {
+        facade.fire('click', {
+          point: { x: 40, y: 60 },
+          lngLat: { lng: -122.4194, lat: 37.7749 },
+        })
+      })
+
+      expect(onMapRangeRingAnchorClick).toHaveBeenCalledWith({ lng: -122.4194, lat: 37.7749 })
+      expect(onSiteClick).not.toHaveBeenCalled()
+    })
+
+    it('re-adds range-ring layers and reseeds the current anchor after a style swap', async () => {
+      const containerRef = makeContainerRef()
+      const hook = await bootMap(facade, containerRef, defaultInput(containerRef, {
+        rangeRingAnchor: { lat: 37.7749, lng: -122.4194 },
+        rangeRingRadiiKm: [9.26, 18.52, 37.04],
+        rangeRingUnit: 'nm',
+      }))
+
+      expect(facade.layerIds.has('map-range-rings')).toBe(true)
+      expect(facade.layerIds.has('map-range-ring-labels')).toBe(true)
+
+      await act(async () => {
+        hook.rerender(defaultInput(containerRef, {
+          mapStyle: 'satellite',
+          rangeRingAnchor: { lat: 37.7749, lng: -122.4194 },
+          rangeRingRadiiKm: [9.26, 18.52, 37.04],
+          rangeRingUnit: 'nm',
+        }))
+        await Promise.resolve()
+      })
+
+      await act(async () => {
+        facade.fire('style.load')
+        await Promise.resolve()
+      })
+
+      expect(facade.layerIds.has('map-range-rings')).toBe(true)
+      expect(facade.layerIds.has('map-range-ring-labels')).toBe(true)
+
+      const rangeRingAddSourceCalls = facade.calls
+        .filter(call => call.method === 'addSource' && call.args[0] === 'map-range-rings')
+      expect(rangeRingAddSourceCalls.length).toBeGreaterThanOrEqual(2)
     })
   })
 

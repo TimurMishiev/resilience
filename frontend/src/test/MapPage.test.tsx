@@ -85,6 +85,7 @@ const engineState = vi.hoisted(() => ({
     showChokepoints: boolean
     annotationMode: boolean
     annotations: Array<{ id: string; label: string }>
+    rangeRingMode: boolean
     measurementMode: boolean
     chokepoints: Array<{ id: string }>
     breachedSiteIds: Set<string>
@@ -92,6 +93,7 @@ const engineState = vi.hoisted(() => ({
     onAssetClick: (assetId: string | null) => void
     onSignalClick: (signalId: string | null) => void
     onMapAnnotationClick: (point: { lng: number; lat: number }) => void
+    onMapRangeRingAnchorClick: (point: { lng: number; lat: number }) => void
     onMapCoordinateClick: (point: { lng: number; lat: number }) => void
   },
 }))
@@ -203,6 +205,7 @@ vi.mock('../hooks/useMapLibreEngine', () => ({
     showChokepoints: boolean
     annotationMode: boolean
     annotations: Array<{ id: string; label: string }>
+    rangeRingMode: boolean
     measurementMode: boolean
     chokepoints: Array<{ id: string }>
     breachedSiteIds: Set<string>
@@ -210,6 +213,7 @@ vi.mock('../hooks/useMapLibreEngine', () => ({
     onAssetClick: (assetId: string | null) => void
     onSignalClick: (signalId: string | null) => void
     onMapAnnotationClick: (point: { lng: number; lat: number }) => void
+    onMapRangeRingAnchorClick: (point: { lng: number; lat: number }) => void
     onMapCoordinateClick: (point: { lng: number; lat: number }) => void
   }) => {
     engineState.latestInput = input
@@ -906,7 +910,41 @@ describe('MapPage selection routing', () => {
     expect(screen.getByDisplayValue('Mark 1')).toBeInTheDocument()
   })
 
-  it('keeps annotation and measurement modes mutually exclusive', async () => {
+  it('captures and manages session-local range rings without changing route selection', async () => {
+    renderMapPage('/map')
+
+    expect(screen.queryByTestId('map-range-panel')).toBeNull()
+    expect(engineState.latestInput?.rangeRingMode).toBe(false)
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Toggle map range ring tool' }).click()
+    })
+
+    expect(await screen.findByTestId('map-range-panel')).toHaveTextContent('No range anchor yet.')
+    expect(engineState.latestInput?.rangeRingMode).toBe(true)
+
+    await act(async () => {
+      engineState.latestInput?.onMapRangeRingAnchorClick({ lat: 37.7749, lng: -122.4194 })
+    })
+
+    expect(screen.getByTestId('map-range-panel')).toHaveTextContent('37.7749, -122.4194')
+    expect(screen.getByRole('spinbutton', { name: 'Range ring 1 radius' })).toHaveValue(5)
+    expect(screen.getByTestId('location-search')).toBeEmptyDOMElement()
+
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Range ring 1 radius' }), {
+      target: { value: '8' },
+    })
+
+    expect(screen.getByRole('spinbutton', { name: 'Range ring 1 radius' })).toHaveValue(8)
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Clear' }).click()
+    })
+
+    expect(screen.getByTestId('map-range-panel')).toHaveTextContent('No range anchor yet.')
+  })
+
+  it('keeps annotation, range-ring, and measurement modes mutually exclusive', async () => {
     renderMapPage('/map')
 
     await act(async () => {
@@ -917,11 +955,20 @@ describe('MapPage selection routing', () => {
     expect(screen.queryByTestId('map-measure-panel')).toBeNull()
 
     await act(async () => {
+      screen.getByRole('button', { name: 'Toggle map range ring tool' }).click()
+    })
+
+    expect(await screen.findByTestId('map-range-panel')).toBeInTheDocument()
+    expect(screen.queryByTestId('map-annotate-panel')).toBeNull()
+    expect(screen.queryByTestId('map-measure-panel')).toBeNull()
+
+    await act(async () => {
       screen.getByRole('button', { name: 'Toggle map measurement tool' }).click()
     })
 
     expect(await screen.findByTestId('map-measure-panel')).toBeInTheDocument()
     expect(screen.queryByTestId('map-annotate-panel')).toBeNull()
+    expect(screen.queryByTestId('map-range-panel')).toBeNull()
 
     await act(async () => {
       screen.getByRole('button', { name: 'Toggle map annotation tool' }).click()
@@ -929,6 +976,25 @@ describe('MapPage selection routing', () => {
 
     expect(await screen.findByTestId('map-annotate-panel')).toBeInTheDocument()
     expect(screen.queryByTestId('map-measure-panel')).toBeNull()
+  })
+
+  it('turns range-ring mode off on Escape before closing the docked panel', async () => {
+    renderMapPage('/map?site_id=site-1')
+
+    expect(await screen.findByRole('complementary', { name: 'Map selection detail' })).toBeInTheDocument()
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Toggle map range ring tool' }).click()
+    })
+
+    expect(await screen.findByTestId('map-range-panel')).toBeInTheDocument()
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    })
+
+    expect(screen.queryByTestId('map-range-panel')).toBeNull()
+    expect(screen.getByRole('complementary', { name: 'Map selection detail' })).toBeInTheDocument()
   })
 
   it('turns annotation mode off on Escape before closing the docked panel', async () => {

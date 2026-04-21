@@ -6,6 +6,7 @@ import {
   measurementBearingDegrees,
   measurementDistanceKm,
 } from '../../lib/mapMeasurement'
+import type { RangeRingUnit } from '../../lib/mapRangeRings'
 import type { MapPoint } from '../../lib/mapPoint'
 import type { MapAnnotation } from '../../lib/mapAnnotations'
 
@@ -24,6 +25,11 @@ interface MapOverlayControlsProps {
   showHeatmap: boolean
   annotationMode: boolean
   annotations: MapAnnotation[]
+  rangeRingMode: boolean
+  rangeRingAnchor: MapPoint | null
+  rangeRingInputs: string[]
+  rangeRingRadiiKm: number[]
+  rangeRingUnit: RangeRingUnit
   measurementMode: boolean
   measurementPoints: MapPoint[]
   onMapStyleChange: (style: MapStyleKey) => void
@@ -37,6 +43,10 @@ interface MapOverlayControlsProps {
   onClearAnnotations: () => void
   onUpdateAnnotationLabel: (annotationId: string, label: string) => void
   onRemoveAnnotation: (annotationId: string) => void
+  onToggleRangeRings: () => void
+  onClearRangeRings: () => void
+  onUpdateRangeRingInput: (index: number, value: string) => void
+  onSetRangeRingUnit: (unit: RangeRingUnit) => void
   onToggleMeasurement: () => void
   onClearMeasurement: () => void
 }
@@ -56,6 +66,11 @@ export function MapOverlayControls({
   showHeatmap,
   annotationMode,
   annotations,
+  rangeRingMode,
+  rangeRingAnchor,
+  rangeRingInputs,
+  rangeRingRadiiKm,
+  rangeRingUnit,
   measurementMode,
   measurementPoints,
   onMapStyleChange,
@@ -69,6 +84,10 @@ export function MapOverlayControls({
   onClearAnnotations,
   onUpdateAnnotationLabel,
   onRemoveAnnotation,
+  onToggleRangeRings,
+  onClearRangeRings,
+  onUpdateRangeRingInput,
+  onSetRangeRingUnit,
   onToggleMeasurement,
   onClearMeasurement,
 }: MapOverlayControlsProps) {
@@ -78,6 +97,7 @@ export function MapOverlayControls({
   const distanceNm = distanceKm === null ? null : distanceKm / 1.852
   const bearingDegrees = anchor && target ? measurementBearingDegrees(anchor, target) : null
   const bearingLabel = bearingDegrees === null ? null : measurementBearingCardinal(bearingDegrees)
+  const rangeRingCount = rangeRingRadiiKm.length
   const formatPoint = (point: MapPoint) => `${point.lat.toFixed(4)}, ${point.lng.toFixed(4)}`
 
   return (
@@ -268,154 +288,251 @@ export function MapOverlayControls({
         HEATMAP {showHeatmap ? 'ON' : 'OFF'}
       </div>
 
-      <div
-        className={`map-annotate-toggle${annotationMode ? ' map-annotate-toggle--active' : ''}`}
-        onClick={onToggleAnnotations}
-        onKeyDown={event => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault()
-            onToggleAnnotations()
-          }
-        }}
-        role="button"
-        tabIndex={0}
-        aria-pressed={annotationMode}
-        aria-label="Toggle map annotation tool"
-      >
-        <span className="map-annotate-toggle-dot" />
-        ANNOTATE {annotationMode ? 'ON' : 'OFF'}
-      </div>
-
-      {annotationMode && (
-        <div className="map-annotate-panel" data-testid="map-annotate-panel">
-          <div className="map-annotate-panel-header">
-            <span className="map-annotate-panel-title">TEMPORARY ANNOTATIONS</span>
-            <button
-              type="button"
-              className="map-annotate-panel-action"
-              onClick={onClearAnnotations}
-              disabled={annotations.length === 0}
-            >
-              Clear all
-            </button>
+      <div className="map-tool-overlay">
+        <div className="map-tool-row">
+          <div
+            className={`map-annotate-toggle${annotationMode ? ' map-annotate-toggle--active' : ''}`}
+            onClick={onToggleAnnotations}
+            onKeyDown={event => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                onToggleAnnotations()
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            aria-pressed={annotationMode}
+            aria-label="Toggle map annotation tool"
+          >
+            <span className="map-annotate-toggle-dot" />
+            ANNOTATE {annotationMode ? 'ON' : 'OFF'}
           </div>
 
-          <div className="map-annotate-panel-body">
-            <p className="map-annotate-panel-hint">
-              Click the map to drop session-local pins. Annotations stay on this client only and do not change selection or route state.
-            </p>
+          <div
+            className={`map-range-toggle${rangeRingMode ? ' map-range-toggle--active' : ''}`}
+            onClick={onToggleRangeRings}
+            onKeyDown={event => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                onToggleRangeRings()
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            aria-pressed={rangeRingMode}
+            aria-label="Toggle map range ring tool"
+          >
+            <span className="map-range-toggle-dot" />
+            RANGE {rangeRingMode ? 'ON' : 'OFF'}
+          </div>
 
-            {annotations.length === 0 ? (
-              <p className="map-annotate-panel-hint">No temporary annotations yet.</p>
-            ) : (
-              <div className="map-annotate-panel-list">
-                {annotations.map(annotation => (
-                  <div key={annotation.id} className="map-annotate-panel-item">
-                    <input
-                      type="text"
-                      className="map-annotate-panel-input"
-                      aria-label="Annotation label"
-                      maxLength={120}
-                      value={annotation.label}
-                      onChange={event => onUpdateAnnotationLabel(annotation.id, event.target.value)}
-                    />
-                    <div className="map-annotate-panel-coordinates mono">
-                      {formatPoint(annotation)}
+          <div
+            className={`map-measure-toggle${measurementMode ? ' map-measure-toggle--active' : ''}`}
+            onClick={onToggleMeasurement}
+            onKeyDown={event => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                onToggleMeasurement()
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            aria-pressed={measurementMode}
+            aria-label="Toggle map measurement tool"
+          >
+            <span className="map-measure-toggle-dot" />
+            MEASURE {measurementMode ? 'ON' : 'OFF'}
+          </div>
+        </div>
+
+        {annotationMode && (
+          <div className="map-annotate-panel" data-testid="map-annotate-panel">
+            <div className="map-annotate-panel-header">
+              <span className="map-annotate-panel-title">TEMPORARY ANNOTATIONS</span>
+              <button
+                type="button"
+                className="map-annotate-panel-action"
+                onClick={onClearAnnotations}
+                disabled={annotations.length === 0}
+              >
+                Clear all
+              </button>
+            </div>
+
+            <div className="map-annotate-panel-body">
+              <p className="map-annotate-panel-hint">
+                Click the map to drop session-local pins. Annotations stay on this client only and do not change selection or route state.
+              </p>
+
+              {annotations.length === 0 ? (
+                <p className="map-annotate-panel-hint">No temporary annotations yet.</p>
+              ) : (
+                <div className="map-annotate-panel-list">
+                  {annotations.map(annotation => (
+                    <div key={annotation.id} className="map-annotate-panel-item">
+                      <input
+                        type="text"
+                        className="map-annotate-panel-input"
+                        aria-label="Annotation label"
+                        maxLength={120}
+                        value={annotation.label}
+                        onChange={event => onUpdateAnnotationLabel(annotation.id, event.target.value)}
+                      />
+                      <div className="map-annotate-panel-coordinates mono">
+                        {formatPoint(annotation)}
+                      </div>
+                      <button
+                        type="button"
+                        className="map-annotate-panel-action"
+                        onClick={() => onRemoveAnnotation(annotation.id)}
+                      >
+                        Remove
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      className="map-annotate-panel-action"
-                      onClick={() => onRemoveAnnotation(annotation.id)}
-                    >
-                      Remove
-                    </button>
-                  </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {rangeRingMode && (
+          <div className="map-range-panel" data-testid="map-range-panel">
+            <div className="map-range-panel-header">
+              <span className="map-range-panel-title">RANGE RINGS</span>
+              <button
+                type="button"
+                className="map-range-panel-action"
+                onClick={onClearRangeRings}
+                disabled={!rangeRingAnchor}
+              >
+                Clear
+              </button>
+            </div>
+
+            <div className="map-range-panel-body">
+              <p className="map-range-panel-hint">
+                Click the map to place or reposition a session-local anchor. Range rings stay on this client only and do not change selection or route state.
+              </p>
+
+              <div className="map-range-panel-units" role="group" aria-label="Range ring units">
+                {(['nm', 'km'] as const).map(unit => (
+                  <button
+                    key={unit}
+                    type="button"
+                    className={`map-range-panel-unit-btn${rangeRingUnit === unit ? ' map-range-panel-unit-btn--active' : ''}`}
+                    onClick={() => onSetRangeRingUnit(unit)}
+                    aria-pressed={rangeRingUnit === unit}
+                  >
+                    {unit.toUpperCase()}
+                  </button>
                 ))}
+              </div>
+
+              {rangeRingAnchor ? (
+                <div className="map-range-panel-row">
+                  <span className="map-range-panel-label">Anchor</span>
+                  <span className="map-range-panel-value mono">{formatPoint(rangeRingAnchor)}</span>
+                </div>
+              ) : (
+                <p className="map-range-panel-hint">No range anchor yet.</p>
+              )}
+
+              <div className="map-range-panel-list">
+                {rangeRingInputs.map((inputValue, index) => (
+                  <label key={`range-ring-input-${index + 1}`} className="map-range-panel-item">
+                    <span className="map-range-panel-label">Ring {index + 1}</span>
+                    <div className="map-range-panel-input-row">
+                      <input
+                        type="number"
+                        min="0.1"
+                        step={rangeRingUnit === 'nm' ? '0.5' : '1'}
+                        className="map-range-panel-input"
+                        aria-label={`Range ring ${index + 1} radius`}
+                        value={inputValue}
+                        onChange={event => onUpdateRangeRingInput(index, event.target.value)}
+                      />
+                      <span className="map-range-panel-unit-label">{rangeRingUnit.toUpperCase()}</span>
+                    </div>
+                  </label>
+                ))}
+              </div>
+
+              {rangeRingAnchor && rangeRingCount === 0 && (
+                <p className="map-range-panel-hint">Set at least one positive radius to render rings from the current anchor.</p>
+              )}
+
+              {rangeRingAnchor && rangeRingCount > 0 && (
+                <p className="map-range-panel-hint">
+                  Showing {rangeRingCount} ring{rangeRingCount === 1 ? '' : 's'}. The next map click repositions the anchor.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {measurementMode && (
+          <div className="map-measure-panel" data-testid="map-measure-panel">
+            <div className="map-measure-panel-header">
+              <span className="map-measure-panel-title">MEASUREMENT TOOL</span>
+              <button
+                type="button"
+                className="map-measure-panel-action"
+                onClick={onClearMeasurement}
+                disabled={measurementPoints.length === 0}
+              >
+                Clear
+              </button>
+            </div>
+
+            {measurementPoints.length === 0 && (
+              <div className="map-measure-panel-body">
+                <p className="map-measure-panel-hint">
+                  Click an anchor point on the map. While measurement mode is active, map clicks capture distance and bearing instead of selection.
+                </p>
+              </div>
+            )}
+
+            {measurementPoints.length === 1 && anchor && (
+              <div className="map-measure-panel-body">
+                <p className="map-measure-panel-hint">
+                  Anchor locked. Click a second point to complete the measurement.
+                </p>
+                <div className="map-measure-panel-row">
+                  <span className="map-measure-panel-label">A</span>
+                  <span className="map-measure-panel-value mono">{formatPoint(anchor)}</span>
+                </div>
+              </div>
+            )}
+
+            {measurementPoints.length >= 2 && anchor && target && distanceKm !== null && distanceNm !== null && bearingDegrees !== null && bearingLabel !== null && (
+              <div className="map-measure-panel-body">
+                <div className="map-measure-panel-row">
+                  <span className="map-measure-panel-label">A</span>
+                  <span className="map-measure-panel-value mono">{formatPoint(anchor)}</span>
+                </div>
+                <div className="map-measure-panel-row">
+                  <span className="map-measure-panel-label">B</span>
+                  <span className="map-measure-panel-value mono">{formatPoint(target)}</span>
+                </div>
+                <div className="map-measure-panel-metrics">
+                  <div className="map-measure-panel-metric">
+                    <span className="map-measure-panel-metric-label">Distance</span>
+                    <span className="map-measure-panel-metric-value">{distanceKm.toFixed(1)} km · {distanceNm.toFixed(1)} nm</span>
+                  </div>
+                  <div className="map-measure-panel-metric">
+                    <span className="map-measure-panel-metric-label">Bearing</span>
+                    <span className="map-measure-panel-metric-value">{bearingDegrees.toFixed(0).padStart(3, '0')}° {bearingLabel}</span>
+                  </div>
+                </div>
+                <p className="map-measure-panel-hint">
+                  The next map click starts a new measurement from a fresh anchor.
+                </p>
               </div>
             )}
           </div>
-        </div>
-      )}
-
-      <div
-        className={`map-measure-toggle${measurementMode ? ' map-measure-toggle--active' : ''}`}
-        onClick={onToggleMeasurement}
-        onKeyDown={event => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault()
-            onToggleMeasurement()
-          }
-        }}
-        role="button"
-        tabIndex={0}
-        aria-pressed={measurementMode}
-        aria-label="Toggle map measurement tool"
-      >
-        <span className="map-measure-toggle-dot" />
-        MEASURE {measurementMode ? 'ON' : 'OFF'}
+        )}
       </div>
-
-      {measurementMode && (
-        <div className="map-measure-panel" data-testid="map-measure-panel">
-          <div className="map-measure-panel-header">
-            <span className="map-measure-panel-title">MEASUREMENT TOOL</span>
-            <button
-              type="button"
-              className="map-measure-panel-action"
-              onClick={onClearMeasurement}
-              disabled={measurementPoints.length === 0}
-            >
-              Clear
-            </button>
-          </div>
-
-          {measurementPoints.length === 0 && (
-            <div className="map-measure-panel-body">
-              <p className="map-measure-panel-hint">
-                Click an anchor point on the map. While measurement mode is active, map clicks capture distance and bearing instead of selection.
-              </p>
-            </div>
-          )}
-
-          {measurementPoints.length === 1 && anchor && (
-            <div className="map-measure-panel-body">
-              <p className="map-measure-panel-hint">
-                Anchor locked. Click a second point to complete the measurement.
-              </p>
-              <div className="map-measure-panel-row">
-                <span className="map-measure-panel-label">A</span>
-                <span className="map-measure-panel-value mono">{formatPoint(anchor)}</span>
-              </div>
-            </div>
-          )}
-
-          {measurementPoints.length >= 2 && anchor && target && distanceKm !== null && distanceNm !== null && bearingDegrees !== null && bearingLabel !== null && (
-            <div className="map-measure-panel-body">
-              <div className="map-measure-panel-row">
-                <span className="map-measure-panel-label">A</span>
-                <span className="map-measure-panel-value mono">{formatPoint(anchor)}</span>
-              </div>
-              <div className="map-measure-panel-row">
-                <span className="map-measure-panel-label">B</span>
-                <span className="map-measure-panel-value mono">{formatPoint(target)}</span>
-              </div>
-              <div className="map-measure-panel-metrics">
-                <div className="map-measure-panel-metric">
-                  <span className="map-measure-panel-metric-label">Distance</span>
-                  <span className="map-measure-panel-metric-value">{distanceKm.toFixed(1)} km · {distanceNm.toFixed(1)} nm</span>
-                </div>
-                <div className="map-measure-panel-metric">
-                  <span className="map-measure-panel-metric-label">Bearing</span>
-                  <span className="map-measure-panel-metric-value">{bearingDegrees.toFixed(0).padStart(3, '0')}° {bearingLabel}</span>
-                </div>
-              </div>
-              <p className="map-measure-panel-hint">
-                The next map click starts a new measurement from a fresh anchor.
-              </p>
-            </div>
-          )}
-        </div>
-      )}
     </>
   )
 }

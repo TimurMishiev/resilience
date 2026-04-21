@@ -31,6 +31,13 @@ import { computeReadiness } from '../lib/formatters'
 import { buildReplayVessel } from '../lib/replayVessel'
 import type { MapPoint } from '../lib/mapPoint'
 import type { MapAnnotation } from '../lib/mapAnnotations'
+import {
+  convertRangeRingInputValue,
+  DEFAULT_RANGE_RING_INPUTS,
+  DEFAULT_RANGE_RING_UNIT,
+  parseRangeRingInputs,
+  type RangeRingUnit,
+} from '../lib/mapRangeRings'
 import { MapOverlayControls } from '../components/map/MapOverlayControls'
 import { MapSelectionPanels } from '../components/map/MapSelectionPanels'
 
@@ -55,9 +62,17 @@ export default function MapPage() {
   const [mapStyle,        setMapStyle]        = useState<MapStyleKey>('tactical')
   const [annotationMode, setAnnotationMode] = useState(false)
   const [annotations, setAnnotations] = useState<MapAnnotation[]>([])
+  const [rangeRingMode, setRangeRingMode] = useState(false)
+  const [rangeRingAnchor, setRangeRingAnchor] = useState<MapPoint | null>(null)
+  const [rangeRingInputs, setRangeRingInputs] = useState<string[]>(() => [...DEFAULT_RANGE_RING_INPUTS])
+  const [rangeRingUnit, setRangeRingUnit] = useState<RangeRingUnit>(DEFAULT_RANGE_RING_UNIT)
   const [measurementMode, setMeasurementMode] = useState(false)
   const [measurementPoints, setMeasurementPoints] = useState<MapPoint[]>([])
   const nextAnnotationIdRef = useRef(1)
+  const rangeRingRadiiKm = useMemo(
+    () => parseRangeRingInputs(rangeRingInputs, rangeRingUnit),
+    [rangeRingInputs, rangeRingUnit],
+  )
 
   // ---------------------------------------------------------------------------
   // Data queries
@@ -213,6 +228,10 @@ export default function MapPage() {
     selectedSignalId,
     annotationMode,
     annotations,
+    rangeRingMode,
+    rangeRingAnchor,
+    rangeRingRadiiKm,
+    rangeRingUnit,
     measurementMode,
     measurementPoints,
     evidenceSignalIds,
@@ -228,6 +247,9 @@ export default function MapPage() {
         lat: point.lat,
         lng: point.lng,
       }])
+    },
+    onMapRangeRingAnchorClick: point => {
+      setRangeRingAnchor(point)
     },
     onMapCoordinateClick: point => {
       setMeasurementPoints(previous => (previous.length >= 2 ? [point] : [...previous, point]))
@@ -334,6 +356,28 @@ export default function MapPage() {
     setAnnotationMode(false)
   }, [])
 
+  const clearRangeRings = useCallback(() => {
+    setRangeRingAnchor(null)
+  }, [])
+
+  const updateRangeRingInput = useCallback((index: number, value: string) => {
+    setRangeRingInputs(previous => previous.map((input, inputIndex) => (
+      inputIndex === index ? value : input
+    )))
+  }, [])
+
+  const setRangeRingDisplayUnit = useCallback((nextUnit: RangeRingUnit) => {
+    if (nextUnit === rangeRingUnit) return
+    setRangeRingInputs(previous => previous.map(inputValue => (
+      convertRangeRingInputValue(inputValue, rangeRingUnit, nextUnit)
+    )))
+    setRangeRingUnit(nextUnit)
+  }, [rangeRingUnit])
+
+  const disableRangeRings = useCallback(() => {
+    setRangeRingMode(false)
+  }, [])
+
   const disableMeasurement = useCallback(() => {
     setMeasurementMode(false)
     setMeasurementPoints([])
@@ -347,8 +391,9 @@ export default function MapPage() {
 
     setMeasurementMode(true)
     setMeasurementPoints([])
+    disableRangeRings()
     disableAnnotations()
-  }, [disableAnnotations, disableMeasurement, measurementMode])
+  }, [disableAnnotations, disableMeasurement, disableRangeRings, measurementMode])
 
   const toggleAnnotations = useCallback(() => {
     if (annotationMode) {
@@ -357,8 +402,20 @@ export default function MapPage() {
     }
 
     disableMeasurement()
+    disableRangeRings()
     setAnnotationMode(true)
-  }, [annotationMode, disableAnnotations, disableMeasurement])
+  }, [annotationMode, disableAnnotations, disableMeasurement, disableRangeRings])
+
+  const toggleRangeRings = useCallback(() => {
+    if (rangeRingMode) {
+      disableRangeRings()
+      return
+    }
+
+    disableMeasurement()
+    disableAnnotations()
+    setRangeRingMode(true)
+  }, [disableAnnotations, disableMeasurement, disableRangeRings, rangeRingMode])
 
   const closePanel = useCallback(() => {
     setPanelForceOpen(false)
@@ -397,6 +454,10 @@ export default function MapPage() {
           disableAnnotations()
           return
         }
+        if (rangeRingMode) {
+          disableRangeRings()
+          return
+        }
         if (contextPanelOpen) {
           closePanel()
         }
@@ -404,7 +465,7 @@ export default function MapPage() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [annotationMode, contextPanelOpen, closePanel, disableAnnotations, disableMeasurement, measurementMode])
+  }, [annotationMode, contextPanelOpen, closePanel, disableAnnotations, disableMeasurement, disableRangeRings, measurementMode, rangeRingMode])
 
   // Resize handle drag — reads starting width from the DOM so the callback
   // has no panelWidth dep and doesn't re-render on every mousemove frame.
@@ -524,6 +585,11 @@ export default function MapPage() {
         showHeatmap={showHeatmap}
         annotationMode={annotationMode}
         annotations={annotations}
+        rangeRingMode={rangeRingMode}
+        rangeRingAnchor={rangeRingAnchor}
+        rangeRingInputs={rangeRingInputs}
+        rangeRingRadiiKm={rangeRingRadiiKm}
+        rangeRingUnit={rangeRingUnit}
         measurementMode={measurementMode}
         measurementPoints={measurementPoints}
         onMapStyleChange={setMapStyle}
@@ -537,6 +603,10 @@ export default function MapPage() {
         onClearAnnotations={clearAnnotations}
         onUpdateAnnotationLabel={updateAnnotationLabel}
         onRemoveAnnotation={removeAnnotation}
+        onToggleRangeRings={toggleRangeRings}
+        onClearRangeRings={clearRangeRings}
+        onUpdateRangeRingInput={updateRangeRingInput}
+        onSetRangeRingUnit={setRangeRingDisplayUnit}
         onToggleMeasurement={toggleMeasurement}
         onClearMeasurement={clearMeasurement}
       />

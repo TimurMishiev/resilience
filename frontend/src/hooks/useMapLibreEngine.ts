@@ -35,6 +35,7 @@ import { useMapOverlays } from './map/useMapOverlays'
 import { useMapSiteLayers } from './map/useMapSiteLayers'
 import { useMapAssetLayers } from './map/useMapAssetLayers'
 import { useMapTrackLayers } from './map/useMapTrackLayers'
+import { useMapRangeRingLayers } from './map/useMapRangeRingLayers'
 import { useMapAnnotationLayers } from './map/useMapAnnotationLayers'
 import { useMapMeasurementLayers } from './map/useMapMeasurementLayers'
 import { useMapSignalLayers } from './map/useMapSignalLayers'
@@ -51,6 +52,7 @@ import type { AssetTrail } from '../lib/telemetry'
 import type { TelemetryMap } from '../lib/telemetry'
 import type { MapPoint } from '../lib/mapPoint'
 import type { MapAnnotation } from '../lib/mapAnnotations'
+import type { RangeRingUnit } from '../lib/mapRangeRings'
 
 export type MapLibreModule = typeof import('maplibre-gl')
 
@@ -88,6 +90,10 @@ export interface MapEngineInput {
   selectedSignalId: string | null
   annotationMode: boolean
   annotations: MapAnnotation[]
+  rangeRingMode: boolean
+  rangeRingAnchor: MapPoint | null
+  rangeRingRadiiKm: number[]
+  rangeRingUnit: RangeRingUnit
   measurementMode:  boolean
   measurementPoints: MapPoint[]
 
@@ -100,6 +106,7 @@ export interface MapEngineInput {
   onAssetClick:  (assetId: string | null) => void
   onSignalClick: (signalId: string | null) => void
   onMapAnnotationClick: (point: MapPoint) => void
+  onMapRangeRingAnchorClick: (point: MapPoint) => void
   onMapCoordinateClick: (point: MapPoint) => void
 }
 
@@ -148,6 +155,10 @@ export function useMapLibreEngine({
   selectedSignalId,
   annotationMode,
   annotations,
+  rangeRingMode,
+  rangeRingAnchor,
+  rangeRingRadiiKm,
+  rangeRingUnit,
   measurementMode,
   measurementPoints,
   evidenceSignalIds,
@@ -156,6 +167,7 @@ export function useMapLibreEngine({
   onAssetClick,
   onSignalClick,
   onMapAnnotationClick,
+  onMapRangeRingAnchorClick,
   onMapCoordinateClick,
 }: MapEngineInput): MapEngineReturn {
   const mapRef           = useRef<MapLibreMap | null>(null)
@@ -170,15 +182,19 @@ export function useMapLibreEngine({
   const onAssetClickRef  = useRef(onAssetClick)
   const onSignalClickRef = useRef(onSignalClick)
   const onMapAnnotationClickRef = useRef(onMapAnnotationClick)
+  const onMapRangeRingAnchorClickRef = useRef(onMapRangeRingAnchorClick)
   const onMapCoordinateClickRef = useRef(onMapCoordinateClick)
   const annotationModeRef = useRef(annotationMode)
+  const rangeRingModeRef = useRef(rangeRingMode)
   const measurementModeRef = useRef(measurementMode)
   useEffect(() => { onSiteClickRef.current   = onSiteClick   }, [onSiteClick])
   useEffect(() => { onAssetClickRef.current  = onAssetClick  }, [onAssetClick])
   useEffect(() => { onSignalClickRef.current = onSignalClick }, [onSignalClick])
   useEffect(() => { onMapAnnotationClickRef.current = onMapAnnotationClick }, [onMapAnnotationClick])
+  useEffect(() => { onMapRangeRingAnchorClickRef.current = onMapRangeRingAnchorClick }, [onMapRangeRingAnchorClick])
   useEffect(() => { onMapCoordinateClickRef.current = onMapCoordinateClick }, [onMapCoordinateClick])
   useEffect(() => { annotationModeRef.current = annotationMode }, [annotationMode])
+  useEffect(() => { rangeRingModeRef.current = rangeRingMode }, [rangeRingMode])
   useEffect(() => { measurementModeRef.current = measurementMode }, [measurementMode])
   useEffect(() => { mapStyleRef.current = mapStyle }, [mapStyle])
 
@@ -267,9 +283,17 @@ export function useMapLibreEngine({
     evidenceSignalIds,
   })
 
-  // Annotations paint above signals but below measurement geometry. Modes are
-  // mutually exclusive at the page layer, so only one tool's overlay is live
-  // at a time; the ordering here governs residual pins left from a prior mode.
+  // Range rings and annotations paint above signals; measurement stays topmost.
+  // The page keeps the tools mutually exclusive while active, but the ordering
+  // here governs residual overlays left behind after a tool is toggled off.
+  useMapRangeRingLayers({
+    mapRef,
+    mapLoaded,
+    anchor: rangeRingAnchor,
+    radiiKm: rangeRingRadiiKm,
+    unit: rangeRingUnit,
+  })
+
   useMapAnnotationLayers({
     mapRef,
     mapLoaded,
@@ -299,6 +323,13 @@ export function useMapLibreEngine({
       }
       if (annotationModeRef.current) {
         onMapAnnotationClickRef.current({
+          lng: event.lngLat.lng,
+          lat: event.lngLat.lat,
+        })
+        return
+      }
+      if (rangeRingModeRef.current) {
+        onMapRangeRingAnchorClickRef.current({
           lng: event.lngLat.lng,
           lat: event.lngLat.lat,
         })
