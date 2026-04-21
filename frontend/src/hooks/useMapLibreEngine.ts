@@ -49,7 +49,7 @@ import {
 import { preloadMapRuntime } from '../lib/preloadRoutes'
 import type { AssetTrail } from '../lib/telemetry'
 import type { TelemetryMap } from '../lib/telemetry'
-import type { MapMeasurementPoint } from '../lib/mapMeasurement'
+import type { MapPoint } from '../lib/mapPoint'
 import type { MapAnnotation } from '../lib/mapAnnotations'
 
 export type MapLibreModule = typeof import('maplibre-gl')
@@ -89,7 +89,7 @@ export interface MapEngineInput {
   annotationMode: boolean
   annotations: MapAnnotation[]
   measurementMode:  boolean
-  measurementPoints: MapMeasurementPoint[]
+  measurementPoints: MapPoint[]
 
   // Evidence-linked entity IDs (from signal rule matches)
   evidenceSignalIds: string[]
@@ -99,8 +99,8 @@ export interface MapEngineInput {
   onSiteClick:   (siteId: string | null) => void
   onAssetClick:  (assetId: string | null) => void
   onSignalClick: (signalId: string | null) => void
-  onMapAnnotationClick: (point: MapMeasurementPoint) => void
-  onMapCoordinateClick: (point: MapMeasurementPoint) => void
+  onMapAnnotationClick: (point: MapPoint) => void
+  onMapCoordinateClick: (point: MapPoint) => void
 }
 
 export interface MapEngineReturn {
@@ -267,6 +267,9 @@ export function useMapLibreEngine({
     evidenceSignalIds,
   })
 
+  // Annotations paint above signals but below measurement geometry. Modes are
+  // mutually exclusive at the page layer, so only one tool's overlay is live
+  // at a time; the ordering here governs residual pins left from a prior mode.
   useMapAnnotationLayers({
     mapRef,
     mapLoaded,

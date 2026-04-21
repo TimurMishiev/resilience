@@ -12,40 +12,41 @@ Last updated: 2026-04-20
 
 Phase 7 — Advanced Geospatial Tools
 
-(Phase 4 — Debrief closed. Phase 5 — Evidence Threading complete. Phase 6 Slice 6-1 fully shipped and closed in `aa07c91`. Phase 7 Slice 7-1A shipped in `4ea3def`, and Phase 7 Slice 7-1A-followup shipped in `37f7a40`; the current dirty tree is the next map-only tool slice.)
+(Phase 4 — Debrief closed. Phase 5 — Evidence Threading complete. Phase 6 Slice 6-1 fully shipped and closed in `aa07c91`. Phase 7 Slice 7-1A shipped in `4ea3def`, Phase 7 Slice 7-1A-followup shipped in `37f7a40`, and Phase 7 Slice 7-1B shipped in `5260480`.)
 
 ## Current Slice
 
-**Phase 7 Slice 7-1B — temporary map annotations (UNCOMMITTED).**
+**Phase 7 Slice 7-1B-followup — post-push hardening from mentor review (UNCOMMITTED).**
 
-Objective: add a second small operator-grade `/map` tool after measurement: session-local temporary pins with editable labels, no persistence, no route state, and no globe parity.
+Objective: close the P2/P3 items surfaced by the post-push review of `5260480` without widening scope. Strictly additive hardening on shipped annotation code — no product-behavior change.
 
 Current implementation state:
-- `/map` now has an explicit annotation mode separate from measurement mode
-- while annotation mode is active, map clicks drop session-local pins instead of changing selection
-- temporary pins render as labeled map overlays through a dedicated annotation layer hook
-- the overlay controls expose rename / remove / clear-all management for the current client session only
-- adapter coverage now proves annotation layers are added after the signal stack, mirroring the measurement paint-order guard
-- page-level tests now prove annotation / measurement mode mutual exclusivity and the `Clear all` counter reset path
+- new `frontend/src/lib/mapPoint.ts` exporting a neutral `MapPoint = { lat: number; lng: number }`
+- `MapMeasurementPoint` retired; `mapMeasurement.ts`, `useMapMeasurementLayers.ts`, `useMapLibreEngine.ts`, `MapOverlayControls.tsx`, `MapPage.tsx` now depend on `MapPoint`
+- `onMapAnnotationClick` + `onMapCoordinateClick` no longer leak measurement semantics into the engine contract
+- annotation label input now uses a static `aria-label="Annotation label"` and `maxLength={120}`
+- ANNOTATE and MEASURE toggle divs are keyboard-operable (`tabIndex={0}`, Enter/Space handlers) and expose `aria-pressed` state
+- annotation hook ordering in `useMapLibreEngine` now carries a one-line comment explaining why annotations paint below measurement
+- new adapter test proves annotation layers survive a style swap and the annotation source is re-seeded after `style.load`
 
 Boundaries held:
 - no backend changes
 - no replay/trust/audit contract changes
-- no persistence, URL state, or collaboration semantics
-- no globe work
+- no product UX change (a11y + type honesty only; rename `MapMeasurementPoint` → `MapPoint` is internal)
+- no keyboard-a11y sweep of the other `<div role="button">` toggles (coverage/chokepoints/trails/signals/heatmap). Deliberately scoped to the two toggles the mentor review flagged.
 
 ## Current Repo State
 
-- Latest committed product slice: `37f7a40` — Phase 7 Slice 7-1A-followup: measurement overlay paint-order hardening
-- Current tip commit: `37f7a40`
-- Working tree: dirty on the active 7-1B tranche plus this handoff update
+- Latest committed product slice: `5260480` — Phase 7 Slice 7-1B: temporary map annotations
+- Current tip commit: `5260480`
+- Working tree: dirty on the active 7-1B-followup tranche plus this handoff update
 - Branch state: `main` even with `origin/main`
 - Dirty/tranche files right now:
   - `frontend/src/components/map/MapOverlayControls.tsx`
+  - `frontend/src/hooks/map/useMapMeasurementLayers.ts`
   - `frontend/src/hooks/useMapLibreEngine.ts`
-  - `frontend/src/hooks/map/useMapAnnotationLayers.ts`
-  - `frontend/src/index.css`
-  - `frontend/src/lib/mapAnnotations.ts`
+  - `frontend/src/lib/mapMeasurement.ts`
+  - `frontend/src/lib/mapPoint.ts` (new)
   - `frontend/src/pages/MapPage.tsx`
   - `frontend/src/test/MapPage.test.tsx`
   - `frontend/src/test/useMapLibreEngine.test.ts`
@@ -56,13 +57,15 @@ Boundaries held:
 Sequenced:
 - **7-1A** — `/map` measurement tool (**shipped** in `4ea3def`)
 - **7-1A-followup** — measurement overlay paint-order hardening (**shipped** in `37f7a40`)
-- **7-1B** — temporary map annotations (**current uncommitted tranche**)
-- **7-1C** — other justified geospatial utilities only if they solve a real operator problem and are explicitly scoped
+- **7-1B** — temporary map annotations (**shipped** in `5260480`)
+- **7-1B-followup** — post-push hardening: `MapPoint` extraction, static aria-label + maxLength, keyboard a11y on both map tool toggles, hook-order comment, style-swap persistence test (**current uncommitted tranche**)
+- **7-1C** — other justified geospatial utilities only if they solve a real operator problem and are explicitly scoped (**not yet chosen**)
 
 ## Shipped In This Phase (Phase 7)
 
 - `4ea3def` — Phase 7 Slice 7-1A: `/map` measurement tool (session-local distance/bearing, no backend persistence, no globe parity)
 - `37f7a40` — Phase 7 Slice 7-1A-followup: measurement overlay paint-order hardening (measurement geometry paints above dense signal layers; direct adapter proof added)
+- `5260480` — Phase 7 Slice 7-1B: temporary map annotations (session-local pins with editable labels, explicit annotation mode, paint-order guard, mutual-exclusivity proof, and clear-all counter reset)
 
 ## Phase 6 — Closed Slice Plan (historical context)
 
@@ -159,18 +162,19 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 
 ## In Progress
 
-- **Phase 7 Slice 7-1B — temporary map annotations**
-  - annotation mode now owns map clicks separately from measurement mode
-  - session-local pins render as labeled overlays and stay client-local
-  - overlay controls support rename / remove / clear-all without adding route state
-  - tests now pin paint-order visibility and mode exclusivity directly
+- **Phase 7 Slice 7-1B-followup — post-push hardening**
+  - `MapMeasurementPoint` replaced with neutral `MapPoint` across mapMeasurement, useMapMeasurementLayers, useMapLibreEngine, MapOverlayControls, MapPage
+  - static aria-label on annotation input; `maxLength={120}` added
+  - `tabIndex={0}` + Enter/Space keyboard handlers + `aria-pressed` on ANNOTATE and MEASURE toggles
+  - one-line hook-ordering comment at the annotation/measurement call sites in `useMapLibreEngine`
+  - new adapter test proves annotation layers + source survive a style swap
   - focused + full frontend validation is green
   - next immediate step is `gate`, then commit if review stays clean
 
 ## Next
 
-- **Immediate next step:** run `gate` on the 7-1B temporary-annotations tranche, then commit if the slice stays clean.
-- **After 7-1B ships, recommended next slice:** **7-1C — other justified geospatial utilities only if they solve a real operator problem and are explicitly scoped.**
+- **Immediate next step:** choose a concrete `7-1C` scope before further implementation.
+- **Recommended next slice shape:** a single justified geospatial utility with a narrow stop point; do not treat “7-1C” itself as scope.
 - **Explicit boundary for post-7-1B work:** do not jump straight to persistence, collaboration, or a generalized geospatial workspace. Keep Phase 7 additive and tool-specific.
 - **Watch the first real `frontend-perf` CI run on `aa07c91` (or its first PR descendant).** Watch points:
     - 1k tier: budgets are 15/25/30ms; current local p95-of-p95s is 10.2ms. Headroom is ~2×. CI runner variance may eat into that.
@@ -195,7 +199,18 @@ cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/pages/
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (Phase 7 Slice 7-1B, uncommitted, 2026-04-20)
+## Last Validation Results (Phase 7 Slice 7-1B-followup, uncommitted, 2026-04-20)
+
+- Focused annotation validation:
+  - `npx vitest run src/test/MapPage.test.tsx src/test/useMapLibreEngine.test.ts` → **73 / 73 pass**
+- Full frontend validation:
+  - `npx vitest run` → **616 / 616 pass across 84 files**
+  - `npx tsc -p tsconfig.app.json --noEmit` → **0 errors**
+  - touched-file ESLint on 7-1B-followup files → **0 issues**
+  - `git diff --check` → **clean**
+- No backend validation was required for this slice because the tranche is frontend-only and introduces no API/schema/runtime-backend changes.
+
+### Prior committed product validation (Phase 7 Slice 7-1B, shipped in `5260480`, 2026-04-20)
 
 - Focused annotation validation:
   - `npx vitest run src/test/MapPage.test.tsx src/test/useMapLibreEngine.test.ts` → **72 / 72 pass**
@@ -206,7 +221,7 @@ git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
   - `git diff --check` → **clean**
 - No backend validation was required for this slice because the tranche is frontend-only and introduces no API/schema/runtime-backend changes.
 
-### Most recent committed product validation (Phase 7 Slice 7-1A-followup, shipped in `37f7a40`, 2026-04-20)
+### Prior committed product validation (Phase 7 Slice 7-1A-followup, shipped in `37f7a40`, 2026-04-20)
 
 - Focused follow-up validation:
   - `npx vitest run src/test/useMapLibreEngine.test.ts src/test/MapPage.test.tsx` → **66 / 66 pass**

@@ -3,13 +3,13 @@ import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl'
 import {
   buildMeasurementLineFeatureCollection,
   buildMeasurementPointFeatureCollection,
-  type MapMeasurementPoint,
 } from '../../lib/mapMeasurement'
+import type { MapPoint } from '../../lib/mapPoint'
 
 export interface MapMeasurementLayersInput {
   mapRef: React.RefObject<MapLibreMap | null>
   mapLoaded: boolean
-  points: MapMeasurementPoint[]
+  points: MapPoint[]
 }
 
 export function useMapMeasurementLayers({

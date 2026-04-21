@@ -1,20 +1,16 @@
 import { haversineKm } from './coverage'
-
-export type MapMeasurementPoint = {
-  lat: number
-  lng: number
-}
+import type { MapPoint } from './mapPoint'
 
 export function measurementDistanceKm(
-  start: MapMeasurementPoint,
-  end: MapMeasurementPoint,
+  start: MapPoint,
+  end: MapPoint,
 ): number {
   return haversineKm(start.lat, start.lng, end.lat, end.lng)
 }
 
 export function measurementBearingDegrees(
-  start: MapMeasurementPoint,
-  end: MapMeasurementPoint,
+  start: MapPoint,
+  end: MapPoint,
 ): number {
   const toRad = (degrees: number) => (degrees * Math.PI) / 180
   const toDeg = (radians: number) => (radians * 180) / Math.PI
@@ -37,7 +33,7 @@ export function measurementBearingCardinal(bearingDegrees: number): string {
 }
 
 export function buildMeasurementPointFeatureCollection(
-  points: MapMeasurementPoint[],
+  points: MapPoint[],
 ): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
@@ -56,7 +52,7 @@ export function buildMeasurementPointFeatureCollection(
 }
 
 export function buildMeasurementLineFeatureCollection(
-  points: MapMeasurementPoint[],
+  points: MapPoint[],
 ): GeoJSON.FeatureCollection {
   if (points.length < 2) {
     return {

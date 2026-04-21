@@ -651,6 +651,34 @@ describe('useMapLibreEngine adapter', () => {
       expect(onMapAnnotationClick).toHaveBeenCalledWith({ lng: -122.4194, lat: 37.7749 })
       expect(onSiteClick).not.toHaveBeenCalled()
     })
+
+    it('re-adds annotation layers and reseeds existing pins after a style swap', async () => {
+      const containerRef = makeContainerRef()
+      const annotations = [
+        { id: 'annotation-1', label: 'Ingress', lat: 37.7749, lng: -122.4194 },
+      ]
+      const hook = await bootMap(facade, containerRef, defaultInput(containerRef, { annotations }))
+
+      expect(facade.layerIds.has('map-annotation-points')).toBe(true)
+      expect(facade.layerIds.has('map-annotation-labels')).toBe(true)
+
+      await act(async () => {
+        hook.rerender(defaultInput(containerRef, { mapStyle: 'satellite', annotations }))
+        await Promise.resolve()
+      })
+
+      await act(async () => {
+        facade.fire('style.load')
+        await Promise.resolve()
+      })
+
+      expect(facade.layerIds.has('map-annotation-points')).toBe(true)
+      expect(facade.layerIds.has('map-annotation-labels')).toBe(true)
+
+      const annotationAddSourceCalls = facade.calls
+        .filter(call => call.method === 'addSource' && call.args[0] === 'map-annotations')
+      expect(annotationAddSourceCalls.length).toBeGreaterThanOrEqual(2)
+    })
   })
 
   // ── Cross-entity linked ring filters ──────────────────────────────────────

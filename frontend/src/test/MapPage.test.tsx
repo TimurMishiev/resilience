@@ -881,7 +881,7 @@ describe('MapPage selection routing', () => {
     expect(screen.getByDisplayValue('Mark 2')).toBeInTheDocument()
     expect(screen.getByTestId('location-search')).toBeEmptyDOMElement()
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'Annotation label Mark 1' }), {
+    fireEvent.change(screen.getByDisplayValue('Mark 1'), {
       target: { value: 'Ingress point' },
     })
 

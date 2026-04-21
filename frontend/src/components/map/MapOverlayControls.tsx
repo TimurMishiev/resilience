@@ -5,8 +5,8 @@ import {
   measurementBearingCardinal,
   measurementBearingDegrees,
   measurementDistanceKm,
-  type MapMeasurementPoint,
 } from '../../lib/mapMeasurement'
+import type { MapPoint } from '../../lib/mapPoint'
 import type { MapAnnotation } from '../../lib/mapAnnotations'
 
 interface MapOverlayControlsProps {
@@ -25,7 +25,7 @@ interface MapOverlayControlsProps {
   annotationMode: boolean
   annotations: MapAnnotation[]
   measurementMode: boolean
-  measurementPoints: MapMeasurementPoint[]
+  measurementPoints: MapPoint[]
   onMapStyleChange: (style: MapStyleKey) => void
   onToggleCoverage: () => void
   onToggleChokepoints: () => void
@@ -78,7 +78,7 @@ export function MapOverlayControls({
   const distanceNm = distanceKm === null ? null : distanceKm / 1.852
   const bearingDegrees = anchor && target ? measurementBearingDegrees(anchor, target) : null
   const bearingLabel = bearingDegrees === null ? null : measurementBearingCardinal(bearingDegrees)
-  const formatPoint = (point: MapMeasurementPoint) => `${point.lat.toFixed(4)}, ${point.lng.toFixed(4)}`
+  const formatPoint = (point: MapPoint) => `${point.lat.toFixed(4)}, ${point.lng.toFixed(4)}`
 
   return (
     <>
@@ -271,7 +271,15 @@ export function MapOverlayControls({
       <div
         className={`map-annotate-toggle${annotationMode ? ' map-annotate-toggle--active' : ''}`}
         onClick={onToggleAnnotations}
+        onKeyDown={event => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            onToggleAnnotations()
+          }
+        }}
         role="button"
+        tabIndex={0}
+        aria-pressed={annotationMode}
         aria-label="Toggle map annotation tool"
       >
         <span className="map-annotate-toggle-dot" />
@@ -306,7 +314,8 @@ export function MapOverlayControls({
                     <input
                       type="text"
                       className="map-annotate-panel-input"
-                      aria-label={`Annotation label ${annotation.label}`}
+                      aria-label="Annotation label"
+                      maxLength={120}
                       value={annotation.label}
                       onChange={event => onUpdateAnnotationLabel(annotation.id, event.target.value)}
                     />
@@ -331,7 +340,15 @@ export function MapOverlayControls({
       <div
         className={`map-measure-toggle${measurementMode ? ' map-measure-toggle--active' : ''}`}
         onClick={onToggleMeasurement}
+        onKeyDown={event => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            onToggleMeasurement()
+          }
+        }}
         role="button"
+        tabIndex={0}
+        aria-pressed={measurementMode}
         aria-label="Toggle map measurement tool"
       >
         <span className="map-measure-toggle-dot" />

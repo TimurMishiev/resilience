@@ -29,7 +29,7 @@ import { buildCoverageCircles } from '../lib/coverage'
 import { parseEntitySelectionRoute } from '../lib/entitySelectionRoute'
 import { computeReadiness } from '../lib/formatters'
 import { buildReplayVessel } from '../lib/replayVessel'
-import type { MapMeasurementPoint } from '../lib/mapMeasurement'
+import type { MapPoint } from '../lib/mapPoint'
 import type { MapAnnotation } from '../lib/mapAnnotations'
 import { MapOverlayControls } from '../components/map/MapOverlayControls'
 import { MapSelectionPanels } from '../components/map/MapSelectionPanels'
@@ -56,7 +56,7 @@ export default function MapPage() {
   const [annotationMode, setAnnotationMode] = useState(false)
   const [annotations, setAnnotations] = useState<MapAnnotation[]>([])
   const [measurementMode, setMeasurementMode] = useState(false)
-  const [measurementPoints, setMeasurementPoints] = useState<MapMeasurementPoint[]>([])
+  const [measurementPoints, setMeasurementPoints] = useState<MapPoint[]>([])
   const nextAnnotationIdRef = useRef(1)
 
   // ---------------------------------------------------------------------------
