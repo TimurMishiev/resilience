@@ -198,6 +198,8 @@ function defaultInput(
     selectedSiteId: null,
     selectedAssetId: null,
     selectedSignalId: null,
+    annotationMode: false,
+    annotations: [],
     measurementMode: false,
     measurementPoints: [],
     evidenceSignalIds: [],
@@ -205,6 +207,7 @@ function defaultInput(
     onSiteClick: vi.fn(),
     onAssetClick: vi.fn(),
     onSignalClick: vi.fn(),
+    onMapAnnotationClick: vi.fn(),
     onMapCoordinateClick: vi.fn(),
     ...overrides,
   }
@@ -568,6 +571,84 @@ describe('useMapLibreEngine adapter', () => {
       })
 
       expect(onMapCoordinateClick).toHaveBeenCalledWith({ lng: -122.4194, lat: 37.7749 })
+      expect(onSiteClick).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('annotation mode', () => {
+    it('creates annotation layers on init and updates the annotation source when pins change', async () => {
+      const containerRef = makeContainerRef()
+      const hook = await bootMap(facade, containerRef, defaultInput(containerRef))
+
+      expect(facade.layerIds.has('map-annotation-points')).toBe(true)
+      expect(facade.layerIds.has('map-annotation-labels')).toBe(true)
+
+      facade.calls.length = 0
+
+      await act(async () => {
+        hook.rerender(defaultInput(containerRef, {
+          annotations: [
+            { id: 'annotation-1', label: 'Ingress', lat: 37.7749, lng: -122.4194 },
+            { id: 'annotation-2', label: 'Fallback', lat: 34.0522, lng: -118.2437 },
+          ],
+        }))
+      })
+
+      expect(facade.calls).toContainEqual({
+        method: 'setData',
+        args: [
+          'map-annotations',
+          expect.objectContaining({
+            type: 'FeatureCollection',
+            features: [
+              expect.objectContaining({
+                properties: expect.objectContaining({ id: 'annotation-1', label: 'Ingress' }),
+              }),
+              expect.objectContaining({
+                properties: expect.objectContaining({ id: 'annotation-2', label: 'Fallback' }),
+              }),
+            ],
+          }),
+        ],
+      })
+    })
+
+    it('adds annotation layers after the signal stack so annotations stay visible over dense signals', async () => {
+      const containerRef = makeContainerRef()
+      await bootMap(facade, containerRef, defaultInput(containerRef))
+
+      const addedLayerIds = facade.calls
+        .filter(call => call.method === 'addLayer')
+        .map(call => String(call.args[0]))
+
+      expect(addedLayerIds.indexOf('map-annotation-points')).toBeGreaterThan(addedLayerIds.indexOf('signal-symbols'))
+      expect(addedLayerIds.indexOf('map-annotation-labels')).toBeGreaterThan(addedLayerIds.indexOf('selected-signal-symbol'))
+    })
+
+    it('routes map clicks to annotation capture instead of selection when annotation mode is active', async () => {
+      const onMapAnnotationClick = vi.fn()
+      const onSiteClick = vi.fn()
+      const containerRef = makeContainerRef()
+
+      await bootMap(facade, containerRef, defaultInput(containerRef, {
+        annotationMode: true,
+        onMapAnnotationClick,
+        onSiteClick,
+      }))
+
+      facade.setQueryRenderedFeaturesResult([{
+        layer: { id: 'site-circles' },
+        properties: { id: 'site-1' },
+      }])
+
+      await act(async () => {
+        facade.fire('click', {
+          point: { x: 40, y: 60 },
+          lngLat: { lng: -122.4194, lat: 37.7749 },
+        })
+      })
+
+      expect(onMapAnnotationClick).toHaveBeenCalledWith({ lng: -122.4194, lat: 37.7749 })
       expect(onSiteClick).not.toHaveBeenCalled()
     })
   })

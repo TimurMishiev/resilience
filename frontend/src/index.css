@@ -2022,10 +2022,10 @@ body {
   background: linear-gradient(135deg, #20a39e, #ef4444);
 }
 
-.map-measure-toggle {
+.map-measure-toggle,
+.map-annotate-toggle {
   position: absolute;
   bottom: 36px;
-  left: 250px;
   z-index: 10;
   display: flex;
   align-items: center;
@@ -2043,7 +2043,16 @@ body {
   transition: border-color 0.15s ease, color 0.15s ease;
 }
 
-.map-measure-toggle:hover {
+.map-measure-toggle {
+  left: 250px;
+}
+
+.map-annotate-toggle {
+  left: 364px;
+}
+
+.map-measure-toggle:hover,
+.map-annotate-toggle:hover {
   border-color: rgba(255, 255, 255, 0.25);
 }
 
@@ -2052,14 +2061,21 @@ body {
   border-color: rgba(143, 214, 255, 0.45);
 }
 
-.map-measure-toggle-dot {
+.map-annotate-toggle--active {
+  color: #ffe3c2;
+  border-color: rgba(249, 115, 22, 0.45);
+}
+
+.map-measure-toggle-dot,
+.map-annotate-toggle-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: currentColor;
 }
 
-.map-measure-panel {
+.map-measure-panel,
+.map-annotate-panel {
   position: absolute;
   bottom: 64px;
   left: 304px;
@@ -2076,7 +2092,16 @@ body {
   backdrop-filter: blur(8px);
 }
 
-.map-measure-panel-header {
+.map-measure-panel {
+  border-color: rgba(143, 214, 255, 0.18);
+}
+
+.map-annotate-panel {
+  border-color: rgba(249, 115, 22, 0.2);
+}
+
+.map-measure-panel-header,
+.map-annotate-panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2090,7 +2115,15 @@ body {
   letter-spacing: 0.08em;
 }
 
-.map-measure-panel-action {
+.map-annotate-panel-title {
+  color: #ffe3c2;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.map-measure-panel-action,
+.map-annotate-panel-action {
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(255, 255, 255, 0.04);
   border-radius: 6px;
@@ -2101,12 +2134,14 @@ body {
   cursor: pointer;
 }
 
-.map-measure-panel-action:disabled {
+.map-measure-panel-action:disabled,
+.map-annotate-panel-action:disabled {
   opacity: 0.45;
   cursor: default;
 }
 
-.map-measure-panel-body {
+.map-measure-panel-body,
+.map-annotate-panel-body {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -2154,6 +2189,36 @@ body {
   color: #b9c7d3;
   font-size: 11px;
   line-height: 1.45;
+}
+
+.map-annotate-panel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.map-annotate-panel-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+}
+
+.map-annotate-panel-input {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(17, 24, 39, 0.72);
+  border-radius: 6px;
+  color: #ecf3f8;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.map-annotate-panel-coordinates {
+  color: #cbd5df;
+  font-size: 11px;
 }
 
 /* Trail window selector — displayed next to TRAILS toggle during replay */

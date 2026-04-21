@@ -30,6 +30,7 @@ import { parseEntitySelectionRoute } from '../lib/entitySelectionRoute'
 import { computeReadiness } from '../lib/formatters'
 import { buildReplayVessel } from '../lib/replayVessel'
 import type { MapMeasurementPoint } from '../lib/mapMeasurement'
+import type { MapAnnotation } from '../lib/mapAnnotations'
 import { MapOverlayControls } from '../components/map/MapOverlayControls'
 import { MapSelectionPanels } from '../components/map/MapSelectionPanels'
 
@@ -52,8 +53,11 @@ export default function MapPage() {
   const [showTrails,      setShowTrails]      = useState(true)
   const [trailWindowMinutes, setTrailWindowMinutes] = useState(30)
   const [mapStyle,        setMapStyle]        = useState<MapStyleKey>('tactical')
+  const [annotationMode, setAnnotationMode] = useState(false)
+  const [annotations, setAnnotations] = useState<MapAnnotation[]>([])
   const [measurementMode, setMeasurementMode] = useState(false)
   const [measurementPoints, setMeasurementPoints] = useState<MapMeasurementPoint[]>([])
+  const nextAnnotationIdRef = useRef(1)
 
   // ---------------------------------------------------------------------------
   // Data queries
@@ -207,6 +211,8 @@ export default function MapPage() {
     selectedSiteId,
     selectedAssetId,
     selectedSignalId,
+    annotationMode,
+    annotations,
     measurementMode,
     measurementPoints,
     evidenceSignalIds,
@@ -214,6 +220,15 @@ export default function MapPage() {
     onSiteClick,
     onAssetClick,
     onSignalClick,
+    onMapAnnotationClick: point => {
+      const nextId = nextAnnotationIdRef.current++
+      setAnnotations(previous => [...previous, {
+        id: `annotation-${nextId}`,
+        label: `Mark ${nextId}`,
+        lat: point.lat,
+        lng: point.lng,
+      }])
+    },
     onMapCoordinateClick: point => {
       setMeasurementPoints(previous => (previous.length >= 2 ? [point] : [...previous, point]))
     },
@@ -300,6 +315,25 @@ export default function MapPage() {
     setMeasurementPoints([])
   }, [])
 
+  const clearAnnotations = useCallback(() => {
+    nextAnnotationIdRef.current = 1
+    setAnnotations([])
+  }, [])
+
+  const updateAnnotationLabel = useCallback((annotationId: string, label: string) => {
+    setAnnotations(previous => previous.map(annotation => (
+      annotation.id === annotationId ? { ...annotation, label } : annotation
+    )))
+  }, [])
+
+  const removeAnnotation = useCallback((annotationId: string) => {
+    setAnnotations(previous => previous.filter(annotation => annotation.id !== annotationId))
+  }, [])
+
+  const disableAnnotations = useCallback(() => {
+    setAnnotationMode(false)
+  }, [])
+
   const disableMeasurement = useCallback(() => {
     setMeasurementMode(false)
     setMeasurementPoints([])
@@ -313,7 +347,18 @@ export default function MapPage() {
 
     setMeasurementMode(true)
     setMeasurementPoints([])
-  }, [disableMeasurement, measurementMode])
+    disableAnnotations()
+  }, [disableAnnotations, disableMeasurement, measurementMode])
+
+  const toggleAnnotations = useCallback(() => {
+    if (annotationMode) {
+      disableAnnotations()
+      return
+    }
+
+    disableMeasurement()
+    setAnnotationMode(true)
+  }, [annotationMode, disableAnnotations, disableMeasurement])
 
   const closePanel = useCallback(() => {
     setPanelForceOpen(false)
@@ -348,6 +393,10 @@ export default function MapPage() {
           disableMeasurement()
           return
         }
+        if (annotationMode) {
+          disableAnnotations()
+          return
+        }
         if (contextPanelOpen) {
           closePanel()
         }
@@ -355,7 +404,7 @@ export default function MapPage() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [contextPanelOpen, closePanel, disableMeasurement, measurementMode])
+  }, [annotationMode, contextPanelOpen, closePanel, disableAnnotations, disableMeasurement, measurementMode])
 
   // Resize handle drag — reads starting width from the DOM so the callback
   // has no panelWidth dep and doesn't re-render on every mousemove frame.
@@ -473,6 +522,8 @@ export default function MapPage() {
         trailWindowMinutes={trailWindowMinutes}
         showSignals={showSignals}
         showHeatmap={showHeatmap}
+        annotationMode={annotationMode}
+        annotations={annotations}
         measurementMode={measurementMode}
         measurementPoints={measurementPoints}
         onMapStyleChange={setMapStyle}
@@ -482,6 +533,10 @@ export default function MapPage() {
         onTrailWindowChange={setTrailWindowMinutes}
         onToggleSignals={() => setShowSignals(v => !v)}
         onToggleHeatmap={() => setShowHeatmap(v => !v)}
+        onToggleAnnotations={toggleAnnotations}
+        onClearAnnotations={clearAnnotations}
+        onUpdateAnnotationLabel={updateAnnotationLabel}
+        onRemoveAnnotation={removeAnnotation}
         onToggleMeasurement={toggleMeasurement}
         onClearMeasurement={clearMeasurement}
       />

@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { act, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -83,12 +83,15 @@ const engineState = vi.hoisted(() => ({
     showSignals: boolean
     showHeatmap: boolean
     showChokepoints: boolean
+    annotationMode: boolean
+    annotations: Array<{ id: string; label: string }>
     measurementMode: boolean
     chokepoints: Array<{ id: string }>
     breachedSiteIds: Set<string>
     onSiteClick: (siteId: string | null) => void
     onAssetClick: (assetId: string | null) => void
     onSignalClick: (signalId: string | null) => void
+    onMapAnnotationClick: (point: { lng: number; lat: number }) => void
     onMapCoordinateClick: (point: { lng: number; lat: number }) => void
   },
 }))
@@ -198,12 +201,15 @@ vi.mock('../hooks/useMapLibreEngine', () => ({
     showSignals: boolean
     showHeatmap: boolean
     showChokepoints: boolean
+    annotationMode: boolean
+    annotations: Array<{ id: string; label: string }>
     measurementMode: boolean
     chokepoints: Array<{ id: string }>
     breachedSiteIds: Set<string>
     onSiteClick: (siteId: string | null) => void
     onAssetClick: (assetId: string | null) => void
     onSignalClick: (signalId: string | null) => void
+    onMapAnnotationClick: (point: { lng: number; lat: number }) => void
     onMapCoordinateClick: (point: { lng: number; lat: number }) => void
   }) => {
     engineState.latestInput = input
@@ -851,6 +857,97 @@ describe('MapPage selection routing', () => {
 
     expect(screen.getByTestId('map-measure-panel')).toHaveTextContent('Click an anchor point on the map')
     expect(screen.queryByText('Distance')).not.toBeInTheDocument()
+  })
+
+  it('captures and manages session-local annotations without changing route selection', async () => {
+    renderMapPage('/map')
+
+    expect(screen.queryByTestId('map-annotate-panel')).toBeNull()
+    expect(engineState.latestInput?.annotationMode).toBe(false)
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Toggle map annotation tool' }).click()
+    })
+
+    expect(await screen.findByTestId('map-annotate-panel')).toHaveTextContent('No temporary annotations yet.')
+    expect(engineState.latestInput?.annotationMode).toBe(true)
+
+    await act(async () => {
+      engineState.latestInput?.onMapAnnotationClick({ lat: 37.7749, lng: -122.4194 })
+      engineState.latestInput?.onMapAnnotationClick({ lat: 34.0522, lng: -118.2437 })
+    })
+
+    expect(screen.getByDisplayValue('Mark 1')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Mark 2')).toBeInTheDocument()
+    expect(screen.getByTestId('location-search')).toBeEmptyDOMElement()
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Annotation label Mark 1' }), {
+      target: { value: 'Ingress point' },
+    })
+
+    expect(screen.getByDisplayValue('Ingress point')).toBeInTheDocument()
+
+    await act(async () => {
+      screen.getAllByRole('button', { name: 'Remove' })[1]?.click()
+    })
+
+    expect(screen.queryByDisplayValue('Mark 2')).not.toBeInTheDocument()
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Clear all' }).click()
+    })
+
+    expect(screen.getByTestId('map-annotate-panel')).toHaveTextContent('No temporary annotations yet.')
+
+    await act(async () => {
+      engineState.latestInput?.onMapAnnotationClick({ lat: 40.7128, lng: -74.006 })
+    })
+
+    expect(screen.getByDisplayValue('Mark 1')).toBeInTheDocument()
+  })
+
+  it('keeps annotation and measurement modes mutually exclusive', async () => {
+    renderMapPage('/map')
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Toggle map annotation tool' }).click()
+    })
+
+    expect(await screen.findByTestId('map-annotate-panel')).toBeInTheDocument()
+    expect(screen.queryByTestId('map-measure-panel')).toBeNull()
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Toggle map measurement tool' }).click()
+    })
+
+    expect(await screen.findByTestId('map-measure-panel')).toBeInTheDocument()
+    expect(screen.queryByTestId('map-annotate-panel')).toBeNull()
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Toggle map annotation tool' }).click()
+    })
+
+    expect(await screen.findByTestId('map-annotate-panel')).toBeInTheDocument()
+    expect(screen.queryByTestId('map-measure-panel')).toBeNull()
+  })
+
+  it('turns annotation mode off on Escape before closing the docked panel', async () => {
+    renderMapPage('/map?site_id=site-1')
+
+    expect(await screen.findByRole('complementary', { name: 'Map selection detail' })).toBeInTheDocument()
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Toggle map annotation tool' }).click()
+    })
+
+    expect(await screen.findByTestId('map-annotate-panel')).toBeInTheDocument()
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    })
+
+    expect(screen.queryByTestId('map-annotate-panel')).toBeNull()
+    expect(screen.getByRole('complementary', { name: 'Map selection detail' })).toBeInTheDocument()
   })
 
   it('turns measurement mode off on Escape before closing the docked panel', async () => {

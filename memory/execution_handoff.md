@@ -12,33 +12,42 @@ Last updated: 2026-04-20
 
 Phase 7 — Advanced Geospatial Tools
 
-(Phase 4 — Debrief closed. Phase 5 — Evidence Threading complete. Phase 6 Slice 6-1 fully shipped and closed in `aa07c91`. Phase 7 Slice 7-1A shipped in `4ea3def`; the current dirty tree is a narrow follow-up hardening tranche on top of that commit.)
+(Phase 4 — Debrief closed. Phase 5 — Evidence Threading complete. Phase 6 Slice 6-1 fully shipped and closed in `aa07c91`. Phase 7 Slice 7-1A shipped in `4ea3def`, and Phase 7 Slice 7-1A-followup shipped in `37f7a40`; the current dirty tree is the next map-only tool slice.)
 
 ## Current Slice
 
-**Phase 7 Slice 7-1A-followup — measurement overlay paint-order hardening (UNCOMMITTED).**
+**Phase 7 Slice 7-1B — temporary map annotations (UNCOMMITTED).**
 
-Objective: keep the newly shipped `/map` measurement geometry visible over dense signal layers by moving measurement rendering above the signal stack and pinning that ordering with a direct adapter test.
+Objective: add a second small operator-grade `/map` tool after measurement: session-local temporary pins with editable labels, no persistence, no route state, and no globe parity.
 
 Current implementation state:
-- `useMapMeasurementLayers` now runs after `useMapSignalLayers`, so measurement line / A-B markers paint above the signal stack
-- adapter coverage now asserts measurement layers are added after the signal layers
-- no product behavior changed beyond visual stacking order
+- `/map` now has an explicit annotation mode separate from measurement mode
+- while annotation mode is active, map clicks drop session-local pins instead of changing selection
+- temporary pins render as labeled map overlays through a dedicated annotation layer hook
+- the overlay controls expose rename / remove / clear-all management for the current client session only
+- adapter coverage now proves annotation layers are added after the signal stack, mirroring the measurement paint-order guard
+- page-level tests now prove annotation / measurement mode mutual exclusivity and the `Clear all` counter reset path
 
 Boundaries held:
 - no backend changes
 - no replay/trust/audit contract changes
-- no new UI state or route semantics
-- no defensive hardening of the theoretical partial-source branch in `useMapMeasurementLayers` (not a confirmed bug)
+- no persistence, URL state, or collaboration semantics
+- no globe work
 
 ## Current Repo State
 
-- Latest committed product slice: `4ea3def` — Phase 7 Slice 7-1A: `/map` measurement tool
-- Current tip commit: `4ea3def`
-- Working tree: dirty on the active 7-1A follow-up tranche plus this handoff update
+- Latest committed product slice: `37f7a40` — Phase 7 Slice 7-1A-followup: measurement overlay paint-order hardening
+- Current tip commit: `37f7a40`
+- Working tree: dirty on the active 7-1B tranche plus this handoff update
 - Branch state: `main` even with `origin/main`
 - Dirty/tranche files right now:
+  - `frontend/src/components/map/MapOverlayControls.tsx`
   - `frontend/src/hooks/useMapLibreEngine.ts`
+  - `frontend/src/hooks/map/useMapAnnotationLayers.ts`
+  - `frontend/src/index.css`
+  - `frontend/src/lib/mapAnnotations.ts`
+  - `frontend/src/pages/MapPage.tsx`
+  - `frontend/src/test/MapPage.test.tsx`
   - `frontend/src/test/useMapLibreEngine.test.ts`
   - `memory/execution_handoff.md`
 
@@ -46,9 +55,14 @@ Boundaries held:
 
 Sequenced:
 - **7-1A** — `/map` measurement tool (**shipped** in `4ea3def`)
-- **7-1A-followup** — measurement overlay paint-order hardening (current uncommitted tranche)
-- **7-1B** — temporary map annotations (candidate next slice after 7-1A commit)
+- **7-1A-followup** — measurement overlay paint-order hardening (**shipped** in `37f7a40`)
+- **7-1B** — temporary map annotations (**current uncommitted tranche**)
 - **7-1C** — other justified geospatial utilities only if they solve a real operator problem and are explicitly scoped
+
+## Shipped In This Phase (Phase 7)
+
+- `4ea3def` — Phase 7 Slice 7-1A: `/map` measurement tool (session-local distance/bearing, no backend persistence, no globe parity)
+- `37f7a40` — Phase 7 Slice 7-1A-followup: measurement overlay paint-order hardening (measurement geometry paints above dense signal layers; direct adapter proof added)
 
 ## Phase 6 — Closed Slice Plan (historical context)
 
@@ -112,7 +126,7 @@ Findings:
 - **paintMs is wildly noisy.** 1k tier paintMs p95 (524–2306ms) often exceeds the 100k tier paintMs p95 — this is swiftshader software-rasterizer behavior, not signal density. Confirms 6-1D conclusion: never gate paintMs without real-GPU hardware.
 - All 5 `yarn benchmark:map:scale` runs passed (35.2 / 29.1 / 30.1 / 25.9 / 29.3 s; total 2m 30s including overhead). No env tuning, no test edits.
 
-## Shipped In This Phase (Phase 6)
+## Shipped In Phase 6 (historical context)
 
 - `19020f3` — Phase 6 Slice 6-1A: map signal-reconcile instrumentation + benchmark bridge
 - `39008b6` — Phase 6 Slice 6-1A followup: document trigger priority, drop redundant bench field
@@ -145,17 +159,19 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 
 ## In Progress
 
-- **Phase 7 Slice 7-1A-followup — measurement overlay paint-order hardening**
-  - measurement geometry now paints above signal layers by hook-order design
-  - adapter coverage proves that layer-add order directly
+- **Phase 7 Slice 7-1B — temporary map annotations**
+  - annotation mode now owns map clicks separately from measurement mode
+  - session-local pins render as labeled overlays and stay client-local
+  - overlay controls support rename / remove / clear-all without adding route state
+  - tests now pin paint-order visibility and mode exclusivity directly
   - focused + full frontend validation is green
   - next immediate step is `gate`, then commit if review stays clean
 
 ## Next
 
-- **Immediate next step:** run `gate` on the 7-1A follow-up tranche, then commit if the slice stays clean.
-- **After the 7-1A follow-up ships, recommended next slice:** **7-1B — temporary map annotations** (still session-local, still `/map` only, still no persistence/collaboration).
-- **Explicit boundary for post-7-1A work:** do not jump straight to a generalized geospatial workspace or shared overlay system. Keep Phase 7 additive and tool-specific.
+- **Immediate next step:** run `gate` on the 7-1B temporary-annotations tranche, then commit if the slice stays clean.
+- **After 7-1B ships, recommended next slice:** **7-1C — other justified geospatial utilities only if they solve a real operator problem and are explicitly scoped.**
+- **Explicit boundary for post-7-1B work:** do not jump straight to persistence, collaboration, or a generalized geospatial workspace. Keep Phase 7 additive and tool-specific.
 - **Watch the first real `frontend-perf` CI run on `aa07c91` (or its first PR descendant).** Watch points:
     - 1k tier: budgets are 15/25/30ms; current local p95-of-p95s is 10.2ms. Headroom is ~2×. CI runner variance may eat into that.
     - 10k tier: p95 budget is 120ms; current p95-of-p95s is 57.4ms. Headroom is ~2.1× (raised from 80ms after gate flagged that ~1.4× was tight for ubuntu-latest). Should hold first time; re-anchor via env if real CI numbers prove otherwise.
@@ -174,12 +190,23 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 ```bash
 cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run
 cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx tsc -p tsconfig.app.json --noEmit
-cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run src/test/useMapLibreEngine.test.ts src/test/MapPage.test.tsx
-cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/hooks/useMapLibreEngine.ts src/test/useMapLibreEngine.test.ts
+cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run src/test/MapPage.test.tsx src/test/useMapLibreEngine.test.ts
+cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/pages/MapPage.tsx src/components/map/MapOverlayControls.tsx src/hooks/useMapLibreEngine.ts src/hooks/map/useMapAnnotationLayers.ts src/lib/mapAnnotations.ts src/test/MapPage.test.tsx src/test/useMapLibreEngine.test.ts
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (Phase 7 Slice 7-1A-followup, uncommitted, 2026-04-20)
+## Last Validation Results (Phase 7 Slice 7-1B, uncommitted, 2026-04-20)
+
+- Focused annotation validation:
+  - `npx vitest run src/test/MapPage.test.tsx src/test/useMapLibreEngine.test.ts` → **72 / 72 pass**
+- Full frontend validation:
+  - `npx vitest run` → **613 / 613 pass across 84 files**
+  - `npx tsc -p tsconfig.app.json --noEmit` → **0 errors**
+  - touched-file ESLint on 7-1B files → **0 issues**
+  - `git diff --check` → **clean**
+- No backend validation was required for this slice because the tranche is frontend-only and introduces no API/schema/runtime-backend changes.
+
+### Most recent committed product validation (Phase 7 Slice 7-1A-followup, shipped in `37f7a40`, 2026-04-20)
 
 - Focused follow-up validation:
   - `npx vitest run src/test/useMapLibreEngine.test.ts src/test/MapPage.test.tsx` → **66 / 66 pass**
@@ -190,7 +217,7 @@ git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
   - `git diff --check` → **clean**
 - No backend validation was required for this slice because the tranche is frontend-only and introduces no API/schema/runtime-backend changes.
 
-### Most recent committed product validation (Phase 7 Slice 7-1A, shipped in `4ea3def`, 2026-04-20)
+### Prior committed product validation (Phase 7 Slice 7-1A, shipped in `4ea3def`, 2026-04-20)
 
 - Focused measurement validation:
   - `npx vitest run src/test/mapMeasurement.test.ts src/test/MapPage.test.tsx src/test/useMapLibreEngine.test.ts` → **68 / 68 pass**
@@ -236,7 +263,9 @@ git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 
 ## Known Risks / Blockers
 
-- **Phase 7 Slice 7-1A is intentionally `/map`-only and session-local.** There is no persistence, no URL state, no globe parity, and no collaboration semantics. Do not accidentally treat the measurement state model as the foundation for annotation/overlay persistence in a follow-up slice.
+- **Phase 7 Slice 7-1B is intentionally `/map`-only and session-local.** There is no persistence, no URL state, no globe parity, and no collaboration semantics. Do not accidentally treat the current pin model as the foundation for collaborative overlays or saved annotation layers.
+- **Annotation mode intentionally owns map clicks.** While active, map clicks drop temporary pins instead of selecting sites/assets/signals. This is deliberate for operator clarity. If a future slice needs concurrent selection + annotation, design that explicitly instead of weakening the mode boundary.
+- **Annotation labels are operator-local and ephemeral.** They live only in local React state for the current browser session. If a future slice needs persistence or sharing, design backend and auth semantics explicitly instead of extending this state ad hoc.
 - **Measurement mode intentionally owns map clicks.** While active, map clicks no longer select sites/assets/signals; they capture arbitrary coordinates instead. This is deliberate for operator clarity. If a future slice needs concurrent selection + measurement, design that explicitly instead of silently weakening the mode boundary.
 - **Measurement geometry is great-circle enough for the current operator problem, not survey-grade.** Distance uses haversine and bearing uses initial great-circle bearing; there is no terrain, path snapping, or route-following logic in this slice.
 - **Map signal caps block DB-backed scale testing.** `useSignalsLive` in [useSignals.ts](frontend/src/hooks/useSignals.ts) clamps `vessel_position` to 50 (see [liveSignals.ts](frontend/src/lib/liveSignals.ts) `LIVE_SIGNAL_LIMITS`), and `/api/signals` caps `per_page` at 200 ([base_controller.rb:144](backend/app/controllers/api/base_controller.rb#L144)). 6-1D sidesteps both via a `resilience.perf.bench_signal_count` localStorage override that feeds a synthetic `Signal[]` straight into MapPage, gated behind `resilience.perf`. The benchmark deliberately bypasses the live pipeline because reconcile cost, not ingestion, is the object of study. Do NOT lift either cap for prod — the cap is a product-deliberate noise guard, not an accidental limit.

@@ -7,6 +7,7 @@ import {
   measurementDistanceKm,
   type MapMeasurementPoint,
 } from '../../lib/mapMeasurement'
+import type { MapAnnotation } from '../../lib/mapAnnotations'
 
 interface MapOverlayControlsProps {
   loading: boolean
@@ -21,6 +22,8 @@ interface MapOverlayControlsProps {
   trailWindowMinutes: number
   showSignals: boolean
   showHeatmap: boolean
+  annotationMode: boolean
+  annotations: MapAnnotation[]
   measurementMode: boolean
   measurementPoints: MapMeasurementPoint[]
   onMapStyleChange: (style: MapStyleKey) => void
@@ -30,6 +33,10 @@ interface MapOverlayControlsProps {
   onTrailWindowChange: (minutes: number) => void
   onToggleSignals: () => void
   onToggleHeatmap: () => void
+  onToggleAnnotations: () => void
+  onClearAnnotations: () => void
+  onUpdateAnnotationLabel: (annotationId: string, label: string) => void
+  onRemoveAnnotation: (annotationId: string) => void
   onToggleMeasurement: () => void
   onClearMeasurement: () => void
 }
@@ -47,6 +54,8 @@ export function MapOverlayControls({
   trailWindowMinutes,
   showSignals,
   showHeatmap,
+  annotationMode,
+  annotations,
   measurementMode,
   measurementPoints,
   onMapStyleChange,
@@ -56,6 +65,10 @@ export function MapOverlayControls({
   onTrailWindowChange,
   onToggleSignals,
   onToggleHeatmap,
+  onToggleAnnotations,
+  onClearAnnotations,
+  onUpdateAnnotationLabel,
+  onRemoveAnnotation,
   onToggleMeasurement,
   onClearMeasurement,
 }: MapOverlayControlsProps) {
@@ -254,6 +267,66 @@ export function MapOverlayControls({
         <span className="map-heatmap-toggle-dot" />
         HEATMAP {showHeatmap ? 'ON' : 'OFF'}
       </div>
+
+      <div
+        className={`map-annotate-toggle${annotationMode ? ' map-annotate-toggle--active' : ''}`}
+        onClick={onToggleAnnotations}
+        role="button"
+        aria-label="Toggle map annotation tool"
+      >
+        <span className="map-annotate-toggle-dot" />
+        ANNOTATE {annotationMode ? 'ON' : 'OFF'}
+      </div>
+
+      {annotationMode && (
+        <div className="map-annotate-panel" data-testid="map-annotate-panel">
+          <div className="map-annotate-panel-header">
+            <span className="map-annotate-panel-title">TEMPORARY ANNOTATIONS</span>
+            <button
+              type="button"
+              className="map-annotate-panel-action"
+              onClick={onClearAnnotations}
+              disabled={annotations.length === 0}
+            >
+              Clear all
+            </button>
+          </div>
+
+          <div className="map-annotate-panel-body">
+            <p className="map-annotate-panel-hint">
+              Click the map to drop session-local pins. Annotations stay on this client only and do not change selection or route state.
+            </p>
+
+            {annotations.length === 0 ? (
+              <p className="map-annotate-panel-hint">No temporary annotations yet.</p>
+            ) : (
+              <div className="map-annotate-panel-list">
+                {annotations.map(annotation => (
+                  <div key={annotation.id} className="map-annotate-panel-item">
+                    <input
+                      type="text"
+                      className="map-annotate-panel-input"
+                      aria-label={`Annotation label ${annotation.label}`}
+                      value={annotation.label}
+                      onChange={event => onUpdateAnnotationLabel(annotation.id, event.target.value)}
+                    />
+                    <div className="map-annotate-panel-coordinates mono">
+                      {formatPoint(annotation)}
+                    </div>
+                    <button
+                      type="button"
+                      className="map-annotate-panel-action"
+                      onClick={() => onRemoveAnnotation(annotation.id)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div
         className={`map-measure-toggle${measurementMode ? ' map-measure-toggle--active' : ''}`}

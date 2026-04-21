@@ -35,6 +35,7 @@ import { useMapOverlays } from './map/useMapOverlays'
 import { useMapSiteLayers } from './map/useMapSiteLayers'
 import { useMapAssetLayers } from './map/useMapAssetLayers'
 import { useMapTrackLayers } from './map/useMapTrackLayers'
+import { useMapAnnotationLayers } from './map/useMapAnnotationLayers'
 import { useMapMeasurementLayers } from './map/useMapMeasurementLayers'
 import { useMapSignalLayers } from './map/useMapSignalLayers'
 import { expandMapSignalCluster } from '../lib/mapSignalClustering'
@@ -49,6 +50,7 @@ import { preloadMapRuntime } from '../lib/preloadRoutes'
 import type { AssetTrail } from '../lib/telemetry'
 import type { TelemetryMap } from '../lib/telemetry'
 import type { MapMeasurementPoint } from '../lib/mapMeasurement'
+import type { MapAnnotation } from '../lib/mapAnnotations'
 
 export type MapLibreModule = typeof import('maplibre-gl')
 
@@ -84,6 +86,8 @@ export interface MapEngineInput {
   selectedSiteId:   string | null
   selectedAssetId:  string | null
   selectedSignalId: string | null
+  annotationMode: boolean
+  annotations: MapAnnotation[]
   measurementMode:  boolean
   measurementPoints: MapMeasurementPoint[]
 
@@ -95,6 +99,7 @@ export interface MapEngineInput {
   onSiteClick:   (siteId: string | null) => void
   onAssetClick:  (assetId: string | null) => void
   onSignalClick: (signalId: string | null) => void
+  onMapAnnotationClick: (point: MapMeasurementPoint) => void
   onMapCoordinateClick: (point: MapMeasurementPoint) => void
 }
 
@@ -141,6 +146,8 @@ export function useMapLibreEngine({
   selectedSiteId,
   selectedAssetId,
   selectedSignalId,
+  annotationMode,
+  annotations,
   measurementMode,
   measurementPoints,
   evidenceSignalIds,
@@ -148,6 +155,7 @@ export function useMapLibreEngine({
   onSiteClick,
   onAssetClick,
   onSignalClick,
+  onMapAnnotationClick,
   onMapCoordinateClick,
 }: MapEngineInput): MapEngineReturn {
   const mapRef           = useRef<MapLibreMap | null>(null)
@@ -161,12 +169,16 @@ export function useMapLibreEngine({
   const onSiteClickRef   = useRef(onSiteClick)
   const onAssetClickRef  = useRef(onAssetClick)
   const onSignalClickRef = useRef(onSignalClick)
+  const onMapAnnotationClickRef = useRef(onMapAnnotationClick)
   const onMapCoordinateClickRef = useRef(onMapCoordinateClick)
+  const annotationModeRef = useRef(annotationMode)
   const measurementModeRef = useRef(measurementMode)
   useEffect(() => { onSiteClickRef.current   = onSiteClick   }, [onSiteClick])
   useEffect(() => { onAssetClickRef.current  = onAssetClick  }, [onAssetClick])
   useEffect(() => { onSignalClickRef.current = onSignalClick }, [onSignalClick])
+  useEffect(() => { onMapAnnotationClickRef.current = onMapAnnotationClick }, [onMapAnnotationClick])
   useEffect(() => { onMapCoordinateClickRef.current = onMapCoordinateClick }, [onMapCoordinateClick])
+  useEffect(() => { annotationModeRef.current = annotationMode }, [annotationMode])
   useEffect(() => { measurementModeRef.current = measurementMode }, [measurementMode])
   useEffect(() => { mapStyleRef.current = mapStyle }, [mapStyle])
 
@@ -255,6 +267,12 @@ export function useMapLibreEngine({
     evidenceSignalIds,
   })
 
+  useMapAnnotationLayers({
+    mapRef,
+    mapLoaded,
+    annotations,
+  })
+
   useMapMeasurementLayers({
     mapRef,
     mapLoaded,
@@ -271,6 +289,13 @@ export function useMapLibreEngine({
     const handleMapClick = (event: MapMouseEvent) => {
       if (measurementModeRef.current) {
         onMapCoordinateClickRef.current({
+          lng: event.lngLat.lng,
+          lat: event.lngLat.lat,
+        })
+        return
+      }
+      if (annotationModeRef.current) {
+        onMapAnnotationClickRef.current({
           lng: event.lngLat.lng,
           lat: event.lngLat.lat,
         })
