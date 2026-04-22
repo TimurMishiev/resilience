@@ -12,30 +12,21 @@ Last updated: 2026-04-21
 
 Phase 7 — Advanced Geospatial Tools
 
-(Phase 4 — Debrief closed. Phase 5 — Evidence Threading complete. Phase 6 Slice 6-1 fully shipped and closed in `aa07c91`. Phase 7 Slice 7-1A shipped in `4ea3def`, Phase 7 Slice 7-1A-followup shipped in `37f7a40`, Phase 7 Slice 7-1B shipped in `5260480`, Phase 7 Slice 7-1B-followup shipped in `df19f42`, Phase 7 Slice 7-1C shipped in `45b09b8`, and Phase 7 Slice 7-1D shipped in `823dd05`.)
+(Phase 4 — Debrief closed. Phase 5 — Evidence Threading complete. Phase 6 Slice 6-1 fully shipped and closed in `aa07c91`. Phase 7 Slice 7-1A shipped in `4ea3def`, Phase 7 Slice 7-1A-followup shipped in `37f7a40`, Phase 7 Slice 7-1B shipped in `5260480`, Phase 7 Slice 7-1B-followup shipped in `df19f42`, Phase 7 Slice 7-1C shipped in `45b09b8`, Phase 7 Slice 7-1D shipped in `823dd05`, and Phase 7 Slice 7-1E shipped in `f1960c7`.)
 
 ## Current Slice
 
-**Phase 7 Slice 7-1E — session-local `/map` sector / fan overlay (UNCOMMITTED).**
+**No active uncommitted product slice.**
 
-Objective: add a fifth justified geospatial tool on `/map`: a session-local sector / fan overlay with a click-set anchor, operator-entered heading, arc width, and extent in km/nm units, without widening into persistence, collaboration, or globe parity.
+Phase 7 Slice 7-1E shipped in `f1960c7`. Any further Phase 7 work should only continue if another geospatial utility solves a real operator problem and is explicitly scoped.
 
 ## Current Repo State
 
-- Latest committed product slice: `823dd05` — Phase 7 Slice 7-1D: `/map` bearing line / azimuth tool
-- Current tip commit: `823dd05`
-- Working tree: dirty on the active 7-1E tranche plus this handoff update
+- Latest committed product slice: `f1960c7` — Phase 7 Slice 7-1E: `/map` sector / fan overlay
+- Current tip commit: `f1960c7`
+- Working tree: dirty only because of this handoff refresh; no uncommitted product-code slice is active
 - Branch state: `main` even with `origin/main`
 - Dirty/tranche files right now:
-  - `frontend/src/components/map/MapOverlayControls.tsx`
-  - `frontend/src/hooks/map/useMapSectorOverlayLayers.ts` (new)
-  - `frontend/src/hooks/useMapLibreEngine.ts`
-  - `frontend/src/index.css`
-  - `frontend/src/lib/mapSectorOverlay.ts` (new)
-  - `frontend/src/pages/MapPage.tsx`
-  - `frontend/src/test/MapPage.test.tsx`
-  - `frontend/src/test/mapSectorOverlay.test.ts` (new)
-  - `frontend/src/test/useMapLibreEngine.test.ts`
   - `memory/execution_handoff.md`
 
 ## Phase 7 — Slice Plan
@@ -47,7 +38,7 @@ Sequenced:
 - **7-1B-followup** — post-push hardening: `MapPoint` extraction, static aria-label + maxLength, keyboard a11y on both map tool toggles, hook-order comment, style-swap persistence test (**shipped** in `df19f42`)
 - **7-1C** — session-local `/map` range rings with editable radii and NM/KM units (**shipped** in `45b09b8`)
 - **7-1D** — session-local `/map` bearing line / azimuth tool with operator-entered heading and extent (**shipped** in `823dd05`)
-- **7-1E** — session-local `/map` sector / fan overlay with operator-entered heading, arc, and extent (**current uncommitted tranche**)
+- **7-1E** — session-local `/map` sector / fan overlay with operator-entered heading, arc, and extent (**shipped** in `f1960c7`)
 
 ## Shipped In This Phase (Phase 7)
 
@@ -57,6 +48,7 @@ Sequenced:
 - `df19f42` — Phase 7 Slice 7-1B-followup: annotation-tool hardening (`MapPoint` extraction, annotation input hardening, keyboard-operable ANNOTATE/MEASURE toggles, and style-swap persistence proof)
 - `45b09b8` — Phase 7 Slice 7-1C: `/map` range rings (session-local range-ring anchor, editable radii, NM/KM units, range-ring paint-order proof, and responsive tool-row fallback)
 - `823dd05` — Phase 7 Slice 7-1D: `/map` bearing line / azimuth tool (session-local anchor, operator-entered heading and extent, NM/KM units, paint-order proof, style-swap persistence, four-tool exclusivity, and responsive tool-row continuity)
+- `f1960c7` — Phase 7 Slice 7-1E: `/map` sector / fan overlay (session-local anchor, operator-entered heading/arc/extent, NM/KM units, sector paint-order proof, style-swap persistence, and five-tool exclusivity)
 
 ## Phase 6 — Closed Slice Plan (historical context)
 
@@ -153,18 +145,13 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 
 ## In Progress
 
-- **Phase 7 Slice 7-1E — session-local `/map` sector / fan overlay**
-  - new SECTOR tool is wired through `MapPage`, `MapOverlayControls`, and `useMapLibreEngine`
-  - `frontend/src/lib/mapSectorOverlay.ts` owns heading/arc parsing, distance conversion, sector geometry, and label generation
-  - `frontend/src/hooks/map/useMapSectorOverlayLayers.ts` renders fill, outline, anchor, and label above range rings but below bearing lines, annotations, and measurement geometry
-  - page-level tests now cover sector capture, five-tool mutual exclusivity, and Escape behavior
-  - adapter tests now cover sector paint order, click routing, and style-swap persistence
-  - focused + full frontend validation is green
+- No active uncommitted product slice.
+- The only expected dirty file, until this handoff refresh is committed or reverted, is `memory/execution_handoff.md`.
 
 ## Next
 
-- **Immediate next step:** `gate` this 7-1E tranche, then commit if review stays clean.
-- **After 7-1E ships:** only continue with Phase 7 if another geospatial utility solves a real operator problem and can be scoped as a similarly narrow tool slice.
+- **Immediate next step:** choose whether Phase 7 should continue with another narrowly justified geospatial utility or close here.
+- **If Phase 7 continues:** only continue if another geospatial utility solves a real operator problem and can be scoped as a similarly narrow tool slice.
 - **Explicit boundary for 7-1E and beyond:** do not jump straight to persistence, collaboration, or a generalized geospatial workspace. Keep Phase 7 additive and tool-specific.
 - **Watch the first real `frontend-perf` CI run on `aa07c91` (or its first PR descendant).** Watch points:
     - 1k tier: budgets are 15/25/30ms; current local p95-of-p95s is 10.2ms. Headroom is ~2×. CI runner variance may eat into that.
@@ -189,7 +176,7 @@ cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/pages/
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (Phase 7 Slice 7-1E, uncommitted, 2026-04-21)
+## Last Validation Results (Phase 7 Slice 7-1E, shipped in `f1960c7`, 2026-04-21)
 
 - Focused sector validation:
   - `npx vitest run src/test/mapSectorOverlay.test.ts src/test/MapPage.test.tsx src/test/useMapLibreEngine.test.ts` → **93 / 93 pass**
