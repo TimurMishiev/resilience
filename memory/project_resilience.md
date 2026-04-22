@@ -14,6 +14,8 @@ Companion files:
 
 When memory conflicts with code, prefer code. This file is the stable project snapshot; active sequencing and handoff live in the execution files above, while roadmap and open debt live in their companion files.
 
+**Phase-number disambiguation.** The "Phase 1..N" labels in this file (e.g. "Phase 1 — Intelligence Layer") belong to the original v1/v2 capability taxonomy and are retained for historical context. The current live phase sequence is defined in `memory/execution_context.md` (Phase 1 — Trustworthy Operational Picture, Phases 2–7, all shipped through 2026-04-22). Treat execution_context phase semantics as authoritative for current work; treat this file's phase labels as historical snapshots only.
+
 ## Stack
 
 - **Backend:** Ruby on Rails (API mode), PostgreSQL, SolidQueue recurring/background jobs, SSE for real-time push
@@ -242,11 +244,14 @@ These are no longer “ignore for now” items for future agents; they are the n
   - Not part of the original canonical Phase 3 closeout bar.
   - Now shipped after kill-chain and cross-entity ontology query.
 
-### Locked Finish Plan (2026-03-29)
+### Locked Finish Plan (2026-03-29) — **superseded**
 
-Future agents should treat this as the current required completion sequence unless the user explicitly changes roadmap scope.
+This section is preserved as historical context for the completion sequence that was active through April 2026. It is no longer the active roadmap.
 
-If any external summary, audit, or delegated-agent note disagrees with this section, prefer this section unless the codebase itself has changed and been re-verified.
+Current active sequencing lives in:
+- `memory/execution_context.md` (phase definitions)
+- `memory/execution_handoff.md` (active handoff state)
+- `.claude/skills/resilience-remediation/references/findings.md` (audit remediation backlog)
 
 #### Canonical completion track
 

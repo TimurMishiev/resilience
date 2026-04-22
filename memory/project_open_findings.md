@@ -6,14 +6,20 @@ type: findings
 
 # Resilience — Open Findings
 
-Last reconciled with code: 2026-04-09
+Last reconciled with code: 2026-04-22
 
-The production-readiness program (`memory/project_production_readiness_plan.md`) is now complete.
-Future work is tracked in `memory/project_roadmap.md`.
+The production-readiness program (`memory/project_production_readiness_plan.md`) is complete.
+Execution-context Phases 1–7 are complete.
+
+Active open work is the audit remediation backlog, which lives in:
+- `.claude/skills/resilience-remediation/references/findings.md` (the merged findings matrix, the authoritative backlog)
+- `memory/execution_handoff.md` (active handoff state)
+
+This file is kept as a historical summary of closed production-readiness debt plus any remaining P2/P3 hygiene items that do not fit cleanly into the remediation bands.
 
 ## P1 / High-Leverage Programs
 
-_(No open P1 items. All prior P1 replay parity gaps have been closed.)_
+_(No open P1 items in this file. Active P1-equivalent findings are managed in the audit remediation backlog at `.claude/skills/resilience-remediation/references/findings.md`. Band A (I1, G1, API1, D1) and Band B (I2, R1) shipped in `27831e1` on 2026-04-22. Band C (MT1, MT2, MT3) is latent for single-org deployments and gated on multi-tenant alignment. Band D (F1, O1, J1, M1) is lower-priority hardening.)_
 
 ## P2 / Important Platform Follow-Through
 

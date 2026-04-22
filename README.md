@@ -4,7 +4,7 @@
 
 Resilience is the kind of software that runs inside a TOC (Tactical Operations Center). It ingests live sensor feeds, correlates threat patterns, fuses alerts into incidents, and gives operators a single operational picture across 2D map, 3D globe, and structured data surfaces. Every mutation is audit-logged transactionally. Every surface supports time-travel replay. The authorization model enforces organization and area-of-operation boundaries at every layer.
 
-Built as a portfolio project targeting defense-tech engineering roles (Palantir, Anduril, Reveal Technology, Shield AI). The codebase is production-hardened: 2,100+ backend specs, 400+ frontend tests, 13 Playwright E2E scenarios, Pundit authorization on every endpoint, and CI that gates on security scanning, type safety, and performance budgets before auto-deploying. Installable as a PWA with offline caching. Classification banner support (UNCLASSIFIED / CUI / SECRET).
+Built as a portfolio project targeting defense-tech engineering roles (Palantir, Anduril, Reveal Technology, Shield AI). The codebase is production-hardened: 2,100+ backend specs, 650+ frontend tests, 15 Playwright E2E scenarios, Pundit authorization on every endpoint, and CI that gates on security scanning, type safety, and performance budgets before auto-deploying. Installable as a PWA with offline caching. Classification banner support (UNCLASSIFIED / CUI / SECRET).
 
 **Live:** [https://resilience-ops.fly.dev](https://resilience-ops.fly.dev)
 
@@ -40,14 +40,14 @@ Open **http://localhost:3000**. Demo data (9 sites, 19 tasks, 7 signal types, ve
 ```
                           ┌──────────────────────────────────────────────┐
                           │            Frontend  (React 19 / TS)        │
-                          │  24 pages  ·  57 components  ·  48 hooks   │
+                          │  25 pages  ·  65 components  ·  58 hooks   │
                           │  Blueprint.js  ·  MapLibre GL  ·  CesiumJS │
                           └────────────────────┬─────────────────────────┘
                                                │  REST  +  SSE
                           ┌────────────────────▼─────────────────────────┐
                           │           Backend  (Rails 8 API)             │
-                          │  28 models  ·  30 policies  ·  62 services  │
-                          │  32 controllers  ·  13 jobs  ·  67 migrations│
+                          │  28 models  ·  30 policies  ·  63 services  │
+                          │  32 controllers  ·  13 jobs  ·  69 migrations│
                           └──┬──────────────────┬───────────────────┬────┘
                              │                  │                   │
                ┌─────────────▼──────┐  ┌───────▼────────┐  ┌──────▼──────────┐
@@ -188,9 +188,9 @@ SSE (Server-Sent Events) with PostgreSQL `LISTEN`/`NOTIFY` relay for cross-proce
 
 | Layer | Count | Tool |
 |-------|-------|------|
-| Backend specs | 2,105 | RSpec |
-| Frontend unit/integration | 407 (62 files) | Vitest |
-| E2E critical paths | 13 scenarios | Playwright |
+| Backend specs | 2,179 | RSpec |
+| Frontend unit/integration | 657 (90 files) | Vitest |
+| E2E critical paths | 15 scenarios | Playwright |
 | Security scanning | 0 warnings | Brakeman + bundler-audit |
 | Type safety | 0 errors | TypeScript strict |
 | Lint | 0 errors | ESLint |
@@ -233,7 +233,7 @@ Key test categories:
 push to main
   ├── Frontend: tsc + ESLint + Vitest + build
   ├── Backend Security: Brakeman + bundler-audit
-  ├── Backend Tests: RSpec (2,105 examples against PostGIS 17)
+  ├── Backend Tests: RSpec (2,179 examples against PostGIS 17)
   ├── Globe Benchmark: Playwright perf budget against Dockerized app
   └── E2E: Playwright critical paths against Dockerized app
         │
@@ -286,7 +286,7 @@ Open **http://localhost:5173**. The Vite dev server proxies `/api/*` to the Rail
 ```bash
 # Backend
 cd backend
-bundle exec rspec                          # 2,105 examples
+bundle exec rspec                          # 2,179 examples
 bundle exec brakeman --no-progress -q      # security scan
 bundle exec bundler-audit check            # CVE check
 
@@ -294,7 +294,7 @@ bundle exec bundler-audit check            # CVE check
 cd frontend
 npx tsc --noEmit                           # type check
 yarn lint                                  # ESLint
-npx vitest run                             # 407 tests
+npx vitest run                             # 657 tests
 yarn build                                 # production build (tsc -b, stricter)
 ```
 
@@ -354,27 +354,27 @@ resilience/
 ├── frontend/                      # React 19 + TypeScript + Vite
 │   ├── src/
 │   │   ├── api/                   # 24 API client modules
-│   │   ├── components/            # 57 shared components (map/, dashboard/, shell/)
+│   │   ├── components/            # 65 shared components (map/, dashboard/, shell/)
 │   │   ├── context/               # AuthContext, ReplayContext
-│   │   ├── hooks/                 # 48 hooks (data, engine, telemetry, replay)
-│   │   ├── pages/                 # 24 page components
+│   │   ├── hooks/                 # 58 hooks (data, engine, telemetry, replay)
+│   │   ├── pages/                 # 25 page components
 │   │   ├── lib/                   # Utilities (colors, coverage, formatters, signals)
-│   │   └── test/                  # 62 Vitest test files
-│   └── e2e/                       # 13 Playwright E2E scenarios
+│   │   └── test/                  # 90 Vitest test files
+│   └── e2e/                       # 15 Playwright E2E scenarios
 │
 └── backend/                       # Rails 8.1 API
     ├── app/
     │   ├── controllers/api/       # 32 API controllers
     │   ├── models/                # 28 ActiveRecord models
     │   ├── policies/              # 30 Pundit authorization policies
-    │   ├── services/              # 62 service objects
+    │   ├── services/              # 63 service objects
     │   └── jobs/                  # 13 background jobs
     ├── config/
     │   └── recurring.yml          # 18 SolidQueue recurring job schedules
     ├── db/
-    │   ├── migrate/               # 67 migrations
+    │   ├── migrate/               # 69 migrations
     │   └── structure.sql          # Committed PostGIS-aware schema
-    └── spec/                      # 2,105 RSpec examples
+    └── spec/                      # 2,179 RSpec examples
 ```
 
 ---

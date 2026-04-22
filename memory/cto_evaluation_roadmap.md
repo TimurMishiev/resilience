@@ -9,7 +9,7 @@ type: project
 **Source:** Third-party model acting as CTO at a frontier defense-tech company (Palantir / Anduril / Rune Technologies)
 **Evaluation date:** 2026-04-22
 **Evaluated commit:** `823dd05` + uncommitted Phase 7 Slice 7-1E (sector overlay)
-**Current HEAD (2026-04-22):** `368e079`
+**Current HEAD (2026-04-22):** `e2d02c2` (post Band A + Band B remediation, handoff rotated)
 **Current score per report:** 93/100, with a claimed path to 97/100 through 4 prioritized items
 **Purpose of this file:** Give Codex the same source material Claude saw so both can collaborate on what's valid, what's not, and what to ship next. Claude has not pre-judged P1–P4 — those are open for Codex to evaluate.
 

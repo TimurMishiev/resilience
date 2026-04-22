@@ -6,11 +6,17 @@ type: project
 
 # Resilience — Execution Context
 
-Last updated: 2026-04-10
+Last updated: 2026-04-22
 
 This file is the durable source of truth for project direction, execution sequencing, collaboration rules, and engineering expectations. It exists so Claude Code or Codex can continue work safely from the repo without relying on chat history.
 
 If this file disagrees with the code, trust the code first and then update this file.
+
+## Current State Snapshot (2026-04-22)
+
+- Phases 1–7 are shipped. Latest roadmap sequencing (including Phase 7 slice list and post-Phase-7 remediation) lives in `memory/execution_handoff.md`.
+- Active work: audit-driven remediation. Band A (I1, G1, API1, D1) and Band B (I2, R1) shipped in `27831e1`; handoff rotation committed in `e2d02c2`. Remaining bands (C, D) are tracked in `.claude/skills/resilience-remediation/references/findings.md`.
+- Phase definitions below are preserved as the finished roadmap. Do not re-execute them. Any new roadmap phase must be added explicitly, not inferred.
 
 ## Project Direction
 
@@ -73,16 +79,16 @@ It is a serious operational product.
 
 ## Current Execution Rule
 
-Phase 0 is complete when `memory/execution_context.md` and `memory/execution_handoff.md` are present, current, and usable as the handoff package.
+Phases 0–7 are complete. Active work is audit-driven remediation tracked in `memory/execution_handoff.md` and the findings matrix at `.claude/skills/resilience-remediation/references/findings.md`.
 
-Active implementation starts at Phase 1 and is tracked in `memory/execution_handoff.md`.
+Do not start a new roadmap phase without explicit user alignment. Remediation continues in the order Band A → B → C → D.
 
-## Roadmap
+## Roadmap (shipped; kept for historical reference)
 
-### Phase 0 — Execution Foundation
+### Phase 0 — Execution Foundation — **shipped**
 Goal: repo-based execution continuity and handoff safety.
 
-### Phase 1 — Trustworthy Operational Picture
+### Phase 1 — Trustworthy Operational Picture — **shipped**
 Goal: make trust, freshness, and degraded-state awareness first-class across the app.
 
 Deliverables:
@@ -108,7 +114,7 @@ Validation:
 - [ ] tests cover freshness/degraded-state logic
 - [ ] existing tests pass
 
-### Phase 2 — Map Workstation + Triage-in-Context
+### Phase 2 — Map Workstation + Triage-in-Context — **shipped**
 Goal: make `/map` a serious operator surface.
 
 Deliverables:
@@ -134,7 +140,7 @@ Validation:
 - [ ] selection sync remains correct
 - [ ] existing tests pass
 
-### Phase 3 — Spatial Analytics + Spatial Trust Rendering
+### Phase 3 — Spatial Analytics + Spatial Trust Rendering — **shipped**
 Goal: make the map analytical, not just visual.
 
 Deliverables:
@@ -156,7 +162,7 @@ Validation:
 - [ ] tests/manual verification are documented
 - [ ] existing tests pass
 
-### Phase 4 — Debrief
+### Phase 4 — Debrief — **shipped**
 Goal: transform replay into a real operational reconstruction workflow.
 
 Deliverables:
@@ -184,7 +190,7 @@ Validation:
 - [ ] replay remains mutation-safe
 - [ ] existing tests pass
 
-### Phase 5 — Evidence Threading
+### Phase 5 — Evidence Threading — **shipped**
 Goal: make major operational conclusions explainable and traceable.
 
 Deliverables:
@@ -206,7 +212,7 @@ Validation:
 - [ ] at least one spatial surface reflects evidence context
 - [ ] existing tests pass
 
-### Phase 6 — Performance Characterization
+### Phase 6 — Performance Characterization — **shipped**
 Goal: turn architecture choices into measurable evidence.
 
 Deliverables:
@@ -227,7 +233,7 @@ Validation:
 - [ ] realistic density scenarios are measured
 - [ ] documentation explains limits and expectations
 
-### Phase 7 — Advanced Geospatial Tools
+### Phase 7 — Advanced Geospatial Tools — **shipped**
 Goal: add a small number of justified operator tools once the core is already strong.
 
 Deliverables:

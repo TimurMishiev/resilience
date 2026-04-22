@@ -1,73 +1,28 @@
-# React + TypeScript + Vite
+# Resilience — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React 19 + TypeScript + Vite frontend for the Resilience operational intelligence platform.
 
-Currently, two official plugins are available:
+This directory holds the frontend. For project overview, architecture, UI stack, operational surfaces, and full setup instructions see:
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- [`../README.md`](../README.md) — project overview, operational surfaces (map, globe, incidents, planning, AI briefing, replay), tech stack, CI pipeline
+- [`../CONTRIBUTING.md`](../CONTRIBUTING.md) — local dev setup, test commands, code conventions
+- [`../CLAUDE.md`](../CLAUDE.md) — repo entrypoint for AI agents
 
-## React Compiler
+## Quick reference
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Dev server: `yarn dev` (proxies `/api/*` to Rails on port 3000)
+- Type check: `npx tsc --noEmit`
+- Lint: `yarn lint`
+- Run unit + integration tests: `npx vitest run`
+- Run E2E: `npx playwright test`
+- Production build: `yarn build` (`tsc -b` is stricter than `tsc --noEmit`)
 
-## Expanding the ESLint configuration
+## Layout
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+- `src/pages/` — 25 page components (dashboard, map, globe, incidents, planning, replay, etc.)
+- `src/components/` — 65 shared components (map/, dashboard/, shell/, blueprint wrappers)
+- `src/hooks/` — 58 hooks (data fetching, engine bridges, telemetry, replay)
+- `src/api/` — 24 API client modules
+- `src/context/` — `AuthContext`, `ReplayContext`
+- `src/test/` — 90 Vitest test files
+- `e2e/` — 15 Playwright E2E scenarios
