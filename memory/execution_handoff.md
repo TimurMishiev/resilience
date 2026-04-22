@@ -10,38 +10,23 @@ Last updated: 2026-04-22
 
 ## Current Phase
 
-Phase 7 — Advanced Geospatial Tools
+Phase 7 — Advanced Geospatial Tools (**closed**)
 
-(Phase 4 — Debrief closed. Phase 5 — Evidence Threading complete. Phase 6 Slice 6-1 fully shipped and closed in `aa07c91`. Phase 7 Slices 7-1A, 7-1A-followup, 7-1B, 7-1B-followup, 7-1C, 7-1D, 7-1E, 7-1E-followup, and 7-1E-followup-p3 all shipped — latest tip `efd1ff8`. A narrow replay-hardening tranche (remove wall-clock defaults from shared library functions) is currently active.)
+(Phase 4 — Debrief closed. Phase 5 — Evidence Threading complete. Phase 6 Slice 6-1 fully shipped and closed in `aa07c91`. Phase 7 Slices 7-1A, 7-1A-followup, 7-1B, 7-1B-followup, 7-1C, 7-1D, 7-1E, 7-1E-followup, 7-1E-followup-p3, and replay-hardening-dateNow all shipped — latest tip `368e079`. There is no active uncommitted product slice.)
 
 ## Current Slice
 
-**Replay hardening — remove `Date.now()` defaults from shared library functions (active, uncommitted).**
+**No active uncommitted product slice.**
 
-Six shared library functions (`buildMapSignalFeatureCollection`, `buildMapSignalRenderCollections`, `timeAgo`, `isTelemetryFresh`, `buildAssetFeatureCollection`, and the file-local `staleness` helper inside `EntityCard`) previously defaulted their reference-time parameter to `Date.now()`. This made replay-safety invisible to the compiler: a new caller that forgot to pass a reference time would silently wall-clock, breaking replay without any type error. This slice removes those defaults and threads the correct reference time (live via `useReferenceTimeMs()` on admin surfaces, replay-aware `referenceTimeMs` on already-threaded surfaces) through every call site.
-
-Scope explicitly narrow: signatures + call-site fixes only. No behavioral changes at any call site; the defaults always resolved to wall-clock at runtime, and the fixes preserve that at each site while making the choice visible.
+The last shipped slice is `368e079` — replay hardening via explicit reference-clock threading. Phase 7 is now closed unless the upcoming audit proves a real missing operator tool or a material regression that belongs inside the phase.
 
 ## Current Repo State
 
-- Latest committed product slice: `efd1ff8` — Phase 7 Slice 7-1E-followup-p3 — worker-pool sibling short-circuit + `useAll*` normalization
-- Current tip commit: `efd1ff8`
-- Working tree: dirty with the Date.now-defaults removal tranche
+- Latest committed product slice: `368e079` — replay-hardening-dateNow: remove wall-clock defaults from shared library functions
+- Current tip commit: `368e079`
+- Working tree: clean
 - Branch state: `main` even with `origin/main`
-- Dirty/tranche files right now:
-  - `frontend/src/lib/mapSignalRendering.ts`
-  - `frontend/src/lib/formatters.ts`
-  - `frontend/src/lib/telemetry.ts`
-  - `frontend/src/lib/mapRenderData.ts`
-  - `frontend/src/lib/coverage.ts`
-  - `frontend/src/lib/assetPresentation.ts`
-  - `frontend/src/hooks/useTelemetryStream.ts`
-  - `frontend/src/hooks/map/useMapAssetLayers.ts`
-  - `frontend/src/components/EntityCard.tsx`
-  - `frontend/src/pages/OrganizationsPage.tsx`
-  - `frontend/src/pages/UsersPage.tsx`
-  - `frontend/src/test/mapSignalRendering.test.ts`
-  - `memory/execution_handoff.md`
+- Dirty/tranche files right now: none
 
 ## Phase 7 — Slice Plan
 
@@ -55,7 +40,7 @@ Sequenced:
 - **7-1E** — session-local `/map` sector / fan overlay with operator-entered heading, arc, and extent (**shipped** in `f1960c7`)
 - **7-1E-followup** — post-ship cleanup: shared map geodesy extraction, replay `as_of` hardening, AI catalog freshness-vs-load trade-off, full-fetch pagination rollout, and globe toolbar keyboard a11y (**shipped** in `51f8a3f`)
 - **7-1E-followup-p3** — post-ship P3 cleanup on `fetchAllPaginated` + `useAll*` (worker-pool sibling short-circuit, non-null-assertion removal, test-name drift fix, `useAllAreasOfOperation` signature normalized) (**shipped** in `efd1ff8`)
-- **replay-hardening-dateNow** — remove `Date.now()` defaults from shared library functions; thread `useReferenceTimeMs()` through admin pages; thread live clock explicitly through live-only call sites (`useTelemetryStream`, `coverage`, `assetPresentation`) (**active, uncommitted**)
+- **replay-hardening-dateNow** — remove `Date.now()` defaults from shared library functions; thread `useReferenceTimeMs()` through admin pages; thread live clock explicitly through live-only call sites (`useTelemetryStream`, `coverage`, `assetPresentation`) (**shipped** in `368e079`)
 
 ## Shipped In This Phase (Phase 7)
 
@@ -68,6 +53,7 @@ Sequenced:
 - `f1960c7` — Phase 7 Slice 7-1E: `/map` sector / fan overlay (session-local anchor, operator-entered heading/arc/extent, NM/KM units, sector paint-order proof, style-swap persistence, and five-tool exclusivity)
 - `51f8a3f` — Phase 7 Slice 7-1E-followup: shared `projectGeodesicPoint` extraction, replay `as_of` fail-closed (400 on malformed), AI catalog cache removal (deliberate freshness-vs-load trade), full-fetch pagination rollout on `/map` `/globe` `/graph` with `MAX_CONCURRENT_PAGES = 6` worker-pool semaphore, and globe toolbar keyboard a11y
 - `efd1ff8` — Phase 7 Slice 7-1E-followup-p3: `fetchAllPaginated` worker-pool sibling short-circuit on first rejection, explicit invariant error in place of non-null assertion, test-name drift fix, `useAllAreasOfOperation` signature normalized to match the other three `useAll*` hooks
+- `368e079` — replay-hardening-dateNow: removed wall-clock defaults from shared library functions, threaded explicit reference clocks through admin/live call sites, and made replay clock choice compile-visible
 
 ## Phase 6 — Closed Slice Plan (historical context)
 
@@ -164,29 +150,14 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 
 ## In Progress
 
-- **Replay hardening — remove `Date.now()` defaults from shared library functions.** Active and uncommitted.
-- Scope:
-  - Library signatures made required (no more `referenceTimeMs = Date.now()` / `nowMs = Date.now()` / `nowSeconds = Date.now() / 1000`):
-    - `lib/mapSignalRendering.ts`: `buildMapSignalFeatureCollection`, `buildMapSignalRenderCollections` — `referenceTimeMs: number` is now required (clarifying comment added)
-    - `lib/formatters.ts`: `timeAgo(iso, nowMs)` — `nowMs: number` required
-    - `lib/telemetry.ts`: `isTelemetryFresh(reading, nowSeconds)` — `nowSeconds: number` required
-    - `lib/mapRenderData.ts`: `buildAssetFeatureCollection` — `allowHistoricalTelemetry: boolean` and `referenceTimeMs: number` both required (default `false` on the former also removed for consistency with the positional contract)
-    - `components/EntityCard.tsx`: file-local `staleness(..., referenceTimeMs)` — required
-  - Call-site fixes:
-    - Admin surfaces (`pages/OrganizationsPage.tsx`, `pages/UsersPage.tsx`) now thread `useReferenceTimeMs()` into `timeAgo`. The hook auto-falls-back to live wall-clock (with 60s refresh) when no `asOf` is supplied and is pure under `react-hooks/purity`, which directly-inline `Date.now()` in render is not.
-    - Live-only call sites that must keep wall-clock semantics now pass it explicitly: `useTelemetryStream.ts` (15s SSE freshness sweep), `lib/coverage.ts` (`buildCoverageData` live-fresh branch), `lib/assetPresentation.ts` (`getLiveTelemetryReading` live branch — the `options.allowHistorical` short-circuit already bypasses this in replay).
-    - `hooks/map/useMapAssetLayers.ts` init call adds `(false, 0)` for the empty-seed `buildAssetFeatureCollection` call; iteration over an empty array means the reference time is never read, but the call has to compile.
-    - `test/mapSignalRendering.test.ts` three bare `buildMapSignalRenderCollections(...)` calls now pass a fixed `referenceTimeMs`.
-- Why it matters: previously, a new `/map`, `/globe`, or `/debrief` caller that forgot the reference-time argument would silently wall-clock in replay, with no compile-time signal. After this tranche, every such call site is a compile error until the caller supplies a reference time, and every existing call site's choice of clock (replay-aware vs live) is grep-visible.
-- Intentionally **not** addressed in this tranche:
-  - AI catalog cache re-introduction — still a watch-item for production-scale load; needs concrete TTL + invalidation strategy before re-landing
-  - `useTasks` / `useAllTasks` key-vs-cleaned drift — pre-existing, zero runtime impact today; defer until a real nullable-field caller surfaces
-- Keep this tranche narrow. Do not widen.
+- No active implementation slice.
+- Phase 7 is closed.
+- The next planned work is a full audit plus manual regression/functional review before choosing whether to harden further or move into the next major program.
 
 ## Next
 
-- **Immediate next step:** if gate is clean, commit this cleanup tranche, then run the planned full audit before deciding whether Phase 7 needs any further operator tooling at all.
-- **If Phase 7 continues after the audit:** only continue if another geospatial utility solves a real operator problem and can be scoped as a similarly narrow tool slice.
+- **Immediate next step:** run the full audit on the shipped product, then process any external CTO-style findings against the real code.
+- **If Phase 7 reopens after the audit:** only reopen it if the audit proves a real missing operator tool or a real regression within the Phase 7 surfaces.
 - **Explicit boundary for 7-1E and beyond:** do not jump straight to persistence, collaboration, or a generalized geospatial workspace. Keep Phase 7 additive and tool-specific.
 - **Watch the first real `frontend-perf` CI run on `aa07c91` (or its first PR descendant).** Watch points:
     - 1k tier: budgets are 15/25/30ms; current local p95-of-p95s is 10.2ms. Headroom is ~2×. CI runner variance may eat into that.
@@ -212,13 +183,15 @@ cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/api/cl
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (replay-hardening-dateNow tranche, uncommitted, 2026-04-22)
+## Last Validation Results (replay-hardening-dateNow tranche, shipped in `368e079`, 2026-04-22)
 
 - Touched frontend files: 12 (6 lib signatures + 6 call-site / test updates)
+- Focused frontend validation:
+  - `npx vitest run src/test/mapSignalRendering.test.ts` → **8 / 8 pass**
 - Full frontend validation:
-  - `npx vitest run` → **656 / 656 pass across 89 files** (no new tests; existing tests prove the reference-time-is-now-required contract)
+  - `npx vitest run` → **656 / 656 pass across 89 files**
   - `npx tsc -p tsconfig.app.json --noEmit` → **0 errors**
-  - `npx eslint` on all 12 touched files → **0 issues** (including `react-hooks/purity`, which would have fired on any render-path `Date.now()` call — it did fire during an intermediate step on `timeAgo(..., Date.now())` inside `OrganizationsPage`/`UsersPage`, and that's what drove the switch to `useReferenceTimeMs()` on both pages)
+  - `npx eslint` on all 12 touched files → **0 issues**
   - `git diff --check` → **clean**
 - Backend: no backend files touched in this tranche; no new rspec run required.
 
