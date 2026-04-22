@@ -160,7 +160,7 @@ Use this file as the canonical remediation backlog.
 
 #### `F1` — `BriefingPanel` Can Render A Stale Response Under A New Header
 - Severity: `P3`
-- Status: fixed in working tree on `2026-04-22`
+- Status: fixed and shipped in `43ea358` on `2026-04-22`
 - Why real:
   - `result.summary` / `citations` / `context_counts` were keyed to response-time state
   - `result` card header and context hint read *current* selector state, so changing selectors after a successful generate rendered stale body under a new header
@@ -180,10 +180,25 @@ Use this file as the canonical remediation backlog.
 
 #### `O1` — Metrics Latency Window Claim Does Not Match Implementation
 - Severity: `P3`
-- Status: confirmed observability correctness issue
+- Status: fixed in working tree on `2026-04-22`
+- Why real:
+  - [metrics/recorder.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/services/metrics/recorder.rb) declared `LATENCY_WINDOW = 5.minutes` and published it as `window_seconds` (line 81)
+  - `persist_request_latency!` calls `@request_samples.clear` on every invocation (line 60), so the effective window equals the snapshot cadence
+  - [recurring.yml](/Users/timurmishiev/Desktop/Code/resilience/backend/config/recurring.yml) schedules `metrics_snapshot` `every minute` — so samples are cleared every 60s, not every 300s
+  - docstring and comment both claimed a `rolling 5-min window`
+- Risk:
+  - operators / downstream consumers reading `window_seconds: 300` are misled about the aggregation window
+  - alert thresholds or SLOs derived from the published window would be wrong by 5×
+- Fix direction (applied):
+  - reconciled the claim to reality: `LATENCY_WINDOW = 1.minute`, matching the snapshot cadence
+  - rewrote the header comment to state that the window tracks the snapshot cadence by design (samples are cleared on each snapshot)
+  - behavior unchanged — this is a labeling/correctness fix, not a windowing-semantics change
 - Primary files:
   - [metrics/recorder.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/services/metrics/recorder.rb)
   - [recurring.yml](/Users/timurmishiev/Desktop/Code/resilience/backend/config/recurring.yml)
+  - [recorder_spec.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/spec/services/metrics/recorder_spec.rb)
+- Validation minimum:
+  - focused recorder spec proving `payload["window_seconds"] == 60` after `snapshot!`
 
 #### `J1` — No `RevokedJwt` Pruning Job
 - Severity: `P3`

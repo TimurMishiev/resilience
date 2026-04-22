@@ -16,21 +16,21 @@ Post-Phase-7 remediation (**active**)
 
 ## Current Slice
 
-**Audit remediation — Band D `F1` fixed in working tree (BriefingPanel stale-response race)**
+**Audit remediation — Band D `O1` fixed in working tree (metrics latency window claim vs implementation)**
 
-The last shipped product slice is `27831e1` — "Close Band A + Band B audit remediation" (I1 + G1 + API1 + D1 + I2 + R1). The MD-cleanup rotation shipped in `2ed89a5`. User has approved the **full remediation sweep** (bulletproof-first, production-ready before any new roadmap work): Band D → Band C → CTO P1 → P2 → scope P3 → defer P4.
+The latest shipped remediation slice is `43ea358` — "Fix BriefingPanel stale-response race (F1)". The prior Band A + Band B tranche shipped in `27831e1`, and the MD-cleanup rotation shipped in `2ed89a5`. User has approved the **full remediation sweep** (bulletproof-first, production-ready before any new roadmap work): Band D → Band C → CTO P1 → P2 → scope P3 → defer P4.
 
-Current tranche in working tree: **`F1` — BriefingPanel captures briefing params at generate time, renders an anchored context header on the result card, and routes exports through captured params instead of live selector state.** 9 Vitest cases pass (6 existing + 3 new F1 cases).
+Current tranche in working tree: **`O1` — `Metrics::Recorder::LATENCY_WINDOW` reconciled from `5.minutes` to `1.minute` to match the actual per-snapshot accumulation window (samples are cleared on every snapshot and the job runs every minute).** Published `window_seconds` now truthfully equals 60.
 
-Next unresolved by sweep order: **O1** (metrics latency window 5min claim vs 1min impl).
+Next unresolved by sweep order: **J1** (no `RevokedJwt` pruning job).
 
 ## Current Repo State
 
-- Latest committed product slice: `27831e1` — Band A + Band B audit remediation
+- Latest committed product slice: `43ea358` — Band D `F1` BriefingPanel stale-response race
 - Latest committed rotation: `2ed89a5` — MD-file cleanup
-- Current tip commit (uncommitted working tree): F1 fix applied to `BriefingPanel.tsx` + `BriefingPanel.test.tsx`; `findings.md` updated
-- Working tree: **dirty** — F1 tranche pending commit
-- Branch state: `main` in sync with `origin/main` (the next commit will be the F1 remediation)
+- Current tip commit (uncommitted working tree): O1 fix applied to `metrics/recorder.rb` + `recorder_spec.rb`; F1 doc-sync piggybacking (findings.md + execution_handoff.md)
+- Working tree: **dirty** — O1 tranche pending commit
+- Branch state: `main` in sync with `origin/main` (the next commit will be the O1 remediation)
 
 ## Phase 7 — Slice Plan
 
@@ -58,6 +58,7 @@ Sequenced:
 - `51f8a3f` — Phase 7 Slice 7-1E-followup: shared `projectGeodesicPoint` extraction, replay `as_of` fail-closed (400 on malformed), AI catalog cache removal (deliberate freshness-vs-load trade), full-fetch pagination rollout on `/map` `/globe` `/graph` with `MAX_CONCURRENT_PAGES = 6` worker-pool semaphore, and globe toolbar keyboard a11y
 - `efd1ff8` — Phase 7 Slice 7-1E-followup-p3: `fetchAllPaginated` worker-pool sibling short-circuit on first rejection, explicit invariant error in place of non-null assertion, test-name drift fix, `useAllAreasOfOperation` signature normalized to match the other three `useAll*` hooks
 - `368e079` — replay-hardening-dateNow: removed wall-clock defaults from shared library functions, threaded explicit reference clocks through admin/live call sites, and made replay clock choice compile-visible
+- `43ea358` — Band D `F1`: BriefingPanel stale-response race fixed by capturing briefing context at generate time, rendering the captured context as the result header, and exporting from captured params rather than live selector state
 
 ## Phase 6 — Closed Slice Plan (historical context)
 
@@ -160,13 +161,14 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
   - Band C (MT1, MT2, MT3) — queued after Band D
   - CTO P1 → P2 → (scope P3) → defer P4 — queued after Band C
 - Band A (`I1`, `G1`, `API1`, `D1`) and Band B (`I2`, `R1`) — shipped in `27831e1`.
-- Band D `F1` — fixed in working tree; tests green; commit pending.
-- Next unresolved confirmed finding by sweep order: `O1` — metrics latency window claim does not match implementation.
+- Band D `F1` — shipped in `43ea358`.
+- Band D `O1` — fixed in working tree; tests green; commit pending.
+- Next unresolved confirmed finding by sweep order: `J1` — no `RevokedJwt` pruning job.
 
 ## Next
 
-- **Immediate next step:** run `/gate`, then commit the `F1` tranche, then proceed to `O1` (metrics latency window mismatch).
-- **Full sweep order (approved by user 2026-04-22):** Band D `F1` → `O1` → `J1` → `M1` → Band C `MT1` → `MT2` → `MT3` → CTO P1 (globe evidence + `useReferenceTimeMs`) → CTO P2 (globe alert triage in inspector) → scope CTO P3 (5-slice map+debrief workstation; needs explicit alignment before start) → defer CTO P4 unless a 6th map tool is planned.
+- **Immediate next step:** run `/gate`, then commit the `O1` tranche, then proceed to `J1` (no `RevokedJwt` pruning job).
+- **Full sweep order (approved by user 2026-04-22):** Band D `J1` → `M1` → Band C `MT1` → `MT2` → `MT3` → CTO P1 (globe evidence + `useReferenceTimeMs`) → CTO P2 (globe alert triage in inspector) → scope CTO P3 (5-slice map+debrief workstation; needs explicit alignment before start) → defer CTO P4 unless a 6th map tool is planned.
 - **Legacy commit-target note (superseded by sweep):** whether to continue into Band C versus stop at the single-org boundary was resolved — Band C is on the sweep. Previously marked as "latent for single-org"; kept in the sweep for production-ready completeness before new roadmap work.
 - **External CTO evaluation (2026-04-22) — briefing:** see [memory/cto_evaluation_roadmap.md](cto_evaluation_roadmap.md). Full third-party report + per-priority disposition. P0 (`Date.now()` defaults → required) shipped in `368e079`. P1–P4 are open and each needs independent code-first evaluation before adopting — the file includes explicit verification prompts per priority. Neither model has pre-judged P1–P4; do not start any of them without scoping against current code first.
 - **If Phase 7 reopens after remediation:** only reopen it if the confirmed remediation backlog is closed and a real missing operator tool still remains.
@@ -202,7 +204,20 @@ cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/api/cl
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (current uncommitted tranche — Band D `F1` BriefingPanel stale-response race, 2026-04-22)
+## Last Validation Results (current uncommitted tranche — Band D `O1` metrics latency window reconciliation, 2026-04-22)
+
+- Touched backend files: `backend/app/services/metrics/recorder.rb`, `backend/spec/services/metrics/recorder_spec.rb`
+- Touched findings doc: `.claude/skills/resilience-remediation/references/findings.md`
+- Touched handoff: `memory/execution_handoff.md`
+- Focused backend validation:
+  - `TEST_DATABASE_PORT=5434 bundle exec rspec spec/services/metrics spec/jobs/metrics spec/requests/api/operational_health_spec.rb spec/models/operational_status_spec.rb` → **33 / 33 pass** (includes new `persists a window_seconds that matches the actual snapshot cadence` case which failed pre-fix with `expected 60, got 300`)
+- Full validation:
+  - `TEST_DATABASE_PORT=5434 bundle exec rspec` → **2180 examples, 0 failures**
+  - `npx vitest run` → **660 / 660 pass across 90 files**
+  - `npx tsc --noEmit` → **0 errors**
+  - `git diff --check` → **clean**
+
+## Prior Validation Results (shipped remediation slice — Band D `F1` BriefingPanel stale-response race, committed in `43ea358`, 2026-04-22)
 
 - Touched frontend files: `src/components/BriefingPanel.tsx`, `src/test/BriefingPanel.test.tsx`
 - Touched findings doc: `.claude/skills/resilience-remediation/references/findings.md`

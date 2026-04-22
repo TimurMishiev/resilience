@@ -71,6 +71,17 @@ RSpec.describe Metrics::Recorder, type: :service do
       expect(described_class.request_samples).to be_empty
     end
 
+    it "persists a window_seconds that matches the actual snapshot cadence" do
+      described_class.record_request(controller: "Api::SitesController", action: "index", duration_ms: 10.0)
+      described_class.snapshot!
+
+      status = OperationalStatus.find_by(category: "metrics", key: "request_latency")
+      # Samples are cleared on every snapshot and Metrics::SnapshotJob runs every
+      # minute (config/recurring.yml) — so the published window must equal the
+      # actual accumulation window, not the historical aspirational 5-minute claim.
+      expect(status.payload["window_seconds"]).to eq(60)
+    end
+
     it "persists sse_connections count" do
       create(:sse_stream_lease, user: user, expires_at: 10.minutes.from_now)
       create(:sse_stream_lease, user: user, expires_at: 10.minutes.from_now, stream_name: "telemetry")

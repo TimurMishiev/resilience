@@ -4,16 +4,22 @@ module Metrics
   # Collects and persists platform metrics to OperationalStatus (category: "metrics").
   #
   # Tracks five metric families:
-  #   1. request_latency    — p50/p95/p99 latency per controller action (rolling 5-min window)
+  #   1. request_latency    — p50/p95/p99 latency per controller action (per-snapshot window)
   #   2. sse_connections     — current active SSE stream count (from SseStreamLease)
   #   3. feed_lag            — seconds since each feed's last successful poll
-  #   4. ai_response_times   — rolling p50/p95 for AI service calls
+  #   4. ai_response_times   — per-snapshot p50/p95 for AI service calls
   #   5. ai_circuit_breakers — open/closed status for each AI service breaker
   #
-  # Called periodically by Metrics::SnapshotJob (every 60s) and writes to
-  # OperationalStatus so the Operational Health page can render it.
+  # Called periodically by Metrics::SnapshotJob (every 60s — config/recurring.yml)
+  # and writes to OperationalStatus so the Operational Health page can render it.
+  #
+  # LATENCY_WINDOW is the observation window published to consumers in
+  # `window_seconds`. Because `persist_request_latency!` clears `@request_samples`
+  # on every snapshot, the effective window equals the snapshot cadence. The
+  # constant is kept in sync with that cadence so operators see a truthful
+  # aggregation window, not an aspirational one.
   class Recorder
-    LATENCY_WINDOW = 5.minutes
+    LATENCY_WINDOW = 1.minute
     MAX_SAMPLES    = 500 # cap per endpoint to bound memory
 
     class << self
