@@ -16,57 +16,20 @@ Post-Phase-7 remediation (**active**)
 
 ## Current Slice
 
-**Audit remediation — Band A + Band B closed in working tree**
+**Audit remediation — Band A + Band B shipped in `27831e1`**
 
-The last shipped product slice is `368e079` — replay hardening via explicit reference-clock threading.
+The last shipped product slice is `27831e1` — "Close Band A + Band B audit remediation" (I1 + G1 + API1 + D1 + I2 + R1, plus the shared resilience-remediation skill + CTO evaluation briefing). Working tree is clean.
 
-Current uncommitted remediation tranche:
-- widens `Correlations::EvaluateRecentJob::WINDOW_SECONDS` from `12` to `32` to match the recurring `30 second` cadence with `2 seconds` overlap
-- updates the stale "every 10 seconds" comments in the job and initializer
-- adds direct proof that a signal from the old 12–30s dead zone is now evaluated
-- replaces single-page chokepoint loading on `/map` and `/globe` with an all-pages chokepoint query path backed by `fetchAllPaginated`
-- adds direct proof that the shared chokepoint data path returns page-2 overflow beyond the backend `per_page: 200` cap
-- makes `SignalRuleMatchesController#index` and `VesselsController#tracks` fail-closed on malformed `from` / `to` datetime filters instead of returning `200 OK` with incorrect data
-- adds request-spec proof for invalid `from` and invalid `to` on both controllers while preserving the existing valid-range filter behavior
-- full `safe_parse_datetime` caller audit confirmed: `SignalsController` already fail-closed; `AuditEventsController`, `ExportsController` → `BatchService`, `AiController` all truthy-guard `nil` (silently skip; not wrong-data)
-- makes `Telemetry::PartitionManager` re-check table existence on cache hits before short-circuiting
-- adds direct proof that a stale cached partition name is recreated when the partition table is missing, allowing the next write to succeed
-- changes GPSJam ingestion to stamp `ExternalSignal.occurred_at` from the feed's source date (`UTC noon`) instead of wall-clock ingest time
-- threads `source_date` through `parse_and_ingest` / `ingest_hexagon` and records it in `raw_payload` for downstream visibility
-- adds service-spec proof for source-date `occurred_at` plus dedupe behavior under the new timestamp semantics
-- replaces `Replay::ProjectionService`'s chronological `limit(100_000)` fold with a per-entity latest-event query
-- adds service-spec proof that a quieter entity still returns its latest snapshot even when another entity has much longer history
+Prior committed product slice: `368e079` — replay hardening via explicit reference-clock threading.
+
+Next unresolved by priority: **MT1** (telemetry SSE not org-scoped). Band C is latent for single-org deployments; do not start without user alignment (architectural scope — SSE org-scoping, simulator payload, policy gating).
 
 ## Current Repo State
 
-- Latest committed product slice: `368e079` — replay-hardening-dateNow: remove wall-clock defaults from shared library functions
-- Current tip commit: `368e079`
-- Working tree: dirty
-- Branch state: `main` even with `origin/main` (local dirty remediation/docs state only)
-- Dirty/tranche files right now:
-  - `backend/app/jobs/correlations/evaluate_recent_job.rb`
-  - `backend/config/initializers/correlation_evaluator.rb`
-  - `backend/spec/jobs/correlations/evaluate_recent_job_spec.rb`
-  - `frontend/src/api/chokepoints.ts`
-  - `frontend/src/hooks/useChokepoints.ts`
-  - `frontend/src/pages/GlobePage.tsx`
-  - `frontend/src/pages/MapPage.tsx`
-  - `frontend/src/test/GlobePage.test.tsx`
-  - `frontend/src/test/MapPage.test.tsx`
-  - untracked `frontend/src/test/useChokepoints.test.tsx`
-  - `backend/app/controllers/api/signal_rule_matches_controller.rb`
-  - `backend/app/controllers/api/vessels_controller.rb`
-  - `backend/app/services/telemetry/partition_manager.rb`
-  - `backend/app/services/feeds/gpsjam_ingestion_service.rb`
-  - `backend/app/services/replay/projection_service.rb`
-  - `backend/spec/requests/api/signal_rule_matches_spec.rb`
-  - `backend/spec/requests/api/vessels_spec.rb`
-  - `backend/spec/services/telemetry/partition_manager_spec.rb`
-  - `backend/spec/services/feeds/gpsjam_ingestion_service_spec.rb`
-  - `backend/spec/services/replay/projection_service_spec.rb`
-  - `memory/execution_handoff.md`
-  - untracked `memory/cto_evaluation_roadmap.md`
-  - untracked `.claude/skills/resilience-remediation/`
+- Latest committed product slice: `27831e1` — Band A + Band B audit remediation
+- Current tip commit: `27831e1`
+- Working tree: **clean**
+- Branch state: `main` ahead of `origin/main` by 1 commit (not pushed)
 
 ## Phase 7 — Slice Plan
 

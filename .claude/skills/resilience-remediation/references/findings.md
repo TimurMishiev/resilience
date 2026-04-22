@@ -13,7 +13,7 @@ Use this file as the canonical remediation backlog.
 
 #### `I1` — Correlation Evaluator Window Misses Most Signals
 - Severity: `P1`
-- Status: fixed in current working tree on `2026-04-22` (pending commit)
+- Status: fixed and shipped in `27831e1` on `2026-04-22`
 - Why real:
   - [evaluate_recent_job.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/jobs/correlations/evaluate_recent_job.rb) uses `WINDOW_SECONDS = 12`
   - [recurring.yml](/Users/timurmishiev/Desktop/Code/resilience/backend/config/recurring.yml) schedules the job every `30 seconds`
@@ -30,7 +30,7 @@ Use this file as the canonical remediation backlog.
 
 #### `G1` — Chokepoints Truncate Silently On `/map` And `/globe`
 - Severity: `P2`
-- Status: fixed in current working tree on `2026-04-22` (pending commit)
+- Status: fixed and shipped in `27831e1` on `2026-04-22`
 - Why real:
   - [MapPage.tsx](/Users/timurmishiev/Desktop/Code/resilience/frontend/src/pages/MapPage.tsx) and [GlobePage.tsx](/Users/timurmishiev/Desktop/Code/resilience/frontend/src/pages/GlobePage.tsx) fetch chokepoints with `per_page: 200`
   - [useChokepoints.ts](/Users/timurmishiev/Desktop/Code/resilience/frontend/src/hooks/useChokepoints.ts) only fetches one page
@@ -47,7 +47,7 @@ Use this file as the canonical remediation backlog.
 
 #### `API1` — Controllers Accept Invalid Datetimes And Return Wrong Data
 - Severity: `P2`
-- Status: fixed in current working tree on `2026-04-22` (pending commit)
+- Status: fixed and shipped in `27831e1` on `2026-04-22`
 - Why real:
   - [signal_rule_matches_controller.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/controllers/api/signal_rule_matches_controller.rb) and [vessels_controller.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/controllers/api/vessels_controller.rb) `#tracks` both used `safe_parse_datetime`
   - [base_controller.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/controllers/api/base_controller.rb) returns `nil` on invalid parse
@@ -70,7 +70,7 @@ Use this file as the canonical remediation backlog.
 
 #### `D1` — `Telemetry::PartitionManager` Cache Survives Rolled-Back Partition Creation
 - Severity: `P2`
-- Status: fixed in current working tree on `2026-04-22` (pending commit)
+- Status: fixed and shipped in `27831e1` on `2026-04-22`
 - Why real:
   - [partition_manager.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/services/telemetry/partition_manager.rb) short-circuits on cached partition name
   - targeted spec currently fails with `no partition of relation "telemetry_readings" found for row`
@@ -86,7 +86,7 @@ Use this file as the canonical remediation backlog.
 
 #### `I2` — GPSJam Uses Wall-Clock `occurred_at`
 - Severity: `P2`
-- Status: fixed in current working tree on `2026-04-22` (pending commit)
+- Status: fixed and shipped in `27831e1` on `2026-04-22`
 - Why real:
   - [gpsjam_ingestion_service.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/services/feeds/gpsjam_ingestion_service.rb) knows the source date lags 1–2 days
   - ingestion still writes `occurred_at: Time.current.utc`
@@ -103,7 +103,7 @@ Use this file as the canonical remediation backlog.
 
 #### `R1` — `Replay::ProjectionService` Silently Truncates At `100_000`
 - Severity: `P2` latent / scale-triggered
-- Status: fixed in current working tree on `2026-04-22` (pending commit)
+- Status: fixed and shipped in `27831e1` on `2026-04-22`
 - Why real:
   - [projection_service.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/services/replay/projection_service.rb) does chronological `.limit(MAX_EVENTS)` before folding latest per entity
 - Risk:
