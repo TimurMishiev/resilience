@@ -105,22 +105,14 @@ RSpec.describe Ai::FilterService, type: :service do
       expect(result.errors).to eq(["AI service error: planner exploded"])
     end
 
-    it "caches the site catalog across service instances" do
-      cache = ActiveSupport::Cache::MemoryStore.new
-      allow(Rails).to receive(:cache).and_return(cache)
-
-      builder = described_class.instance_method(:build_site_catalog)
-      calls = 0
-      allow_any_instance_of(described_class).to receive(:build_site_catalog) do |service|
-        calls += 1
-        builder.bind_call(service)
-      end
-
+    it "rebuilds the site catalog for new instances so fresh sites are visible immediately" do
       first = described_class.new(user: user, query: "first")
-      second = described_class.new(user: user, query: "second")
+      expect(first.send(:site_catalog).map { |entry| entry[:name] }).to contain_exactly("Forward Site Alpha")
 
-      expect(first.send(:site_catalog)).to eq(second.send(:site_catalog))
-      expect(calls).to eq(1)
+      create(:site, name: "Forward Site Bravo")
+
+      second = described_class.new(user: user, query: "second")
+      expect(second.send(:site_catalog).map { |entry| entry[:name] }).to include("Forward Site Alpha", "Forward Site Bravo")
     end
 
     it "fails closed when the AI circuit breaker is open" do

@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import * as d3 from 'd3'
 import { Button, Callout, Divider, Spinner, Tag } from '@blueprintjs/core'
-import { useSites } from '../hooks/useSites'
-import { useTasks } from '../hooks/useTasks'
-import { useAssets } from '../hooks/useAssets'
+import { useAllSites } from '../hooks/useSites'
+import { useAllTasks } from '../hooks/useTasks'
+import { useAllAssets } from '../hooks/useAssets'
 import { useReplayParams } from '../hooks/useReplayParams'
 import type { Site, Task, Asset, WorkflowStatus } from '../api/types'
 import type { Intent } from '@blueprintjs/core'
@@ -254,9 +254,9 @@ function DetailPanel({ node, onClose }: PanelProps) {
 export default function GraphPage() {
   const { asOfParam } = useReplayParams()
 
-  const sitesQuery  = useSites({ per_page: 200, ...asOfParam })
-  const tasksQuery  = useTasks({ per_page: 200, ...asOfParam })
-  const assetsQuery = useAssets({ per_page: 200, ...asOfParam })
+  const sitesQuery  = useAllSites(asOfParam)
+  const tasksQuery  = useAllTasks(asOfParam)
+  const assetsQuery = useAllAssets(asOfParam)
 
   const sites  = useMemo(() => sitesQuery.data?.data  ?? [], [sitesQuery.data?.data])
   const tasks  = useMemo(() => tasksQuery.data?.data  ?? [], [tasksQuery.data?.data])

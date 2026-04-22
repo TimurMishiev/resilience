@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { act, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -72,6 +72,12 @@ vi.mock('../hooks/useSites', () => ({
     isSuccess: true,
     error: null,
   }),
+  useAllSites: () => ({
+    data: { data: mockState.sites },
+    isLoading: false,
+    isSuccess: true,
+    error: null,
+  }),
 }))
 
 vi.mock('../hooks/useTasks', () => ({
@@ -80,10 +86,21 @@ vi.mock('../hooks/useTasks', () => ({
     isLoading: false,
     error: null,
   }),
+  useAllTasks: () => ({
+    data: { data: [] },
+    isLoading: false,
+    error: null,
+  }),
 }))
 
 vi.mock('../hooks/useAssets', () => ({
   useAssets: () => ({
+    data: { data: mockState.assets },
+    isLoading: false,
+    isSuccess: true,
+    error: null,
+  }),
+  useAllAssets: () => ({
     data: { data: mockState.assets },
     isLoading: false,
     isSuccess: true,
@@ -100,6 +117,9 @@ vi.mock('../hooks/useTelemetry', () => ({
 
 vi.mock('../hooks/useAreasOfOperation', () => ({
   useAreasOfOperation: () => ({
+    data: { data: [] },
+  }),
+  useAllAreasOfOperation: () => ({
     data: { data: [] },
   }),
 }))
@@ -523,6 +543,21 @@ describe('GlobePage selection routing', () => {
     expect(screen.getByText('HEATMAP ON')).toBeInTheDocument()
     expect(screen.getByText('LOW DENSITY')).toBeInTheDocument()
     expect(screen.getByText('HIGH DENSITY')).toBeInTheDocument()
+    expect(globeEngineState.latestInput?.showHeatmap).toBe(true)
+  })
+
+  it('supports keyboard toggling for globe toolbar controls', async () => {
+    renderGlobePage('/globe')
+
+    const heatmapToggle = screen.getByRole('button', { name: 'HEATMAP OFF' })
+
+    expect(heatmapToggle).toHaveAttribute('aria-pressed', 'false')
+
+    await act(async () => {
+      fireEvent.keyDown(heatmapToggle, { key: 'Enter' })
+    })
+
+    expect(screen.getByRole('button', { name: 'HEATMAP ON' })).toHaveAttribute('aria-pressed', 'true')
     expect(globeEngineState.latestInput?.showHeatmap).toBe(true)
   })
 

@@ -1,4 +1,5 @@
 import { formatRangeRingInputValue, rangeRingUnitToKm, type RangeRingUnit } from './mapRangeRings'
+import { projectGeodesicPoint } from './mapGeodesy'
 import type { MapPoint } from './mapPoint'
 
 export const DEFAULT_BEARING_LINE_DEGREES_INPUT = '045'
@@ -40,7 +41,7 @@ export function buildBearingLineFeatureCollection(
     return { type: 'FeatureCollection', features: [] }
   }
 
-  const endpoint = projectPoint(anchor, distanceKm, bearingDegrees)
+  const endpoint = projectGeodesicPoint(anchor, distanceKm, bearingDegrees)
 
   return {
     type: 'FeatureCollection',
@@ -77,7 +78,7 @@ export function buildBearingLinePointFeatureCollection(
   }]
 
   if (bearingDegrees !== null && distanceKm !== null) {
-    const endpoint = projectPoint(anchor, distanceKm, bearingDegrees)
+    const endpoint = projectGeodesicPoint(anchor, distanceKm, bearingDegrees)
     features.push({
       type: 'Feature',
       properties: { id: 'bearing-endpoint', kind: 'endpoint' },
@@ -104,7 +105,7 @@ export function buildBearingLineLabelFeatureCollection(
     return { type: 'FeatureCollection', features: [] }
   }
 
-  const endpoint = projectPoint(anchor, distanceKm, bearingDegrees)
+  const endpoint = projectGeodesicPoint(anchor, distanceKm, bearingDegrees)
 
   return {
     type: 'FeatureCollection',
@@ -119,32 +120,5 @@ export function buildBearingLineLabelFeatureCollection(
         coordinates: [endpoint.lng, endpoint.lat],
       },
     }],
-  }
-}
-
-function projectPoint(
-  start: MapPoint,
-  distanceKm: number,
-  bearingDegrees: number,
-): MapPoint {
-  const earthRadiusKm = 6371
-  const angularDistance = distanceKm / earthRadiusKm
-  const bearing = (bearingDegrees * Math.PI) / 180
-  const startLat = (start.lat * Math.PI) / 180
-  const startLng = (start.lng * Math.PI) / 180
-
-  const projectedLat = Math.asin(
-    Math.sin(startLat) * Math.cos(angularDistance) +
-      Math.cos(startLat) * Math.sin(angularDistance) * Math.cos(bearing),
-  )
-
-  const projectedLng = startLng + Math.atan2(
-    Math.sin(bearing) * Math.sin(angularDistance) * Math.cos(startLat),
-    Math.cos(angularDistance) - Math.sin(startLat) * Math.sin(projectedLat),
-  )
-
-  return {
-    lat: (projectedLat * 180) / Math.PI,
-    lng: ((projectedLng * 180) / Math.PI + 540) % 360 - 180,
   }
 }

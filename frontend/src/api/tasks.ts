@@ -20,8 +20,8 @@ type TasksParams = PaginationParams &
     created_before?: string
   }
 
-export function getTasks(params?: TasksParams): Promise<PaginatedResponse<Task>> {
-  return api.get('/api/tasks', params as QueryParams)
+export function getTasks(params?: TasksParams, options?: { signal?: AbortSignal }): Promise<PaginatedResponse<Task>> {
+  return api.get('/api/tasks', params as QueryParams, options)
 }
 
 export function getTask(id: string, params?: AsOfParam): Promise<Task> {

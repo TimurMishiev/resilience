@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useReplayGuardedMutation } from './useReplayGuardedMutation'
 import { getAsset, getAssets, updateAssetStatus } from '../api/assets'
 import type { AssetStatus, PaginationParams, AsOfParam } from '../api/types'
+import { fetchAllPaginated } from './fetchAllPaginated'
 
 type Params = PaginationParams & AsOfParam & {
   home_site_id?: string
@@ -13,6 +14,14 @@ export function useAssets(params?: Params, enabled = true) {
   return useQuery({
     queryKey: ['assets', params],
     queryFn: () => getAssets(params),
+    enabled,
+  })
+}
+
+export function useAllAssets(params?: Omit<Params, 'page' | 'per_page'>, enabled = true) {
+  return useQuery({
+    queryKey: ['assets', 'all', params],
+    queryFn: ({ signal }) => fetchAllPaginated(getAssets, params, { signal }),
     enabled,
   })
 }

@@ -1,5 +1,14 @@
 module Api
   class BaseController < ApplicationController
+    class InvalidDatetimeParamError < StandardError
+      attr_reader :param_name
+
+      def initialize(param_name)
+        @param_name = param_name
+        super("Invalid '#{param_name}' datetime")
+      end
+    end
+
     include JwtAuthenticatable
     include Pundit::Authorization
     after_action :verify_authorized
@@ -37,15 +46,18 @@ module Api
       end
     end
 
+    rescue_from InvalidDatetimeParamError do |e|
+      render json: { errors: [e.message] }, status: :bad_request
+    end
+
     private
 
-    # Parses the ?as_of= query param into a Time. Returns nil if absent or invalid.
+    # Parses the ?as_of= query param into a Time. Raises 400 on invalid input so
+    # replay clients can never silently fall back to live data.
     def as_of
-      return nil unless params[:as_of].present?
+      return @parsed_as_of if instance_variable_defined?(:@parsed_as_of)
 
-      Time.zone.parse(params[:as_of].to_s)
-    rescue ArgumentError, TypeError
-      nil
+      @parsed_as_of = parse_datetime_param!(params[:as_of], param_name: "as_of")
     end
 
     def render_service_failure(result)
@@ -58,6 +70,14 @@ module Api
       Time.zone.parse(value.to_s)
     rescue ArgumentError, TypeError
       nil
+    end
+
+    def parse_datetime_param!(value, param_name:)
+      return nil if value.blank?
+
+      Time.zone.parse(value.to_s) || raise(InvalidDatetimeParamError, param_name)
+    rescue ArgumentError, TypeError
+      raise InvalidDatetimeParamError, param_name
     end
 
     # Applies offset pagination to an ActiveRecord relation.

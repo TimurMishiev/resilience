@@ -18,8 +18,6 @@ module Ai
     DEFAULT_MODEL             = "claude-haiku-4-5-20251001"
     ANTHROPIC_TIMEOUT_SECONDS = 30
     ANTHROPIC_MAX_RETRIES     = 2
-    CATALOG_CACHE_KEY         = "ai/filter/sites/v2"
-    CATALOG_CACHE_TTL         = 60.seconds
 
     def initialize(query:, user:)
       @query = query.to_s.strip
@@ -140,9 +138,7 @@ module Ai
     end
 
     def site_catalog
-      Rails.cache.fetch("#{CATALOG_CACHE_KEY}/#{scope_cache_token}", expires_in: CATALOG_CACHE_TTL) do
-        build_site_catalog
-      end
+      build_site_catalog
     end
 
     def build_site_catalog

@@ -117,6 +117,12 @@ vi.mock('../hooks/useSites', () => ({
     isSuccess: true,
     error: null,
   }),
+  useAllSites: () => ({
+    data: { data: mockState.sites },
+    isLoading: false,
+    isSuccess: true,
+    error: null,
+  }),
 }))
 
 vi.mock('../hooks/useTasks', () => ({
@@ -125,10 +131,21 @@ vi.mock('../hooks/useTasks', () => ({
     isLoading: false,
     error: null,
   }),
+  useAllTasks: () => ({
+    data: { data: [] },
+    isLoading: false,
+    error: null,
+  }),
 }))
 
 vi.mock('../hooks/useAssets', () => ({
   useAssets: () => ({
+    data: { data: mockState.assets },
+    isLoading: false,
+    isSuccess: true,
+    error: null,
+  }),
+  useAllAssets: () => ({
     data: { data: mockState.assets },
     isLoading: false,
     isSuccess: true,
@@ -145,6 +162,9 @@ vi.mock('../hooks/useTelemetry', () => ({
 
 vi.mock('../hooks/useAreasOfOperation', () => ({
   useAreasOfOperation: () => ({
+    data: { data: [] },
+  }),
+  useAllAreasOfOperation: () => ({
     data: { data: [] },
   }),
 }))

@@ -3,11 +3,11 @@ import { useQueryClient } from '@tanstack/react-query'
 import { isPerfEnabled } from '../lib/perfInstrumentation'
 import { useMapBenchmarkBridge } from '../hooks/useMapBenchmarkBridge'
 import type { MapBenchmarkState, MapBenchmarkTarget } from '../components/map/types'
-import { useSites } from '../hooks/useSites'
-import { useTasks } from '../hooks/useTasks'
-import { useAssets } from '../hooks/useAssets'
+import { useAllSites } from '../hooks/useSites'
+import { useAllTasks } from '../hooks/useTasks'
+import { useAllAssets } from '../hooks/useAssets'
 import { useTelemetry } from '../hooks/useTelemetry'
-import { useAreasOfOperation } from '../hooks/useAreasOfOperation'
+import { useAllAreasOfOperation } from '../hooks/useAreasOfOperation'
 import { useSignalsLive } from '../hooks/useSignals'
 import { buildSyntheticBenchSignals, readBenchSignalCount } from '../lib/benchSyntheticSignals'
 import { useVessels, useVesselTracks } from '../hooks/useVessels'
@@ -128,10 +128,10 @@ export default function MapPage() {
     [riskData],
   )
 
-  const sitesQuery  = useSites({ per_page: 200, ...asOfParam })
-  const tasksQuery  = useTasks({ per_page: 200, ...asOfParam })
-  const assetsQuery = useAssets({ per_page: 200, ...asOfParam })
-  const { data: areasRes } = useAreasOfOperation({ per_page: 200, ...asOfParam })
+  const sitesQuery  = useAllSites(asOfParam)
+  const tasksQuery  = useAllTasks(asOfParam)
+  const assetsQuery = useAllAssets(asOfParam)
+  const { data: areasRes } = useAllAreasOfOperation(asOfParam)
   const areaOfOperations = useMemo(
     () => areasRes?.data ?? [],
     [areasRes?.data],

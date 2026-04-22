@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useReplayGuardedMutation } from './useReplayGuardedMutation'
 import { getTask, getTasks, createTask, updateTask, transitionTask, getAllowedTransitions } from '../api/tasks'
 import type { PaginationParams, AsOfParam, WorkflowStatus, TransitionTaskBody, CreateTaskBody, UpdateTaskBody } from '../api/types'
+import { fetchAllPaginated } from './fetchAllPaginated'
 
 type Params = PaginationParams &
   AsOfParam & {
@@ -27,6 +28,18 @@ export function useTasks(params?: Params, enabled = true) {
   return useQuery({
     queryKey: ['tasks', params],
     queryFn: () => getTasks(cleaned),
+    enabled,
+  })
+}
+
+export function useAllTasks(params?: Omit<Params, 'page' | 'per_page'>, enabled = true) {
+  const cleaned = params
+    ? Object.fromEntries(Object.entries(params).filter(([, value]) => value != null))
+    : undefined
+
+  return useQuery({
+    queryKey: ['tasks', 'all', params],
+    queryFn: ({ signal }) => fetchAllPaginated(getTasks, cleaned, { signal }),
     enabled,
   })
 }

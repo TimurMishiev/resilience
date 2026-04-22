@@ -60,6 +60,15 @@ RSpec.describe "Api::Sites", type: :request do
       get "/api/sites", params: { per_page: 9999 }, headers: auth_headers(current_user)
       expect(JSON.parse(response.body)["meta"]["per_page"]).to eq(200)
     end
+
+    it "returns 400 for an invalid as_of replay timestamp" do
+      get "/api/sites",
+          params: { as_of: "not-a-real-timestamp" },
+          headers: auth_headers(current_user)
+
+      expect(response).to have_http_status(:bad_request)
+      expect(JSON.parse(response.body)).to eq("errors" => ["Invalid 'as_of' datetime"])
+    end
   end
 
   describe "GET /api/sites/:id" do

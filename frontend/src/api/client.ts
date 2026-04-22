@@ -110,7 +110,7 @@ const DEFAULT_TIMEOUT_MS = 30_000
 async function request<T>(
   method: string,
   path: string,
-  options: { params?: QueryParams; body?: unknown } = {},
+  options: { params?: QueryParams; body?: unknown; signal?: AbortSignal } = {},
 ): Promise<T> {
   const url = buildUrl(path, options.params)
 
@@ -121,6 +121,19 @@ async function request<T>(
 
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS)
+  const callerSignal = options.signal
+
+  let removeAbortForwarder: (() => void) | undefined
+  if (callerSignal) {
+    const forwardAbort = () => controller.abort()
+
+    if (callerSignal.aborted) {
+      controller.abort()
+    } else {
+      callerSignal.addEventListener('abort', forwardAbort, { once: true })
+      removeAbortForwarder = () => callerSignal.removeEventListener('abort', forwardAbort)
+    }
+  }
 
   const init: RequestInit = { method, headers, credentials: 'include', signal: controller.signal }
 
@@ -133,6 +146,7 @@ async function request<T>(
     res = await fetch(url, init)
   } finally {
     clearTimeout(timeoutId)
+    removeAbortForwarder?.()
   }
 
   let payload: unknown
@@ -222,8 +236,8 @@ export async function postBlob(path: string, body: unknown, accept = '*/*'): Pro
 }
 
 export const api = {
-  get<T>(path: string, params?: QueryParams): Promise<T> {
-    return request<T>('GET', path, { params })
+  get<T>(path: string, params?: QueryParams, options?: { signal?: AbortSignal }): Promise<T> {
+    return request<T>('GET', path, { params, signal: options?.signal })
   },
 
   post<T>(path: string, body: unknown): Promise<T> {

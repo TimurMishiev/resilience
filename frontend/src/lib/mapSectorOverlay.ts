@@ -1,4 +1,5 @@
 import { formatBearingLineDegrees, parseBearingLineDegrees, parseBearingLineDistanceKm } from './mapBearingLine'
+import { projectGeodesicPoint } from './mapGeodesy'
 import { formatRangeRingInputValue, type RangeRingUnit } from './mapRangeRings'
 import type { MapPoint } from './mapPoint'
 
@@ -113,7 +114,7 @@ export function buildSectorLabelFeatureCollection(
     return { type: 'FeatureCollection', features: [] }
   }
 
-  const labelPoint = projectPoint(anchor, distanceKm * 0.58, bearingDegrees)
+  const labelPoint = projectGeodesicPoint(anchor, distanceKm * 0.58, bearingDegrees)
 
   return {
     type: 'FeatureCollection',
@@ -146,37 +147,10 @@ function buildSectorCoordinates(
   for (let step = 0; step <= steps; step += 1) {
     const progress = step / steps
     const currentBearing = startBearing + (endBearing - startBearing) * progress
-    const point = projectPoint(anchor, distanceKm, currentBearing)
+    const point = projectGeodesicPoint(anchor, distanceKm, currentBearing)
     coordinates.push([point.lng, point.lat])
   }
 
   coordinates.push([anchor.lng, anchor.lat])
   return coordinates
-}
-
-function projectPoint(
-  start: MapPoint,
-  distanceKm: number,
-  bearingDegrees: number,
-): MapPoint {
-  const earthRadiusKm = 6371
-  const angularDistance = distanceKm / earthRadiusKm
-  const bearing = (bearingDegrees * Math.PI) / 180
-  const startLat = (start.lat * Math.PI) / 180
-  const startLng = (start.lng * Math.PI) / 180
-
-  const projectedLat = Math.asin(
-    Math.sin(startLat) * Math.cos(angularDistance) +
-      Math.cos(startLat) * Math.sin(angularDistance) * Math.cos(bearing),
-  )
-
-  const projectedLng = startLng + Math.atan2(
-    Math.sin(bearing) * Math.sin(angularDistance) * Math.cos(startLat),
-    Math.cos(angularDistance) - Math.sin(startLat) * Math.sin(projectedLat),
-  )
-
-  return {
-    lat: (projectedLat * 180) / Math.PI,
-    lng: ((projectedLng * 180) / Math.PI + 540) % 360 - 180,
-  }
 }

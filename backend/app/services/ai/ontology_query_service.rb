@@ -15,8 +15,6 @@ module Ai
     SIGNAL_RADIUS_KM       = 200.0
     ANTHROPIC_TIMEOUT_SECONDS = 30
     ANTHROPIC_MAX_RETRIES     = 2
-    CATALOG_CACHE_KEY         = "ai/ontology_query/catalog_context/v2"
-    CATALOG_CACHE_TTL         = 60.seconds
 
     ROOT_TYPES = %w[site incident task asset area_of_operation].freeze
     RELATIONS_BY_ROOT = {
@@ -174,16 +172,7 @@ module Ai
     end
 
     def catalog_context
-      Rails.cache.fetch(catalog_cache_key, expires_in: CATALOG_CACHE_TTL) do
-        build_catalog_context
-      end
-    end
-
-    def catalog_cache_key
-      base_key = "#{CATALOG_CACHE_KEY}/#{scope_cache_token}"
-      return base_key unless @as_of.present?
-
-      "#{base_key}/#{@as_of.to_i}"
+      build_catalog_context
     end
 
     def build_catalog_context

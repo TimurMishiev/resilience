@@ -11,9 +11,10 @@ import type {
 } from './types'
 
 export function getAreasOfOperation(
-  params?: AreasOfOperationParams
+  params?: AreasOfOperationParams,
+  options?: { signal?: AbortSignal },
 ): Promise<PaginatedResponse<AreaOfOperation>> {
-  return api.get('/api/areas_of_operation', params as QueryParams)
+  return api.get('/api/areas_of_operation', params as QueryParams, options)
 }
 
 export function getAreaOfOperation(id: string, params?: AsOfParam): Promise<AreaOfOperation> {

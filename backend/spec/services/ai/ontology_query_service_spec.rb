@@ -111,22 +111,14 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
       expect(result.errors).to eq(["AI service error: planner exploded"])
     end
 
-    it "caches the catalog context across service instances" do
-      cache = ActiveSupport::Cache::MemoryStore.new
-      allow(Rails).to receive(:cache).and_return(cache)
-
-      builder = described_class.instance_method(:build_catalog_context)
-      calls = 0
-      allow_any_instance_of(described_class).to receive(:build_catalog_context) do |service|
-        calls += 1
-        builder.bind_call(service)
-      end
-
+    it "rebuilds the catalog context for new instances so fresh entities are visible immediately" do
       first = described_class.new(user: user, query: "first")
-      second = described_class.new(user: user, query: "second")
+      expect(first.send(:catalog_context)).to include("Sites: Forward Site Alpha")
 
-      expect(first.send(:catalog_context)).to eq(second.send(:catalog_context))
-      expect(calls).to eq(1)
+      create(:site, name: "Forward Site Bravo")
+
+      second = described_class.new(user: user, query: "second")
+      expect(second.send(:catalog_context)).to include("Forward Site Bravo")
     end
 
     it "fails closed when the AI circuit breaker is open" do

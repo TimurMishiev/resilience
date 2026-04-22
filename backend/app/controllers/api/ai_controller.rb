@@ -23,7 +23,7 @@ module Api
     def ontology_query
       result = Ai::OntologyQueryService.call(
         query: params.require(:q),
-        as_of: safe_parse_datetime(params[:as_of]),
+        as_of: parse_datetime_param!(params[:as_of], param_name: "as_of"),
         user: current_user,
       )
 

@@ -8,8 +8,8 @@ import type {
 
 type SitesParams = PaginationParams & AsOfParam
 
-export function getSites(params?: SitesParams): Promise<PaginatedResponse<Site>> {
-  return api.get('/api/sites', params as QueryParams)
+export function getSites(params?: SitesParams, options?: { signal?: AbortSignal }): Promise<PaginatedResponse<Site>> {
+  return api.get('/api/sites', params as QueryParams, options)
 }
 
 export function getSite(id: string, params?: AsOfParam): Promise<Site> {

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Callout, Spinner } from '@blueprintjs/core'
-import { useSites } from '../hooks/useSites'
-import { useTasks } from '../hooks/useTasks'
-import { useAssets } from '../hooks/useAssets'
+import { useAllSites } from '../hooks/useSites'
+import { useAllTasks } from '../hooks/useTasks'
+import { useAllAssets } from '../hooks/useAssets'
 import { useTelemetry } from '../hooks/useTelemetry'
-import { useAreasOfOperation } from '../hooks/useAreasOfOperation'
+import { useAllAreasOfOperation } from '../hooks/useAreasOfOperation'
 import { useSignalsLive } from '../hooks/useSignals'
 import { useAssetTrails } from '../hooks/useAssetTrails'
 import { useVessels, useVesselTracks } from '../hooks/useVessels'
@@ -90,10 +90,10 @@ export default function GlobePage() {
   const [trailWindowMinutes, setTrailWindowMinutes] = useState(30)
 
   // ── Data queries ─────────────────────────────────────────────────────────────
-  const sitesQuery  = useSites({ per_page: 200, ...asOfParam })
-  const tasksQuery  = useTasks({ per_page: 200, ...asOfParam })
-  const assetsQuery = useAssets({ per_page: 200, ...asOfParam })
-  const { data: areasRes } = useAreasOfOperation({ per_page: 200, ...asOfParam })
+  const sitesQuery  = useAllSites(asOfParam)
+  const tasksQuery  = useAllTasks(asOfParam)
+  const assetsQuery = useAllAssets(asOfParam)
+  const { data: areasRes } = useAllAreasOfOperation(asOfParam)
 
   const sites  = useMemo(() => sitesQuery.data?.data  ?? [], [sitesQuery.data?.data])
   const tasks  = useMemo(() => tasksQuery.data?.data  ?? [], [tasksQuery.data?.data])

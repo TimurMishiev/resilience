@@ -8,8 +8,8 @@ type AssetsParams = PaginationParams & AsOfParam & {
   asset_type?: string
 }
 
-export function getAssets(params?: AssetsParams): Promise<PaginatedResponse<Asset>> {
-  return api.get('/api/assets', params as QueryParams)
+export function getAssets(params?: AssetsParams, options?: { signal?: AbortSignal }): Promise<PaginatedResponse<Asset>> {
+  return api.get('/api/assets', params as QueryParams, options)
 }
 
 export function getAsset(id: string, params?: AsOfParam): Promise<Asset> {

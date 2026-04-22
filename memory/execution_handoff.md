@@ -6,27 +6,57 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-21
+Last updated: 2026-04-22
 
 ## Current Phase
 
 Phase 7 — Advanced Geospatial Tools
 
-(Phase 4 — Debrief closed. Phase 5 — Evidence Threading complete. Phase 6 Slice 6-1 fully shipped and closed in `aa07c91`. Phase 7 Slice 7-1A shipped in `4ea3def`, Phase 7 Slice 7-1A-followup shipped in `37f7a40`, Phase 7 Slice 7-1B shipped in `5260480`, Phase 7 Slice 7-1B-followup shipped in `df19f42`, Phase 7 Slice 7-1C shipped in `45b09b8`, Phase 7 Slice 7-1D shipped in `823dd05`, and Phase 7 Slice 7-1E shipped in `f1960c7`.)
+(Phase 4 — Debrief closed. Phase 5 — Evidence Threading complete. Phase 6 Slice 6-1 fully shipped and closed in `aa07c91`. Phase 7 Slice 7-1A shipped in `4ea3def`, Phase 7 Slice 7-1A-followup shipped in `37f7a40`, Phase 7 Slice 7-1B shipped in `5260480`, Phase 7 Slice 7-1B-followup shipped in `df19f42`, Phase 7 Slice 7-1C shipped in `45b09b8`, Phase 7 Slice 7-1D shipped in `823dd05`, and Phase 7 Slice 7-1E shipped in `f1960c7`. A mixed Phase 7 post-ship cleanup tranche is currently active.)
 
 ## Current Slice
 
-**No active uncommitted product slice.**
+**Phase 7 follow-up — geodesy / replay / AI freshness / full-fetch / globe a11y cleanup (active, uncommitted).**
 
-Phase 7 Slice 7-1E shipped in `f1960c7`. Any further Phase 7 work should only continue if another geospatial utility solves a real operator problem and is explicitly scoped.
+This is a mixed post-ship cleanup across the Phase 7 geospatial surfaces and adjacent replay/AI/query paths. It extracts the duplicated great-circle projection helper from the range-ring, bearing-line, and sector-overlay helpers into one shared frontend geodesy module, hardens invalid replay `as_of` handling to fail closed, drops the prior short-lived AI catalog cache in favor of immediate entity visibility, replaces silent `per_page=200` truncation on `/map` `/globe` `/graph` with explicit concurrent full-fetch helpers, and makes globe toolbar toggles keyboard-operable.
+
+This combined follow-up tranche was explicitly widened during post-ship review on 2026-04-22 to absorb the concrete gate findings on these same surfaces before commit. Do not widen it further.
 
 ## Current Repo State
 
 - Latest committed product slice: `f1960c7` — Phase 7 Slice 7-1E: `/map` sector / fan overlay
-- Current tip commit: `f1960c7`
-- Working tree: dirty only because of this handoff refresh; no uncommitted product-code slice is active
+- Current tip commit: `5322de2`
+- Working tree: dirty because of the active Phase 7 cleanup tranche plus this handoff refresh
 - Branch state: `main` even with `origin/main`
 - Dirty/tranche files right now:
+  - `backend/app/controllers/api/ai_controller.rb`
+  - `backend/app/controllers/api/base_controller.rb`
+  - `backend/app/services/ai/filter_service.rb`
+  - `backend/app/services/ai/ontology_query_service.rb`
+  - `backend/app/services/ai/signal_filter_service.rb`
+  - `backend/spec/requests/api/ai_spec.rb`
+  - `backend/spec/requests/api/sites_spec.rb`
+  - `backend/spec/services/ai/filter_service_spec.rb`
+  - `backend/spec/services/ai/ontology_query_service_spec.rb`
+  - `backend/spec/services/ai/signal_filter_service_spec.rb`
+  - `frontend/src/components/globe/GlobeToolbar.tsx`
+  - `frontend/src/hooks/fetchAllPaginated.ts`
+  - `frontend/src/hooks/useAreasOfOperation.ts`
+  - `frontend/src/hooks/useAssets.ts`
+  - `frontend/src/hooks/useSites.ts`
+  - `frontend/src/hooks/useTasks.ts`
+  - `frontend/src/lib/mapBearingLine.ts`
+  - `frontend/src/lib/mapGeodesy.ts`
+  - `frontend/src/lib/mapRangeRings.ts`
+  - `frontend/src/lib/mapSectorOverlay.ts`
+  - `frontend/src/pages/GlobePage.tsx`
+  - `frontend/src/pages/GraphPage.tsx`
+  - `frontend/src/pages/MapPage.tsx`
+  - `frontend/src/test/fetchAllPaginated.test.ts`
+  - `frontend/src/test/GlobePage.test.tsx`
+  - `frontend/src/test/GraphPage.test.tsx`
+  - `frontend/src/test/MapPage.test.tsx`
+  - `frontend/src/test/mapGeodesy.test.ts`
   - `memory/execution_handoff.md`
 
 ## Phase 7 — Slice Plan
@@ -39,6 +69,7 @@ Sequenced:
 - **7-1C** — session-local `/map` range rings with editable radii and NM/KM units (**shipped** in `45b09b8`)
 - **7-1D** — session-local `/map` bearing line / azimuth tool with operator-entered heading and extent (**shipped** in `823dd05`)
 - **7-1E** — session-local `/map` sector / fan overlay with operator-entered heading, arc, and extent (**shipped** in `f1960c7`)
+- **7-1E-followup** — post-ship cleanup: shared map geodesy extraction, replay `as_of` hardening, AI catalog freshness-vs-load trade-off, full-fetch pagination rollout, and globe toolbar keyboard a11y (**active, uncommitted**)
 
 ## Shipped In This Phase (Phase 7)
 
@@ -145,13 +176,22 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 
 ## In Progress
 
-- No active uncommitted product slice.
-- The only expected dirty file, until this handoff refresh is committed or reverted, is `memory/execution_handoff.md`.
+- Phase 7 follow-up — mixed post-ship cleanup is active and uncommitted.
+- Scope:
+  - extract one shared great-circle projection helper (`projectGeodesicPoint`) and remove the duplicated private copies from:
+    - `frontend/src/lib/mapBearingLine.ts`
+    - `frontend/src/lib/mapRangeRings.ts`
+    - `frontend/src/lib/mapSectorOverlay.ts`
+  - reject invalid replay `as_of` params with `400` instead of silently falling back to live data
+  - remove the prior 60-second AI catalog/site-context cache so fresh sites/entities are visible immediately in AI flows; this is a deliberate freshness-vs-load trade-off
+  - replace silent `per_page=200` truncation on `/map` `/globe` `/graph` with explicit concurrent all-pages helpers that honor React Query abort signals; concurrency is bounded by an in-helper worker pool (`MAX_CONCURRENT_PAGES = 6`) so first-paint cannot fan out unbounded page fetches against Puma/DB pools at production-scale tenants
+  - make globe toolbar toggles keyboard-operable
+- Keep this tranche as cleanup/hardening. Do not widen it into new Phase 7 tooling or generalized geospatial abstractions.
 
 ## Next
 
-- **Immediate next step:** choose whether Phase 7 should continue with another narrowly justified geospatial utility or close here.
-- **If Phase 7 continues:** only continue if another geospatial utility solves a real operator problem and can be scoped as a similarly narrow tool slice.
+- **Immediate next step:** if gate is clean, commit this cleanup tranche, then run the planned full audit before deciding whether Phase 7 needs any further operator tooling at all.
+- **If Phase 7 continues after the audit:** only continue if another geospatial utility solves a real operator problem and can be scoped as a similarly narrow tool slice.
 - **Explicit boundary for 7-1E and beyond:** do not jump straight to persistence, collaboration, or a generalized geospatial workspace. Keep Phase 7 additive and tool-specific.
 - **Watch the first real `frontend-perf` CI run on `aa07c91` (or its first PR descendant).** Watch points:
     - 1k tier: budgets are 15/25/30ms; current local p95-of-p95s is 10.2ms. Headroom is ~2×. CI runner variance may eat into that.
@@ -169,14 +209,30 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 ## Validation Commands
 
 ```bash
-cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run
+cd /Users/timurmishiev/Desktop/Code/resilience/backend && TEST_DATABASE_PORT=5434 /Users/timurmishiev/.rbenv/shims/bundle exec rspec spec/requests/api/sites_spec.rb spec/requests/api/ai_spec.rb spec/services/ai/ontology_query_service_spec.rb spec/services/ai/filter_service_spec.rb spec/services/ai/signal_filter_service_spec.rb
+cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run src/test/MapPage.test.tsx src/test/GlobePage.test.tsx src/test/GraphPage.test.tsx src/test/fetchAllPaginated.test.ts src/test/mapGeodesy.test.ts src/test/mapBearingLine.test.ts src/test/mapRangeRings.test.ts src/test/mapSectorOverlay.test.ts
 cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx tsc -p tsconfig.app.json --noEmit
-cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run src/test/mapSectorOverlay.test.ts src/test/MapPage.test.tsx src/test/useMapLibreEngine.test.ts
-cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/pages/MapPage.tsx src/components/map/MapOverlayControls.tsx src/hooks/useMapLibreEngine.ts src/hooks/map/useMapSectorOverlayLayers.ts src/lib/mapSectorOverlay.ts src/test/MapPage.test.tsx src/test/useMapLibreEngine.test.ts src/test/mapSectorOverlay.test.ts
+cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run
+cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/api/client.ts src/api/sites.ts src/api/tasks.ts src/api/assets.ts src/api/areas_of_operation.ts src/components/globe/GlobeToolbar.tsx src/hooks/useAreasOfOperation.ts src/hooks/useAssets.ts src/hooks/useSites.ts src/hooks/useTasks.ts src/hooks/fetchAllPaginated.ts src/lib/mapBearingLine.ts src/lib/mapGeodesy.ts src/lib/mapRangeRings.ts src/lib/mapSectorOverlay.ts src/pages/GlobePage.tsx src/pages/GraphPage.tsx src/pages/MapPage.tsx src/test/GlobePage.test.tsx src/test/GraphPage.test.tsx src/test/MapPage.test.tsx src/test/fetchAllPaginated.test.ts src/test/mapGeodesy.test.ts
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (Phase 7 Slice 7-1E, shipped in `f1960c7`, 2026-04-21)
+## Last Validation Results (Phase 7 follow-up — geodesy / replay / AI freshness / full-fetch / globe a11y cleanup, uncommitted, 2026-04-22)
+
+- Focused backend validation:
+  - `TEST_DATABASE_PORT=5434 /Users/timurmishiev/.rbenv/shims/bundle exec rspec spec/requests/api/sites_spec.rb spec/requests/api/ai_spec.rb spec/services/ai/ontology_query_service_spec.rb spec/services/ai/filter_service_spec.rb spec/services/ai/signal_filter_service_spec.rb` → **89 examples, 0 failures**
+- Focused frontend validation:
+  - `npx vitest run src/test/MapPage.test.tsx src/test/GlobePage.test.tsx src/test/GraphPage.test.tsx src/test/fetchAllPaginated.test.ts src/test/mapGeodesy.test.ts src/test/mapBearingLine.test.ts src/test/mapRangeRings.test.ts src/test/mapSectorOverlay.test.ts` → **75 / 75 pass across 8 files**
+- Full frontend validation:
+  - `npx vitest run` → **655 / 655 pass across 89 files** (added `fetchAllPaginated` concurrency-cap test proving peak in-flight = `MAX_CONCURRENT_PAGES` across 12 pages)
+  - `npx tsc -p tsconfig.app.json --noEmit` → **0 errors**
+  - touched-file ESLint on cleanup files → **0 issues**
+  - `git diff --check` → **clean**
+- Baseline backend note:
+  - system `bundle exec rspec` is still blocked locally by Bundler `2.7.2` env drift; the meaningful backend validation path above passed
+  - full backend green is **not** claimed here; in this local env, untouched `spec/requests/api/telemetry_spec.rb` and `spec/services/telemetry/simulator_service_spec.rb` still fail because the test DB's `telemetry_readings` partitions do not cover `2026-04-22`
+
+## Prior committed product validation (Phase 7 Slice 7-1E, shipped in `f1960c7`, 2026-04-21)
 
 - Focused sector validation:
   - `npx vitest run src/test/mapSectorOverlay.test.ts src/test/MapPage.test.tsx src/test/useMapLibreEngine.test.ts` → **93 / 93 pass**
@@ -301,6 +357,9 @@ git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 - Backend local validation still needs the repo Ruby path:
   - `TEST_DATABASE_PORT=5434 /Users/timurmishiev/.rbenv/shims/bundle exec ...`
   - the system `bundle` path still fails on the known Bundler `2.7.2` mismatch
+- Full backend suite is not globally green in this local env:
+  - untouched `spec/requests/api/telemetry_spec.rb` and `spec/services/telemetry/simulator_service_spec.rb` currently fail with `PG::CheckViolation` because the test DB's `telemetry_readings` partitions do not cover `2026-04-22`
+  - treat that as environment drift unless the partitions/seed window are extended
 - Frontend type-check must continue using:
   - `npx tsc -p tsconfig.app.json --noEmit`
   - the loose root `tsc --noEmit` is not authoritative for this repo
@@ -309,7 +368,7 @@ git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 - **`AlertChainDrawer.referenceTimeMs` is opt-in.** Callers without a replay-aware clock (e.g. `AlertTriagePage`, `IncidentAlertsTab`, `SiteDetailPage`, `AlertsPanel`, `EvidenceDrawer`) intentionally omit the prop and get no stale-basis indicator. This is correct — the drawer must never wall-clock (`react-hooks/purity` forbids `Date.now()` in the component body, and replay correctness forbids it anyway). If a future surface wants the indicator, it must thread a real reference clock through.
 - Evidence resolution is scoped to the `/api/recommendations` surface only. It does **not** widen any other API that happens to render raw `evidence` JSONB.
 - Replay intentionally returns both `alert: null` and `label: null` for matches whose `fired_at > as_of`. Do not "helpfully" fall back to live state — that would leak future state into replay.
-- Handoff never records the tip SHA — it would be self-referential with the commit that writes it. Product-commit SHAs live in "Shipped In This Phase"; run `git log -1` for the literal tip.
+- `Current Repo State` records the local tip SHA for the dirty tree snapshot. Product-slice SHAs still live in "Shipped In This Phase".
 
 ## Do Not Reopen
 

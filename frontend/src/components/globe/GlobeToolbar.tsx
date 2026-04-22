@@ -1,4 +1,5 @@
 import { Button } from '@blueprintjs/core'
+import type { KeyboardEvent } from 'react'
 
 interface GlobeToolbarProps {
   showSignals:        boolean
@@ -27,6 +28,12 @@ export function GlobeToolbar({
   onHome, onToggleSignals, onToggleHeatmap, onToggleCoverage, onToggleChokepoints,
   onToggleTrails, onTrailWindowChange, onTacticalMap,
 }: GlobeToolbarProps) {
+  function toggleKeyDown(event: KeyboardEvent<HTMLDivElement>, toggle: () => void) {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    toggle()
+  }
+
   const hint = signalError && !isReplaying
     ? 'Live signal baseline sync is incomplete. Signals may be temporarily missing while the client retries.'
     : isReplaying
@@ -43,6 +50,9 @@ export function GlobeToolbar({
         className={`globe-signal-toggle${showSignals ? ' globe-signal-toggle--active' : ''}`}
         onClick={onToggleSignals}
         role="button"
+        tabIndex={0}
+        aria-pressed={showSignals}
+        onKeyDown={(event) => toggleKeyDown(event, onToggleSignals)}
       >
         SIGNALS {showSignals ? 'ON' : 'OFF'}
       </div>
@@ -50,6 +60,9 @@ export function GlobeToolbar({
         className={`globe-signal-toggle${showHeatmap ? ' globe-signal-toggle--active' : ''}`}
         onClick={onToggleHeatmap}
         role="button"
+        tabIndex={0}
+        aria-pressed={showHeatmap}
+        onKeyDown={(event) => toggleKeyDown(event, onToggleHeatmap)}
       >
         HEATMAP {showHeatmap ? 'ON' : 'OFF'}
       </div>
@@ -57,6 +70,9 @@ export function GlobeToolbar({
         className={`globe-signal-toggle${showCoverage ? ' globe-signal-toggle--active' : ''}`}
         onClick={onToggleCoverage}
         role="button"
+        tabIndex={0}
+        aria-pressed={showCoverage}
+        onKeyDown={(event) => toggleKeyDown(event, onToggleCoverage)}
       >
         COVERAGE {showCoverage ? 'ON' : 'OFF'}
       </div>
@@ -64,6 +80,9 @@ export function GlobeToolbar({
         className={`globe-signal-toggle${showChokepoints ? ' globe-signal-toggle--active' : ''}`}
         onClick={onToggleChokepoints}
         role="button"
+        tabIndex={0}
+        aria-pressed={showChokepoints}
+        onKeyDown={(event) => toggleKeyDown(event, onToggleChokepoints)}
       >
         CHOKEPOINTS {showChokepoints ? 'ON' : 'OFF'}
       </div>
@@ -74,6 +93,9 @@ export function GlobeToolbar({
             onClick={onToggleTrails}
             role="button"
             aria-label="Toggle asset trails"
+            tabIndex={0}
+            aria-pressed={showTrails}
+            onKeyDown={(event) => toggleKeyDown(event, onToggleTrails)}
           >
             TRAILS {showTrails ? 'ON' : 'OFF'}
           </div>

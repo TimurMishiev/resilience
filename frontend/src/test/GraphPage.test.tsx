@@ -11,12 +11,15 @@ const mockState = vi.hoisted(() => ({
 
 vi.mock('../hooks/useSites', () => ({
   useSites: () => mockState.sites,
+  useAllSites: () => mockState.sites,
 }))
 vi.mock('../hooks/useTasks', () => ({
   useTasks: () => mockState.tasks,
+  useAllTasks: () => mockState.tasks,
 }))
 vi.mock('../hooks/useAssets', () => ({
   useAssets: () => mockState.assets,
+  useAllAssets: () => mockState.assets,
 }))
 vi.mock('../hooks/useReplayParams', () => ({
   useReplayParams: () => ({ asOfParam: {} }),

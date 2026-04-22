@@ -244,6 +244,18 @@ RSpec.describe "Api::Ai", type: :request do
       expect(response).to have_http_status(:ok)
     end
 
+    it "returns 400 for an invalid ontology replay cutoff" do
+      expect(Ai::OntologyQueryService).not_to receive(:call)
+
+      post "/api/ai/ontology_query",
+           params: valid_payload.merge(as_of: "not-a-real-timestamp"),
+           headers: auth_headers(commander),
+           as: :json
+
+      expect(response).to have_http_status(:bad_request)
+      expect(JSON.parse(response.body)).to eq("errors" => ["Invalid 'as_of' datetime"])
+    end
+
     it "surfaces ontology service validation failures" do
       expect(Ai::OntologyQueryService).to receive(:call).with(
         query: "phantom base",

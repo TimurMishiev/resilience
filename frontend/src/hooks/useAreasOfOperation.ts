@@ -15,6 +15,7 @@ import type {
   UpdateAreaOfOperationBody,
   Posture,
 } from '../api/types'
+import { fetchAllPaginated } from './fetchAllPaginated'
 
 export function useAreaOfOperation(id: string | undefined, params?: AsOfParam) {
   return useQuery({
@@ -29,6 +30,15 @@ export function useAreasOfOperation(params?: AreasOfOperationParams, options?: {
     queryKey:  ['areas_of_operation', params],
     queryFn:   () => getAreasOfOperation(params),
     enabled:   options?.enabled ?? true,
+    staleTime: options?.staleTime,
+  })
+}
+
+export function useAllAreasOfOperation(params?: Omit<AreasOfOperationParams, 'page' | 'per_page'>, options?: { enabled?: boolean; staleTime?: number }) {
+  return useQuery({
+    queryKey: ['areas_of_operation', 'all', params],
+    queryFn: ({ signal }) => fetchAllPaginated(getAreasOfOperation, params, { signal }),
+    enabled: options?.enabled ?? true,
     staleTime: options?.staleTime,
   })
 }
