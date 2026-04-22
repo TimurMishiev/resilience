@@ -86,6 +86,7 @@ const engineState = vi.hoisted(() => ({
     annotationMode: boolean
     annotations: Array<{ id: string; label: string }>
     rangeRingMode: boolean
+    sectorMode: boolean
     bearingLineMode: boolean
     measurementMode: boolean
     chokepoints: Array<{ id: string }>
@@ -95,6 +96,7 @@ const engineState = vi.hoisted(() => ({
     onSignalClick: (signalId: string | null) => void
     onMapAnnotationClick: (point: { lng: number; lat: number }) => void
     onMapRangeRingAnchorClick: (point: { lng: number; lat: number }) => void
+    onMapSectorAnchorClick: (point: { lng: number; lat: number }) => void
     onMapBearingLineAnchorClick: (point: { lng: number; lat: number }) => void
     onMapCoordinateClick: (point: { lng: number; lat: number }) => void
   },
@@ -208,6 +210,7 @@ vi.mock('../hooks/useMapLibreEngine', () => ({
     annotationMode: boolean
     annotations: Array<{ id: string; label: string }>
     rangeRingMode: boolean
+    sectorMode: boolean
     bearingLineMode: boolean
     measurementMode: boolean
     chokepoints: Array<{ id: string }>
@@ -217,6 +220,7 @@ vi.mock('../hooks/useMapLibreEngine', () => ({
     onSignalClick: (signalId: string | null) => void
     onMapAnnotationClick: (point: { lng: number; lat: number }) => void
     onMapRangeRingAnchorClick: (point: { lng: number; lat: number }) => void
+    onMapSectorAnchorClick: (point: { lng: number; lat: number }) => void
     onMapBearingLineAnchorClick: (point: { lng: number; lat: number }) => void
     onMapCoordinateClick: (point: { lng: number; lat: number }) => void
   }) => {
@@ -987,7 +991,51 @@ describe('MapPage selection routing', () => {
     expect(screen.getByTestId('map-bearing-panel')).toHaveTextContent('No bearing anchor yet.')
   })
 
-  it('keeps annotation, range-ring, bearing-line, and measurement modes mutually exclusive', async () => {
+  it('captures and manages a session-local sector overlay without changing route selection', async () => {
+    renderMapPage('/map')
+
+    expect(screen.queryByTestId('map-sector-panel')).toBeNull()
+    expect(engineState.latestInput?.sectorMode).toBe(false)
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Toggle map sector tool' }).click()
+    })
+
+    expect(await screen.findByTestId('map-sector-panel')).toHaveTextContent('No sector anchor yet.')
+    expect(engineState.latestInput?.sectorMode).toBe(true)
+
+    await act(async () => {
+      engineState.latestInput?.onMapSectorAnchorClick({ lat: 37.7749, lng: -122.4194 })
+    })
+
+    expect(screen.getByTestId('map-sector-panel')).toHaveTextContent('37.7749, -122.4194')
+    expect(screen.getByRole('spinbutton', { name: 'Sector bearing degrees' })).toHaveValue(45)
+    expect(screen.getByRole('spinbutton', { name: 'Sector arc degrees' })).toHaveValue(60)
+    expect(screen.getByRole('spinbutton', { name: 'Sector extent' })).toHaveValue(20)
+    expect(screen.getByTestId('location-search')).toBeEmptyDOMElement()
+
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Sector bearing degrees' }), {
+      target: { value: '120' },
+    })
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Sector arc degrees' }), {
+      target: { value: '90' },
+    })
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Sector extent' }), {
+      target: { value: '12' },
+    })
+
+    expect(screen.getByTestId('map-sector-panel')).toHaveTextContent('120°')
+    expect(screen.getByTestId('map-sector-panel')).toHaveTextContent('90° ARC')
+    expect(screen.getByTestId('map-sector-panel')).toHaveTextContent('12 NM')
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Clear' }).click()
+    })
+
+    expect(screen.getByTestId('map-sector-panel')).toHaveTextContent('No sector anchor yet.')
+  })
+
+  it('keeps annotation, range-ring, sector, bearing-line, and measurement modes mutually exclusive', async () => {
     renderMapPage('/map')
 
     await act(async () => {
@@ -1006,12 +1054,22 @@ describe('MapPage selection routing', () => {
     expect(screen.queryByTestId('map-measure-panel')).toBeNull()
 
     await act(async () => {
+      screen.getByRole('button', { name: 'Toggle map sector tool' }).click()
+    })
+
+    expect(await screen.findByTestId('map-sector-panel')).toBeInTheDocument()
+    expect(screen.queryByTestId('map-annotate-panel')).toBeNull()
+    expect(screen.queryByTestId('map-range-panel')).toBeNull()
+    expect(screen.queryByTestId('map-measure-panel')).toBeNull()
+
+    await act(async () => {
       screen.getByRole('button', { name: 'Toggle map bearing line tool' }).click()
     })
 
     expect(await screen.findByTestId('map-bearing-panel')).toBeInTheDocument()
     expect(screen.queryByTestId('map-annotate-panel')).toBeNull()
     expect(screen.queryByTestId('map-range-panel')).toBeNull()
+    expect(screen.queryByTestId('map-sector-panel')).toBeNull()
     expect(screen.queryByTestId('map-measure-panel')).toBeNull()
 
     await act(async () => {
@@ -1021,6 +1079,7 @@ describe('MapPage selection routing', () => {
     expect(await screen.findByTestId('map-measure-panel')).toBeInTheDocument()
     expect(screen.queryByTestId('map-annotate-panel')).toBeNull()
     expect(screen.queryByTestId('map-range-panel')).toBeNull()
+    expect(screen.queryByTestId('map-sector-panel')).toBeNull()
     expect(screen.queryByTestId('map-bearing-panel')).toBeNull()
 
     await act(async () => {
@@ -1047,6 +1106,25 @@ describe('MapPage selection routing', () => {
     })
 
     expect(screen.queryByTestId('map-range-panel')).toBeNull()
+    expect(screen.getByRole('complementary', { name: 'Map selection detail' })).toBeInTheDocument()
+  })
+
+  it('turns sector mode off on Escape before closing the docked panel', async () => {
+    renderMapPage('/map?site_id=site-1')
+
+    expect(await screen.findByRole('complementary', { name: 'Map selection detail' })).toBeInTheDocument()
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Toggle map sector tool' }).click()
+    })
+
+    expect(await screen.findByTestId('map-sector-panel')).toBeInTheDocument()
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    })
+
+    expect(screen.queryByTestId('map-sector-panel')).toBeNull()
     expect(screen.getByRole('complementary', { name: 'Map selection detail' })).toBeInTheDocument()
   })
 

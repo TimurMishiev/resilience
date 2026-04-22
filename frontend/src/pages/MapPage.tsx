@@ -35,6 +35,14 @@ import {
   parseBearingLineDegrees,
   parseBearingLineDistanceKm,
 } from '../lib/mapBearingLine'
+import {
+  DEFAULT_SECTOR_ARC_INPUT,
+  DEFAULT_SECTOR_DEGREES_INPUT,
+  DEFAULT_SECTOR_DISTANCE_INPUT,
+  parseSectorArcDegrees,
+  parseSectorDegrees,
+  parseSectorDistanceKm,
+} from '../lib/mapSectorOverlay'
 import type { MapPoint } from '../lib/mapPoint'
 import type { MapAnnotation } from '../lib/mapAnnotations'
 import {
@@ -72,6 +80,12 @@ export default function MapPage() {
   const [rangeRingAnchor, setRangeRingAnchor] = useState<MapPoint | null>(null)
   const [rangeRingInputs, setRangeRingInputs] = useState<string[]>(() => [...DEFAULT_RANGE_RING_INPUTS])
   const [rangeRingUnit, setRangeRingUnit] = useState<RangeRingUnit>(DEFAULT_RANGE_RING_UNIT)
+  const [sectorMode, setSectorMode] = useState(false)
+  const [sectorAnchor, setSectorAnchor] = useState<MapPoint | null>(null)
+  const [sectorDegreesInput, setSectorDegreesInput] = useState(DEFAULT_SECTOR_DEGREES_INPUT)
+  const [sectorArcInput, setSectorArcInput] = useState(DEFAULT_SECTOR_ARC_INPUT)
+  const [sectorDistanceInput, setSectorDistanceInput] = useState(DEFAULT_SECTOR_DISTANCE_INPUT)
+  const [sectorUnit, setSectorUnit] = useState<RangeRingUnit>(DEFAULT_RANGE_RING_UNIT)
   const [bearingLineMode, setBearingLineMode] = useState(false)
   const [bearingLineAnchor, setBearingLineAnchor] = useState<MapPoint | null>(null)
   const [bearingLineDegreesInput, setBearingLineDegreesInput] = useState(DEFAULT_BEARING_LINE_DEGREES_INPUT)
@@ -83,6 +97,18 @@ export default function MapPage() {
   const rangeRingRadiiKm = useMemo(
     () => parseRangeRingInputs(rangeRingInputs, rangeRingUnit),
     [rangeRingInputs, rangeRingUnit],
+  )
+  const sectorDegrees = useMemo(
+    () => parseSectorDegrees(sectorDegreesInput),
+    [sectorDegreesInput],
+  )
+  const sectorArcDegrees = useMemo(
+    () => parseSectorArcDegrees(sectorArcInput),
+    [sectorArcInput],
+  )
+  const sectorDistanceKm = useMemo(
+    () => parseSectorDistanceKm(sectorDistanceInput, sectorUnit),
+    [sectorDistanceInput, sectorUnit],
   )
   const bearingLineDegrees = useMemo(
     () => parseBearingLineDegrees(bearingLineDegreesInput),
@@ -251,6 +277,12 @@ export default function MapPage() {
     rangeRingAnchor,
     rangeRingRadiiKm,
     rangeRingUnit,
+    sectorMode,
+    sectorAnchor,
+    sectorDegrees,
+    sectorArcDegrees,
+    sectorDistanceKm,
+    sectorUnit,
     bearingLineMode,
     bearingLineAnchor,
     bearingLineDegrees,
@@ -274,6 +306,9 @@ export default function MapPage() {
     },
     onMapRangeRingAnchorClick: point => {
       setRangeRingAnchor(point)
+    },
+    onMapSectorAnchorClick: point => {
+      setSectorAnchor(point)
     },
     onMapBearingLineAnchorClick: point => {
       setBearingLineAnchor(point)
@@ -405,6 +440,34 @@ export default function MapPage() {
     setRangeRingMode(false)
   }, [])
 
+  const clearSector = useCallback(() => {
+    setSectorAnchor(null)
+  }, [])
+
+  const updateSectorDegreesInput = useCallback((value: string) => {
+    setSectorDegreesInput(value)
+  }, [])
+
+  const updateSectorArcInput = useCallback((value: string) => {
+    setSectorArcInput(value)
+  }, [])
+
+  const updateSectorDistanceInput = useCallback((value: string) => {
+    setSectorDistanceInput(value)
+  }, [])
+
+  const setSectorDisplayUnit = useCallback((nextUnit: RangeRingUnit) => {
+    if (nextUnit === sectorUnit) return
+    setSectorDistanceInput(previous => (
+      convertRangeRingInputValue(previous, sectorUnit, nextUnit)
+    ))
+    setSectorUnit(nextUnit)
+  }, [sectorUnit])
+
+  const disableSector = useCallback(() => {
+    setSectorMode(false)
+  }, [])
+
   const clearBearingLine = useCallback(() => {
     setBearingLineAnchor(null)
   }, [])
@@ -444,8 +507,9 @@ export default function MapPage() {
     setMeasurementPoints([])
     disableRangeRings()
     disableAnnotations()
+    disableSector()
     disableBearingLine()
-  }, [disableAnnotations, disableBearingLine, disableMeasurement, disableRangeRings, measurementMode])
+  }, [disableAnnotations, disableBearingLine, disableMeasurement, disableRangeRings, disableSector, measurementMode])
 
   const toggleAnnotations = useCallback(() => {
     if (annotationMode) {
@@ -455,9 +519,10 @@ export default function MapPage() {
 
     disableMeasurement()
     disableRangeRings()
+    disableSector()
     disableBearingLine()
     setAnnotationMode(true)
-  }, [annotationMode, disableAnnotations, disableBearingLine, disableMeasurement, disableRangeRings])
+  }, [annotationMode, disableAnnotations, disableBearingLine, disableMeasurement, disableRangeRings, disableSector])
 
   const toggleRangeRings = useCallback(() => {
     if (rangeRingMode) {
@@ -467,9 +532,23 @@ export default function MapPage() {
 
     disableMeasurement()
     disableAnnotations()
+    disableSector()
     disableBearingLine()
     setRangeRingMode(true)
-  }, [disableAnnotations, disableBearingLine, disableMeasurement, disableRangeRings, rangeRingMode])
+  }, [disableAnnotations, disableBearingLine, disableMeasurement, disableRangeRings, disableSector, rangeRingMode])
+
+  const toggleSector = useCallback(() => {
+    if (sectorMode) {
+      disableSector()
+      return
+    }
+
+    disableMeasurement()
+    disableAnnotations()
+    disableRangeRings()
+    disableBearingLine()
+    setSectorMode(true)
+  }, [disableAnnotations, disableBearingLine, disableMeasurement, disableRangeRings, disableSector, sectorMode])
 
   const toggleBearingLine = useCallback(() => {
     if (bearingLineMode) {
@@ -480,8 +559,9 @@ export default function MapPage() {
     disableMeasurement()
     disableAnnotations()
     disableRangeRings()
+    disableSector()
     setBearingLineMode(true)
-  }, [bearingLineMode, disableAnnotations, disableBearingLine, disableMeasurement, disableRangeRings])
+  }, [bearingLineMode, disableAnnotations, disableBearingLine, disableMeasurement, disableRangeRings, disableSector])
 
   const closePanel = useCallback(() => {
     setPanelForceOpen(false)
@@ -524,6 +604,10 @@ export default function MapPage() {
           disableRangeRings()
           return
         }
+        if (sectorMode) {
+          disableSector()
+          return
+        }
         if (bearingLineMode) {
           disableBearingLine()
           return
@@ -535,7 +619,7 @@ export default function MapPage() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [annotationMode, bearingLineMode, contextPanelOpen, closePanel, disableAnnotations, disableBearingLine, disableMeasurement, disableRangeRings, measurementMode, rangeRingMode])
+  }, [annotationMode, bearingLineMode, contextPanelOpen, closePanel, disableAnnotations, disableBearingLine, disableMeasurement, disableRangeRings, disableSector, measurementMode, rangeRingMode, sectorMode])
 
   // Resize handle drag — reads starting width from the DOM so the callback
   // has no panelWidth dep and doesn't re-render on every mousemove frame.
@@ -660,6 +744,15 @@ export default function MapPage() {
         rangeRingInputs={rangeRingInputs}
         rangeRingRadiiKm={rangeRingRadiiKm}
         rangeRingUnit={rangeRingUnit}
+        sectorMode={sectorMode}
+        sectorAnchor={sectorAnchor}
+        sectorDegreesInput={sectorDegreesInput}
+        sectorDegrees={sectorDegrees}
+        sectorArcInput={sectorArcInput}
+        sectorArcDegrees={sectorArcDegrees}
+        sectorDistanceInput={sectorDistanceInput}
+        sectorDistanceKm={sectorDistanceKm}
+        sectorUnit={sectorUnit}
         bearingLineMode={bearingLineMode}
         bearingLineAnchor={bearingLineAnchor}
         bearingLineDegreesInput={bearingLineDegreesInput}
@@ -684,6 +777,12 @@ export default function MapPage() {
         onClearRangeRings={clearRangeRings}
         onUpdateRangeRingInput={updateRangeRingInput}
         onSetRangeRingUnit={setRangeRingDisplayUnit}
+        onToggleSector={toggleSector}
+        onClearSector={clearSector}
+        onUpdateSectorDegreesInput={updateSectorDegreesInput}
+        onUpdateSectorArcInput={updateSectorArcInput}
+        onUpdateSectorDistanceInput={updateSectorDistanceInput}
+        onSetSectorUnit={setSectorDisplayUnit}
         onToggleBearingLine={toggleBearingLine}
         onClearBearingLine={clearBearingLine}
         onUpdateBearingLineDegreesInput={updateBearingLineDegreesInput}

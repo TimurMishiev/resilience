@@ -10,6 +10,7 @@
  *  - useMapOverlays      — AO polygons, geofence, breach, coverage, chokepoints
  *  - useMapTrackLayers   — vessel track + asset trail polylines
  *  - useMapSignalLayers  — signal sources, layers, visibility, heatmap
+ *  - useMapSectorOverlayLayers — session-local sector / fan overlay
  *  - useMapBearingLineLayers — session-local bearing line overlay
  *
  * Design contract:
@@ -37,6 +38,7 @@ import { useMapSiteLayers } from './map/useMapSiteLayers'
 import { useMapAssetLayers } from './map/useMapAssetLayers'
 import { useMapTrackLayers } from './map/useMapTrackLayers'
 import { useMapRangeRingLayers } from './map/useMapRangeRingLayers'
+import { useMapSectorOverlayLayers } from './map/useMapSectorOverlayLayers'
 import { useMapBearingLineLayers } from './map/useMapBearingLineLayers'
 import { useMapAnnotationLayers } from './map/useMapAnnotationLayers'
 import { useMapMeasurementLayers } from './map/useMapMeasurementLayers'
@@ -96,6 +98,12 @@ export interface MapEngineInput {
   rangeRingAnchor: MapPoint | null
   rangeRingRadiiKm: number[]
   rangeRingUnit: RangeRingUnit
+  sectorMode: boolean
+  sectorAnchor: MapPoint | null
+  sectorDegrees: number | null
+  sectorArcDegrees: number | null
+  sectorDistanceKm: number | null
+  sectorUnit: RangeRingUnit
   bearingLineMode: boolean
   bearingLineAnchor: MapPoint | null
   bearingLineDegrees: number | null
@@ -114,6 +122,7 @@ export interface MapEngineInput {
   onSignalClick: (signalId: string | null) => void
   onMapAnnotationClick: (point: MapPoint) => void
   onMapRangeRingAnchorClick: (point: MapPoint) => void
+  onMapSectorAnchorClick: (point: MapPoint) => void
   onMapBearingLineAnchorClick: (point: MapPoint) => void
   onMapCoordinateClick: (point: MapPoint) => void
 }
@@ -167,6 +176,12 @@ export function useMapLibreEngine({
   rangeRingAnchor,
   rangeRingRadiiKm,
   rangeRingUnit,
+  sectorMode,
+  sectorAnchor,
+  sectorDegrees,
+  sectorArcDegrees,
+  sectorDistanceKm,
+  sectorUnit,
   bearingLineMode,
   bearingLineAnchor,
   bearingLineDegrees,
@@ -181,6 +196,7 @@ export function useMapLibreEngine({
   onSignalClick,
   onMapAnnotationClick,
   onMapRangeRingAnchorClick,
+  onMapSectorAnchorClick,
   onMapBearingLineAnchorClick,
   onMapCoordinateClick,
 }: MapEngineInput): MapEngineReturn {
@@ -197,10 +213,12 @@ export function useMapLibreEngine({
   const onSignalClickRef = useRef(onSignalClick)
   const onMapAnnotationClickRef = useRef(onMapAnnotationClick)
   const onMapRangeRingAnchorClickRef = useRef(onMapRangeRingAnchorClick)
+  const onMapSectorAnchorClickRef = useRef(onMapSectorAnchorClick)
   const onMapBearingLineAnchorClickRef = useRef(onMapBearingLineAnchorClick)
   const onMapCoordinateClickRef = useRef(onMapCoordinateClick)
   const annotationModeRef = useRef(annotationMode)
   const rangeRingModeRef = useRef(rangeRingMode)
+  const sectorModeRef = useRef(sectorMode)
   const bearingLineModeRef = useRef(bearingLineMode)
   const measurementModeRef = useRef(measurementMode)
   useEffect(() => { onSiteClickRef.current   = onSiteClick   }, [onSiteClick])
@@ -208,10 +226,12 @@ export function useMapLibreEngine({
   useEffect(() => { onSignalClickRef.current = onSignalClick }, [onSignalClick])
   useEffect(() => { onMapAnnotationClickRef.current = onMapAnnotationClick }, [onMapAnnotationClick])
   useEffect(() => { onMapRangeRingAnchorClickRef.current = onMapRangeRingAnchorClick }, [onMapRangeRingAnchorClick])
+  useEffect(() => { onMapSectorAnchorClickRef.current = onMapSectorAnchorClick }, [onMapSectorAnchorClick])
   useEffect(() => { onMapBearingLineAnchorClickRef.current = onMapBearingLineAnchorClick }, [onMapBearingLineAnchorClick])
   useEffect(() => { onMapCoordinateClickRef.current = onMapCoordinateClick }, [onMapCoordinateClick])
   useEffect(() => { annotationModeRef.current = annotationMode }, [annotationMode])
   useEffect(() => { rangeRingModeRef.current = rangeRingMode }, [rangeRingMode])
+  useEffect(() => { sectorModeRef.current = sectorMode }, [sectorMode])
   useEffect(() => { bearingLineModeRef.current = bearingLineMode }, [bearingLineMode])
   useEffect(() => { measurementModeRef.current = measurementMode }, [measurementMode])
   useEffect(() => { mapStyleRef.current = mapStyle }, [mapStyle])
@@ -301,8 +321,9 @@ export function useMapLibreEngine({
     evidenceSignalIds,
   })
 
-  // Range rings and bearing lines paint above signals; annotations stay above
-  // those session-local planning aids, and measurement stays topmost.
+  // Range rings paint above signals, sectors then sit above rings, bearing
+  // lines stay visible over sectors, annotations stay above those planning
+  // aids, and measurement stays topmost.
   // The page keeps the tools mutually exclusive while active, but the ordering
   // here governs residual overlays left behind after a tool is toggled off.
   useMapRangeRingLayers({
@@ -311,6 +332,16 @@ export function useMapLibreEngine({
     anchor: rangeRingAnchor,
     radiiKm: rangeRingRadiiKm,
     unit: rangeRingUnit,
+  })
+
+  useMapSectorOverlayLayers({
+    mapRef,
+    mapLoaded,
+    anchor: sectorAnchor,
+    bearingDegrees: sectorDegrees,
+    arcDegrees: sectorArcDegrees,
+    distanceKm: sectorDistanceKm,
+    unit: sectorUnit,
   })
 
   useMapBearingLineLayers({
@@ -358,6 +389,13 @@ export function useMapLibreEngine({
       }
       if (rangeRingModeRef.current) {
         onMapRangeRingAnchorClickRef.current({
+          lng: event.lngLat.lng,
+          lat: event.lngLat.lat,
+        })
+        return
+      }
+      if (sectorModeRef.current) {
+        onMapSectorAnchorClickRef.current({
           lng: event.lngLat.lng,
           lat: event.lngLat.lat,
         })

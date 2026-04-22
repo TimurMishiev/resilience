@@ -204,6 +204,12 @@ function defaultInput(
     rangeRingAnchor: null,
     rangeRingRadiiKm: [],
     rangeRingUnit: 'nm',
+    sectorMode: false,
+    sectorAnchor: null,
+    sectorDegrees: 45,
+    sectorArcDegrees: 60,
+    sectorDistanceKm: 37.04,
+    sectorUnit: 'nm',
     bearingLineMode: false,
     bearingLineAnchor: null,
     bearingLineDegrees: 45,
@@ -218,6 +224,7 @@ function defaultInput(
     onSignalClick: vi.fn(),
     onMapAnnotationClick: vi.fn(),
     onMapRangeRingAnchorClick: vi.fn(),
+    onMapSectorAnchorClick: vi.fn(),
     onMapBearingLineAnchorClick: vi.fn(),
     onMapCoordinateClick: vi.fn(),
     ...overrides,
@@ -942,6 +949,137 @@ describe('useMapLibreEngine adapter', () => {
       const bearingLineAddSourceCalls = facade.calls
         .filter(call => call.method === 'addSource' && call.args[0] === 'map-bearing-line')
       expect(bearingLineAddSourceCalls.length).toBeGreaterThanOrEqual(2)
+    })
+  })
+
+  describe('sector mode', () => {
+    it('creates sector layers on init and updates sources when anchor data changes', async () => {
+      const containerRef = makeContainerRef()
+      const hook = await bootMap(facade, containerRef, defaultInput(containerRef))
+
+      expect(facade.layerIds.has('map-sector-fill')).toBe(true)
+      expect(facade.layerIds.has('map-sector-outline')).toBe(true)
+      expect(facade.layerIds.has('map-sector-labels')).toBe(true)
+
+      facade.calls.length = 0
+
+      await act(async () => {
+        hook.rerender(defaultInput(containerRef, {
+          sectorAnchor: { lat: 37.7749, lng: -122.4194 },
+          sectorDegrees: 75,
+          sectorArcDegrees: 60,
+          sectorDistanceKm: 18.52,
+          sectorUnit: 'nm',
+        }))
+      })
+
+      expect(facade.calls).toContainEqual({
+        method: 'setData',
+        args: [
+          'map-sector-fill',
+          expect.objectContaining({
+            type: 'FeatureCollection',
+            features: expect.arrayContaining([
+              expect.objectContaining({
+                geometry: expect.objectContaining({ type: 'Polygon' }),
+              }),
+            ]),
+          }),
+        ],
+      })
+      expect(facade.calls).toContainEqual({
+        method: 'setData',
+        args: [
+          'map-sector-labels',
+          expect.objectContaining({
+            type: 'FeatureCollection',
+            features: expect.arrayContaining([
+              expect.objectContaining({
+                properties: expect.objectContaining({ label: '075° · 60° ARC · 10 NM' }),
+              }),
+            ]),
+          }),
+        ],
+      })
+    })
+
+    it('adds sector layers after range rings but before bearing lines, annotations, and measurement', async () => {
+      const containerRef = makeContainerRef()
+      await bootMap(facade, containerRef, defaultInput(containerRef))
+
+      const addedLayerIds = facade.calls
+        .filter(call => call.method === 'addLayer')
+        .map(call => String(call.args[0]))
+
+      expect(addedLayerIds.indexOf('map-sector-fill')).toBeGreaterThan(addedLayerIds.indexOf('map-range-rings'))
+      expect(addedLayerIds.indexOf('map-sector-fill')).toBeLessThan(addedLayerIds.indexOf('map-bearing-line'))
+      expect(addedLayerIds.indexOf('map-sector-fill')).toBeLessThan(addedLayerIds.indexOf('map-annotation-points'))
+      expect(addedLayerIds.indexOf('map-sector-fill')).toBeLessThan(addedLayerIds.indexOf('measurement-line'))
+    })
+
+    it('routes map clicks to sector anchor capture instead of selection when sector mode is active', async () => {
+      const onMapSectorAnchorClick = vi.fn()
+      const onSiteClick = vi.fn()
+      const containerRef = makeContainerRef()
+
+      await bootMap(facade, containerRef, defaultInput(containerRef, {
+        sectorMode: true,
+        onMapSectorAnchorClick,
+        onSiteClick,
+      }))
+
+      facade.setQueryRenderedFeaturesResult([{
+        layer: { id: 'site-circles' },
+        properties: { id: 'site-1' },
+      }])
+
+      await act(async () => {
+        facade.fire('click', {
+          point: { x: 40, y: 60 },
+          lngLat: { lng: -122.4194, lat: 37.7749 },
+        })
+      })
+
+      expect(onMapSectorAnchorClick).toHaveBeenCalledWith({ lng: -122.4194, lat: 37.7749 })
+      expect(onSiteClick).not.toHaveBeenCalled()
+    })
+
+    it('re-adds sector layers and reseeds the current anchor after a style swap', async () => {
+      const containerRef = makeContainerRef()
+      const hook = await bootMap(facade, containerRef, defaultInput(containerRef, {
+        sectorAnchor: { lat: 37.7749, lng: -122.4194 },
+        sectorDegrees: 45,
+        sectorArcDegrees: 70,
+        sectorDistanceKm: 22.224,
+        sectorUnit: 'nm',
+      }))
+
+      expect(facade.layerIds.has('map-sector-fill')).toBe(true)
+      expect(facade.layerIds.has('map-sector-labels')).toBe(true)
+
+      await act(async () => {
+        hook.rerender(defaultInput(containerRef, {
+          mapStyle: 'satellite',
+          sectorAnchor: { lat: 37.7749, lng: -122.4194 },
+          sectorDegrees: 45,
+          sectorArcDegrees: 70,
+          sectorDistanceKm: 22.224,
+          sectorUnit: 'nm',
+        }))
+        await Promise.resolve()
+      })
+
+      await act(async () => {
+        facade.fire('style.load')
+        await Promise.resolve()
+      })
+
+      expect(facade.layerIds.has('map-sector-fill')).toBe(true)
+      expect(facade.layerIds.has('map-sector-labels')).toBe(true)
+
+      const sectorAddSourceCalls = facade.calls
+        .filter(call => call.method === 'addSource' && call.args[0] === 'map-sector-fill')
+      expect(sectorAddSourceCalls.length).toBeGreaterThanOrEqual(2)
     })
   })
 

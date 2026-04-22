@@ -2,6 +2,7 @@ import { Callout, Spinner } from '@blueprintjs/core'
 import { MAP_STYLE_CONFIGS, type MapStyleKey } from '../../hooks/useMapLibreEngine'
 import { SIGNAL_COLORS, SIGNAL_LABELS } from '../../lib/signalConfig'
 import { formatBearingLineDegrees } from '../../lib/mapBearingLine'
+import { formatSectorArcDegrees, formatSectorDegrees } from '../../lib/mapSectorOverlay'
 import {
   measurementBearingCardinal,
   measurementBearingDegrees,
@@ -31,6 +32,15 @@ interface MapOverlayControlsProps {
   rangeRingInputs: string[]
   rangeRingRadiiKm: number[]
   rangeRingUnit: RangeRingUnit
+  sectorMode: boolean
+  sectorAnchor: MapPoint | null
+  sectorDegreesInput: string
+  sectorDegrees: number | null
+  sectorArcInput: string
+  sectorArcDegrees: number | null
+  sectorDistanceInput: string
+  sectorDistanceKm: number | null
+  sectorUnit: RangeRingUnit
   bearingLineMode: boolean
   bearingLineAnchor: MapPoint | null
   bearingLineDegreesInput: string
@@ -55,6 +65,12 @@ interface MapOverlayControlsProps {
   onClearRangeRings: () => void
   onUpdateRangeRingInput: (index: number, value: string) => void
   onSetRangeRingUnit: (unit: RangeRingUnit) => void
+  onToggleSector: () => void
+  onClearSector: () => void
+  onUpdateSectorDegreesInput: (value: string) => void
+  onUpdateSectorArcInput: (value: string) => void
+  onUpdateSectorDistanceInput: (value: string) => void
+  onSetSectorUnit: (unit: RangeRingUnit) => void
   onToggleBearingLine: () => void
   onClearBearingLine: () => void
   onUpdateBearingLineDegreesInput: (value: string) => void
@@ -84,6 +100,15 @@ export function MapOverlayControls({
   rangeRingInputs,
   rangeRingRadiiKm,
   rangeRingUnit,
+  sectorMode,
+  sectorAnchor,
+  sectorDegreesInput,
+  sectorDegrees,
+  sectorArcInput,
+  sectorArcDegrees,
+  sectorDistanceInput,
+  sectorDistanceKm,
+  sectorUnit,
   bearingLineMode,
   bearingLineAnchor,
   bearingLineDegreesInput,
@@ -108,6 +133,12 @@ export function MapOverlayControls({
   onClearRangeRings,
   onUpdateRangeRingInput,
   onSetRangeRingUnit,
+  onToggleSector,
+  onClearSector,
+  onUpdateSectorDegreesInput,
+  onUpdateSectorArcInput,
+  onUpdateSectorDistanceInput,
+  onSetSectorUnit,
   onToggleBearingLine,
   onClearBearingLine,
   onUpdateBearingLineDegreesInput,
@@ -123,6 +154,12 @@ export function MapOverlayControls({
   const bearingDegrees = anchor && target ? measurementBearingDegrees(anchor, target) : null
   const bearingLabel = bearingDegrees === null ? null : measurementBearingCardinal(bearingDegrees)
   const rangeRingCount = rangeRingRadiiKm.length
+  const sectorHeading = sectorDegrees === null ? null : formatSectorDegrees(sectorDegrees)
+  const sectorCardinal = sectorDegrees === null ? null : measurementBearingCardinal(sectorDegrees)
+  const sectorArcLabel = sectorArcDegrees === null ? null : formatSectorArcDegrees(sectorArcDegrees)
+  const sectorDistanceLabel = sectorDistanceKm === null
+    ? null
+    : `${formatRangeRingInputValue(sectorDistanceKm, sectorUnit)} ${sectorUnit.toUpperCase()}`
   const bearingLineHeading = bearingLineDegrees === null ? null : formatBearingLineDegrees(bearingLineDegrees)
   const bearingLineCardinal = bearingLineDegrees === null ? null : measurementBearingCardinal(bearingLineDegrees)
   const bearingLineDistanceLabel = bearingLineDistanceKm === null
@@ -357,6 +394,24 @@ export function MapOverlayControls({
           </div>
 
           <div
+            className={`map-sector-toggle${sectorMode ? ' map-sector-toggle--active' : ''}`}
+            onClick={onToggleSector}
+            onKeyDown={event => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                onToggleSector()
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            aria-pressed={sectorMode}
+            aria-label="Toggle map sector tool"
+          >
+            <span className="map-sector-toggle-dot" />
+            SECTOR {sectorMode ? 'ON' : 'OFF'}
+          </div>
+
+          <div
             className={`map-bearing-toggle${bearingLineMode ? ' map-bearing-toggle--active' : ''}`}
             onClick={onToggleBearingLine}
             onKeyDown={event => {
@@ -513,6 +568,128 @@ export function MapOverlayControls({
               {rangeRingAnchor && rangeRingCount > 0 && (
                 <p className="map-range-panel-hint">
                   Showing {rangeRingCount} ring{rangeRingCount === 1 ? '' : 's'}. The next map click repositions the anchor.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {sectorMode && (
+          <div className="map-sector-panel" data-testid="map-sector-panel">
+            <div className="map-sector-panel-header">
+              <span className="map-sector-panel-title">SECTOR OVERLAY</span>
+              <button
+                type="button"
+                className="map-sector-panel-action"
+                onClick={onClearSector}
+                disabled={!sectorAnchor}
+              >
+                Clear
+              </button>
+            </div>
+
+            <div className="map-sector-panel-body">
+              <p className="map-sector-panel-hint">
+                Click the map to place or reposition a session-local anchor. Sectors stay on this client only and do not change selection or route state.
+              </p>
+
+              <div className="map-sector-panel-units" role="group" aria-label="Sector units">
+                {(['nm', 'km'] as const).map(unit => (
+                  <button
+                    key={unit}
+                    type="button"
+                    className={`map-sector-panel-unit-btn${sectorUnit === unit ? ' map-sector-panel-unit-btn--active' : ''}`}
+                    onClick={() => onSetSectorUnit(unit)}
+                    aria-pressed={sectorUnit === unit}
+                  >
+                    {unit.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+
+              {sectorAnchor ? (
+                <div className="map-sector-panel-row">
+                  <span className="map-sector-panel-label">Anchor</span>
+                  <span className="map-sector-panel-value mono">{formatPoint(sectorAnchor)}</span>
+                </div>
+              ) : (
+                <p className="map-sector-panel-hint">No sector anchor yet.</p>
+              )}
+
+              <label className="map-sector-panel-item">
+                <span className="map-sector-panel-label">Bearing</span>
+                <div className="map-sector-panel-input-row">
+                  <input
+                    type="number"
+                    min="0"
+                    max="360"
+                    step="1"
+                    className="map-sector-panel-input"
+                    aria-label="Sector bearing degrees"
+                    value={sectorDegreesInput}
+                    onChange={event => onUpdateSectorDegreesInput(event.target.value)}
+                  />
+                  <span className="map-sector-panel-unit-label">DEG</span>
+                </div>
+              </label>
+
+              <label className="map-sector-panel-item">
+                <span className="map-sector-panel-label">Arc</span>
+                <div className="map-sector-panel-input-row">
+                  <input
+                    type="number"
+                    min="1"
+                    max="180"
+                    step="1"
+                    className="map-sector-panel-input"
+                    aria-label="Sector arc degrees"
+                    value={sectorArcInput}
+                    onChange={event => onUpdateSectorArcInput(event.target.value)}
+                  />
+                  <span className="map-sector-panel-unit-label">DEG</span>
+                </div>
+              </label>
+
+              <label className="map-sector-panel-item">
+                <span className="map-sector-panel-label">Extent</span>
+                <div className="map-sector-panel-input-row">
+                  <input
+                    type="number"
+                    min="0.1"
+                    step={sectorUnit === 'nm' ? '0.5' : '1'}
+                    className="map-sector-panel-input"
+                    aria-label="Sector extent"
+                    value={sectorDistanceInput}
+                    onChange={event => onUpdateSectorDistanceInput(event.target.value)}
+                  />
+                  <span className="map-sector-panel-unit-label">{sectorUnit.toUpperCase()}</span>
+                </div>
+              </label>
+
+              {sectorAnchor && sectorHeading !== null && sectorCardinal !== null && sectorArcLabel !== null && sectorDistanceLabel !== null && (
+                <div className="map-sector-panel-summary">
+                  <div className="map-sector-panel-row">
+                    <span className="map-sector-panel-label">Heading</span>
+                    <span className="map-sector-panel-value">{sectorHeading} {sectorCardinal}</span>
+                  </div>
+                  <div className="map-sector-panel-row">
+                    <span className="map-sector-panel-label">Spread</span>
+                    <span className="map-sector-panel-value">{sectorArcLabel}</span>
+                  </div>
+                  <div className="map-sector-panel-row">
+                    <span className="map-sector-panel-label">Extent</span>
+                    <span className="map-sector-panel-value">{sectorDistanceLabel}</span>
+                  </div>
+                </div>
+              )}
+
+              {sectorAnchor && (sectorHeading === null || sectorArcLabel === null || sectorDistanceLabel === null) && (
+                <p className="map-sector-panel-hint">Enter a bearing between 0 and 360 degrees, an arc between 1 and 180 degrees, and a positive extent to render the sector.</p>
+              )}
+
+              {sectorAnchor && sectorHeading !== null && sectorArcLabel !== null && sectorDistanceLabel !== null && (
+                <p className="map-sector-panel-hint">
+                  Showing {sectorHeading} with {sectorArcLabel} for {sectorDistanceLabel}. The next map click repositions the anchor.
                 </p>
               )}
             </div>
