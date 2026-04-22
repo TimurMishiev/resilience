@@ -21,6 +21,22 @@ const SUMMARY_TYPE_OPTIONS: { label: string; value: AiSummaryType }[] = [
   { label: 'Leadership briefing', value: 'leadership_briefing' },
 ]
 
+const SUMMARY_TYPE_LABELS: Record<AiSummaryType, string> = SUMMARY_TYPE_OPTIONS.reduce(
+  (acc, option) => { acc[option.value] = option.label; return acc },
+  {} as Record<AiSummaryType, string>,
+)
+
+// Captured at response time so the rendered briefing and any subsequent PDF
+// export reflect the parameters that produced the summary — not whatever the
+// operator has since changed the selectors to. Prevents F1: stale briefing
+// body rendering under a different header, or mis-labeled PDF exports.
+interface BriefingResultContext {
+  summary_type: AiSummaryType
+  site_id:      string
+  site_name:    string | null
+  as_of:        string | null
+}
+
 // ── grounding badge ───────────────────────────────────────────────────────────
 
 function GroundingBadge({ counts }: { counts: AiSummaryResult['context_counts'] }) {
@@ -68,7 +84,7 @@ export default function BriefingPanel() {
   const [siteId, setSiteId]           = useState<string>('')
   const [loading, setLoading]         = useState(false)
   const [error, setError]             = useState<string | null>(null)
-  const [result, setResult]           = useState<AiSummaryResult | null>(null)
+  const [result, setResult]           = useState<{ data: AiSummaryResult; context: BriefingResultContext } | null>(null)
   const [pdfLoading, setPdfLoading]   = useState(false)
   const [pdfError, setPdfError]       = useState<string | null>(null)
 
@@ -87,12 +103,22 @@ export default function BriefingPanel() {
     setResult(null)
     setPdfError(null)
 
-    postAiSummary({
+    // Snapshot the params that produced this briefing so the render path
+    // and export path cannot drift from them if the operator changes selectors
+    // while the request is in flight or after it resolves.
+    const context: BriefingResultContext = {
       summary_type: summaryType,
-      site_id:      siteId || undefined,
-      to:           asOf ?? undefined,
+      site_id:      siteId,
+      site_name:    siteId ? (sites.find(s => s.id === siteId)?.name ?? null) : null,
+      as_of:        asOf ?? null,
+    }
+
+    postAiSummary({
+      summary_type: context.summary_type,
+      site_id:      context.site_id || undefined,
+      to:           context.as_of ?? undefined,
     })
-      .then(({ data }) => { if (mountedRef.current) setResult(data) })
+      .then(({ data }) => { if (mountedRef.current) setResult({ data, context }) })
       .catch((err: unknown) => { if (mountedRef.current) setError(getApiErrorMessage(err, 'Failed to generate briefing')) })
       .finally(() => { if (mountedRef.current) setLoading(false) })
   }
@@ -102,14 +128,12 @@ export default function BriefingPanel() {
     setPdfLoading(true)
     setPdfError(null)
 
-    const siteName = siteId ? sites.find(s => s.id === siteId)?.name : undefined
-
     exportBriefing({
-      summary_type:   summaryType,
-      summary:        result.summary,
-      citations:      result.citations,
-      context_counts: result.context_counts,
-      site_name:      siteName,
+      summary_type:   result.context.summary_type,
+      summary:        result.data.summary,
+      citations:      result.data.citations,
+      context_counts: result.data.context_counts,
+      site_name:      result.context.site_name ?? undefined,
     })
       .then(blob => {
         // Trigger browser download without navigating away
@@ -204,18 +228,29 @@ export default function BriefingPanel() {
 
       {result && (
         <Card className="briefing-result">
+          {/* Anchored header: describes exactly which briefing this card holds,
+              independent of current selector state. Prevents F1 stale-under-new-header. */}
+          <div className="briefing-result-context">
+            <Tag minimal intent="primary" className="briefing-result-type">
+              {SUMMARY_TYPE_LABELS[result.context.summary_type]}
+            </Tag>
+            <span className="bp6-text-muted briefing-result-scope">
+              {result.context.site_name ?? 'All sites'}
+            </span>
+          </div>
+
           {/* grounding metadata */}
-          <GroundingBadge counts={result.context_counts} />
+          <GroundingBadge counts={result.data.context_counts} />
 
-          <p className="briefing-summary">{result.summary}</p>
+          <p className="briefing-summary">{result.data.summary}</p>
 
-          {result.citations.length > 0 && (
+          {result.data.citations.length > 0 && (
             <div className="briefing-citations">
               <span className="bp6-text-muted briefing-citations-label">
-                Audit citations ({result.citations.length})
+                Audit citations ({result.data.citations.length})
               </span>
               <div className="briefing-citation-tags">
-                {result.citations.map(id => (
+                {result.data.citations.map(id => (
                   <Tag key={id} minimal className="briefing-citation-tag">
                     {id.slice(0, 8)}…
                   </Tag>

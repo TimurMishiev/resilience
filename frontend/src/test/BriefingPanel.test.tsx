@@ -166,4 +166,90 @@ describe('BriefingPanel', () => {
 
     expect(await screen.findByText(/^PDF export failed$/)).toBeInTheDocument()
   })
+
+  it('labels the rendered briefing with the summary type and site it was generated for', async () => {
+    const user = userEvent.setup()
+    postAiSummary.mockResolvedValue({
+      data: {
+        summary: 'Forward Site Alpha leadership summary.',
+        citations: [],
+        context_counts: { audit_events: 1, signals: 0, rule_fires: 0 },
+      },
+    })
+
+    render(<BriefingPanel />)
+
+    await user.selectOptions(screen.getAllByRole('combobox')[0], 'site-1')
+    await user.click(screen.getByRole('button', { name: /Generate briefing/i }))
+
+    const card = (await screen.findByText(/Forward Site Alpha leadership summary/i))
+      .closest('.briefing-result')
+    expect(card).not.toBeNull()
+    expect(card).toHaveTextContent(/Leadership briefing/i)
+    expect(card).toHaveTextContent(/Forward Site Alpha/i)
+  })
+
+  it('preserves captured briefing context when selectors change after generate (no stale-under-new-header)', async () => {
+    const user = userEvent.setup()
+    postAiSummary.mockResolvedValue({
+      data: {
+        summary: 'Forward Site Alpha leadership summary.',
+        citations: [],
+        context_counts: { audit_events: 1, signals: 0, rule_fires: 0 },
+      },
+    })
+
+    render(<BriefingPanel />)
+
+    await user.selectOptions(screen.getAllByRole('combobox')[0], 'site-1')
+    await user.click(screen.getByRole('button', { name: /Generate briefing/i }))
+    await screen.findByText(/Forward Site Alpha leadership summary/i)
+
+    // Operator now switches both selectors to different values after the briefing rendered.
+    await user.selectOptions(screen.getAllByRole('combobox')[0], 'site-2')
+    await user.selectOptions(screen.getAllByRole('combobox')[1], 'site_activity')
+
+    const card = screen
+      .getByText(/Forward Site Alpha leadership summary/i)
+      .closest('.briefing-result')
+    expect(card).not.toBeNull()
+    // Card must still reflect the briefing it was generated for, not the new selector state.
+    expect(card).toHaveTextContent(/Leadership briefing/i)
+    expect(card).toHaveTextContent(/Forward Site Alpha/i)
+    expect(card).not.toHaveTextContent(/Harbor Site Bravo/i)
+    expect(card).not.toHaveTextContent(/Site activity/i)
+  })
+
+  it('exports the briefing using captured context, not current selector state', async () => {
+    const user = userEvent.setup()
+    postAiSummary.mockResolvedValue({
+      data: {
+        summary: 'Forward Site Alpha leadership summary.',
+        citations: [],
+        context_counts: { audit_events: 1, signals: 0, rule_fires: 0 },
+      },
+    })
+    exportBriefing.mockResolvedValue(new Blob(['pdf-bytes'], { type: 'application/pdf' }))
+
+    render(<BriefingPanel />)
+
+    await user.selectOptions(screen.getAllByRole('combobox')[0], 'site-1')
+    await user.click(screen.getByRole('button', { name: /Generate briefing/i }))
+    await screen.findByText(/Forward Site Alpha leadership summary/i)
+
+    // Operator changes both selectors after the briefing resolved, then exports.
+    await user.selectOptions(screen.getAllByRole('combobox')[0], 'site-2')
+    await user.selectOptions(screen.getAllByRole('combobox')[1], 'site_activity')
+
+    await user.click(screen.getByRole('button', { name: /Export PDF/i }))
+
+    expect(exportBriefing).toHaveBeenCalledTimes(1)
+    expect(exportBriefing).toHaveBeenCalledWith(
+      expect.objectContaining({
+        summary_type: 'leadership_briefing',
+        site_name: 'Forward Site Alpha',
+        summary: 'Forward Site Alpha leadership summary.',
+      }),
+    )
+  })
 })

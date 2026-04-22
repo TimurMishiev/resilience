@@ -16,20 +16,21 @@ Post-Phase-7 remediation (**active**)
 
 ## Current Slice
 
-**Audit remediation — Band A + Band B shipped in `27831e1`**
+**Audit remediation — Band D `F1` fixed in working tree (BriefingPanel stale-response race)**
 
-The last shipped product slice is `27831e1` — "Close Band A + Band B audit remediation" (I1 + G1 + API1 + D1 + I2 + R1, plus the shared resilience-remediation skill + CTO evaluation briefing). Working tree is clean.
+The last shipped product slice is `27831e1` — "Close Band A + Band B audit remediation" (I1 + G1 + API1 + D1 + I2 + R1). The MD-cleanup rotation shipped in `2ed89a5`. User has approved the **full remediation sweep** (bulletproof-first, production-ready before any new roadmap work): Band D → Band C → CTO P1 → P2 → scope P3 → defer P4.
 
-Prior committed product slice: `368e079` — replay hardening via explicit reference-clock threading.
+Current tranche in working tree: **`F1` — BriefingPanel captures briefing params at generate time, renders an anchored context header on the result card, and routes exports through captured params instead of live selector state.** 9 Vitest cases pass (6 existing + 3 new F1 cases).
 
-Next unresolved by priority: **MT1** (telemetry SSE not org-scoped). Band C is latent for single-org deployments; do not start without user alignment (architectural scope — SSE org-scoping, simulator payload, policy gating).
+Next unresolved by sweep order: **O1** (metrics latency window 5min claim vs 1min impl).
 
 ## Current Repo State
 
 - Latest committed product slice: `27831e1` — Band A + Band B audit remediation
-- Current tip commit: `e2d02c2` — handoff rotation after Band A + Band B ship
-- Working tree: **clean**
-- Branch state: `main` in sync with `origin/main` (pushed)
+- Latest committed rotation: `2ed89a5` — MD-file cleanup
+- Current tip commit (uncommitted working tree): F1 fix applied to `BriefingPanel.tsx` + `BriefingPanel.test.tsx`; `findings.md` updated
+- Working tree: **dirty** — F1 tranche pending commit
+- Branch state: `main` in sync with `origin/main` (the next commit will be the F1 remediation)
 
 ## Phase 7 — Slice Plan
 
@@ -154,14 +155,19 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 ## In Progress
 
 - Phase 7 remains closed.
-- Audit remediation is active.
-- Band A (`I1`, `G1`, `API1`, `D1`) is fixed in the working tree and validated on focused backend/frontend checks.
-- Band B (`I2`, `R1`) is fixed in the working tree and validated on focused backend checks.
-- Next unresolved confirmed finding by priority is `MT1` — telemetry SSE stream is not org-scoped.
+- Audit remediation is active under the **full bulletproof sweep**:
+  - Band D (F1, O1, J1, M1) — in progress
+  - Band C (MT1, MT2, MT3) — queued after Band D
+  - CTO P1 → P2 → (scope P3) → defer P4 — queued after Band C
+- Band A (`I1`, `G1`, `API1`, `D1`) and Band B (`I2`, `R1`) — shipped in `27831e1`.
+- Band D `F1` — fixed in working tree; tests green; commit pending.
+- Next unresolved confirmed finding by sweep order: `O1` — metrics latency window claim does not match implementation.
 
 ## Next
 
-- **Immediate next step:** commit this remediation tranche, then decide whether to continue into Band C (`MT1`, `MT2`, `MT3`) or stop at the single-org boundary.
+- **Immediate next step:** run `/gate`, then commit the `F1` tranche, then proceed to `O1` (metrics latency window mismatch).
+- **Full sweep order (approved by user 2026-04-22):** Band D `F1` → `O1` → `J1` → `M1` → Band C `MT1` → `MT2` → `MT3` → CTO P1 (globe evidence + `useReferenceTimeMs`) → CTO P2 (globe alert triage in inspector) → scope CTO P3 (5-slice map+debrief workstation; needs explicit alignment before start) → defer CTO P4 unless a 6th map tool is planned.
+- **Legacy commit-target note (superseded by sweep):** whether to continue into Band C versus stop at the single-org boundary was resolved — Band C is on the sweep. Previously marked as "latent for single-org"; kept in the sweep for production-ready completeness before new roadmap work.
 - **External CTO evaluation (2026-04-22) — briefing:** see [memory/cto_evaluation_roadmap.md](cto_evaluation_roadmap.md). Full third-party report + per-priority disposition. P0 (`Date.now()` defaults → required) shipped in `368e079`. P1–P4 are open and each needs independent code-first evaluation before adopting — the file includes explicit verification prompts per priority. Neither model has pre-judged P1–P4; do not start any of them without scoping against current code first.
 - **If Phase 7 reopens after remediation:** only reopen it if the confirmed remediation backlog is closed and a real missing operator tool still remains.
 - **Explicit boundary for 7-1E and beyond:** do not jump straight to persistence, collaboration, or a generalized geospatial workspace. Keep Phase 7 additive and tool-specific.
@@ -196,7 +202,20 @@ cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/api/cl
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (current uncommitted remediation tranche — Band A + Band B closed in working tree, 2026-04-22)
+## Last Validation Results (current uncommitted tranche — Band D `F1` BriefingPanel stale-response race, 2026-04-22)
+
+- Touched frontend files: `src/components/BriefingPanel.tsx`, `src/test/BriefingPanel.test.tsx`
+- Touched findings doc: `.claude/skills/resilience-remediation/references/findings.md`
+- Focused frontend validation:
+  - `npx vitest run src/test/BriefingPanel.test.tsx` → **9 / 9 pass** (6 existing + 3 new F1 cases covering captured header, captured-state preservation after selector change, and captured-param export)
+- Full frontend validation:
+  - `npx vitest run` → **660 / 660 pass across 90 files**
+  - `npx tsc -p tsconfig.app.json --noEmit` → **0 errors**
+  - `npx eslint src/components/BriefingPanel.tsx src/test/BriefingPanel.test.tsx` → **0 issues**
+  - `git diff --check` → **clean**
+- Backend: no backend files touched in this tranche; no new rspec run required.
+
+## Prior Validation — Band A + Band B (shipped in `27831e1`, 2026-04-22)
 
 - Combined backend validation across full remediation tranche:
   - `TEST_DATABASE_PORT=5434 /Users/timurmishiev/.rbenv/shims/bundle exec rspec spec/jobs/correlations/evaluate_recent_job_spec.rb spec/config/recurring_spec.rb spec/requests/api/signal_rule_matches_spec.rb spec/requests/api/vessels_spec.rb spec/services/telemetry/partition_manager_spec.rb spec/services/feeds/gpsjam_ingestion_service_spec.rb spec/services/replay/projection_service_spec.rb` → **85 examples, 0 failures**

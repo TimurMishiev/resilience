@@ -160,9 +160,23 @@ Use this file as the canonical remediation backlog.
 
 #### `F1` — `BriefingPanel` Can Render A Stale Response Under A New Header
 - Severity: `P3`
-- Status: confirmed current UI trust issue
+- Status: fixed in working tree on `2026-04-22`
+- Why real:
+  - `result.summary` / `citations` / `context_counts` were keyed to response-time state
+  - `result` card header and context hint read *current* selector state, so changing selectors after a successful generate rendered stale body under a new header
+  - `handleExport` mixed current-state (`summary_type`, `site_name`) with stale-result (`summary`, `citations`, `context_counts`), producing mis-labeled exported PDFs
+- Risk:
+  - operator-visible trust break (stale briefing appears to describe the currently-selected site/type)
+  - data integrity regression in exported classified-style PDFs
+- Fix direction (applied):
+  - capture `{ summary_type, site_id, site_name, as_of }` at generate time into a `BriefingResultContext` stored alongside the response data
+  - render the captured context as an anchored header on the result Card so operators see exactly which briefing they are viewing
+  - `handleExport` now sources `summary_type` and `site_name` from the captured context, never from current selector state
 - Primary files:
   - [BriefingPanel.tsx](/Users/timurmishiev/Desktop/Code/resilience/frontend/src/components/BriefingPanel.tsx)
+  - [BriefingPanel.test.tsx](/Users/timurmishiev/Desktop/Code/resilience/frontend/src/test/BriefingPanel.test.tsx)
+- Validation minimum:
+  - focused Vitest proving the captured header + captured-export params (3 new cases)
 
 #### `O1` — Metrics Latency Window Claim Does Not Match Implementation
 - Severity: `P3`
