@@ -62,7 +62,7 @@ const ASSET_FRESHNESS_THRESHOLDS: FreshnessThresholds = {
   staleMs: 24 * 3_600_000,
 }
 
-function staleness(last_reported_at: string | null, updated_at: string, referenceTimeMs = Date.now()) {
+function staleness(last_reported_at: string | null, updated_at: string, referenceTimeMs: number) {
   const timestamp = last_reported_at ?? updated_at
   const updatedAtMs = Date.parse(timestamp)
 

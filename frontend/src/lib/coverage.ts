@@ -109,7 +109,7 @@ export function buildCoverageCircles(params: {
     if (radiusKm <= 0) return []
 
     const reading = readings?.get(asset.id)
-    const freshReading = reading && (allowHistoricalTelemetry || isTelemetryFresh(reading)) ? reading : null
+    const freshReading = reading && (allowHistoricalTelemetry || isTelemetryFresh(reading, Date.now() / 1000)) ? reading : null
     if (freshReading) {
       return [{
         assetId: asset.id,

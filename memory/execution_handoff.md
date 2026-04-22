@@ -12,26 +12,35 @@ Last updated: 2026-04-22
 
 Phase 7 — Advanced Geospatial Tools
 
-(Phase 4 — Debrief closed. Phase 5 — Evidence Threading complete. Phase 6 Slice 6-1 fully shipped and closed in `aa07c91`. Phase 7 Slice 7-1A shipped in `4ea3def`, Phase 7 Slice 7-1A-followup shipped in `37f7a40`, Phase 7 Slice 7-1B shipped in `5260480`, Phase 7 Slice 7-1B-followup shipped in `df19f42`, Phase 7 Slice 7-1C shipped in `45b09b8`, Phase 7 Slice 7-1D shipped in `823dd05`, and Phase 7 Slice 7-1E shipped in `f1960c7`. A mixed Phase 7 post-ship cleanup tranche is currently active.)
+(Phase 4 — Debrief closed. Phase 5 — Evidence Threading complete. Phase 6 Slice 6-1 fully shipped and closed in `aa07c91`. Phase 7 Slices 7-1A, 7-1A-followup, 7-1B, 7-1B-followup, 7-1C, 7-1D, 7-1E, 7-1E-followup, and 7-1E-followup-p3 all shipped — latest tip `efd1ff8`. A narrow replay-hardening tranche (remove wall-clock defaults from shared library functions) is currently active.)
 
 ## Current Slice
 
-**Phase 7 follow-up — geodesy / replay / AI freshness / full-fetch / globe a11y cleanup (active, uncommitted).**
+**Replay hardening — remove `Date.now()` defaults from shared library functions (active, uncommitted).**
 
-This is a mixed post-ship cleanup across the Phase 7 geospatial surfaces and adjacent replay/AI/query paths. It extracts the duplicated great-circle projection helper from the range-ring, bearing-line, and sector-overlay helpers into one shared frontend geodesy module, hardens invalid replay `as_of` handling to fail closed, drops the prior short-lived AI catalog cache in favor of immediate entity visibility, replaces silent `per_page=200` truncation on `/map` `/globe` `/graph` with explicit concurrent full-fetch helpers, and makes globe toolbar toggles keyboard-operable.
+Six shared library functions (`buildMapSignalFeatureCollection`, `buildMapSignalRenderCollections`, `timeAgo`, `isTelemetryFresh`, `buildAssetFeatureCollection`, and the file-local `staleness` helper inside `EntityCard`) previously defaulted their reference-time parameter to `Date.now()`. This made replay-safety invisible to the compiler: a new caller that forgot to pass a reference time would silently wall-clock, breaking replay without any type error. This slice removes those defaults and threads the correct reference time (live via `useReferenceTimeMs()` on admin surfaces, replay-aware `referenceTimeMs` on already-threaded surfaces) through every call site.
 
-This combined follow-up tranche was explicitly widened during post-ship review on 2026-04-22 to absorb the concrete gate findings on these same surfaces before commit. Do not widen it further.
+Scope explicitly narrow: signatures + call-site fixes only. No behavioral changes at any call site; the defaults always resolved to wall-clock at runtime, and the fixes preserve that at each site while making the choice visible.
 
 ## Current Repo State
 
-- Latest committed product slice: `51f8a3f` — Phase 7 Slice 7-1E-followup: geodesy / replay / AI freshness / full-fetch / globe a11y
-- Current tip commit: `51f8a3f`
-- Working tree: dirty because of a small post-ship P3 cleanup on the just-shipped `fetchAllPaginated` + `useAll*` surface
+- Latest committed product slice: `efd1ff8` — Phase 7 Slice 7-1E-followup-p3 — worker-pool sibling short-circuit + `useAll*` normalization
+- Current tip commit: `efd1ff8`
+- Working tree: dirty with the Date.now-defaults removal tranche
 - Branch state: `main` even with `origin/main`
 - Dirty/tranche files right now:
-  - `frontend/src/hooks/fetchAllPaginated.ts`
-  - `frontend/src/hooks/useAreasOfOperation.ts`
-  - `frontend/src/test/fetchAllPaginated.test.ts`
+  - `frontend/src/lib/mapSignalRendering.ts`
+  - `frontend/src/lib/formatters.ts`
+  - `frontend/src/lib/telemetry.ts`
+  - `frontend/src/lib/mapRenderData.ts`
+  - `frontend/src/lib/coverage.ts`
+  - `frontend/src/lib/assetPresentation.ts`
+  - `frontend/src/hooks/useTelemetryStream.ts`
+  - `frontend/src/hooks/map/useMapAssetLayers.ts`
+  - `frontend/src/components/EntityCard.tsx`
+  - `frontend/src/pages/OrganizationsPage.tsx`
+  - `frontend/src/pages/UsersPage.tsx`
+  - `frontend/src/test/mapSignalRendering.test.ts`
   - `memory/execution_handoff.md`
 
 ## Phase 7 — Slice Plan
@@ -45,7 +54,8 @@ Sequenced:
 - **7-1D** — session-local `/map` bearing line / azimuth tool with operator-entered heading and extent (**shipped** in `823dd05`)
 - **7-1E** — session-local `/map` sector / fan overlay with operator-entered heading, arc, and extent (**shipped** in `f1960c7`)
 - **7-1E-followup** — post-ship cleanup: shared map geodesy extraction, replay `as_of` hardening, AI catalog freshness-vs-load trade-off, full-fetch pagination rollout, and globe toolbar keyboard a11y (**shipped** in `51f8a3f`)
-- **7-1E-followup-p3** — post-ship P3 cleanup on `fetchAllPaginated` + `useAll*` (worker-pool sibling short-circuit, non-null-assertion removal, test-name drift fix, `useAllAreasOfOperation` signature normalized) (**active, uncommitted**)
+- **7-1E-followup-p3** — post-ship P3 cleanup on `fetchAllPaginated` + `useAll*` (worker-pool sibling short-circuit, non-null-assertion removal, test-name drift fix, `useAllAreasOfOperation` signature normalized) (**shipped** in `efd1ff8`)
+- **replay-hardening-dateNow** — remove `Date.now()` defaults from shared library functions; thread `useReferenceTimeMs()` through admin pages; thread live clock explicitly through live-only call sites (`useTelemetryStream`, `coverage`, `assetPresentation`) (**active, uncommitted**)
 
 ## Shipped In This Phase (Phase 7)
 
@@ -57,6 +67,7 @@ Sequenced:
 - `823dd05` — Phase 7 Slice 7-1D: `/map` bearing line / azimuth tool (session-local anchor, operator-entered heading and extent, NM/KM units, paint-order proof, style-swap persistence, four-tool exclusivity, and responsive tool-row continuity)
 - `f1960c7` — Phase 7 Slice 7-1E: `/map` sector / fan overlay (session-local anchor, operator-entered heading/arc/extent, NM/KM units, sector paint-order proof, style-swap persistence, and five-tool exclusivity)
 - `51f8a3f` — Phase 7 Slice 7-1E-followup: shared `projectGeodesicPoint` extraction, replay `as_of` fail-closed (400 on malformed), AI catalog cache removal (deliberate freshness-vs-load trade), full-fetch pagination rollout on `/map` `/globe` `/graph` with `MAX_CONCURRENT_PAGES = 6` worker-pool semaphore, and globe toolbar keyboard a11y
+- `efd1ff8` — Phase 7 Slice 7-1E-followup-p3: `fetchAllPaginated` worker-pool sibling short-circuit on first rejection, explicit invariant error in place of non-null assertion, test-name drift fix, `useAllAreasOfOperation` signature normalized to match the other three `useAll*` hooks
 
 ## Phase 6 — Closed Slice Plan (historical context)
 
@@ -153,16 +164,24 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 
 ## In Progress
 
-- Phase 7 Slice 7-1E-followup-p3 — small post-ship P3 cleanup on the `fetchAllPaginated` + `useAll*` surface just shipped in `51f8a3f`. Active and uncommitted.
+- **Replay hardening — remove `Date.now()` defaults from shared library functions.** Active and uncommitted.
 - Scope:
-  - `fetchAllPaginated` worker pool short-circuits siblings on first rejection via shared `aborted` flag, bounding wasted requests at `workerCount - 1` instead of draining the full remaining-page queue
-  - `fetchAllPaginated` replaces `responsesByPage.get(page)!` with an explicit invariant error ("missing after worker pool drain") so the ordering invariant is legible to future readers
-  - `fetchAllPaginated.test.ts` test renamed from "in parallel" to "concurrently within the cap" to reflect bounded concurrency; new "short-circuits sibling workers when any worker rejects" test asserts `fetchPage` stays at `1 + MAX_CONCURRENT_PAGES` calls through a sibling rejection
-  - `useAllAreasOfOperation` signature normalized from `(params, options?: { enabled, staleTime })` to `(params, enabled = true)` to match the other three `useAll*` hooks; no existing caller used the dropped options object
+  - Library signatures made required (no more `referenceTimeMs = Date.now()` / `nowMs = Date.now()` / `nowSeconds = Date.now() / 1000`):
+    - `lib/mapSignalRendering.ts`: `buildMapSignalFeatureCollection`, `buildMapSignalRenderCollections` — `referenceTimeMs: number` is now required (clarifying comment added)
+    - `lib/formatters.ts`: `timeAgo(iso, nowMs)` — `nowMs: number` required
+    - `lib/telemetry.ts`: `isTelemetryFresh(reading, nowSeconds)` — `nowSeconds: number` required
+    - `lib/mapRenderData.ts`: `buildAssetFeatureCollection` — `allowHistoricalTelemetry: boolean` and `referenceTimeMs: number` both required (default `false` on the former also removed for consistency with the positional contract)
+    - `components/EntityCard.tsx`: file-local `staleness(..., referenceTimeMs)` — required
+  - Call-site fixes:
+    - Admin surfaces (`pages/OrganizationsPage.tsx`, `pages/UsersPage.tsx`) now thread `useReferenceTimeMs()` into `timeAgo`. The hook auto-falls-back to live wall-clock (with 60s refresh) when no `asOf` is supplied and is pure under `react-hooks/purity`, which directly-inline `Date.now()` in render is not.
+    - Live-only call sites that must keep wall-clock semantics now pass it explicitly: `useTelemetryStream.ts` (15s SSE freshness sweep), `lib/coverage.ts` (`buildCoverageData` live-fresh branch), `lib/assetPresentation.ts` (`getLiveTelemetryReading` live branch — the `options.allowHistorical` short-circuit already bypasses this in replay).
+    - `hooks/map/useMapAssetLayers.ts` init call adds `(false, 0)` for the empty-seed `buildAssetFeatureCollection` call; iteration over an empty array means the reference time is never read, but the call has to compile.
+    - `test/mapSignalRendering.test.ts` three bare `buildMapSignalRenderCollections(...)` calls now pass a fixed `referenceTimeMs`.
+- Why it matters: previously, a new `/map`, `/globe`, or `/debrief` caller that forgot the reference-time argument would silently wall-clock in replay, with no compile-time signal. After this tranche, every such call site is a compile error until the caller supplies a reference time, and every existing call site's choice of clock (replay-aware vs live) is grep-visible.
 - Intentionally **not** addressed in this tranche:
   - AI catalog cache re-introduction — still a watch-item for production-scale load; needs concrete TTL + invalidation strategy before re-landing
-  - `useTasks` / `useAllTasks` key-vs-cleaned drift at [useTasks.ts:29](frontend/src/hooks/useTasks.ts#L29) and [:41](frontend/src/hooks/useTasks.ts#L41) — pre-existing, zero runtime impact today (no caller passes null on the nullable fields); defer until a real nullable-field caller surfaces
-- Keep this tranche as narrow cleanup. Do not widen.
+  - `useTasks` / `useAllTasks` key-vs-cleaned drift — pre-existing, zero runtime impact today; defer until a real nullable-field caller surfaces
+- Keep this tranche narrow. Do not widen.
 
 ## Next
 
@@ -193,7 +212,17 @@ cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/api/cl
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (Phase 7 Slice 7-1E-followup-p3 post-ship cleanup, uncommitted, 2026-04-22)
+## Last Validation Results (replay-hardening-dateNow tranche, uncommitted, 2026-04-22)
+
+- Touched frontend files: 12 (6 lib signatures + 6 call-site / test updates)
+- Full frontend validation:
+  - `npx vitest run` → **656 / 656 pass across 89 files** (no new tests; existing tests prove the reference-time-is-now-required contract)
+  - `npx tsc -p tsconfig.app.json --noEmit` → **0 errors**
+  - `npx eslint` on all 12 touched files → **0 issues** (including `react-hooks/purity`, which would have fired on any render-path `Date.now()` call — it did fire during an intermediate step on `timeAgo(..., Date.now())` inside `OrganizationsPage`/`UsersPage`, and that's what drove the switch to `useReferenceTimeMs()` on both pages)
+  - `git diff --check` → **clean**
+- Backend: no backend files touched in this tranche; no new rspec run required.
+
+## Prior Validation — Phase 7 Slice 7-1E-followup-p3 (shipped in `efd1ff8`, 2026-04-22)
 
 - Touched frontend files: `src/hooks/fetchAllPaginated.ts`, `src/hooks/useAreasOfOperation.ts`, `src/test/fetchAllPaginated.test.ts`
 - Full frontend validation:

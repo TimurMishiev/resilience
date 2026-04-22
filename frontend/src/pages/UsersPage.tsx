@@ -10,6 +10,7 @@ import { getAreasOfOperation } from '../api/areas_of_operation'
 import { getApiErrorMessage } from '../api/client'
 import { useRole } from '../hooks/useRole'
 import { useReplayGuardedMutation } from '../hooks/useReplayGuardedMutation'
+import { useReferenceTimeMs } from '../hooks/useReferenceTimeMs'
 import { timeAgo } from '../lib/formatters'
 
 const ROLES = ['viewer', 'operator', 'commander', 'admin'] as const
@@ -18,6 +19,7 @@ export default function UsersPage() {
   const role = useRole()
   const canManageUsers = role.canManageUsers ?? role.isAdmin
   const queryClient = useQueryClient()
+  const referenceTimeMs = useReferenceTimeMs()
 
   const { data, isPending, error } = useQuery({
     queryKey: ['users'],
@@ -125,7 +127,7 @@ export default function UsersPage() {
                   </td>
                   <td>{user.organization_name ?? <span className="bp6-text-muted">—</span>}</td>
                   <td>{user.area_of_operation_name ?? <span className="bp6-text-muted">—</span>}</td>
-                  <td className="bp6-text-muted" style={{ fontSize: 12 }}>{timeAgo(user.created_at)}</td>
+                  <td className="bp6-text-muted" style={{ fontSize: 12 }}>{timeAgo(user.created_at, referenceTimeMs)}</td>
                   <td>
                     <Button minimal small icon="edit" onClick={() => openEdit(user)} />
                   </td>

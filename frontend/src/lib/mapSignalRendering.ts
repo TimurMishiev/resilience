@@ -41,7 +41,9 @@ function buildMapSignalFeature(signal: Signal, referenceTimeMs: number): GeoJSON
   }
 }
 
-export function buildMapSignalFeatureCollection(signals: Signal[], referenceTimeMs = Date.now()): GeoJSON.FeatureCollection {
+// `referenceTimeMs` is required (no wall-clock default) so replay surfaces can't
+// silently fall back to `Date.now()` when a caller forgets to thread it.
+export function buildMapSignalFeatureCollection(signals: Signal[], referenceTimeMs: number): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
     features: signals.map(s => buildMapSignalFeature(s, referenceTimeMs)),
@@ -51,7 +53,7 @@ export function buildMapSignalFeatureCollection(signals: Signal[], referenceTime
 export function buildMapSignalRenderCollections(
   signals: Signal[],
   selectedSignalId: string | null,
-  referenceTimeMs = Date.now(),
+  referenceTimeMs: number,
 ): {
   clusterable: GeoJSON.FeatureCollection
   selected: GeoJSON.FeatureCollection

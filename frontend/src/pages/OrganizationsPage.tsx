@@ -11,6 +11,7 @@ import {
 import { getApiErrorMessage } from '../api/client'
 import { useRole } from '../hooks/useRole'
 import { useReplayGuardedMutation } from '../hooks/useReplayGuardedMutation'
+import { useReferenceTimeMs } from '../hooks/useReferenceTimeMs'
 import { timeAgo } from '../lib/formatters'
 
 function slugify(name: string): string {
@@ -26,6 +27,7 @@ export default function OrganizationsPage() {
   const role = useRole()
   const canManageOrganizations = role.canManageOrganizations ?? role.isAdmin
   const queryClient = useQueryClient()
+  const referenceTimeMs = useReferenceTimeMs()
 
   const { data, isPending, error } = useQuery({
     queryKey: ['organizations'],
@@ -150,7 +152,7 @@ export default function OrganizationsPage() {
                   </td>
                   <td>{org.user_count}</td>
                   <td>{org.site_count}</td>
-                  <td className="bp6-text-muted" style={{ fontSize: 12 }}>{timeAgo(org.created_at)}</td>
+                  <td className="bp6-text-muted" style={{ fontSize: 12 }}>{timeAgo(org.created_at, referenceTimeMs)}</td>
                   <td>
                     <Button minimal small icon="edit" onClick={() => openEdit(org)} style={{ marginRight: 4 }} />
                     <Button

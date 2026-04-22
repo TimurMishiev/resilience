@@ -4,7 +4,7 @@ import type { Task } from '../api/types'
  * Human-readable relative time string from an ISO 8601 timestamp.
  * e.g. "3s ago", "12m ago", "2h 15m ago", "4d ago"
  */
-export function timeAgo(iso: string, nowMs: number = Date.now()): string {
+export function timeAgo(iso: string, nowMs: number): string {
   const ms = nowMs - Date.parse(iso)
   if (ms < 0) return 'just now'
   const seconds = Math.floor(ms / 1000)

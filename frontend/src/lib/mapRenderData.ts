@@ -144,8 +144,8 @@ export function buildAssetFeatureCollection(
   assets: Asset[],
   sites: Site[],
   readings: TelemetryMap,
-  allowHistoricalTelemetry = false,
-  referenceTimeMs = Date.now(),
+  allowHistoricalTelemetry: boolean,
+  referenceTimeMs: number,
 ): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',

@@ -21,13 +21,15 @@ function makeSignal(overrides: Partial<Signal> & Pick<Signal, 'id' | 'signal_typ
 }
 
 describe('buildMapSignalRenderCollections', () => {
+  const referenceTimeMs = Date.parse('2026-04-17T12:00:00Z')
+
   it('keeps the selected signal out of the clusterable collection', () => {
     const signals = [
       makeSignal({ id: 'sig-1', signal_type: 'disaster_alert', source: 'gdacs' }),
       makeSignal({ id: 'sig-2', signal_type: 'vessel_position', source: 'ais' }),
     ]
 
-    const collections = buildMapSignalRenderCollections(signals, 'sig-2')
+    const collections = buildMapSignalRenderCollections(signals, 'sig-2', referenceTimeMs)
 
     expect(collections.clusterable.features).toHaveLength(1)
     expect(collections.clusterable.features[0]?.properties?.id).toBe('sig-1')
@@ -41,7 +43,7 @@ describe('buildMapSignalRenderCollections', () => {
       makeSignal({ id: 'sig-2', signal_type: 'vessel_position', source: 'ais' }),
     ]
 
-    const collections = buildMapSignalRenderCollections(signals, 'sig-99')
+    const collections = buildMapSignalRenderCollections(signals, 'sig-99', referenceTimeMs)
 
     expect(collections.clusterable.features).toHaveLength(2)
     expect(collections.selected.features).toHaveLength(0)
@@ -52,7 +54,7 @@ describe('buildMapSignalRenderCollections', () => {
       makeSignal({ id: 'sig-1', signal_type: 'disaster_alert', source: 'gdacs' }),
     ]
 
-    const collections = buildMapSignalRenderCollections(signals, null)
+    const collections = buildMapSignalRenderCollections(signals, null, referenceTimeMs)
 
     expect(collections.clusterable.features).toHaveLength(1)
     expect(collections.selected.features).toHaveLength(0)

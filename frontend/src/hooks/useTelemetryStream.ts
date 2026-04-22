@@ -112,10 +112,11 @@ export function useTelemetryStream(enabled = true) {
     if (!enabled) return
 
     const timer = setInterval(() => {
+      const nowSeconds = Date.now() / 1000
       setReadings(prev => {
         const next = new Map<string, TelemetryReading>()
         for (const [assetId, reading] of prev) {
-          if (isTelemetryFresh(reading)) next.set(assetId, reading)
+          if (isTelemetryFresh(reading, nowSeconds)) next.set(assetId, reading)
         }
         return next.size === prev.size ? prev : next
       })

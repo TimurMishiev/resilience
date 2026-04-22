@@ -42,7 +42,7 @@ export function useMapAssetLayers({
     if (!map || !mapLoaded) return
 
     if (!map.getSource('asset-points')) {
-      map.addSource('asset-points', { type: 'geojson', data: buildAssetFeatureCollection([], [], EMPTY_READINGS) })
+      map.addSource('asset-points', { type: 'geojson', data: buildAssetFeatureCollection([], [], EMPTY_READINGS, false, 0) })
     }
 
     if (!map.getLayer('asset-circles')) {

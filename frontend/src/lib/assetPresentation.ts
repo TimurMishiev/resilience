@@ -27,7 +27,7 @@ export function getLiveTelemetryReading(
   if (!assetId) return null
   const reading = readings.get(assetId)
   if (!reading) return null
-  return options.allowHistorical || isTelemetryFresh(reading) ? reading : null
+  return options.allowHistorical || isTelemetryFresh(reading, Date.now() / 1000) ? reading : null
 }
 
 export function assetSeedPosition(
