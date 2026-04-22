@@ -46,7 +46,7 @@ describe('fetchAllPaginated', () => {
     })
   })
 
-  it('requests remaining pages in parallel after the first page resolves', async () => {
+  it('requests remaining pages concurrently within the cap', async () => {
     let resolvePage2: ((value: { data: Array<{ id: string }>; meta: { total: number; page: number; per_page: number; total_pages: number } }) => void) | undefined
     let resolvePage3: ((value: { data: Array<{ id: string }>; meta: { total: number; page: number; per_page: number; total_pages: number } }) => void) | undefined
 
@@ -170,6 +170,50 @@ describe('fetchAllPaginated', () => {
       .mockRejectedValueOnce(new Error('page 2 failed'))
 
     await expect(fetchAllPaginated(fetchPage)).rejects.toThrow('page 2 failed')
+  })
+
+  it('short-circuits sibling workers when any worker rejects', async () => {
+    const MAX_CONCURRENT = 6
+    const totalPages = 10
+    const failingPage = 3
+    const resolvers = new Map<number, (value: { data: Array<{ id: string }>; meta: { total: number; page: number; per_page: number; total_pages: number } }) => void>()
+    const rejecters = new Map<number, (err: Error) => void>()
+
+    const fetchPage = vi.fn().mockImplementation(({ page }: { page: number }) => {
+      if (page === 1) {
+        return Promise.resolve({
+          data: [{ id: 'site-1' }],
+          meta: { total: totalPages, page: 1, per_page: 200, total_pages: totalPages },
+        })
+      }
+
+      return new Promise<{ data: Array<{ id: string }>; meta: { total: number; page: number; per_page: number; total_pages: number } }>((resolve, reject) => {
+        resolvers.set(page, resolve)
+        rejecters.set(page, reject)
+      })
+    })
+
+    const resultPromise = fetchAllPaginated(fetchPage)
+
+    for (let tick = 0; tick < 30; tick += 1) {
+      await Promise.resolve()
+      if (resolvers.size >= MAX_CONCURRENT) break
+    }
+
+    expect(fetchPage).toHaveBeenCalledTimes(1 + MAX_CONCURRENT)
+
+    rejecters.get(failingPage)!(new Error(`page ${failingPage} failed`))
+
+    for (const [page, resolve] of resolvers) {
+      if (page === failingPage) continue
+      resolve({
+        data: [{ id: `site-${page}` }],
+        meta: { total: totalPages, page, per_page: 200, total_pages: totalPages },
+      })
+    }
+
+    await expect(resultPromise).rejects.toThrow(`page ${failingPage} failed`)
+    expect(fetchPage).toHaveBeenCalledTimes(1 + MAX_CONCURRENT)
   })
 
   it('forwards the abort signal to every page request', async () => {

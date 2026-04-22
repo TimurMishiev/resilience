@@ -34,12 +34,11 @@ export function useAreasOfOperation(params?: AreasOfOperationParams, options?: {
   })
 }
 
-export function useAllAreasOfOperation(params?: Omit<AreasOfOperationParams, 'page' | 'per_page'>, options?: { enabled?: boolean; staleTime?: number }) {
+export function useAllAreasOfOperation(params?: Omit<AreasOfOperationParams, 'page' | 'per_page'>, enabled = true) {
   return useQuery({
     queryKey: ['areas_of_operation', 'all', params],
     queryFn: ({ signal }) => fetchAllPaginated(getAreasOfOperation, params, { signal }),
-    enabled: options?.enabled ?? true,
-    staleTime: options?.staleTime,
+    enabled,
   })
 }
 

@@ -24,39 +24,14 @@ This combined follow-up tranche was explicitly widened during post-ship review o
 
 ## Current Repo State
 
-- Latest committed product slice: `f1960c7` — Phase 7 Slice 7-1E: `/map` sector / fan overlay
-- Current tip commit: `5322de2`
-- Working tree: dirty because of the active Phase 7 cleanup tranche plus this handoff refresh
+- Latest committed product slice: `51f8a3f` — Phase 7 Slice 7-1E-followup: geodesy / replay / AI freshness / full-fetch / globe a11y
+- Current tip commit: `51f8a3f`
+- Working tree: dirty because of a small post-ship P3 cleanup on the just-shipped `fetchAllPaginated` + `useAll*` surface
 - Branch state: `main` even with `origin/main`
 - Dirty/tranche files right now:
-  - `backend/app/controllers/api/ai_controller.rb`
-  - `backend/app/controllers/api/base_controller.rb`
-  - `backend/app/services/ai/filter_service.rb`
-  - `backend/app/services/ai/ontology_query_service.rb`
-  - `backend/app/services/ai/signal_filter_service.rb`
-  - `backend/spec/requests/api/ai_spec.rb`
-  - `backend/spec/requests/api/sites_spec.rb`
-  - `backend/spec/services/ai/filter_service_spec.rb`
-  - `backend/spec/services/ai/ontology_query_service_spec.rb`
-  - `backend/spec/services/ai/signal_filter_service_spec.rb`
-  - `frontend/src/components/globe/GlobeToolbar.tsx`
   - `frontend/src/hooks/fetchAllPaginated.ts`
   - `frontend/src/hooks/useAreasOfOperation.ts`
-  - `frontend/src/hooks/useAssets.ts`
-  - `frontend/src/hooks/useSites.ts`
-  - `frontend/src/hooks/useTasks.ts`
-  - `frontend/src/lib/mapBearingLine.ts`
-  - `frontend/src/lib/mapGeodesy.ts`
-  - `frontend/src/lib/mapRangeRings.ts`
-  - `frontend/src/lib/mapSectorOverlay.ts`
-  - `frontend/src/pages/GlobePage.tsx`
-  - `frontend/src/pages/GraphPage.tsx`
-  - `frontend/src/pages/MapPage.tsx`
   - `frontend/src/test/fetchAllPaginated.test.ts`
-  - `frontend/src/test/GlobePage.test.tsx`
-  - `frontend/src/test/GraphPage.test.tsx`
-  - `frontend/src/test/MapPage.test.tsx`
-  - `frontend/src/test/mapGeodesy.test.ts`
   - `memory/execution_handoff.md`
 
 ## Phase 7 — Slice Plan
@@ -69,7 +44,8 @@ Sequenced:
 - **7-1C** — session-local `/map` range rings with editable radii and NM/KM units (**shipped** in `45b09b8`)
 - **7-1D** — session-local `/map` bearing line / azimuth tool with operator-entered heading and extent (**shipped** in `823dd05`)
 - **7-1E** — session-local `/map` sector / fan overlay with operator-entered heading, arc, and extent (**shipped** in `f1960c7`)
-- **7-1E-followup** — post-ship cleanup: shared map geodesy extraction, replay `as_of` hardening, AI catalog freshness-vs-load trade-off, full-fetch pagination rollout, and globe toolbar keyboard a11y (**active, uncommitted**)
+- **7-1E-followup** — post-ship cleanup: shared map geodesy extraction, replay `as_of` hardening, AI catalog freshness-vs-load trade-off, full-fetch pagination rollout, and globe toolbar keyboard a11y (**shipped** in `51f8a3f`)
+- **7-1E-followup-p3** — post-ship P3 cleanup on `fetchAllPaginated` + `useAll*` (worker-pool sibling short-circuit, non-null-assertion removal, test-name drift fix, `useAllAreasOfOperation` signature normalized) (**active, uncommitted**)
 
 ## Shipped In This Phase (Phase 7)
 
@@ -80,6 +56,7 @@ Sequenced:
 - `45b09b8` — Phase 7 Slice 7-1C: `/map` range rings (session-local range-ring anchor, editable radii, NM/KM units, range-ring paint-order proof, and responsive tool-row fallback)
 - `823dd05` — Phase 7 Slice 7-1D: `/map` bearing line / azimuth tool (session-local anchor, operator-entered heading and extent, NM/KM units, paint-order proof, style-swap persistence, four-tool exclusivity, and responsive tool-row continuity)
 - `f1960c7` — Phase 7 Slice 7-1E: `/map` sector / fan overlay (session-local anchor, operator-entered heading/arc/extent, NM/KM units, sector paint-order proof, style-swap persistence, and five-tool exclusivity)
+- `51f8a3f` — Phase 7 Slice 7-1E-followup: shared `projectGeodesicPoint` extraction, replay `as_of` fail-closed (400 on malformed), AI catalog cache removal (deliberate freshness-vs-load trade), full-fetch pagination rollout on `/map` `/globe` `/graph` with `MAX_CONCURRENT_PAGES = 6` worker-pool semaphore, and globe toolbar keyboard a11y
 
 ## Phase 6 — Closed Slice Plan (historical context)
 
@@ -176,17 +153,16 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 
 ## In Progress
 
-- Phase 7 follow-up — mixed post-ship cleanup is active and uncommitted.
+- Phase 7 Slice 7-1E-followup-p3 — small post-ship P3 cleanup on the `fetchAllPaginated` + `useAll*` surface just shipped in `51f8a3f`. Active and uncommitted.
 - Scope:
-  - extract one shared great-circle projection helper (`projectGeodesicPoint`) and remove the duplicated private copies from:
-    - `frontend/src/lib/mapBearingLine.ts`
-    - `frontend/src/lib/mapRangeRings.ts`
-    - `frontend/src/lib/mapSectorOverlay.ts`
-  - reject invalid replay `as_of` params with `400` instead of silently falling back to live data
-  - remove the prior 60-second AI catalog/site-context cache so fresh sites/entities are visible immediately in AI flows; this is a deliberate freshness-vs-load trade-off
-  - replace silent `per_page=200` truncation on `/map` `/globe` `/graph` with explicit concurrent all-pages helpers that honor React Query abort signals; concurrency is bounded by an in-helper worker pool (`MAX_CONCURRENT_PAGES = 6`) so first-paint cannot fan out unbounded page fetches against Puma/DB pools at production-scale tenants
-  - make globe toolbar toggles keyboard-operable
-- Keep this tranche as cleanup/hardening. Do not widen it into new Phase 7 tooling or generalized geospatial abstractions.
+  - `fetchAllPaginated` worker pool short-circuits siblings on first rejection via shared `aborted` flag, bounding wasted requests at `workerCount - 1` instead of draining the full remaining-page queue
+  - `fetchAllPaginated` replaces `responsesByPage.get(page)!` with an explicit invariant error ("missing after worker pool drain") so the ordering invariant is legible to future readers
+  - `fetchAllPaginated.test.ts` test renamed from "in parallel" to "concurrently within the cap" to reflect bounded concurrency; new "short-circuits sibling workers when any worker rejects" test asserts `fetchPage` stays at `1 + MAX_CONCURRENT_PAGES` calls through a sibling rejection
+  - `useAllAreasOfOperation` signature normalized from `(params, options?: { enabled, staleTime })` to `(params, enabled = true)` to match the other three `useAll*` hooks; no existing caller used the dropped options object
+- Intentionally **not** addressed in this tranche:
+  - AI catalog cache re-introduction — still a watch-item for production-scale load; needs concrete TTL + invalidation strategy before re-landing
+  - `useTasks` / `useAllTasks` key-vs-cleaned drift at [useTasks.ts:29](frontend/src/hooks/useTasks.ts#L29) and [:41](frontend/src/hooks/useTasks.ts#L41) — pre-existing, zero runtime impact today (no caller passes null on the nullable fields); defer until a real nullable-field caller surfaces
+- Keep this tranche as narrow cleanup. Do not widen.
 
 ## Next
 
@@ -217,7 +193,17 @@ cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/api/cl
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (Phase 7 follow-up — geodesy / replay / AI freshness / full-fetch / globe a11y cleanup, uncommitted, 2026-04-22)
+## Last Validation Results (Phase 7 Slice 7-1E-followup-p3 post-ship cleanup, uncommitted, 2026-04-22)
+
+- Touched frontend files: `src/hooks/fetchAllPaginated.ts`, `src/hooks/useAreasOfOperation.ts`, `src/test/fetchAllPaginated.test.ts`
+- Full frontend validation:
+  - `npx vitest run` → **656 / 656 pass across 89 files** (new "short-circuits sibling workers when any worker rejects" test locks in post-error bounded-fetch behavior)
+  - `npx tsc -p tsconfig.app.json --noEmit` → **0 errors**
+  - `npx eslint src/hooks/fetchAllPaginated.ts src/hooks/useAreasOfOperation.ts src/test/fetchAllPaginated.test.ts` → **0 issues**
+  - `git diff --check` → **clean**
+- Backend: no backend files touched in this tranche; no new rspec run required.
+
+## Prior Validation — Phase 7 Slice 7-1E-followup (shipped in `51f8a3f`, 2026-04-22)
 
 - Focused backend validation:
   - `TEST_DATABASE_PORT=5434 /Users/timurmishiev/.rbenv/shims/bundle exec rspec spec/requests/api/sites_spec.rb spec/requests/api/ai_spec.rb spec/services/ai/ontology_query_service_spec.rb spec/services/ai/filter_service_spec.rb spec/services/ai/signal_filter_service_spec.rb` → **89 examples, 0 failures**

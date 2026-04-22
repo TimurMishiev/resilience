@@ -37,18 +37,25 @@ export async function fetchAllPaginated<T, P extends PaginationParams>(
 
   const responsesByPage = new Map<number, PaginatedResponse<T>>()
   let cursor = 0
+  let aborted = false
 
   const worker = async (): Promise<void> => {
-    while (true) {
+    while (!aborted) {
       const index = cursor
       cursor += 1
       if (index >= remainingPages.length) return
       const page = remainingPages[index]
-      const response = await fetchPage(
-        { ...(params ?? {}), page, per_page: MAX_PER_PAGE } as P,
-        options,
-      )
-      responsesByPage.set(page, response)
+      try {
+        const response = await fetchPage(
+          { ...(params ?? {}), page, per_page: MAX_PER_PAGE } as P,
+          options,
+        )
+        if (aborted) return
+        responsesByPage.set(page, response)
+      } catch (err) {
+        aborted = true
+        throw err
+      }
     }
   }
 
@@ -56,7 +63,12 @@ export async function fetchAllPaginated<T, P extends PaginationParams>(
   await Promise.all(Array.from({ length: workerCount }, () => worker()))
 
   for (const page of remainingPages) {
-    const response = responsesByPage.get(page)!
+    const response = responsesByPage.get(page)
+    if (!response) {
+      throw new Error(
+        `Paginated response for page ${page} missing after worker pool drain`,
+      )
+    }
     if (response.meta.total_pages !== first.meta.total_pages) {
       throw new Error(
         `Paginated response metadata drifted while fetching page ${page}: expected total_pages=${first.meta.total_pages}, received ${response.meta.total_pages}`,
