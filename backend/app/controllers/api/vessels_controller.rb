@@ -25,9 +25,11 @@ module Api
     def tracks
       vessel = scoped_record(Vessel, params[:id])
       authorize vessel, :tracks?
+      from_time = parse_datetime_param!(params[:from], param_name: "from")
+      to_time   = parse_datetime_param!(params[:to], param_name: "to")
       scope  = vessel.vessel_tracks
-      scope  = scope.where("occurred_at >= ?", safe_parse_datetime(params[:from])) if params[:from].present?
-      scope  = scope.where("occurred_at <= ?", safe_parse_datetime(params[:to])) if params[:to].present?
+      scope  = scope.where("occurred_at >= ?", from_time) if from_time.present?
+      scope  = scope.where("occurred_at <= ?", to_time) if to_time.present?
       tracks = scope.order(occurred_at: :desc)
                     .limit([(params[:limit] || 500).to_i, 1000].min)
                     .to_a

@@ -94,11 +94,29 @@ RSpec.describe "Api::SignalRuleMatches", type: :request do
       expect(ids).not_to include(match1.id)
     end
 
+    it "returns 400 for an invalid from datetime" do
+      get "/api/signal_rule_matches", params: { from: "not-a-datetime" }, headers: auth_headers(user)
+
+      expect(response).to have_http_status(:bad_request)
+      expect(JSON.parse(response.body)).to eq(
+        "errors" => ["Invalid 'from' datetime"]
+      )
+    end
+
     it "filters by to datetime" do
       to = 1.hour.ago.iso8601
       get "/api/signal_rule_matches", params: { to: to }, headers: auth_headers(user)
       ids = JSON.parse(response.body)["data"].map { |m| m["id"] }
       expect(ids).to contain_exactly(match1.id)
+    end
+
+    it "returns 400 for an invalid to datetime" do
+      get "/api/signal_rule_matches", params: { to: "not-a-datetime" }, headers: auth_headers(user)
+
+      expect(response).to have_http_status(:bad_request)
+      expect(JSON.parse(response.body)).to eq(
+        "errors" => ["Invalid 'to' datetime"]
+      )
     end
 
     it "requires authentication" do

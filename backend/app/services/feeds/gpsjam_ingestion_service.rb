@@ -62,7 +62,7 @@ module Feeds
       end
 
       metrics.observe_external_time(source_date)
-      ingested = parse_and_ingest(csv_body, metrics)
+      ingested = parse_and_ingest(csv_body, metrics, source_date: source_date)
       ServiceResult.success(metrics.success_payload)
     rescue => e
       throttled_warn("exception", e.message)
@@ -102,7 +102,7 @@ module Feeds
       nil
     end
 
-    def parse_and_ingest(csv_body, metrics)
+    def parse_and_ingest(csv_body, metrics, source_date:)
       ingested = 0
 
       CSV.parse(csv_body, headers: true) do |row|
@@ -138,7 +138,7 @@ module Feeds
           next
         end
 
-        result = ingest_hexagon(hex_str, lat, lng, signal_level)
+        result = ingest_hexagon(hex_str, lat, lng, signal_level, source_date: source_date)
         if result&.success
           if result.payload[:created]
             ingested += 1
@@ -169,15 +169,15 @@ module Feeds
       end
     end
 
-    def ingest_hexagon(hex_str, lat, lng, signal_level)
+    def ingest_hexagon(hex_str, lat, lng, signal_level, source_date:)
       Signals::IngestService.call(
         source:      "gpsjam",
         signal_type: "gps_jamming",
         external_id: hex_str,
         lat:         lat.round(6),
         lng:         lng.round(6),
-        occurred_at: Time.current.utc,
-        raw_payload: { signal_level: signal_level, hex_id: hex_str }
+        occurred_at: source_date.in_time_zone("UTC").noon,
+        raw_payload: { signal_level: signal_level, hex_id: hex_str, source_date: source_date.iso8601 }
       )
     rescue => e
       Rails.logger.warn "[GPSJamFeed] failed to ingest hexagon #{hex_str}: #{e.class}: #{e.message}"

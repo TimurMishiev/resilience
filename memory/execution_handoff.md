@@ -10,23 +10,63 @@ Last updated: 2026-04-22
 
 ## Current Phase
 
-Phase 7 — Advanced Geospatial Tools (**closed**)
+Post-Phase-7 remediation (**active**)
 
-(Phase 4 — Debrief closed. Phase 5 — Evidence Threading complete. Phase 6 Slice 6-1 fully shipped and closed in `aa07c91`. Phase 7 Slices 7-1A, 7-1A-followup, 7-1B, 7-1B-followup, 7-1C, 7-1D, 7-1E, 7-1E-followup, 7-1E-followup-p3, and replay-hardening-dateNow all shipped — latest tip `368e079`. There is no active uncommitted product slice.)
+(Phase 4 — Debrief closed. Phase 5 — Evidence Threading complete. Phase 6 Slice 6-1 fully shipped and closed in `aa07c91`. Phase 7 is closed with latest shipped tip `368e079`. Current work is audit-driven remediation before any new roadmap expansion.)
 
 ## Current Slice
 
-**No active uncommitted product slice.**
+**Audit remediation — Band A + Band B closed in working tree**
 
-The last shipped slice is `368e079` — replay hardening via explicit reference-clock threading. Phase 7 is now closed unless the upcoming audit proves a real missing operator tool or a material regression that belongs inside the phase.
+The last shipped product slice is `368e079` — replay hardening via explicit reference-clock threading.
+
+Current uncommitted remediation tranche:
+- widens `Correlations::EvaluateRecentJob::WINDOW_SECONDS` from `12` to `32` to match the recurring `30 second` cadence with `2 seconds` overlap
+- updates the stale "every 10 seconds" comments in the job and initializer
+- adds direct proof that a signal from the old 12–30s dead zone is now evaluated
+- replaces single-page chokepoint loading on `/map` and `/globe` with an all-pages chokepoint query path backed by `fetchAllPaginated`
+- adds direct proof that the shared chokepoint data path returns page-2 overflow beyond the backend `per_page: 200` cap
+- makes `SignalRuleMatchesController#index` and `VesselsController#tracks` fail-closed on malformed `from` / `to` datetime filters instead of returning `200 OK` with incorrect data
+- adds request-spec proof for invalid `from` and invalid `to` on both controllers while preserving the existing valid-range filter behavior
+- full `safe_parse_datetime` caller audit confirmed: `SignalsController` already fail-closed; `AuditEventsController`, `ExportsController` → `BatchService`, `AiController` all truthy-guard `nil` (silently skip; not wrong-data)
+- makes `Telemetry::PartitionManager` re-check table existence on cache hits before short-circuiting
+- adds direct proof that a stale cached partition name is recreated when the partition table is missing, allowing the next write to succeed
+- changes GPSJam ingestion to stamp `ExternalSignal.occurred_at` from the feed's source date (`UTC noon`) instead of wall-clock ingest time
+- threads `source_date` through `parse_and_ingest` / `ingest_hexagon` and records it in `raw_payload` for downstream visibility
+- adds service-spec proof for source-date `occurred_at` plus dedupe behavior under the new timestamp semantics
+- replaces `Replay::ProjectionService`'s chronological `limit(100_000)` fold with a per-entity latest-event query
+- adds service-spec proof that a quieter entity still returns its latest snapshot even when another entity has much longer history
 
 ## Current Repo State
 
 - Latest committed product slice: `368e079` — replay-hardening-dateNow: remove wall-clock defaults from shared library functions
 - Current tip commit: `368e079`
-- Working tree: clean
-- Branch state: `main` even with `origin/main`
-- Dirty/tranche files right now: none
+- Working tree: dirty
+- Branch state: `main` even with `origin/main` (local dirty remediation/docs state only)
+- Dirty/tranche files right now:
+  - `backend/app/jobs/correlations/evaluate_recent_job.rb`
+  - `backend/config/initializers/correlation_evaluator.rb`
+  - `backend/spec/jobs/correlations/evaluate_recent_job_spec.rb`
+  - `frontend/src/api/chokepoints.ts`
+  - `frontend/src/hooks/useChokepoints.ts`
+  - `frontend/src/pages/GlobePage.tsx`
+  - `frontend/src/pages/MapPage.tsx`
+  - `frontend/src/test/GlobePage.test.tsx`
+  - `frontend/src/test/MapPage.test.tsx`
+  - untracked `frontend/src/test/useChokepoints.test.tsx`
+  - `backend/app/controllers/api/signal_rule_matches_controller.rb`
+  - `backend/app/controllers/api/vessels_controller.rb`
+  - `backend/app/services/telemetry/partition_manager.rb`
+  - `backend/app/services/feeds/gpsjam_ingestion_service.rb`
+  - `backend/app/services/replay/projection_service.rb`
+  - `backend/spec/requests/api/signal_rule_matches_spec.rb`
+  - `backend/spec/requests/api/vessels_spec.rb`
+  - `backend/spec/services/telemetry/partition_manager_spec.rb`
+  - `backend/spec/services/feeds/gpsjam_ingestion_service_spec.rb`
+  - `backend/spec/services/replay/projection_service_spec.rb`
+  - `memory/execution_handoff.md`
+  - untracked `memory/cto_evaluation_roadmap.md`
+  - untracked `.claude/skills/resilience-remediation/`
 
 ## Phase 7 — Slice Plan
 
@@ -150,14 +190,17 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 
 ## In Progress
 
-- No active implementation slice.
-- Phase 7 is closed.
-- The next planned work is a full audit plus manual regression/functional review before choosing whether to harden further or move into the next major program.
+- Phase 7 remains closed.
+- Audit remediation is active.
+- Band A (`I1`, `G1`, `API1`, `D1`) is fixed in the working tree and validated on focused backend/frontend checks.
+- Band B (`I2`, `R1`) is fixed in the working tree and validated on focused backend checks.
+- Next unresolved confirmed finding by priority is `MT1` — telemetry SSE stream is not org-scoped.
 
 ## Next
 
-- **Immediate next step:** run the full audit on the shipped product, then process any external CTO-style findings against the real code.
-- **If Phase 7 reopens after the audit:** only reopen it if the audit proves a real missing operator tool or a real regression within the Phase 7 surfaces.
+- **Immediate next step:** commit this remediation tranche, then decide whether to continue into Band C (`MT1`, `MT2`, `MT3`) or stop at the single-org boundary.
+- **External CTO evaluation (2026-04-22) — briefing:** see [memory/cto_evaluation_roadmap.md](cto_evaluation_roadmap.md). Full third-party report + per-priority disposition. P0 (`Date.now()` defaults → required) shipped in `368e079`. P1–P4 are open and each needs independent code-first evaluation before adopting — the file includes explicit verification prompts per priority. Neither model has pre-judged P1–P4; do not start any of them without scoping against current code first.
+- **If Phase 7 reopens after remediation:** only reopen it if the confirmed remediation backlog is closed and a real missing operator tool still remains.
 - **Explicit boundary for 7-1E and beyond:** do not jump straight to persistence, collaboration, or a generalized geospatial workspace. Keep Phase 7 additive and tool-specific.
 - **Watch the first real `frontend-perf` CI run on `aa07c91` (or its first PR descendant).** Watch points:
     - 1k tier: budgets are 15/25/30ms; current local p95-of-p95s is 10.2ms. Headroom is ~2×. CI runner variance may eat into that.
@@ -176,14 +219,34 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 
 ```bash
 cd /Users/timurmishiev/Desktop/Code/resilience/backend && TEST_DATABASE_PORT=5434 /Users/timurmishiev/.rbenv/shims/bundle exec rspec spec/requests/api/sites_spec.rb spec/requests/api/ai_spec.rb spec/services/ai/ontology_query_service_spec.rb spec/services/ai/filter_service_spec.rb spec/services/ai/signal_filter_service_spec.rb
+cd /Users/timurmishiev/Desktop/Code/resilience/backend && TEST_DATABASE_PORT=5434 /Users/timurmishiev/.rbenv/shims/bundle exec rspec spec/jobs/correlations/evaluate_recent_job_spec.rb spec/config/recurring_spec.rb
+cd /Users/timurmishiev/Desktop/Code/resilience/backend && TEST_DATABASE_PORT=5434 /Users/timurmishiev/.rbenv/shims/bundle exec rspec spec/requests/api/signal_rule_matches_spec.rb
+cd /Users/timurmishiev/Desktop/Code/resilience/backend && TEST_DATABASE_PORT=5434 /Users/timurmishiev/.rbenv/shims/bundle exec rspec spec/services/telemetry/partition_manager_spec.rb
+cd /Users/timurmishiev/Desktop/Code/resilience/backend && TEST_DATABASE_PORT=5434 /Users/timurmishiev/.rbenv/shims/bundle exec rspec spec/services/feeds/gpsjam_ingestion_service_spec.rb
+cd /Users/timurmishiev/Desktop/Code/resilience/backend && TEST_DATABASE_PORT=5434 /Users/timurmishiev/.rbenv/shims/bundle exec rspec spec/services/replay/projection_service_spec.rb
+cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run src/test/useChokepoints.test.tsx src/test/MapPage.test.tsx src/test/GlobePage.test.tsx
 cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run src/test/MapPage.test.tsx src/test/GlobePage.test.tsx src/test/GraphPage.test.tsx src/test/fetchAllPaginated.test.ts src/test/mapGeodesy.test.ts src/test/mapBearingLine.test.ts src/test/mapRangeRings.test.ts src/test/mapSectorOverlay.test.ts
 cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx tsc -p tsconfig.app.json --noEmit
 cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run
+cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/api/chokepoints.ts src/hooks/useChokepoints.ts src/pages/MapPage.tsx src/pages/GlobePage.tsx src/test/useChokepoints.test.tsx src/test/MapPage.test.tsx src/test/GlobePage.test.tsx
 cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/api/client.ts src/api/sites.ts src/api/tasks.ts src/api/assets.ts src/api/areas_of_operation.ts src/components/globe/GlobeToolbar.tsx src/hooks/useAreasOfOperation.ts src/hooks/useAssets.ts src/hooks/useSites.ts src/hooks/useTasks.ts src/hooks/fetchAllPaginated.ts src/lib/mapBearingLine.ts src/lib/mapGeodesy.ts src/lib/mapRangeRings.ts src/lib/mapSectorOverlay.ts src/pages/GlobePage.tsx src/pages/GraphPage.tsx src/pages/MapPage.tsx src/test/GlobePage.test.tsx src/test/GraphPage.test.tsx src/test/MapPage.test.tsx src/test/fetchAllPaginated.test.ts src/test/mapGeodesy.test.ts
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (replay-hardening-dateNow tranche, shipped in `368e079`, 2026-04-22)
+## Last Validation Results (current uncommitted remediation tranche — Band A + Band B closed in working tree, 2026-04-22)
+
+- Combined backend validation across full remediation tranche:
+  - `TEST_DATABASE_PORT=5434 /Users/timurmishiev/.rbenv/shims/bundle exec rspec spec/jobs/correlations/evaluate_recent_job_spec.rb spec/config/recurring_spec.rb spec/requests/api/signal_rule_matches_spec.rb spec/requests/api/vessels_spec.rb spec/services/telemetry/partition_manager_spec.rb spec/services/feeds/gpsjam_ingestion_service_spec.rb spec/services/replay/projection_service_spec.rb` → **85 examples, 0 failures**
+  - note: PostgreSQL emitted local non-failing `unknown OID ... location` / `unknown OID ... pg_advisory_lock` noise
+- Focused frontend validation:
+  - `npx vitest run src/test/useChokepoints.test.tsx src/test/MapPage.test.tsx src/test/GlobePage.test.tsx` → **54 / 54 pass**
+  - `npx vitest run` (full suite) → **657 / 657 pass across 90 files**
+  - `npx tsc -p tsconfig.app.json --noEmit` → **0 errors**
+  - `npx eslint` touched frontend files → **0 issues**
+- `git diff --check` → **clean**
+- API1 scope expansion (added after Codex's initial tranche): `VesselsController#tracks` now uses `parse_datetime_param!` fail-closed behavior; regression coverage in `spec/requests/api/vessels_spec.rb` (2 new examples, 22 total). Same-pattern audit confirmed no other `safe_parse_datetime` caller has wrong-data risk.
+
+## Prior Validation Results (replay-hardening-dateNow tranche, shipped in `368e079`, 2026-04-22)
 
 - Touched frontend files: 12 (6 lib signatures + 6 call-site / test updates)
 - Focused frontend validation:

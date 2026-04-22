@@ -128,6 +128,9 @@ vi.mock('../hooks/useChokepoints', () => ({
   useChokepoints: () => ({
     data: { data: mockChokepoints.data },
   }),
+  useAllChokepoints: () => ({
+    data: { data: mockChokepoints.data },
+  }),
 }))
 
 vi.mock('../hooks/useSignals', () => ({

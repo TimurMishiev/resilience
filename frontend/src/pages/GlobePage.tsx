@@ -9,7 +9,7 @@ import { useSignalsLive } from '../hooks/useSignals'
 import { useAssetTrails } from '../hooks/useAssetTrails'
 import { useVessels, useVesselTracks } from '../hooks/useVessels'
 import { useActiveBreachSiteIds } from '../hooks/useSignalRuleMatches'
-import { useChokepoints } from '../hooks/useChokepoints'
+import { useAllChokepoints } from '../hooks/useChokepoints'
 import { useReplayParams } from '../hooks/useReplayParams'
 import { useEntitySelectionSync } from '../hooks/useEntitySelectionSync'
 import { useGlobeEngine } from '../hooks/useGlobeEngine'
@@ -150,7 +150,7 @@ export default function GlobePage() {
     assets, tasks, sites, readings, allowHistoricalTelemetry: isReplaying,
   }), [assets, isReplaying, readings, sites, tasks])
 
-  const { data: chokepointsRes } = useChokepoints({ per_page: 200, ...asOfParam }, { enabled: true })
+  const { data: chokepointsRes } = useAllChokepoints(asOfParam, true)
   const chokepoints = useMemo(
     () => chokepointsRes?.data ?? [],
     [chokepointsRes?.data],

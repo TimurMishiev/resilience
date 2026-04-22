@@ -34,6 +34,29 @@ RSpec.describe Telemetry::PartitionManager do
 
       expect(table_name).to eq("telemetry_readings_p20260324")
     end
+
+    it "recreates a cached partition when the cache is stale but the table is missing" do
+      occurred_at = Time.utc(2030, 1, 1, 12)
+      partition_name = "telemetry_readings_p20300101"
+
+      ActiveRecord::Base.connection.execute(<<~SQL)
+        DROP TABLE IF EXISTS #{ActiveRecord::Base.connection.quote_table_name(partition_name)}
+      SQL
+      described_class.send(:cached_partitions)[partition_name] = true
+
+      described_class.ensure_window!(occurred_at, days_ahead: 0)
+      expect(partition_names).to include(partition_name)
+
+      expect do
+        TelemetryReading.create!(
+          asset: asset,
+          lat: 37.7749,
+          lng: -122.4194,
+          occurred_at: occurred_at,
+          created_at: occurred_at
+        )
+      end.not_to raise_error
+    end
   end
 
   describe ".prune_expired!" do

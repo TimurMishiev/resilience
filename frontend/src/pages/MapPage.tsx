@@ -13,7 +13,7 @@ import { buildSyntheticBenchSignals, readBenchSignalCount } from '../lib/benchSy
 import { useVessels, useVesselTracks } from '../hooks/useVessels'
 import { useRiskScores } from '../hooks/useRiskScores'
 import { useActiveBreachSiteIds } from '../hooks/useSignalRuleMatches'
-import { useChokepoints } from '../hooks/useChokepoints'
+import { useAllChokepoints } from '../hooks/useChokepoints'
 import { useRole } from '../hooks/useRole'
 import { useReferenceTimeMs } from '../hooks/useReferenceTimeMs'
 import { useReplayParams } from '../hooks/useReplayParams'
@@ -234,7 +234,7 @@ export default function MapPage() {
     return map
   }, [allTasks])
 
-  const { data: chokepointsRes } = useChokepoints({ per_page: 200, ...asOfParam }, { enabled: true })
+  const { data: chokepointsRes } = useAllChokepoints(asOfParam, true)
   const chokepoints = useMemo(
     () => chokepointsRes?.data ?? [],
     [chokepointsRes?.data],

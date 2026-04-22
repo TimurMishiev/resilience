@@ -1,6 +1,8 @@
 require "rails_helper"
 
 RSpec.describe Correlations::EvaluateRecentJob, type: :job do
+  include ActiveSupport::Testing::TimeHelpers
+
   before do
     allow(Sse::Broadcaster.instance).to receive(:publish)
     allow(Rails.logger).to receive(:info)
@@ -37,6 +39,30 @@ RSpec.describe Correlations::EvaluateRecentJob, type: :job do
       )
 
       described_class.new.perform
+    end
+
+    it "still evaluates signals that landed in the previous 30-second cadence window" do
+      travel_to(Time.zone.parse("2026-04-22 12:00:00 UTC")) do
+        signal = ExternalSignal.create!(
+          source: "usgs_seismic",
+          signal_type: "seismic_event",
+          external_id: "cadence-window-eq-1",
+          lat: 51.6,
+          lng: 0.0,
+          occurred_at: 20.seconds.ago,
+          ingested_at: 20.seconds.ago,
+          raw_payload: {}
+        )
+        site
+
+        expect(Correlations::EvaluatorService).to receive(:call).with(signal: having_attributes(id: signal.id))
+        expect(Sites::GeofenceBreachService).to receive(:call).with(
+          signal: having_attributes(id: signal.id),
+          sites: array_including(having_attributes(id: site.id))
+        )
+
+        described_class.new.perform
+      end
     end
 
     it "skips signals outside the evaluation window" do

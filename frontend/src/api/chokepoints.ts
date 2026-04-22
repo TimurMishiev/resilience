@@ -8,8 +8,11 @@ import type {
   UpdateChokepointBody,
 } from './types'
 
-export function getChokepoints(params?: ChokepointsParams): Promise<PaginatedResponse<Chokepoint>> {
-  return api.get('/api/chokepoints', params as QueryParams | undefined)
+export function getChokepoints(
+  params?: ChokepointsParams,
+  options?: { signal?: AbortSignal },
+): Promise<PaginatedResponse<Chokepoint>> {
+  return api.get('/api/chokepoints', params as QueryParams | undefined, options)
 }
 
 export function createChokepoint(body: CreateChokepointBody): Promise<Chokepoint> {

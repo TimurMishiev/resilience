@@ -34,10 +34,11 @@ RSpec.describe Feeds::GpsjamIngestionService, type: :service do
     let(:lat)          { 48.5 }
     let(:lng)          { 30.2 }
     let(:signal_level) { 0.75 }
+    let(:source_date)  { Date.new(2026, 4, 20) }
 
     it "creates an ExternalSignal with signal_type gps_jamming" do
       expect {
-        service.send(:ingest_hexagon, hex_str, lat, lng, signal_level)
+        service.send(:ingest_hexagon, hex_str, lat, lng, signal_level, source_date: source_date)
       }.to change(ExternalSignal, :count).by(1)
 
       signal = ExternalSignal.last
@@ -46,29 +47,34 @@ RSpec.describe Feeds::GpsjamIngestionService, type: :service do
     end
 
     it "uses hex_str as the external_id" do
-      service.send(:ingest_hexagon, hex_str, lat, lng, signal_level)
+      service.send(:ingest_hexagon, hex_str, lat, lng, signal_level, source_date: source_date)
       expect(ExternalSignal.last.external_id).to eq(hex_str)
     end
 
     it "stores signal_level and hex_id in raw_payload" do
-      service.send(:ingest_hexagon, hex_str, lat, lng, signal_level)
+      service.send(:ingest_hexagon, hex_str, lat, lng, signal_level, source_date: source_date)
       payload = ExternalSignal.last.raw_payload
       expect(payload["signal_level"]).to eq(signal_level)
       expect(payload["hex_id"]).to eq(hex_str)
+      expect(payload["source_date"]).to eq(source_date.iso8601)
+    end
+
+    it "stores occurred_at at noon UTC on the source date" do
+      service.send(:ingest_hexagon, hex_str, lat, lng, signal_level, source_date: source_date)
+
+      expect(ExternalSignal.last.occurred_at).to eq(Time.utc(2026, 4, 20, 12, 0, 0))
     end
 
     it "deduplicates — same hex_str ingested twice at the same time creates only one record" do
-      fixed_time = Time.utc(2024, 1, 1, 12, 0, 0)
-      allow(Time).to receive(:current).and_return(fixed_time)
-      service.send(:ingest_hexagon, hex_str, lat, lng, signal_level)
+      service.send(:ingest_hexagon, hex_str, lat, lng, signal_level, source_date: source_date)
       expect {
-        service.send(:ingest_hexagon, hex_str, lat, lng, signal_level)
+        service.send(:ingest_hexagon, hex_str, lat, lng, signal_level, source_date: source_date)
       }.not_to change(ExternalSignal, :count)
     end
 
     it "returns nil silently on IngestService error" do
       allow(Signals::IngestService).to receive(:call).and_raise(RuntimeError, "db error")
-      expect { service.send(:ingest_hexagon, hex_str, lat, lng, signal_level) }.not_to raise_error
+      expect { service.send(:ingest_hexagon, hex_str, lat, lng, signal_level, source_date: source_date) }.not_to raise_error
     end
   end
 
@@ -76,21 +82,21 @@ RSpec.describe Feeds::GpsjamIngestionService, type: :service do
     it "skips rows below MIN_SIGNAL threshold" do
       csv_body = "hex,count_good_aircraft,count_bad_aircraft\n841fa4dfffffff,90,5\n"
       expect {
-        service.send(:parse_and_ingest, csv_body, Feeds::PollMetrics.new(feed: "gpsjam"))
+        service.send(:parse_and_ingest, csv_body, Feeds::PollMetrics.new(feed: "gpsjam"), source_date: Date.new(2026, 4, 20))
       }.not_to change(ExternalSignal, :count)
     end
 
     it "skips rows with zero total aircraft" do
       csv_body = "hex,count_good_aircraft,count_bad_aircraft\n841fa4dfffffff,0,0\n"
       expect {
-        service.send(:parse_and_ingest, csv_body, Feeds::PollMetrics.new(feed: "gpsjam"))
+        service.send(:parse_and_ingest, csv_body, Feeds::PollMetrics.new(feed: "gpsjam"), source_date: Date.new(2026, 4, 20))
       }.not_to change(ExternalSignal, :count)
     end
 
     it "skips blank hex values" do
       csv_body = "hex,count_good_aircraft,count_bad_aircraft\n,10,8\n"
       expect {
-        service.send(:parse_and_ingest, csv_body, Feeds::PollMetrics.new(feed: "gpsjam"))
+        service.send(:parse_and_ingest, csv_body, Feeds::PollMetrics.new(feed: "gpsjam"), source_date: Date.new(2026, 4, 20))
       }.not_to change(ExternalSignal, :count)
     end
   end

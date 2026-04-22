@@ -74,5 +74,43 @@ RSpec.describe Replay::ProjectionService, type: :service do
       expect(result).to be_success
       expect(result.snapshots).to eq([])
     end
+
+    it "returns the latest snapshot for each entity even when one entity has a much longer history" do
+      noisy_task = create(:task)
+      quiet_task = create(:task)
+      cutoff = Time.utc(2026, 4, 22, 12, 0, 0)
+
+      150.times do |index|
+        create(
+          :audit_event,
+          entity_type: "Task",
+          entity_id: noisy_task.id,
+          event_type: "task.transitioned",
+          after_snapshot: { "workflow_status" => "noisy-#{index}" },
+          occurred_at: cutoff - (300 - index).minutes,
+        )
+      end
+
+      create(
+        :audit_event,
+        entity_type: "Task",
+        entity_id: quiet_task.id,
+        event_type: "task.transitioned",
+        after_snapshot: { "workflow_status" => "quiet-final" },
+        occurred_at: cutoff - 5.minutes,
+      )
+
+      result = described_class.call(
+        entity_type: "Task",
+        entity_ids: [quiet_task.id, noisy_task.id],
+        as_of: cutoff,
+      )
+
+      expect(result).to be_success
+      expect(result.snapshots).to eq([
+        { "workflow_status" => "quiet-final" },
+        { "workflow_status" => "noisy-149" },
+      ])
+    end
   end
 end

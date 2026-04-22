@@ -7,11 +7,6 @@ module Replay
   #
   # This is a pure read operation with no side effects.
   class ProjectionService < ApplicationService
-    # Safety cap: no single projection should need to replay more events than this.
-    # Bounded in practice by controller-layer entity_ids, but this prevents a
-    # runaway query if the caller is ever misused.
-    MAX_EVENTS = 100_000
-
     def initialize(entity_type:, entity_ids:, as_of:)
       @entity_type = entity_type
       @entity_ids  = Array(entity_ids)
@@ -21,22 +16,17 @@ module Replay
     def call
       return ServiceResult.success(snapshots: []) if @entity_ids.empty?
 
-      events = AuditEvent
+      latest_events = AuditEvent
+        .select("DISTINCT ON (entity_id) entity_id, after_snapshot")
         .where(entity_type: @entity_type, entity_id: @entity_ids)
         .where("occurred_at <= ?", @as_of)
-        .order(:occurred_at)
-        .limit(MAX_EVENTS)
+        .order(Arel.sql("entity_id, occurred_at DESC, id DESC"))
 
-      # For each entity, keep the after_snapshot from its latest event up to as_of.
-      # entity_ids is always a bounded array from request context (never a full-table
-      # scan), so .each is safe and preserves the chronological ORDER BY occurred_at.
-      # find_each would discard that ORDER clause and produce non-deterministic snapshots.
-      latest = {}
-      events.each do |event|
-        latest[event.entity_id] = event.after_snapshot
-      end
+      latest_by_entity_id = latest_events.index_by(&:entity_id)
 
-      ServiceResult.success(snapshots: latest.values)
+      ServiceResult.success(
+        snapshots: @entity_ids.filter_map { |entity_id| latest_by_entity_id[entity_id]&.after_snapshot }
+      )
     end
   end
 end

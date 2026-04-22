@@ -3,13 +3,13 @@ module Correlations
   # and checks for geofence breaches.
   #
   # Scheduling: configured as a Solid Queue recurring task in
-  # config/recurring.yml (every 10 seconds).
+  # config/recurring.yml (every 30 seconds).
   class EvaluateRecentJob < ApplicationJob
     queue_as :background
 
-    # The evaluation window overlaps by 2 seconds to ensure no signal is missed
-    # between ticks (same margin as the previous thread-based evaluator).
-    WINDOW_SECONDS = 12
+    # The evaluation window overlaps the 30-second recurring cadence by 2 seconds
+    # so recently ingested signals are not missed between ticks.
+    WINDOW_SECONDS = 32
 
     retry_on StandardError, wait: :polynomially_longer, attempts: 3
 

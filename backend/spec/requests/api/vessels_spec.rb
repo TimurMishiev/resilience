@@ -127,6 +127,20 @@ RSpec.describe "Api::Vessels", type: :request do
       expect(body["data"].first["id"]).to eq(track2.id)
     end
 
+    it "returns 400 when from is an invalid datetime" do
+      get "/api/vessels/#{vessel1.id}/tracks", params: { from: "not-a-datetime" }, headers: auth_headers(user)
+
+      expect(response).to have_http_status(:bad_request)
+      expect(JSON.parse(response.body)["errors"]).to include(match(/from/))
+    end
+
+    it "returns 400 when to is an invalid datetime" do
+      get "/api/vessels/#{vessel1.id}/tracks", params: { to: "garbage" }, headers: auth_headers(user)
+
+      expect(response).to have_http_status(:bad_request)
+      expect(JSON.parse(response.body)["errors"]).to include(match(/to/))
+    end
+
     it "supports an upper-bound only replay query" do
       cutoff = 90.minutes.ago.iso8601
 

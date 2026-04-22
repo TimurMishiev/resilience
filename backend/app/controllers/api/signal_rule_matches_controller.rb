@@ -8,6 +8,9 @@ module Api
     # as_of: ISO8601 timestamp — limits fired_at to matches that existed at that point in time
     def index
       authorize SignalRuleMatch
+      from_time = parse_datetime_param!(params[:from], param_name: "from")
+      to_time   = parse_datetime_param!(params[:to], param_name: "to")
+
       matches = policy_scope(SignalRuleMatch).order(fired_at: :desc)
                                              .includes(:signal, :correlation_rule, :site, :task, :acknowledged_by)
 
@@ -15,8 +18,8 @@ module Api
       matches = matches.for_site(params[:site_id])        if params[:site_id].present?
       matches = matches.where(signal_id: params[:signal_id]) if params[:signal_id].present?
       matches = matches.by_status(params[:workflow_status]) if params[:workflow_status].present? && as_of.blank?
-      matches = matches.where("fired_at >= ?", safe_parse_datetime(params[:from])) if params[:from].present?
-      upper   = [safe_parse_datetime(params[:to]), as_of].compact.min
+      matches = matches.where("fired_at >= ?", from_time) if from_time.present?
+      upper   = [to_time, as_of].compact.min
       matches = matches.where("fired_at <= ?", upper)                              if upper.present?
       # geofence_breach=true → only geofence-triggered matches (metadata flag, not pagination-driven)
       if params[:geofence_breach].present?

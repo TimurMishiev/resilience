@@ -40,7 +40,11 @@ module Telemetry
 
       def ensure_partition!(date)
         partition_name = partition_name_for(date)
-        return if cached_partitions.key?(partition_name)
+        if cached_partitions.key?(partition_name)
+          return if partition_exists?(partition_name)
+
+          cached_partitions.delete(partition_name)
+        end
 
         with_advisory_lock(lock_key_for(date)) do
           unless partition_exists?(partition_name)
