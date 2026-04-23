@@ -309,8 +309,9 @@ P0 was shipped in `368e079` (see §3). P1–P4 are open.
   - `useGlobeSiteEntities` extended to three-state outline precedence: linked (blue, 4) > evidence (amber #f5a623, 3) > default (white, 2). Matches map's layer-order contract where `site-linked-ring` paints over `site-evidence-ring`.
   - `GlobePage` calls `useEvidenceLinkedIds(selectedSiteId, selectedSignalId, asOf)` — same arguments `MapPage:188` uses — and threads `evidenceSiteIds` into the engine.
   - Test facade upgraded so color values are preserved through `fromCssColorString`; tests assert on the visual contract (blue vs amber vs white) not just width.
-- **Deliberately deferred to follow-up slices:** freshness rendering on globe entity color/tint (consumes the threaded `referenceTimeMs`), and signal-side evidence highlighting (would modulate PointPrimitive colors — different infrastructure than Entity outlines).
-- Step 0 verifications confirmed both gaps were real at pre-slice HEAD.
+- **Follow-up shipped (`19c37e0`):** freshness-driven fill alpha on globe asset entities. Same curve as `useMapAssetLayers`'s circle-opacity (fresh 0.94 / aging 0.72 / stale 0.46 / unavailable 0.32). `ASSET_FRESHNESS_THRESHOLDS` hoisted to `freshness.ts` so both surfaces consume one source of truth. Consumes the `referenceTimeMs` plumbing from slice 1, eliminating the speculative `_referenceTimeMs: void` placeholder.
+- **Deliberately deferred:** signal-side evidence highlighting (would modulate PointPrimitive colors — different infrastructure than Entity outlines, separate follow-up if still valuable).
+- Step 0 verifications confirmed all gaps were real at pre-slice HEAD.
 
 ### P2 — Globe alert triage in inspector — **SHIPPED (`23a722d`)**
 
