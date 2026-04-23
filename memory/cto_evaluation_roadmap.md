@@ -310,8 +310,9 @@ P0 was shipped in `368e079` (see §3). P1–P4 are open.
   - `GlobePage` calls `useEvidenceLinkedIds(selectedSiteId, selectedSignalId, asOf)` — same arguments `MapPage:188` uses — and threads `evidenceSiteIds` into the engine.
   - Test facade upgraded so color values are preserved through `fromCssColorString`; tests assert on the visual contract (blue vs amber vs white) not just width.
 - **Follow-up shipped (`19c37e0`):** freshness-driven fill alpha on globe asset entities. Same curve as `useMapAssetLayers`'s circle-opacity (fresh 0.94 / aging 0.72 / stale 0.46 / unavailable 0.32). `ASSET_FRESHNESS_THRESHOLDS` hoisted to `freshness.ts` so both surfaces consume one source of truth. Consumes the `referenceTimeMs` plumbing from slice 1, eliminating the speculative `_referenceTimeMs: void` placeholder.
-- **Deliberately deferred:** signal-side evidence highlighting (would modulate PointPrimitive colors — different infrastructure than Entity outlines, separate follow-up if still valuable).
+- **Follow-up shipped (`e2171e5`):** signal-side evidence outline on globe `PointPrimitive`s (amber `#f5a623` @ alpha 0.9 for evidence-linked, per-signal-type base @ alpha 0.35 for default). Mirrors `useMapSignalLayers:159-181`. `evidenceSignalIds` (already emitted by `useEvidenceLinkedIds`) was destructured-and-discarded at slice 2; now threaded through. Both halves of the evidence-highlight pairing — sites when a signal is selected, signals when a site is selected — are live on globe.
 - Step 0 verifications confirmed all gaps were real at pre-slice HEAD.
+- **P1 parity is fully closed** with this follow-up. No further P1 work is currently scoped.
 
 ### P2 — Globe alert triage in inspector — **SHIPPED (`23a722d`)**
 

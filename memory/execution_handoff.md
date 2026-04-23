@@ -16,9 +16,9 @@ Post-Phase-7 remediation (**active**)
 
 ## Current Slice
 
-**Audit remediation — Band C closed. CTO P1 + P2 shipped + freshness follow-up. P3 requires user scope decision.**
+**Audit remediation — Band C closed. CTO P1 parity fully closed + P2 shipped. P3 requires user scope decision.**
 
-MT1/MT2/MT3 shipped in `327d7ca`/`9b23365`/`2e874e2`. Band D closed in `42f5af0`. CTO P1 slice 1 shipped in `402cd00` (linked-entity cross-highlighting + `useReferenceTimeMs` threading). CTO P1 slice 2 shipped in `d93d897` (evidence-linked site ring). CTO P2 shipped in `23a722d` (alert triage section on globe inspector). CTO P1 follow-up shipped in `19c37e0` (freshness-driven fill alpha on globe asset entities — consumes the previously-speculative `referenceTimeMs` plumbing). The three globe-parity gaps the CTO evaluation flagged — demo surface → operational surface — are now closed.
+MT1/MT2/MT3 shipped in `327d7ca`/`9b23365`/`2e874e2`. Band D closed in `42f5af0`. CTO P1 chain: slice 1 (`402cd00`, linked-entity highlighting + `useReferenceTimeMs` threading), slice 2 (`d93d897`, evidence-linked site ring), freshness follow-up (`19c37e0`, fill alpha driven by `deriveFreshness` — consumed the slice-1 plumbing), signal-side evidence follow-up (`e2171e5`, amber outline on signal `PointPrimitive`s). CTO P2 shipped in `23a722d` (alert triage in globe inspector). The three globe-parity gaps the CTO evaluation flagged — demo surface → operational surface — are all closed, with both halves of evidence highlighting (sites + signals) and freshness rendering live.
 
 Running under the approved autonomous loop. **Stopped on P3** (explicit stop condition: scope decision, not a bug fix). User input required to proceed.
 
@@ -29,11 +29,11 @@ Next unresolved work:
 
 ## Current Repo State
 
-- Latest committed product slice: `19c37e0` — CTO P1 follow-up (globe freshness fill alpha)
-- Prior product slice: `23a722d` — CTO P2 (globe alert triage in inspector)
-- Latest committed rotation: `32caf4a` — post-P2 handoff rotation
+- Latest committed product slice: `e2171e5` — CTO P1 signal-evidence outline on globe primitives
+- Prior product slice: `19c37e0` — CTO P1 freshness fill alpha
+- Latest committed rotation: `c70afb4` — post-freshness handoff rotation
 - Working tree: **clean after rotation commit**
-- Branch state: `main` pushed at `19c37e0` (product); handoff rotation follows
+- Branch state: `main` pushed at `e2171e5` (product); handoff rotation follows
 
 ## Phase 7 — Slice Plan
 
@@ -72,6 +72,7 @@ Sequenced:
 - `d93d897` — CTO P1 slice 2: evidence-linked site ring on globe. `useGlobeSiteEntities` now applies a three-state outline (linked > evidence > default) with amber `#f5a623` width 3 for sites linked to the selected signal via rule matches. `GlobePage` calls `useEvidenceLinkedIds` with the same (selectedSiteId, selectedSignalId, asOf) args MapPage uses. Facade's `fromCssColorString` upgraded to preserve css on `_css` so tests assert on visible color, not just width. Also replaced slice-1's regex key-extraction with direct `sites` iteration (addresses slice-1 mentor P3). Two new spec cases covering evidence highlighting + linked-over-evidence precedence. No backend / schema / auth / policy touched
 - `23a722d` — CTO P2: alert triage section on globe inspector. `GlobeInspectorPanel` now renders `MapSiteAlertsSection` inline when a site is selected (matches `MapSitePanel` placement after tasks). Three new props threaded through — `referenceTimeMs`, `canTriage`, `onSelectSignal` — all pass-throughs to the existing section. `GlobePage` computes `canTriageAlerts` via `useRole` and wires `onSelectSignal=onSignalClick` so alert-row clicks flow through the same route as Cesium entity picks. The alerts section's replay null-render discipline is inherited (no new gating). Component reused as-is despite `MapSite…` legacy name; rename deferred. Four new GlobeInspectorPanel cases (prop plumbing, canTriage false path, onSelectSignal bubble, site-absent no-render). No backend / schema / auth / policy / MapSiteAlertsSection touched
 - `19c37e0` — CTO P1 follow-up (freshness rendering on globe assets): globe asset entities now modulate point-fill alpha by freshness using `deriveFreshness(last_reported_at, referenceTimeMs)`. Curve mirrors `useMapAssetLayers`'s circle-opacity table (fresh 0.94 / aging 0.72 / stale 0.46 / unavailable 0.32). `ASSET_FRESHNESS_THRESHOLDS` (6h / 24h) hoisted from `mapRenderData.ts` to `freshness.ts` so both surfaces share one source of truth. Consumes the previously-speculative `referenceTimeMs` plumbing from slice 1 — the `_referenceTimeMs: void` placeholder in `useGlobeEngine` is gone. Facade upgraded so `Color.withAlpha` preserves `_alpha` for tests. Two new spec cases (four-state curve + re-apply on clock advance). No backend / schema / auth / policy touched
+- `e2171e5` — CTO P1 follow-up (signal-evidence outline on globe primitives): `useGlobeSignalPrimitives` now modulates signal `PointPrimitive.outlineColor` — amber `#f5a623` @ alpha 0.9 for evidence-linked, per-signal-type base @ alpha 0.35 for default. Mirrors `useMapSignalLayers:159-181`. `evidenceSignalIds` (previously destructured-and-discarded at slice 2) is now threaded through `useGlobeEngine` and consumed. Both halves of evidence highlighting — sites when a signal is selected, signals when a site is selected — are now live on globe. One new spec case asserting on visual contract (amber for listed, non-amber for unlisted, restoration on clear). No backend / schema / auth / policy touched. **P1 parity fully closed.**
 
 ## Phase 6 — Closed Slice Plan (historical context)
 
@@ -185,7 +186,8 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 - CTO P1 slice 1 — shipped in `402cd00`.
 - CTO P1 slice 2 — shipped in `d93d897`.
 - CTO P2 — shipped in `23a722d`.
-- CTO P1 follow-up (freshness fill alpha) — shipped in `19c37e0`; consumes `referenceTimeMs` plumbing from slice 1, pays down the "you owe the next slice" mentor flag.
+- CTO P1 follow-up (freshness fill alpha) — shipped in `19c37e0`.
+- CTO P1 follow-up (signal-evidence outline) — shipped in `e2171e5`. **P1 parity fully closed.**
 - **Loop stopped on CTO P3** (scope decision, explicit stop condition). Awaiting user direction on whether to adopt the 5-slice "split workstation", pursue a reduced scope, or defer.
 
 ## Next
@@ -194,7 +196,7 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
   - (a) **Full 5-slice split workstation** as claimed in the CTO evaluation. Portfolio-driven signal; real replay-authority design work upfront.
   - (b) **Reduced scope: debrief panel inline on the map page, no independent replay context.** Proves the pattern without the full workstation commitment.
   - (c) **Defer P3** as portfolio-aesthetic rather than operator-value.
-- **If user skips P3:** optional P1 follow-ups — freshness rendering shipped in `19c37e0`; signal-side evidence highlighting on PointPrimitives remains available. Both are additive to already-shipped slices, not finding-closure.
+- **P1 parity is now fully closed** — both evidence halves (sites when a signal is selected, signals when a site is selected) and freshness rendering are live on globe. No further P1 follow-ups are scoped.
 - **External CTO evaluation (2026-04-22) — briefing:** see [memory/cto_evaluation_roadmap.md](cto_evaluation_roadmap.md). Full third-party report + per-priority disposition. P0 (`Date.now()` defaults → required) shipped in `368e079`. P1–P4 are open and each needs independent code-first evaluation before adopting — the file includes explicit verification prompts per priority. Neither model has pre-judged P1–P4; do not start any of them without scoping against current code first.
 - **If Phase 7 reopens after remediation:** only reopen it if the confirmed remediation backlog is closed and a real missing operator tool still remains.
 - **Explicit boundary for 7-1E and beyond:** do not jump straight to persistence, collaboration, or a generalized geospatial workspace. Keep Phase 7 additive and tool-specific.
@@ -229,7 +231,21 @@ cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/api/cl
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (CTO P1 follow-up — globe freshness fill alpha, committed in `19c37e0`, 2026-04-23)
+## Last Validation Results (CTO P1 follow-up — signal-evidence outline on globe primitives, committed in `e2171e5`, 2026-04-23)
+
+- Modified frontend files: `src/hooks/globe/useGlobeSignalPrimitives.ts`, `src/hooks/useGlobeEngine.ts`, `src/pages/GlobePage.tsx`
+- Modified spec files: `src/test/useGlobeEngine.test.ts` (+1 case, FakePrimitive extended with outlineColor/outlineWidth)
+- Focused frontend validation:
+  - `npx vitest run src/test/useGlobeEngine.test.ts` → **46 / 46 pass**
+- Full validation:
+  - `npx vitest run` → **672 / 672 pass across 90 files** (+1 vs freshness baseline of 671)
+  - `npx tsc -p tsconfig.app.json --noEmit` → **0 errors**
+  - `npx eslint` on 4 touched files → **0 issues**
+  - `git diff --check` → **clean**
+- Diff stat: 4 files, +92/-5 lines.
+- Step 0 verification: confirmed globe signal primitives had zero evidence consumption pre-slice; `evidenceSignalIds` was already emitted by `useEvidenceLinkedIds` and was destructured-and-discarded at P1 slice 2 with a deferral comment. This slice pays that debt.
+
+## Prior Validation Results (CTO P1 follow-up — globe freshness fill alpha, committed in `19c37e0`, 2026-04-23)
 
 - Modified frontend files: `src/hooks/globe/useGlobeAssetEntities.ts`, `src/hooks/useGlobeEngine.ts`, `src/lib/freshness.ts`, `src/lib/mapRenderData.ts`
 - Modified spec files: `src/test/useGlobeEngine.test.ts` (+2 cases, facade `withAlpha` now preserves `_alpha`)
