@@ -322,7 +322,11 @@ P0 was shipped in `368e079` (see §3). P1–P4 are open.
 - Step 0 confirmed the claim: pre-slice globe inspector had zero alert / SignalRuleMatch / ack / escalate code paths. Claim was accurate, slice stayed narrow.
 - Component rename `MapSiteAlertsSection → SiteAlertsSection` deliberately deferred — touches 5 callers and adds no functional value; documented in-comment at the import site.
 
-### P3 — Map + Debrief split workstation — **OPEN**
+### P3 — Map + Debrief split workstation — **REDUCED-SCOPE SHIPPED (`a395601`); full workstation still open as a separate decision**
+
+- **Reduced-scope slice shipped (`a395601`):** inline collapsible `DebriefPanel` mounted inside the `/map` context aside. Uses the existing shared `ReplayContext` — clicking a reconstructable event advances `as_of` globally (map enters replay at that time) but skips the navigate-away side effect. Role-gated via `useRole().canAccessDebrief`. One new `noNavigate` prop on `DebriefPanel`; one new wrapper `MapInlineDebriefPanel`; one mount on `MapPage`. 6 new test cases.
+- **Full 5-slice workstation remains deferred:** independent replay authority per pane, responsive breakpoints, `AlertChainDrawer` reconciliation across two mounted panels, cross-panel selection coordination. The reduced-scope slice tests whether the inline pattern is valuable to operators — that usage signal should inform whether the full workstation is worth the larger commitment.
+- Per §4 evaluation prompts: operator-value story for the full workstation remains unverified. The reduced-scope slice is the minimum-risk way to start gathering that signal.
 
 - Claimed scope: 5 slices.
 - Claimed justification: "Operator workstation vs 23 pages."

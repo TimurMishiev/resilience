@@ -16,24 +16,19 @@ Post-Phase-7 remediation (**active**)
 
 ## Current Slice
 
-**Audit remediation — Band A/B/C/D closed. CTO P1 parity + P2 fully shipped. Loop stopped on P3 (scope decision).**
+**Audit remediation — Band A/B/C/D closed. CTO P1 parity + P2 + P3 reduced-scope shipped.**
 
-All confirmed findings from the merged audit are closed. CTO P1 (globe-parity with four slices) and CTO P2 (alert triage in globe inspector) are fully shipped — see "Shipped In This Phase" for the commit chain. Two mentor-P3 refactors landed after P1 parity closed: `ASSET_FRESHNESS_FILL_ALPHA` hoisted to `freshness.ts` so map and globe share one source of truth for the fill-opacity curve (`e86d83c`), and per-signal-type default outlines precomputed out of the evidence-effect loop (`6646db5`).
+All confirmed findings from the merged audit are closed. CTO P1 + P2 are fully shipped (see Shipped In This Phase for the commit chain). CTO P3 shipped in the *reduced-scope* interpretation (`a395601`) — inline debrief panel on `/map` using the existing shared replay state, with `noNavigate` preventing the yank-to-entity-page side effect. The full 5-slice workstation remains deferred pending usage signal.
 
-Running under the approved autonomous loop. **Stopped on CTO P3** (product-direction decision, not a bug fix). User input required to proceed.
-
-Next unresolved work:
-- **CTO P3** — "Map + Debrief split workstation", 5 slices claimed. This is not a finding to fix; it's a product-direction decision. Per `cto_evaluation_roadmap.md` §4, needs explicit user alignment on whether portfolio signal alone justifies 5 slices vs a reduced scope vs defer. **Surface for user decision.**
-- **Optional P1 follow-ups (deferred, not blocking):** freshness rendering on globe entities; signal-side evidence highlighting on PointPrimitives.
-- **CTO P4** — deferred unless a 6th map tool is planned.
+Running under the approved autonomous loop. Outstanding stop-condition items: CTO P4 (conditional on a 6th map tool) and the full CTO P3 workstation (product-direction call, not reopened unless the reduced-scope surface proves operator-valuable in practice).
 
 ## Current Repo State
 
-- Latest committed product slice: `6646db5` — per-signal-type default-outline precomputation (mentor P3)
-- Prior product slice: `e86d83c` — asset fill-alpha curve hoisted to `freshness.ts` (mentor P3)
-- Latest committed rotation: `1f427e5` — post-signal-evidence handoff rotation
+- Latest committed product slice: `a395601` — CTO P3 reduced-scope (inline debrief panel on map)
+- Prior product slice: `6646db5` — per-signal-type default-outline precomputation (mentor P3)
+- Latest committed rotation: `30ef130` — post-mentor-P3-refactors handoff rotation
 - Working tree: **clean after rotation commit**
-- Branch state: `main` pushed at `6646db5` (product); handoff rotation follows
+- Branch state: `main` pushed at `a395601` (product); handoff rotation follows
 
 ## Phase 7 — Slice Plan
 
@@ -75,6 +70,7 @@ Sequenced:
 - `e2171e5` — CTO P1 follow-up (signal-evidence outline on globe primitives): `useGlobeSignalPrimitives` now modulates signal `PointPrimitive.outlineColor` — amber `#f5a623` @ alpha 0.9 for evidence-linked, per-signal-type base @ alpha 0.35 for default. Mirrors `useMapSignalLayers:159-181`. `evidenceSignalIds` (previously destructured-and-discarded at slice 2) is now threaded through `useGlobeEngine` and consumed. Both halves of evidence highlighting — sites when a signal is selected, signals when a site is selected — are now live on globe. One new spec case asserting on visual contract (amber for listed, non-amber for unlisted, restoration on clear). No backend / schema / auth / policy touched. **P1 parity fully closed.**
 - `e86d83c` — mentor P3 refactor: `ASSET_FRESHNESS_FILL_ALPHA: Record<FreshnessState, number>` hoisted to `lib/freshness.ts` so map and globe consume one source of truth for the fill-opacity curve (completes the shared-curve discipline that `ASSET_FRESHNESS_THRESHOLDS` already established). Stroke-opacity and text-opacity curves stay map-local because they're surface-specific paint attributes, not a shared concept. Zero visible-value change — same 0.94/0.72/0.46/0.32 numbers, different module.
 - `6646db5` — mentor P3 refactor: `useGlobeSignalPrimitives` evidence-outline effect now precomputes `defaultOutlineByType: Map<SignalType, Color>` once per effect run instead of calling `Cesium.Color.fromCssColorString(...).withAlpha(...)` inside the per-signal loop. Brings the default branch in line with the already-hoisted `evidenceColor`. Idiomatic change, not perf-hot; explicit comment warns against regressing the hoist.
+- `a395601` — CTO P3 (reduced-scope): inline debrief panel mounted on `/map` context aside. `DebriefPanel` gained a `noNavigate` prop (default false — backward compatible) that suppresses the navigate-to-entity-page side effect AND skips the reconstruction-target API lookup, while still advancing the shared `ReplayContext.setAsOf`. New `MapInlineDebriefPanel` wrapper is role-gated via `useRole().canAccessDebrief` and starts collapsed so it doesn't force panel real estate. Six new spec cases (two DebriefPanel noNavigate paths + four wrapper cases covering role gate + collapse/expand + noNavigate threading). Full 5-slice workstation remains deferred; this slice is the minimum-risk cross-panel-pattern proof.
 
 ## Phase 6 — Closed Slice Plan (historical context)
 
@@ -192,16 +188,16 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 - CTO P1 follow-up (signal-evidence outline) — shipped in `e2171e5`. **P1 parity fully closed.**
 - Shared fill-alpha curve refactor — shipped in `e86d83c`.
 - Default-outline precompute refactor — shipped in `6646db5`.
-- **Loop stopped on CTO P3** (scope decision, explicit stop condition). Awaiting user direction on whether to adopt the 5-slice "split workstation", pursue a reduced scope, or defer.
+- CTO P3 reduced-scope (inline debrief panel on map) — shipped in `a395601`.
+- **Full 5-slice workstation variant** remains deferred — reduced-scope slice is the usage-signal surface; escalation to full workstation is a separate call.
 
 ## Next
 
-- **Immediate next step:** user decision on CTO P3. The loop stopped here deliberately because P3 is a product-direction call, not a bug fix. Options to surface:
-  - (a) **Full 5-slice split workstation** as claimed in the CTO evaluation. Portfolio-driven signal; real replay-authority design work upfront.
-  - (b) **Reduced scope: debrief panel inline on the map page, no independent replay context.** Proves the pattern without the full workstation commitment.
-  - (c) **Defer P3** as portfolio-aesthetic rather than operator-value.
-- **P1 parity is now fully closed** — both evidence halves (sites when a signal is selected, signals when a site is selected) and freshness rendering are live on globe. No further P1 follow-ups are scoped.
-- **External CTO evaluation (2026-04-22) — briefing:** see [memory/cto_evaluation_roadmap.md](cto_evaluation_roadmap.md). Full third-party report + per-priority disposition. P0 (`Date.now()` defaults → required) shipped in `368e079`. P1 + P2 now shipped; P3 awaits scope decision; P4 deferred unless a 6th map tool is planned.
+- **No autonomous-safe work remaining.** All confirmed findings shipped; CTO P0–P3 addressed (P3 at reduced scope); no open mentor-review P3s. Loop has run to natural completion.
+- **Two outstanding product-direction decisions** — neither blocks the current codebase:
+  - **Escalate CTO P3 to the full 5-slice workstation?** Current reduced-scope slice (`a395601`) proves the cross-panel pattern. Escalation would add independent replay authority per pane, responsive breakpoints, and `AlertChainDrawer` reconciliation across mounted panels. Only worthwhile if the inline surface proves operator-valuable in practice.
+  - **Start CTO P4 (MapPage decomposition)?** Per the roadmap, conditional on a 6th map tool being planned. Not currently planned.
+- **External CTO evaluation (2026-04-22) — briefing:** see [memory/cto_evaluation_roadmap.md](cto_evaluation_roadmap.md). P0 shipped in `368e079`; P1 + P2 shipped; P3 reduced-scope shipped; P4 deferred.
 - **Watch the first real `frontend-perf` CI run on `aa07c91` (or its first PR descendant).** Watch points:
     - 1k tier: budgets are 15/25/30ms; current local p95-of-p95s is 10.2ms. Headroom is ~2×. CI runner variance may eat into that.
     - 10k tier: p95 budget is 120ms; current p95-of-p95s is 57.4ms. Headroom is ~2.1× (raised from 80ms after gate flagged that ~1.4× was tight for ubuntu-latest). Should hold first time; re-anchor via env if real CI numbers prove otherwise.
@@ -233,7 +229,23 @@ cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/api/cl
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (mentor-P3 refactors — shared fill-alpha curve + default-outline precompute, committed in `e86d83c` + `6646db5`, 2026-04-23)
+## Last Validation Results (CTO P3 reduced-scope — inline debrief panel on map, committed in `a395601`, 2026-04-23)
+
+- Modified frontend files: `src/components/DebriefPanel.tsx`, `src/pages/MapPage.tsx`
+- New frontend files: `src/components/map/MapInlineDebriefPanel.tsx`
+- Modified spec files: `src/test/DebriefPanel.test.tsx` (+2 cases — noNavigate incident / noNavigate task skips API lookup)
+- New spec files: `src/test/MapInlineDebriefPanel.test.tsx` (+4 cases — role gate, default collapsed, expand threads noNavigate, re-collapse)
+- Focused frontend validation:
+  - `npx vitest run src/test/DebriefPanel.test.tsx src/test/MapInlineDebriefPanel.test.tsx` → **17 / 17 pass**
+- Full validation:
+  - `npx vitest run` → **678 / 678 pass across 91 files** (+6 vs mentor-P3 baseline of 672)
+  - `npx tsc -p tsconfig.app.json --noEmit` → **0 errors**
+  - `npx eslint` on 5 touched/new files → **0 issues**
+  - `git diff --check` → **clean**
+- Diff stat: 5 files, +210/-5 lines (incl. two new files).
+- Step 0 verification: confirmed no inline debrief surface on `/map` pre-slice; existing `DebriefPanel` calls `setAsOf` via shared `ReplayContext` AND `navigate(target)` — the navigate call is exactly what inline mode must suppress, hence the `noNavigate` prop. Backward-compatible default preserves standalone `/debrief` behavior.
+
+## Prior Validation Results (mentor-P3 refactors — shared fill-alpha curve + default-outline precompute, committed in `e86d83c` + `6646db5`, 2026-04-23)
 
 - Modified frontend files: `src/lib/freshness.ts`, `src/hooks/globe/useGlobeAssetEntities.ts`, `src/hooks/map/useMapAssetLayers.ts` (`e86d83c`); `src/hooks/globe/useGlobeSignalPrimitives.ts` (`6646db5`)
 - No new test cases — both refactors are idiomatic, not behavior-changing. The existing four-state freshness curve tests (0.94/0.72/0.46/0.32) continue to assert the same values, now sourced from the hoisted `ASSET_FRESHNESS_FILL_ALPHA` Record.
