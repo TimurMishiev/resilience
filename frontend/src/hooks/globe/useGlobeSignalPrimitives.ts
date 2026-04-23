@@ -163,6 +163,12 @@ export function useGlobeSignalPrimitives({
   // revert to the default per-signal-type outline (base color @ alpha 0.35).
   // Re-runs on visibleSignals AND evidenceSignalIds change, so freshly-added
   // primitives pick up the correct outline on first render.
+  //
+  // Colors are precomputed once per effect run. SIGNAL_COLORS has ~8 entries,
+  // so the default-outline map is O(1) relative to signal count. A per-signal
+  // `fromCssColorString().withAlpha()` call inside the loop would allocate
+  // O(N) Color objects per render — cheap at typical scale but the right
+  // idiom either way. Mirrors the `evidenceColor` hoist above.
   useEffect(() => {
     const Cesium = cesiumRef.current
     if (!viewerReady || !Cesium) return
@@ -170,16 +176,22 @@ export function useGlobeSignalPrimitives({
     const evidenceSet   = new Set(evidenceSignalIds)
     const evidenceColor = Cesium.Color.fromCssColorString(SIGNAL_EVIDENCE_OUTLINE_CSS).withAlpha(SIGNAL_EVIDENCE_OUTLINE_ALPHA)
 
+    const defaultOutlineByType = new Map<string, CesiumType.Color>()
+    for (const [signalType, css] of Object.entries(SIGNAL_COLORS)) {
+      defaultOutlineByType.set(
+        signalType,
+        Cesium.Color.fromCssColorString(css).withAlpha(SIGNAL_DEFAULT_OUTLINE_ALPHA),
+      )
+    }
+    const fallbackOutline = Cesium.Color.fromCssColorString('#ffffff').withAlpha(SIGNAL_DEFAULT_OUTLINE_ALPHA)
+
     for (const signal of visibleSignals) {
       const primitive = signalPrimitivesRef.current.get(`signal-${signal.id}`)
       if (!primitive) continue
 
-      if (evidenceSet.has(signal.id)) {
-        primitive.outlineColor = evidenceColor
-      } else {
-        const base = Cesium.Color.fromCssColorString(SIGNAL_COLORS[signal.signal_type] ?? '#ffffff')
-        primitive.outlineColor = base.withAlpha(SIGNAL_DEFAULT_OUTLINE_ALPHA)
-      }
+      primitive.outlineColor = evidenceSet.has(signal.id)
+        ? evidenceColor
+        : (defaultOutlineByType.get(signal.signal_type) ?? fallbackOutline)
     }
   }, [viewerReady, visibleSignals, evidenceSignalIds, cesiumRef])
 
