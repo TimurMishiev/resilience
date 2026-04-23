@@ -543,4 +543,107 @@ RSpec.describe Correlations::EvaluatorService do
       expect(described_class.rule_matches_signal_at_site?(rule: rule, signal: signal, site: site)).to be(true)
     end
   end
+
+  # ---------------------------------------------------------------------------
+  # Tenant isolation (MT3)
+  # ---------------------------------------------------------------------------
+  describe "tenant-scoped target resolution" do
+    let(:org_a) { create(:organization) }
+    let(:org_b) { create(:organization) }
+    let(:ao_a)  { create(:area_of_operation, organization: org_a) }
+    let!(:site_org_a) { create(:site, organization: org_a, latitude: 10.0, longitude: 20.0) }
+    let!(:site_org_b) { create(:site, organization: org_b, latitude: 11.0, longitude: 21.0) }
+    let!(:site_in_ao) { create(:site, organization: org_a, area_of_operation: ao_a, latitude: 12.0, longitude: 22.0) }
+
+    def build_rule(creator:, area_of_operation: nil)
+      create(:correlation_rule,
+             created_by: creator,
+             area_of_operation: area_of_operation,
+             conditions: { "signal_type" => "seismic_event", "proximity_km" => 100 })
+    end
+
+    describe ".target_sites_scope" do
+      it "scopes an AO-bound rule to that AO's sites only" do
+        rule = build_rule(creator: create(:user, :commander, organization: org_a),
+                          area_of_operation: ao_a)
+
+        expect(described_class.target_sites_scope(rule).pluck(:id))
+          .to contain_exactly(site_in_ao.id)
+      end
+
+      it "scopes a nil-AO rule owned by an org-scoped commander to that creator's org sites" do
+        commander = create(:user, :commander, organization: org_a)
+        rule = build_rule(creator: commander)
+
+        expect(described_class.target_sites_scope(rule).pluck(:id))
+          .to contain_exactly(site_org_a.id, site_in_ao.id)
+      end
+
+      it "leaves a nil-AO rule owned by an admin (no org) fully global" do
+        admin = create(:user, :admin)
+        rule = build_rule(creator: admin)
+
+        expect(described_class.target_sites_scope(rule).pluck(:id))
+          .to contain_exactly(site_org_a.id, site_org_b.id, site_in_ao.id)
+      end
+
+      it "short-circuits to the single site when conditions carry a site_id" do
+        commander = create(:user, :commander, organization: org_a)
+        rule = create(:correlation_rule,
+                      created_by: commander,
+                      conditions: { "site_id" => site_org_b.id.to_s, "signal_type" => "seismic_event" })
+
+        # site_id short-circuit bypasses tenant inference entirely — expected,
+        # because the controller-layer policy already constrains who can
+        # author site-specific rules at create time.
+        expect(described_class.target_sites_scope(rule).pluck(:id))
+          .to contain_exactly(site_org_b.id)
+      end
+    end
+
+    describe ".rule_targets_site? mirrors .target_sites_scope" do
+      it "agrees with target_sites_scope across all three branches" do
+        admin     = create(:user, :admin)
+        commander = create(:user, :commander, organization: org_a)
+
+        rules = {
+          ao:         build_rule(creator: commander, area_of_operation: ao_a),
+          org_scoped: build_rule(creator: commander),
+          admin:      build_rule(creator: admin),
+        }
+
+        sites = [site_org_a, site_org_b, site_in_ao]
+
+        rules.each do |name, rule|
+          scoped_ids = described_class.target_sites_scope(rule).pluck(:id).to_set
+          sites.each do |site|
+            predicate = described_class.rule_targets_site?(rule: rule, site: site)
+            in_scope  = scoped_ids.include?(site.id)
+            expect(predicate).to eq(in_scope),
+              "rule=#{name} site=#{site.id}: predicate=#{predicate} in_scope=#{in_scope}"
+          end
+        end
+      end
+    end
+
+    describe "#call cross-tenant leak closure" do
+      around { |ex| perform_enqueued_jobs { ex.run } }
+
+      it "does not fire an org-A commander's nil-AO rule against an org-B site" do
+        commander_a = create(:user, :commander, organization: org_a)
+        _rule = build_rule(creator: commander_a)
+
+        # Signal geographically at org-B's site (proximity passes) — but the
+        # tenant filter must keep the rule from matching any org-B site.
+        signal = create(:external_signal,
+                        lat: site_org_b.latitude.to_f,
+                        lng: site_org_b.longitude.to_f,
+                        signal_type: "seismic_event")
+
+        result = described_class.call(signal: signal)
+        expect(result.payload[:fired_count]).to eq(0)
+        expect(SignalRuleMatch.where(site_id: site_org_b.id)).to be_empty
+      end
+    end
+  end
 end

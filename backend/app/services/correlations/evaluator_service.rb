@@ -46,15 +46,33 @@ module Correlations
       new(signal: signal, reference_time: reference_time).matches_rule_at_site?(rule, site)
     end
 
+    # Three-branch tenant resolution (MT3):
+    #   1. rule.conditions["site_id"] present → single-site rule, short-circuit.
+    #   2. rule.area_of_operation_id present → scope by AO (org-safe transitively
+    #      because every site in an AO shares the AO's organization).
+    #   3. rule.area_of_operation_id nil + creator has organization_id → scope
+    #      by creator's org. Prevents cross-tenant site contamination when an
+    #      org-scoped commander ever owns a nil-AO rule.
+    #   4. rule.area_of_operation_id nil + creator has no org (admin-global) →
+    #      Site.active unchanged. Preserves the admin super-user behavior for
+    #      intentionally global rules.
     def self.target_sites_scope(rule)
       site_id = rule.conditions["site_id"]
       return Site.where(id: site_id) if site_id.present?
 
       base = Site.active
-      base = base.where(area_of_operation_id: rule.area_of_operation_id) if rule.area_of_operation_id.present?
+      return base.where(area_of_operation_id: rule.area_of_operation_id) if rule.area_of_operation_id.present?
+
+      creator_org_id = rule.created_by&.organization_id
+      return base.where(organization_id: creator_org_id) if creator_org_id.present?
+
       base
     end
 
+    # Single-site membership check used by RuleFiringJob before executing
+    # side effects. Must agree with target_sites_scope across all branches —
+    # the scoped set and the per-site predicate are two views of the same
+    # tenant boundary.
     def self.rule_targets_site?(rule:, site:)
       site_id = rule.conditions.is_a?(Hash) ? rule.conditions["site_id"] : nil
       return site.id.to_s == site_id.to_s if site_id.present?
@@ -62,11 +80,19 @@ module Correlations
       return false unless site.status == "active"
       return false if rule.area_of_operation_id.present? && site.area_of_operation_id != rule.area_of_operation_id
 
+      if rule.area_of_operation_id.blank?
+        creator_org_id = rule.created_by&.organization_id
+        return false if creator_org_id.present? && site.organization_id != creator_org_id
+      end
+
       true
     end
 
     def call
-      rules = CorrelationRule.active
+      # Preload :created_by so the per-rule tenant fallback in
+      # target_sites_scope / rule_targets_site? does not issue a user query
+      # per rule (N+1 at 30s cadence across all active rules).
+      rules = CorrelationRule.active.includes(:created_by)
       fired = []
 
       rules.each do |rule|
