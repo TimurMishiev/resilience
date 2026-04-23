@@ -300,7 +300,7 @@ P0 was shipped in `368e079` (see §3). P1–P4 are open.
 - **Validation at commit:** 656/656 Vitest, 0 TS errors, ESLint clean on all 13 touched files.
 - **Gate verdict:** READY TO COMMIT, no P0/P1/P2/P3 findings.
 
-### P1 — Globe evidence highlighting + `useReferenceTimeMs` threading — **PARTIAL (slices 1–2 shipped)**
+### P1 — Globe evidence highlighting + `useReferenceTimeMs` threading — **SHIPPED (four-slice chain; parity fully closed)**
 
 - **Slice 1 shipped (`402cd00`):** linked-entity cross-highlighting on globe + `useReferenceTimeMs` threading through `GlobePage → useGlobeEngine → sub-hooks`.
   - `useGlobeSiteEntities` and `useGlobeAssetEntities` apply a blue (#5282ff) 4px outline when the linked-highlight target matches — mirror of map's `site-linked-ring` / `asset-linked-ring` semantics.
@@ -327,11 +327,8 @@ P0 was shipped in `368e079` (see §3). P1–P4 are open.
 - **Reduced-scope slice shipped (`a395601`):** inline collapsible `DebriefPanel` mounted inside the `/map` context aside. Uses the existing shared `ReplayContext` — clicking a reconstructable event advances `as_of` globally (map enters replay at that time) but skips the navigate-away side effect. Role-gated via `useRole().canAccessDebrief`. One new `noNavigate` prop on `DebriefPanel`; one new wrapper `MapInlineDebriefPanel`; one mount on `MapPage`. 6 new test cases.
 - **Full 5-slice workstation remains deferred:** independent replay authority per pane, responsive breakpoints, `AlertChainDrawer` reconciliation across two mounted panels, cross-panel selection coordination. The reduced-scope slice tests whether the inline pattern is valuable to operators — that usage signal should inform whether the full workstation is worth the larger commitment.
 - Per §4 evaluation prompts: operator-value story for the full workstation remains unverified. The reduced-scope slice is the minimum-risk way to start gathering that signal.
-
-- Claimed scope: 5 slices.
-- Claimed justification: "Operator workstation vs 23 pages."
-- Status: not yet started.
-- For Codex to evaluate — see §4.
+- **Escalation path** — if usage signal indicates the pattern is operator-valuable and the full workstation is warranted, the reduced-scope slice is strictly additive: the inline panel stays as-is, and the full workstation adds independent replay authority per pane on top. No rework of `DebriefPanel.noNavigate` or `MapInlineDebriefPanel`.
+- **Removal path** — if usage signal indicates the inline panel is dead weight: delete [components/map/MapInlineDebriefPanel.tsx](frontend/src/components/map/MapInlineDebriefPanel.tsx), remove the import + mount from [pages/MapPage.tsx](frontend/src/pages/MapPage.tsx), delete [test/MapInlineDebriefPanel.test.tsx](frontend/src/test/MapInlineDebriefPanel.test.tsx). Leave `DebriefPanel.noNavigate` in place — backward-compatible optional prop that costs nothing, and may serve a future consumer.
 
 ### P4 — MapPage decomposition — **OPEN, conditional**
 
