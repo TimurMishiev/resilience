@@ -25,9 +25,9 @@ Next unresolved by sweep order: **Band C `MT1`** (telemetry SSE stream not org-s
 ## Current Repo State
 
 - Latest committed product slice: `42f5af0` — Band D `M1` strong_migrations seed
-- Latest committed rotation: `2ed89a5` — MD-file cleanup
+- Latest committed rotation: `33fa771` — post-M1 handoff refresh (supersedes `2ed89a5`)
 - Working tree: **clean**
-- Branch state: `main` pushed to `origin/main` at `42f5af0`
+- Branch state: `main` pushed to `origin/main` at `33fa771` (last product commit `42f5af0`; `33fa771` is a doc-only handoff rotation)
 
 ## Phase 7 — Slice Plan
 
@@ -157,19 +157,19 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 
 - Phase 7 remains closed.
 - Audit remediation is active under the **full bulletproof sweep**:
-  - Band D (F1, O1, J1, M1) — **complete in working tree** (M1 pending commit)
+  - Band D (F1, O1, J1, M1) — **shipped and pushed**
   - Band C (MT1, MT2, MT3) — queued after Band D
   - CTO P1 → P2 → (scope P3) → defer P4 — queued after Band C
 - Band A (`I1`, `G1`, `API1`, `D1`) and Band B (`I2`, `R1`) — shipped in `27831e1`.
 - Band D `F1` — shipped in `43ea358`.
 - Band D `O1` — shipped in `e7eaccb`.
 - Band D `J1` — shipped in `8ecc2c0`.
-- Band D `M1` — fixed in working tree; tests green; commit pending.
+- Band D `M1` — shipped in `42f5af0`.
 - Next unresolved confirmed finding by sweep order: `MT1` — telemetry SSE stream not org-scoped (Band C start).
 
 ## Next
 
-- **Immediate next step:** commit the `M1` tranche, then proceed to Band C `MT1` (telemetry SSE org scoping — confirmed latent defect; controller, simulator payload, and policy all need tenant awareness).
+- **Immediate next step:** proceed to Band C `MT1` (telemetry SSE org scoping — confirmed latent defect; controller, simulator payload, and policy all need tenant awareness). Band D is closed.
 - **Full sweep order (approved by user 2026-04-22):** Band C `MT1` → `MT2` → `MT3` → CTO P1 (globe evidence + `useReferenceTimeMs`) → CTO P2 (globe alert triage in inspector) → scope CTO P3 (5-slice map+debrief workstation; needs explicit alignment before start) → defer CTO P4 unless a 6th map tool is planned.
 - **Legacy commit-target note (superseded by sweep):** whether to continue into Band C versus stop at the single-org boundary was resolved — Band C is on the sweep. Previously marked as "latent for single-org"; kept in the sweep for production-ready completeness before new roadmap work.
 - **External CTO evaluation (2026-04-22) — briefing:** see [memory/cto_evaluation_roadmap.md](cto_evaluation_roadmap.md). Full third-party report + per-priority disposition. P0 (`Date.now()` defaults → required) shipped in `368e079`. P1–P4 are open and each needs independent code-first evaluation before adopting — the file includes explicit verification prompts per priority. Neither model has pre-judged P1–P4; do not start any of them without scoping against current code first.
@@ -206,7 +206,7 @@ cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/api/cl
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (current uncommitted tranche — Band D `M1` migration safety program seed, 2026-04-22)
+## Last Validation Results (shipped remediation slice — Band D `M1` migration safety program seed, committed in `42f5af0`, 2026-04-22)
 
 - Modified backend files: `backend/Gemfile`, `backend/Gemfile.lock`
 - New backend files: `backend/config/initializers/strong_migrations.rb`, `backend/spec/config/strong_migrations_spec.rb`
@@ -425,7 +425,7 @@ git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 - **Annotation labels are operator-local and ephemeral.** They live only in local React state for the current browser session. If a future slice needs persistence or sharing, design backend and auth semantics explicitly instead of extending this state ad hoc.
 - **Measurement mode intentionally owns map clicks.** While active, map clicks no longer select sites/assets/signals; they capture arbitrary coordinates instead. This is deliberate for operator clarity. If a future slice needs concurrent selection + measurement, design that explicitly instead of silently weakening the mode boundary.
 - **Measurement geometry is great-circle enough for the current operator problem, not survey-grade.** Distance uses haversine and bearing uses initial great-circle bearing; there is no terrain, path snapping, or route-following logic in this slice.
-- **Map signal caps block DB-backed scale testing.** `useSignalsLive` in [useSignals.ts](frontend/src/hooks/useSignals.ts) clamps `vessel_position` to 50 (see [liveSignals.ts](frontend/src/lib/liveSignals.ts) `LIVE_SIGNAL_LIMITS`), and `/api/signals` caps `per_page` at 200 ([base_controller.rb:144](backend/app/controllers/api/base_controller.rb#L144)). 6-1D sidesteps both via a `resilience.perf.bench_signal_count` localStorage override that feeds a synthetic `Signal[]` straight into MapPage, gated behind `resilience.perf`. The benchmark deliberately bypasses the live pipeline because reconcile cost, not ingestion, is the object of study. Do NOT lift either cap for prod — the cap is a product-deliberate noise guard, not an accidental limit.
+- **Map signal caps block DB-backed scale testing.** `useSignalsLive` in [useSignals.ts](frontend/src/hooks/useSignals.ts) clamps `vessel_position` to 50 (see [liveSignals.ts](frontend/src/lib/liveSignals.ts) `LIVE_SIGNAL_LIMITS`), and `/api/signals` caps `per_page` at 200 ([base_controller.rb:164](backend/app/controllers/api/base_controller.rb#L164)). 6-1D sidesteps both via a `resilience.perf.bench_signal_count` localStorage override that feeds a synthetic `Signal[]` straight into MapPage, gated behind `resilience.perf`. The benchmark deliberately bypasses the live pipeline because reconcile cost, not ingestion, is the object of study. Do NOT lift either cap for prod — the cap is a product-deliberate noise guard, not an accidental limit.
 - **Synthetic bench IDs produce 404s downstream.** Selecting a `bench-sig-NNNNNN` fires async fetches in `useEvidenceLinkedIds` and `useVessels` that 404. Harmless for the benchmark (jsMs is recorded before these resolve), but be aware if you extend the spec to assert on downstream state.
 - **Maplibre `manualChunks` name removed from [vite.config.ts](frontend/vite.config.ts).** Under vite 8 / rolldown, manually naming the maplibre chunk re-wraps its UMD bundle and produces `Export 'maplibre_gl_exports' is not defined in module` at runtime, leaving `mapLoaded:false` permanently in the built bundle. The dynamic `import('maplibre-gl')` boundary at the MapPage call site already auto-chunks maplibre into `dist/assets/maplibre-gl-*.js` (~1024 kB), so removing the manual name preserves the lazy-load boundary while sidestepping the UMD re-wrap. Re-introduce a manual name only once rolldown handles UMD re-wrap correctly.
 - **CI `frontend-perf` job now runs two benchmarks (globe + map) against the same Docker app.** First run is likely to expose CI-runner variance in both jsMs and paintMs. If jsMs gate is too tight on GitHub-hosted runners, raise the spec floors (NOT the multiplier) and re-anchor per real CI numbers, or use the env overrides (`MAP_BENCH_MAX_JS_*`). Don't skip the spec on CI pre-emptively — confirm by running.
@@ -444,7 +444,7 @@ git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 - **`AlertChainDrawer.referenceTimeMs` is opt-in.** Callers without a replay-aware clock (e.g. `AlertTriagePage`, `IncidentAlertsTab`, `SiteDetailPage`, `AlertsPanel`, `EvidenceDrawer`) intentionally omit the prop and get no stale-basis indicator. This is correct — the drawer must never wall-clock (`react-hooks/purity` forbids `Date.now()` in the component body, and replay correctness forbids it anyway). If a future surface wants the indicator, it must thread a real reference clock through.
 - Evidence resolution is scoped to the `/api/recommendations` surface only. It does **not** widen any other API that happens to render raw `evidence` JSONB.
 - Replay intentionally returns both `alert: null` and `label: null` for matches whose `fired_at > as_of`. Do not "helpfully" fall back to live state — that would leak future state into replay.
-- `Current Repo State` records the local tip SHA for the dirty tree snapshot. Product-slice SHAs still live in "Shipped In This Phase".
+- `Current Repo State` records the latest pushed tip SHA. Product-slice SHAs still live in "Shipped In This Phase"; the pushed tip may be a doc-only rotation commit.
 
 ## Do Not Reopen
 
