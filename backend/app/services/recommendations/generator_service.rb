@@ -6,8 +6,21 @@ module Recommendations
   # After generation both tiers are merged, deduplicated, validated, and persisted.
   # Returns a ServiceResult with the count of created recommendations.
   class GeneratorService < ApplicationService
+    # Accepts `organization_id:` to scope context assembly to a single tenant.
+    # When nil (default), runs against global operational state — the fallback
+    # path for single-tenant deployments where GenerationJob has no
+    # organizations to enumerate. See Recommendations::ContextAssembler for
+    # the per-query tenant semantics.
+    def self.call(organization_id: nil)
+      new(organization_id: organization_id).call
+    end
+
+    def initialize(organization_id: nil)
+      @organization_id = organization_id
+    end
+
     def call
-      ctx_result = ContextAssembler.call
+      ctx_result = ContextAssembler.call(organization_id: @organization_id)
       return ctx_result unless ctx_result.success?
 
       ctx = ctx_result.context
@@ -23,14 +36,18 @@ module Recommendations
       created = persist(valid_recs)
       expire_stale!
 
-      Rails.logger.info "[GeneratorService] created=#{created} invalid=#{val_result.invalid.size} total_candidates=#{all_recs.size}"
+      Rails.logger.info "[GeneratorService] #{tenant_tag} created=#{created} invalid=#{val_result.invalid.size} total_candidates=#{all_recs.size}"
       ServiceResult.success(created: created, invalid_count: val_result.invalid.size)
     rescue ActiveRecord::ActiveRecordError, ActiveRecord::RecordNotUnique => e
-      Rails.logger.error "[GeneratorService] #{e.message}\n#{e.backtrace.first(5).join("\n")}"
+      Rails.logger.error "[GeneratorService] #{tenant_tag} #{e.message}\n#{e.backtrace.first(5).join("\n")}"
       ServiceResult.failure(errors: [e.message])
     end
 
     private
+
+    def tenant_tag
+      @organization_id ? "org=#{@organization_id}" : "tenant=global"
+    end
 
     def persist(recs)
       count = 0

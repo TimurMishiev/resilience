@@ -43,4 +43,41 @@ RSpec.describe Recommendations::GeneratorService, type: :service do
       expect(Recommendation.pending.where("expires_at <= ?", Time.current)).to be_empty
     end
   end
+
+  describe "tenant scoping (MT2)" do
+    let(:org_a) { create(:organization) }
+    let(:org_b) { create(:organization) }
+    let(:site_a) { create(:site, organization: org_a) }
+    let(:site_b) { create(:site, organization: org_b) }
+
+    it "generates recommendations only for the scoped tenant's entities" do
+      match_a = create(:signal_rule_match,
+                       site: site_a, workflow_status: "unacknowledged",
+                       confidence: 0.25, fired_at: 8.hours.ago, auto_task: false)
+      match_b = create(:signal_rule_match,
+                       site: site_b, workflow_status: "unacknowledged",
+                       confidence: 0.25, fired_at: 8.hours.ago, auto_task: false)
+
+      result = described_class.call(organization_id: org_a.id)
+      expect(result).to be_success
+
+      entity_ids = Recommendation
+        .where(affected_entity_type: "SignalRuleMatch")
+        .pluck(:affected_entity_id)
+      expect(entity_ids).to include(match_a.id)
+      expect(entity_ids).not_to include(match_b.id)
+    end
+
+    it "threads organization_id into ContextAssembler" do
+      expect(Recommendations::ContextAssembler)
+        .to receive(:call)
+        .with(organization_id: org_a.id)
+        .and_return(ServiceResult.success(context: {}))
+      allow(Recommendations::RuleEngine).to receive(:call).and_return(ServiceResult.success(recommendations: []))
+      allow(Recommendations::LlmEnricher).to receive(:call).and_return(ServiceResult.success(recommendations: []))
+      allow(Recommendations::Validator).to receive(:call).and_return(ServiceResult.success(valid: [], invalid: []))
+
+      described_class.call(organization_id: org_a.id)
+    end
+  end
 end

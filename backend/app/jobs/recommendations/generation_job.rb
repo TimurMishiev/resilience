@@ -11,24 +11,40 @@ module Recommendations
         return
       end
 
-      result = Recommendations::GeneratorService.call
-      if result.success?
-        Rails.logger.info "[GenerationJob] created=#{result.created} invalid=#{result.invalid_count}"
-        record_operational_status(
-          status: "ok",
-          created: result.created,
-          invalid_count: result.invalid_count,
-          errors: []
-        )
-      else
-        Rails.logger.error "[GenerationJob] failed: #{result.errors.join(', ')}"
-        record_operational_status(
-          status: "error",
-          created: result.payload.fetch(:created, 0),
-          invalid_count: result.payload.fetch(:invalid_count, 0),
-          errors: result.errors
-        )
+      # Enumerate configured tenants. When the deployment has no Organization
+      # records (single-tenant / dev), fall back to a single unscoped run —
+      # preserves pre-MT2 global behavior. Each tenant generates independently;
+      # a failure on one does not block the others. The advisory lock above
+      # keeps the whole cycle one-at-a-time.
+      org_ids = Organization.pluck(:id)
+      tenants = org_ids.empty? ? [nil] : org_ids
+
+      total_created = 0
+      total_invalid = 0
+      errors = []
+
+      tenants.each do |org_id|
+        tag = org_id ? "tenant=#{org_id}" : "tenant=global"
+        result = Recommendations::GeneratorService.call(organization_id: org_id)
+
+        if result.success?
+          Rails.logger.info "[GenerationJob] #{tag} created=#{result.created} invalid=#{result.invalid_count}"
+          total_created += result.created
+          total_invalid += result.invalid_count
+        else
+          Rails.logger.error "[GenerationJob] #{tag} failed: #{result.errors.join(', ')}"
+          errors.concat(Array(result.errors).map { |msg| "#{tag}: #{msg}" })
+          total_created += result.payload.fetch(:created, 0)
+          total_invalid += result.payload.fetch(:invalid_count, 0)
+        end
       end
+
+      record_operational_status(
+        status: errors.empty? ? "ok" : "error",
+        created: total_created,
+        invalid_count: total_invalid,
+        errors: errors,
+      )
     rescue => e
       Rails.logger.error "[GenerationJob] crashed: #{e.class}: #{e.message}"
       record_operational_status(status: "error", errors: ["#{e.class}: #{e.message}"])
