@@ -16,10 +16,18 @@ import {
   setEntityPointColor,
   setEntityPointDisableDepthTestDistance,
   setEntityPointHeightReference,
+  setEntityPointOutlineColor,
+  setEntityPointOutlineWidth,
   setEntityPosition,
   siteColor,
   type CesiumModule,
 } from '../../lib/globeEngineHelpers'
+
+// Mirrors the map site-linked-ring color (#5282ff) from useMapSiteLayers so the
+// visual contract is consistent across the two operator surfaces.
+const SITE_LINKED_OUTLINE_CSS  = '#5282ff'
+const SITE_LINKED_OUTLINE_WIDTH = 4
+const SITE_DEFAULT_OUTLINE_WIDTH = 2
 
 export interface GlobeSiteEntitiesInput {
   viewerRef:   React.RefObject<CesiumType.Viewer | null>
@@ -27,6 +35,11 @@ export interface GlobeSiteEntitiesInput {
   viewerReady: boolean
   sites:       Site[]
   tasksBySite: Record<string, Task[]>
+  /**
+   * ID of the site that should be linked-highlighted — typically the home_site
+   * of the currently selected asset. Null clears the highlight.
+   */
+  linkedSiteId: string | null
 }
 
 export interface GlobeSiteEntitiesReturn {
@@ -39,6 +52,7 @@ export function useGlobeSiteEntities({
   viewerReady,
   sites,
   tasksBySite,
+  linkedSiteId,
 }: GlobeSiteEntitiesInput): GlobeSiteEntitiesReturn {
   const siteEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
 
@@ -99,6 +113,25 @@ export function useGlobeSiteEntities({
       siteEntitiesRef.current.set(key, entity)
     }
   }, [viewerReady, sites, tasksBySite, cesiumRef, viewerRef])
+
+  // Linked-highlight outline — blue ring on the site that is the home_site of
+  // the currently selected asset. Re-runs on linkedSiteId change AND on sites
+  // change, so freshly-added entities pick up the correct outline state.
+  useEffect(() => {
+    const Cesium = cesiumRef.current
+    const viewer = viewerRef.current
+    if (!viewerReady || !viewer || !Cesium) return
+
+    const linkedColor  = Cesium.Color.fromCssColorString(SITE_LINKED_OUTLINE_CSS).withAlpha(0.95)
+    const defaultColor = Cesium.Color.WHITE.withAlpha(0.8)
+
+    for (const [key, entity] of siteEntitiesRef.current.entries()) {
+      const id = key.replace(/^site-/, '')
+      const isLinked = linkedSiteId != null && id === linkedSiteId
+      setEntityPointOutlineColor(Cesium, entity, isLinked ? linkedColor : defaultColor)
+      setEntityPointOutlineWidth(Cesium, entity, isLinked ? SITE_LINKED_OUTLINE_WIDTH : SITE_DEFAULT_OUTLINE_WIDTH)
+    }
+  }, [viewerReady, sites, linkedSiteId, cesiumRef, viewerRef])
 
   return { siteEntitiesRef }
 }

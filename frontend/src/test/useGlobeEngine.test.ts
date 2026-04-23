@@ -51,7 +51,13 @@ type FakeEntity = {
   name?: string
   show?: boolean
   position?: unknown
-  point?: { color?: unknown; heightReference?: unknown; disableDepthTestDistance?: unknown }
+  point?: {
+    color?: unknown
+    heightReference?: unknown
+    disableDepthTestDistance?: unknown
+    outlineColor?: unknown
+    outlineWidth?: unknown
+  }
   label?: { text?: unknown; heightReference?: unknown; disableDepthTestDistance?: unknown }
   ellipse?: {
     semiMajorAxis?: unknown
@@ -448,6 +454,7 @@ function defaultInput(
     showTrails:       false,
     asOf:             undefined,
     isReplaying:      false,
+    referenceTimeMs:  1704067200000,
     signalFocusCenter: null,
     selectedSiteId:    null,
     selectedAssetId:   null,
@@ -1324,6 +1331,94 @@ describe('useGlobeEngine adapter', () => {
         cesium.fireCameraChanged(5_000_000)
       })
       expect(hook.result.current.isCloseView).toBe(false)
+    })
+  })
+
+  // ── Linked-entity highlighting (CTO P1) ────────────────────────────────────
+  describe('linked-entity highlighting', () => {
+    // Parity mirror of useMapLibreEngine's linked-ring cross-highlight:
+    //   select an asset → highlight its home site
+    //   select a site   → highlight assets rooted at that site
+    // The facade captures `point.outlineColor` and `point.outlineWidth` so the
+    // tests can assert on the ConstantProperty values after a re-render.
+
+    function getOutlineWidth(entity: FakeEntity): number | undefined {
+      const prop = entity.point?.outlineWidth as { getValue?: () => unknown } | undefined
+      const value = prop?.getValue?.()
+      return typeof value === 'number' ? value : undefined
+    }
+
+    it('applies linked-highlight outline to the selected asset\'s home site', async () => {
+      const refs  = makeContainerRef()
+      const sites = [
+        makeSite({ id: 'site-1', name: 'Alpha',  latitude: '10', longitude: '20' }),
+        makeSite({ id: 'site-2', name: 'Bravo',  latitude: '11', longitude: '21' }),
+      ]
+      const assets = [
+        makeAsset({ id: 'asset-1', home_site_id: 'site-1' }),
+        makeAsset({ id: 'asset-2', home_site_id: 'site-2' }),
+      ]
+      const hook = await bootGlobe(cesium, refs, defaultInput(refs, {
+        sites, assets,
+      }))
+
+      // Baseline: no selection → both sites get default outline width
+      const site1Before = cesium.entityRegistry.get('site-site-1')!
+      const site2Before = cesium.entityRegistry.get('site-site-2')!
+      expect(getOutlineWidth(site1Before)).toBe(2)
+      expect(getOutlineWidth(site2Before)).toBe(2)
+
+      // Select asset-1 → its home_site (site-1) gets the linked outline
+      await act(async () => {
+        hook.rerender(defaultInput(refs, { sites, assets, selectedAssetId: 'asset-1' }))
+      })
+      const site1After = cesium.entityRegistry.get('site-site-1')!
+      const site2After = cesium.entityRegistry.get('site-site-2')!
+      expect(getOutlineWidth(site1After)).toBe(4)
+      expect(getOutlineWidth(site2After)).toBe(2)
+    })
+
+    it('applies linked-highlight outline to every asset rooted at the selected site', async () => {
+      const refs  = makeContainerRef()
+      const sites = [makeSite({ id: 'site-1' }), makeSite({ id: 'site-2' })]
+      const assets = [
+        makeAsset({ id: 'asset-1', home_site_id: 'site-1' }),
+        makeAsset({ id: 'asset-2', home_site_id: 'site-1' }),
+        makeAsset({ id: 'asset-3', home_site_id: 'site-2' }),
+      ]
+      const hook = await bootGlobe(cesium, refs, defaultInput(refs, {
+        sites, assets, selectedSiteId: 'site-1',
+      }))
+
+      const linkedAssetIds = (['asset-1', 'asset-2', 'asset-3'] as const).filter((id) => {
+        const entity = cesium.entityRegistry.get(`asset-${id}`)
+        return entity != null && getOutlineWidth(entity) === 4
+      })
+      expect(linkedAssetIds).toEqual(expect.arrayContaining(['asset-1', 'asset-2']))
+      expect(linkedAssetIds).not.toContain('asset-3')
+
+      // Deselect → every asset returns to default outline width
+      await act(async () => {
+        hook.rerender(defaultInput(refs, { sites, assets, selectedSiteId: null }))
+      })
+      for (const id of ['asset-1', 'asset-2', 'asset-3']) {
+        expect(getOutlineWidth(cesium.entityRegistry.get(`asset-${id}`)!)).toBe(2)
+      }
+    })
+
+    it('clears linked-highlight on the site when its linked asset is deselected', async () => {
+      const refs  = makeContainerRef()
+      const sites  = [makeSite({ id: 'site-1' })]
+      const assets = [makeAsset({ id: 'asset-1', home_site_id: 'site-1' })]
+      const hook = await bootGlobe(cesium, refs, defaultInput(refs, {
+        sites, assets, selectedAssetId: 'asset-1',
+      }))
+      expect(getOutlineWidth(cesium.entityRegistry.get('site-site-1')!)).toBe(4)
+
+      await act(async () => {
+        hook.rerender(defaultInput(refs, { sites, assets, selectedAssetId: null }))
+      })
+      expect(getOutlineWidth(cesium.entityRegistry.get('site-site-1')!)).toBe(2)
     })
   })
 })

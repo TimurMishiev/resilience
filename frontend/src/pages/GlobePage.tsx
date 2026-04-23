@@ -11,6 +11,7 @@ import { useVessels, useVesselTracks } from '../hooks/useVessels'
 import { useActiveBreachSiteIds } from '../hooks/useSignalRuleMatches'
 import { useAllChokepoints } from '../hooks/useChokepoints'
 import { useReplayParams } from '../hooks/useReplayParams'
+import { useReferenceTimeMs } from '../hooks/useReferenceTimeMs'
 import { useEntitySelectionSync } from '../hooks/useEntitySelectionSync'
 import { useGlobeEngine } from '../hooks/useGlobeEngine'
 import { useGlobeE2EBridge } from '../hooks/useGlobeE2EBridge'
@@ -203,6 +204,12 @@ export default function GlobePage() {
 
   const benchmarkTarget = useMemo(() => pickBenchmarkTarget(sites, signals), [signals, sites])
 
+  // Replay-aware reference clock. When asOf is set the hook returns that
+  // timestamp; otherwise it returns a live clock refreshed every 60s via
+  // useEffect (never Date.now() in render). Threaded into the engine so
+  // downstream freshness rendering can be added without another prop rewrite.
+  const referenceTimeMs = useReferenceTimeMs(asOf)
+
   const { viewerReady, isCloseView, focusPosition, flyToHome, projectPosition, projectRenderedPosition, inspectCanvasPosition, dispatchSyntheticPick, pickCanvasPosition } = useGlobeEngine({
     containerRef, creditsRef,
     sites, assets, signals, tasksBySite, areaOfOperations, breachedSiteIds,
@@ -210,6 +217,7 @@ export default function GlobePage() {
     showSignals, showHeatmap, showCoverage, showChokepoints,
     showTrails: isReplaying && showTrails,
     asOf: asOf ?? undefined, isReplaying,
+    referenceTimeMs,
     signalFocusCenter: selectedCenter,
     selectedSiteId, selectedAssetId, selectedSignalId,
     onSiteClick, onAssetClick, onSignalClick,

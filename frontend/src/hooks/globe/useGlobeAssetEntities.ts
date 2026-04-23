@@ -16,10 +16,18 @@ import {
   setEntityLabelText,
   setEntityPointDisableDepthTestDistance,
   setEntityPointHeightReference,
+  setEntityPointOutlineColor,
+  setEntityPointOutlineWidth,
   setEntityPosition,
   type CesiumModule,
 } from '../../lib/globeEngineHelpers'
 import type { TelemetryMap } from '../../lib/telemetry'
+
+// Mirrors the map asset-linked-ring color (#5282ff) from useMapAssetLayers so
+// the visual contract is consistent with the map surface.
+const ASSET_LINKED_OUTLINE_CSS   = '#5282ff'
+const ASSET_LINKED_OUTLINE_WIDTH = 4
+const ASSET_DEFAULT_OUTLINE_WIDTH = 2
 
 export interface GlobeAssetEntitiesInput {
   viewerRef:   React.RefObject<CesiumType.Viewer | null>
@@ -30,6 +38,12 @@ export interface GlobeAssetEntitiesInput {
   readings:    TelemetryMap
   isReplaying: boolean
   asOf:        string | undefined
+  /**
+   * When a site is selected, assets whose home_site_id matches this id get the
+   * linked-highlight outline. Null clears the highlight. Semantics identical
+   * to useMapAssetLayers#linkedSiteId.
+   */
+  linkedSiteId: string | null
 }
 
 export interface GlobeAssetEntitiesReturn {
@@ -45,6 +59,7 @@ export function useGlobeAssetEntities({
   readings,
   isReplaying,
   asOf,
+  linkedSiteId,
 }: GlobeAssetEntitiesInput): GlobeAssetEntitiesReturn {
   const assetEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
 
@@ -115,6 +130,26 @@ export function useGlobeAssetEntities({
       setEntityPosition(Cesium, entity, lng, lat)
     }
   }, [viewerReady, assets, readings, sites, isReplaying, asOf, cesiumRef, viewerRef])
+
+  // Linked-highlight outline — blue ring on assets whose home_site_id matches
+  // the currently selected site. Re-runs on linkedSiteId AND assets change so
+  // freshly-created entities inherit the correct highlight state on first render.
+  useEffect(() => {
+    const Cesium = cesiumRef.current
+    const viewer = viewerRef.current
+    if (!viewerReady || !viewer || !Cesium) return
+
+    const linkedColor  = Cesium.Color.fromCssColorString(ASSET_LINKED_OUTLINE_CSS).withAlpha(0.95)
+    const defaultColor = Cesium.Color.WHITE.withAlpha(0.7)
+
+    for (const asset of assets) {
+      const entity = assetEntitiesRef.current.get(`asset-${asset.id}`)
+      if (!entity) continue
+      const isLinked = linkedSiteId != null && asset.home_site_id === linkedSiteId
+      setEntityPointOutlineColor(Cesium, entity, isLinked ? linkedColor : defaultColor)
+      setEntityPointOutlineWidth(Cesium, entity, isLinked ? ASSET_LINKED_OUTLINE_WIDTH : ASSET_DEFAULT_OUTLINE_WIDTH)
+    }
+  }, [viewerReady, assets, linkedSiteId, cesiumRef, viewerRef])
 
   return { assetEntitiesRef }
 }

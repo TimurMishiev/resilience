@@ -22,7 +22,7 @@
  *    refs so the click handler always reads fresh data without re-registering.
  */
 
-import { useEffect, useRef, useState, useCallback, type RefObject } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback, type RefObject } from 'react'
 import type * as CesiumType from 'cesium'
 import type { Site, Task, Asset, Signal, AreaOfOperation, Chokepoint } from '../api/types'
 import type { VesselTrack } from '../api/vessels'
@@ -78,6 +78,13 @@ export interface GlobeEngineInput {
   // replay state changes even when assets/readings identity is unchanged.
   asOf:        string | undefined
   isReplaying: boolean
+  /**
+   * Live-or-replay reference clock from useReferenceTimeMs. Threaded through so
+   * downstream freshness/time-aware rendering can be added without a prop-chain
+   * rewrite. Present-but-currently-unused flags are intentional — this slice
+   * (CTO P1) closes the plumbing gap; entity freshness rendering is follow-up.
+   */
+  referenceTimeMs: number
 
   /** Optional center point for focused signal decluttering around the current selection. */
   signalFocusCenter: { lat: number; lng: number } | null
@@ -137,6 +144,7 @@ export function useGlobeEngine({
   showTrails,
   asOf,
   isReplaying,
+  referenceTimeMs: _referenceTimeMs,
   signalFocusCenter,
   selectedSiteId,
   selectedAssetId,
@@ -145,6 +153,11 @@ export function useGlobeEngine({
   onAssetClick,
   onSignalClick,
 }: GlobeEngineInput): GlobeEngineReturn {
+  // _referenceTimeMs is reserved for future freshness rendering on entities
+  // (see CTO evaluation roadmap — P1 follow-up). It is intentionally threaded
+  // now so call sites commit to the replay-aware clock contract; renaming it
+  // into use later should never require touching GlobePage.
+  void _referenceTimeMs
   const viewerRef       = useRef<CesiumType.Viewer | null>(null)
   const cesiumRef       = useRef<CesiumModule | null>(null)
 
@@ -261,14 +274,27 @@ export function useGlobeEngine({
   }, [])
 
   // ---------------------------------------------------------------------------
+  // Cross-entity spatial linking
+  // ---------------------------------------------------------------------------
+  // When an asset is selected, linked-highlight its home site. When a site is
+  // selected, linked-highlight every asset rooted at that site. Mirrors the
+  // useMapLibreEngine pattern so the two surfaces share a visual contract.
+  const selectedAssetHomeSiteId = useMemo(
+    () => assets.find(a => a.id === selectedAssetId)?.home_site_id ?? null,
+    [assets, selectedAssetId],
+  )
+
+  // ---------------------------------------------------------------------------
   // Sub-hooks — entity management delegated for maintainability
   // ---------------------------------------------------------------------------
   const { siteEntitiesRef } = useGlobeSiteEntities({
     viewerRef, cesiumRef, viewerReady, sites, tasksBySite,
+    linkedSiteId: selectedAssetHomeSiteId,
   })
 
   const { assetEntitiesRef } = useGlobeAssetEntities({
     viewerRef, cesiumRef, viewerReady, sites, assets, readings, isReplaying, asOf,
+    linkedSiteId: selectedSiteId,
   })
 
   const { signalPrimitivesRef, visibleSignals } = useGlobeSignalPrimitives({

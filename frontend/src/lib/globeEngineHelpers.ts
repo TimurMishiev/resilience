@@ -58,6 +58,32 @@ export function setEntityPointColor(Cesium: CesiumModule, entity: CesiumType.Ent
   entity.point.color = new Cesium.ConstantProperty(color)
 }
 
+export function setEntityPointOutlineColor(
+  Cesium: CesiumModule,
+  entity: CesiumType.Entity,
+  color: CesiumType.Color,
+) {
+  if (!entity.point) return
+  if (entity.point.outlineColor instanceof Cesium.ConstantProperty) {
+    entity.point.outlineColor.setValue(color)
+    return
+  }
+  entity.point.outlineColor = new Cesium.ConstantProperty(color)
+}
+
+export function setEntityPointOutlineWidth(
+  Cesium: CesiumModule,
+  entity: CesiumType.Entity,
+  width: number,
+) {
+  if (!entity.point) return
+  if (entity.point.outlineWidth instanceof Cesium.ConstantProperty) {
+    entity.point.outlineWidth.setValue(width)
+    return
+  }
+  entity.point.outlineWidth = new Cesium.ConstantProperty(width)
+}
+
 export function setConstantPropertyValue<T>(
   Cesium: CesiumModule,
   property: CesiumType.Property | undefined,
