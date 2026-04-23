@@ -59,6 +59,11 @@ production:
     queue: background
     schedule: every 5 minutes
 
+  prune_revoked_jwts:
+    class: Auth::PruneRevokedJwtsJob
+    queue: background
+    schedule: every day at 2:30am
+
   # ── Correlation engine (replaces boot-time thread) ───────────────────────
   correlation_evaluate_recent:
     class: Correlations::EvaluateRecentJob

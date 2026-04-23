@@ -202,12 +202,22 @@ Use this file as the canonical remediation backlog.
 
 #### `J1` — No `RevokedJwt` Pruning Job
 - Severity: `P3`
-- Status: confirmed maintenance debt
+- Status: fixed in working tree on `2026-04-22`
 - Why real:
-  - [revoked_jwt.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/models/revoked_jwt.rb) has active rows by expiry
-  - no pruning job exists in [backend/app/jobs](/Users/timurmishiev/Desktop/Code/resilience/backend/app/jobs)
+  - [revoked_jwt.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/models/revoked_jwt.rb) has `.active` scope (`expires_at > Time.current`) but retained every row forever
+  - no pruning job existed in [backend/app/jobs](/Users/timurmishiev/Desktop/Code/resilience/backend/app/jobs); the table grew unboundedly as tokens churned
 - Note:
-  - indexed lookup exists, so this is not an acute auth-path failure
+  - indexed lookup exists (`index_revoked_jwts_on_jti`, `index_revoked_jwts_on_expires_at`), so this was not an acute auth-path failure — pure maintenance debt
+- Fix direction (applied):
+  - new `Auth::PruneRevokedJwtsJob` deletes rows where `expires_at <= Time.current`; inverse of `RevokedJwt.active`
+  - scheduled daily (`every day at 2:30am`) in `config/recurring.yml` — JWT TTL is 24h (`JwtAuthenticatable::TTL`), so a daily cadence reliably drains the table without contention with other nightly jobs
+  - job-level spec proves boundary alignment with `.active` so future refactors cannot desync the inactive ⇄ prunable contract
+- Primary files:
+  - [auth/prune_revoked_jwts_job.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/jobs/auth/prune_revoked_jwts_job.rb)
+  - [recurring.yml](/Users/timurmishiev/Desktop/Code/resilience/backend/config/recurring.yml)
+  - [prune_revoked_jwts_job_spec.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/spec/jobs/auth/prune_revoked_jwts_job_spec.rb)
+- Validation minimum:
+  - focused job spec proving expired rows delete, live rows survive, and boundary (`expires_at == Time.current`) rows are pruned
 
 #### `M1` — Migration Safety Program
 - Severity: `P3`
