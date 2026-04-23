@@ -312,12 +312,13 @@ P0 was shipped in `368e079` (see §3). P1–P4 are open.
 - **Deliberately deferred to follow-up slices:** freshness rendering on globe entity color/tint (consumes the threaded `referenceTimeMs`), and signal-side evidence highlighting (would modulate PointPrimitive colors — different infrastructure than Entity outlines).
 - Step 0 verifications confirmed both gaps were real at pre-slice HEAD.
 
-### P2 — Globe alert triage in inspector — **OPEN**
+### P2 — Globe alert triage in inspector — **SHIPPED (`23a722d`)**
 
-- Claimed scope: 1 slice.
-- Depends on P1.
-- Status: not yet started.
-- For Codex to evaluate — see §4.
+- Inline-rendered `MapSiteAlertsSection` inside `GlobeInspectorPanel` when a site is selected, mirroring the MapSitePanel placement.
+- New GlobeInspectorPanel props (`referenceTimeMs`, `canTriage`, `onSelectSignal`) are a pass-through to the alerts section — no map-specific coupling to untangle.
+- GlobePage threads `useRole().canTriageAlerts`; role gating + replay null-render are inherited from the section's own discipline.
+- Step 0 confirmed the claim: pre-slice globe inspector had zero alert / SignalRuleMatch / ack / escalate code paths. Claim was accurate, slice stayed narrow.
+- Component rename `MapSiteAlertsSection → SiteAlertsSection` deliberately deferred — touches 5 callers and adds no functional value; documented in-comment at the import site.
 
 ### P3 — Map + Debrief split workstation — **OPEN**
 

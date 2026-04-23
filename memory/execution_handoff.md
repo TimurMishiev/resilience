@@ -16,25 +16,24 @@ Post-Phase-7 remediation (**active**)
 
 ## Current Slice
 
-**Audit remediation — Band C closed. CTO P1 slices 1 + 2 shipped. P2 next.**
+**Audit remediation — Band C closed. CTO P1 + P2 shipped. P3 requires user scope decision.**
 
-MT1/MT2/MT3 shipped in `327d7ca`/`9b23365`/`2e874e2`. Band D closed in `42f5af0`. CTO P1 slice 1 shipped in `402cd00` (linked-entity cross-highlighting + `useReferenceTimeMs` threading). CTO P1 slice 2 shipped in `d93d897` (evidence-linked site ring on globe, three-state outline precedence linked > evidence > default, facade upgraded to preserve color so tests assert on visual contract).
+MT1/MT2/MT3 shipped in `327d7ca`/`9b23365`/`2e874e2`. Band D closed in `42f5af0`. CTO P1 slice 1 shipped in `402cd00` (linked-entity cross-highlighting + `useReferenceTimeMs` threading). CTO P1 slice 2 shipped in `d93d897` (evidence-linked site ring). CTO P2 shipped in `23a722d` (alert triage section on globe inspector). The three globe-parity gaps the CTO evaluation flagged — demo surface → operational surface — are now closed.
 
-Running under the approved autonomous loop: execute → self-gate → verify-don't-trust-findings → fix if real + safe → re-gate → commit → next. Stop conditions: finding doesn't reproduce, scope decision (P3), shared-infra change not in slice scope, unresolvable gate issue.
+Running under the approved autonomous loop. **Stopped on P3** (explicit stop condition: scope decision, not a bug fix). User input required to proceed.
 
 Next unresolved work:
-- **CTO P2** — globe alert triage in the inspector panel. Reuse the triage panel surface already on map; wire into `GlobeInspectorPanel`. Step 0 verification first.
-- **Optional P1 follow-up (deferred, not blocking P2):** freshness rendering on globe entities (consumes threaded `referenceTimeMs`); signal-side evidence highlighting on PointPrimitives.
-- **CTO P3** — scope-decision slice, not a bug fix; surface when P2 closes.
+- **CTO P3** — "Map + Debrief split workstation", 5 slices claimed. This is not a finding to fix; it's a product-direction decision. Per `cto_evaluation_roadmap.md` §4, needs explicit user alignment on whether portfolio signal alone justifies 5 slices vs a reduced scope vs defer. **Surface for user decision.**
+- **Optional P1 follow-ups (deferred, not blocking):** freshness rendering on globe entities; signal-side evidence highlighting on PointPrimitives.
 - **CTO P4** — deferred unless a 6th map tool is planned.
 
 ## Current Repo State
 
-- Latest committed product slice: `d93d897` — CTO P1 slice 2 (globe evidence-linked site ring)
-- Prior product slice: `402cd00` — CTO P1 slice 1 (globe `useReferenceTimeMs` + linked-entity highlighting)
-- Latest committed rotation: `76c5315` — post-P1-slice-1 handoff rotation
+- Latest committed product slice: `23a722d` — CTO P2 (globe alert triage in inspector)
+- Prior product slice: `d93d897` — CTO P1 slice 2 (globe evidence-linked site ring)
+- Latest committed rotation: `35567bc` — post-P1-slice-2 handoff rotation
 - Working tree: **clean after rotation commit**
-- Branch state: `main` pushed at `d93d897` (product); handoff rotation follows
+- Branch state: `main` pushed at `23a722d` (product); handoff rotation follows
 
 ## Phase 7 — Slice Plan
 
@@ -71,6 +70,7 @@ Sequenced:
 - `2e874e2` — Band C `MT3`: correlation rule target resolution is now tenant-scoped via a three-branch fallback in `EvaluatorService.target_sites_scope` and the mirror predicate `rule_targets_site?`. AO-bound rules resolve via AO (unchanged); nil-AO rules owned by an org-scoped commander resolve to sites in the creator's organization; nil-AO rules owned by an admin with no org resolve to `Site.active` (admin-global unchanged). `CorrelationRule.active.includes(:created_by)` avoids the per-rule N+1 the creator lookup would otherwise introduce. No schema / migration / policy change. Six new spec cases using `contain_exactly` invariants
 - `402cd00` — CTO P1 slice 1: `useReferenceTimeMs` threaded end-to-end through GlobePage → useGlobeEngine → sub-hooks (threaded but unused this slice — reserved for follow-up freshness rendering). Linked-entity cross-highlighting added on globe: selecting an asset outlines its home site; selecting a site outlines every asset rooted there. Color (`#5282ff`) + 4px outline width mirror the map's `site-linked-ring` / `asset-linked-ring` visual contract. Three new spec cases covering both directions + deselect. No backend / schema / auth / policy touched
 - `d93d897` — CTO P1 slice 2: evidence-linked site ring on globe. `useGlobeSiteEntities` now applies a three-state outline (linked > evidence > default) with amber `#f5a623` width 3 for sites linked to the selected signal via rule matches. `GlobePage` calls `useEvidenceLinkedIds` with the same (selectedSiteId, selectedSignalId, asOf) args MapPage uses. Facade's `fromCssColorString` upgraded to preserve css on `_css` so tests assert on visible color, not just width. Also replaced slice-1's regex key-extraction with direct `sites` iteration (addresses slice-1 mentor P3). Two new spec cases covering evidence highlighting + linked-over-evidence precedence. No backend / schema / auth / policy touched
+- `23a722d` — CTO P2: alert triage section on globe inspector. `GlobeInspectorPanel` now renders `MapSiteAlertsSection` inline when a site is selected (matches `MapSitePanel` placement after tasks). Three new props threaded through — `referenceTimeMs`, `canTriage`, `onSelectSignal` — all pass-throughs to the existing section. `GlobePage` computes `canTriageAlerts` via `useRole` and wires `onSelectSignal=onSignalClick` so alert-row clicks flow through the same route as Cesium entity picks. The alerts section's replay null-render discipline is inherited (no new gating). Component reused as-is despite `MapSite…` legacy name; rename deferred. Four new GlobeInspectorPanel cases (prop plumbing, canTriage false path, onSelectSignal bubble, site-absent no-render). No backend / schema / auth / policy / MapSiteAlertsSection touched
 
 ## Phase 6 — Closed Slice Plan (historical context)
 
@@ -183,11 +183,16 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 - All confirmed findings in the merged audit backlog are now closed.
 - CTO P1 slice 1 — shipped in `402cd00`.
 - CTO P1 slice 2 — shipped in `d93d897`.
-- Next: CTO P2 (globe alert triage in inspector). Then P1 follow-up if still valuable (freshness rendering; signal-side evidence). P3 requires a scope decision; P4 is deferred.
+- CTO P2 — shipped in `23a722d`.
+- **Loop stopped on CTO P3** (scope decision, explicit stop condition). Awaiting user direction on whether to adopt the 5-slice "split workstation", pursue a reduced scope, or defer.
 
 ## Next
 
-- **Immediate next step:** CTO P2 — globe alert triage in the inspector panel. Step 0: verify gap is real (GlobeInspectorPanel today renders nearest signals and response assets, but no alert rows with acknowledge/escalate actions). Scope narrowly: port the triage panel surface already on map into `GlobeInspectorPanel`, keep signal-side evidence highlighting deferred as a separate concern.
+- **Immediate next step:** user decision on CTO P3. The loop stopped here deliberately because P3 is a product-direction call, not a bug fix. Options to surface:
+  - (a) **Full 5-slice split workstation** as claimed in the CTO evaluation. Portfolio-driven signal; real replay-authority design work upfront.
+  - (b) **Reduced scope: debrief panel inline on the map page, no independent replay context.** Proves the pattern without the full workstation commitment.
+  - (c) **Defer P3** as portfolio-aesthetic rather than operator-value.
+- **If user skips P3:** optional P1 follow-ups remain available — freshness rendering on globe entities (consumes the threaded `referenceTimeMs`) and signal-side evidence highlighting on PointPrimitives. Both are additive to already-shipped slices, not finding-closure.
 - **Full sweep order (approved by user 2026-04-22):** Band C `MT1` → `MT2` → `MT3` → CTO P1 (globe evidence + `useReferenceTimeMs`) → CTO P2 (globe alert triage in inspector) → scope CTO P3 (5-slice map+debrief workstation; needs explicit alignment before start) → defer CTO P4 unless a 6th map tool is planned.
 - **Legacy commit-target note (superseded by sweep):** whether to continue into Band C versus stop at the single-org boundary was resolved — Band C is on the sweep. Previously marked as "latent for single-org"; kept in the sweep for production-ready completeness before new roadmap work.
 - **External CTO evaluation (2026-04-22) — briefing:** see [memory/cto_evaluation_roadmap.md](cto_evaluation_roadmap.md). Full third-party report + per-priority disposition. P0 (`Date.now()` defaults → required) shipped in `368e079`. P1–P4 are open and each needs independent code-first evaluation before adopting — the file includes explicit verification prompts per priority. Neither model has pre-judged P1–P4; do not start any of them without scoping against current code first.
@@ -224,7 +229,21 @@ cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/api/cl
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (CTO P1 slice 2 — globe evidence-linked site ring, committed in `d93d897`, 2026-04-22)
+## Last Validation Results (CTO P2 — globe alert triage in inspector, committed in `23a722d`, 2026-04-23)
+
+- Modified frontend files: `src/components/GlobeInspectorPanel.tsx`, `src/pages/GlobePage.tsx`
+- Modified spec files: `src/test/GlobeInspectorPanel.test.tsx` (+4 cases, `MapSiteAlertsSection` mocked), `src/test/GlobePage.test.tsx` (+1 mock — `useRole`)
+- Focused frontend validation:
+  - `npx vitest run src/test/GlobeInspectorPanel.test.tsx src/test/GlobePage.test.tsx` → **25 / 25 pass**
+- Full validation:
+  - `npx vitest run` → **669 / 669 pass across 90 files** (+4 vs P1-slice-2 baseline of 665)
+  - `npx tsc -p tsconfig.app.json --noEmit` → **0 errors**
+  - `npx eslint` on 4 touched files → **0 issues**
+  - `git diff --check` → **clean**
+- Diff stat: 4 files, +138/-0 lines.
+- Step 0 verification: confirmed globe inspector had zero alert / SignalRuleMatch / ack / escalate surfaces pre-slice. Narrow scope held — no rename of the map-named-but-entity-agnostic `MapSiteAlertsSection`, no changes to the section itself.
+
+## Prior Validation Results (CTO P1 slice 2 — globe evidence-linked site ring, committed in `d93d897`, 2026-04-22)
 
 - Modified frontend files: `src/hooks/useGlobeEngine.ts`, `src/hooks/globe/useGlobeSiteEntities.ts`, `src/pages/GlobePage.tsx`
 - Modified spec files: `src/test/useGlobeEngine.test.ts` (+2 cases, facade color-preservation upgrade)
