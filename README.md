@@ -416,6 +416,9 @@ Design decisions are documented in [`docs/`](docs/):
 
 - [ADR-001: Server-Side Replay via `as_of` Query Parameter](docs/adr-001-server-side-replay.md) -- Accepted
 - [ADR-002: Horizontal Scaling Strategy](docs/adr-002-horizontal-scaling.md) -- Proposed
+- [ADR-003: Multi-Tenant Authorization via Named Boundary Helpers](docs/adr-003-multi-tenant-authorization.md) -- Accepted
+- [ADR-004: Correlation Engine — Atomic Cooldown + Compound Rules via Discriminator](docs/adr-004-correlation-engine-atomic-cooldown.md) -- Accepted
+- [ADR-005: AI Trust Boundary — Validator Pattern + Circuit Breaker](docs/adr-005-ai-trust-boundary.md) -- Accepted
 
 ---
 
