@@ -129,16 +129,16 @@ Use this file as the canonical remediation backlog.
 
 #### `MT2` — Recommendation Context Assembly Reads Global Operational State
 - Severity: `P1` for multi-tenant readiness
-- Status: confirmed latent defect
-- Why real:
-  - [context_assembler.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/services/recommendations/context_assembler.rb) performs global reads across alerts, incidents, tasks, sites, assets
-  - [generation_job.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/jobs/recommendations/generation_job.rb) and [generator_service.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/services/recommendations/generator_service.rb) do not thread organization scope in
-- Risk:
-  - cross-tenant data enters recommendation generation / LLM context in shared-org deployment
-- Primary files:
-  - [context_assembler.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/services/recommendations/context_assembler.rb)
-  - [generation_job.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/jobs/recommendations/generation_job.rb)
-  - [generator_service.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/services/recommendations/generator_service.rb)
+- Status: fixed and shipped on `2026-04-22`
+- Fix summary:
+  - `Recommendations::ContextAssembler.call(organization_id: nil)` — `organization_id: nil` preserves pre-MT2 global-read behavior for single-tenant deployments; when set, every query (alerts, incidents, tasks, sites, risk snapshots, assets, postures) filters via the entity's tenant anchor (site.organization_id, AO.organization_id, or home_site.organization_id). Incidents without a site fall back to AO.organization_id; records that can't be attributed are excluded.
+  - `Recommendations::GeneratorService.call(organization_id: nil)` threads the id through to the assembler and tags log lines with tenant for observability.
+  - `Recommendations::GenerationJob#perform` enumerates `Organization.pluck(:id)`. With zero organizations it runs once unscoped (single-tenant fallback). With N orgs it runs N times, aggregating `created` / `invalid_count` and isolating per-tenant failures (one tenant failing does not block the others). The advisory lock keeps the whole cycle one-at-a-time.
+  - No schema change, no change to LlmEnricher / RuleEngine / Validator / RecommendationPolicy — the LLM call per tenant is a strict reduction in the data it sees.
+- Tests:
+  - 11 new context-assembler cases (one per query path + nil-fallback + AO-fallback for siteless incidents)
+  - 2 new generator-service cases (tenant propagation into ContextAssembler; per-tenant entity scoping end-to-end)
+  - 3 new generation-job cases (single-tenant fallback, per-tenant loop + aggregation, per-tenant failure isolation)
 
 #### `MT3` — Correlation Target Sites Go Global When Rule AO Is Nil
 - Severity: `P2` for multi-tenant readiness
