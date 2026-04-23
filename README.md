@@ -45,6 +45,10 @@ Busy? Open these five files. Each one is deliberately chosen to demonstrate a di
 
 Each file is worth ~2 minutes. If only one: pick #3 (authorization helpers) — it's the single cleanest demonstration of disciplined production code on a topic where most platforms get sloppy.
 
+**Want more?** See [`PORTFOLIO.md`](PORTFOLIO.md) for tiered 5/15/30/60-minute
+evaluator tours, honest weaknesses, and interview conversation openers. See
+[`CHANGELOG.md`](CHANGELOG.md) for the phase-level shipping arc.
+
 ---
 
 ## Quick Start (Docker)
