@@ -16,19 +16,23 @@ Post-Phase-7 remediation (**active**)
 
 ## Current Slice
 
-**Audit remediation — Band C closed (MT1 + MT2 + MT3 all shipped). CTO P1 next.**
+**Audit remediation — Band C closed. CTO P1 slice 1 shipped. P1 evidence-ring slice + P2 next.**
 
-MT1 shipped in `327d7ca` (telemetry SSE tenant scoping). MT2 shipped in `9b23365` (recommendation generation per-tenant loop). MT3 shipped in `2e874e2` (correlation target sites three-branch tenant resolution). Band D closed in `42f5af0`. User approved the **full remediation sweep**: Band D → Band C → CTO P1 → P2 → scope P3 → defer P4. Bands C + D were executed manually (scope-approval before coding). CTO P1+ may be a good fit for `/loop` because the remaining backlog is frontend-and-UI-heavy.
+MT1 shipped in `327d7ca`. MT2 shipped in `9b23365`. MT3 shipped in `2e874e2`. Band D closed in `42f5af0`. CTO P1 slice 1 shipped in `402cd00` — `useReferenceTimeMs` threaded end-to-end through globe + linked-entity cross-highlighting on globe (site→asset + asset→site). Executed under the user's skeptical verification pattern: Step 0 (verify finding reproduces) → scope narrowly → execute → self-gate → commit.
 
-Next unresolved by sweep order: **CTO P1** (globe evidence threading + `useReferenceTimeMs`). Per [memory/cto_evaluation_roadmap.md](cto_evaluation_roadmap.md), P1 has **not been pre-judged** — scope against current code before starting.
+Next unresolved work:
+- **CTO P1 follow-up slice** — evidence-linked ring on globe (sites linked to the selected signal via rule matches). Port of map's `site-evidence-ring` via `useEvidenceLinkedIds`. Optional: freshness rendering on globe entities (separate slice).
+- **CTO P2** — globe alert triage in inspector panel. Depends on the evidence-ring work if we want parity.
+- **CTO P3** — scope-decision slice, not a bug fix; surface to user when P1/P2 close.
+- **CTO P4** — deferred unless a 6th map tool is planned.
 
 ## Current Repo State
 
-- Latest committed product slice: `2e874e2` — Band C `MT3` correlation target sites tenant-scoped
-- Prior product slice: `9b23365` — Band C `MT2` recommendation generation per-tenant
-- Latest committed rotation: `527618b` — post-MT2 handoff rotation
+- Latest committed product slice: `402cd00` — CTO P1 slice 1 (globe `useReferenceTimeMs` + linked-entity highlighting)
+- Prior product slice: `2e874e2` — Band C `MT3` correlation target sites tenant-scoped
+- Latest committed rotation: `22b706b` — post-MT3 handoff rotation
 - Working tree: **clean after rotation commit**
-- Branch state: `main` pushed at `2e874e2` (product); handoff rotation follows
+- Branch state: `main` pushed at `402cd00` (product); handoff rotation follows
 
 ## Phase 7 — Slice Plan
 
@@ -63,6 +67,7 @@ Sequenced:
 - `327d7ca` — Band C `MT1`: telemetry SSE stream now filters per-payload against the viewer's `policy_scope(Asset)` asset-id set (computed once at stream open). Comment on `TelemetryReadingPolicy` documents that per-payload tenant filtering is controller dispatch, not Pundit. Zero simulator / broadcaster / schema changes. Five new request specs cover unrestricted, org-only, AO-only, compound org+AO, and empty-scope viewers
 - `9b23365` — Band C `MT2`: recommendation generation is now per-tenant. `ContextAssembler.call(organization_id:)` scopes every query via site / AO / home_site anchors; `GeneratorService.call(organization_id:)` threads it and tags logs with tenant; `GenerationJob` enumerates `Organization.pluck(:id)` and runs one cycle per org (falls back to a single unscoped run when the deployment has no Organization rows — single-tenant backward compat). Per-tenant failures do not block remaining tenants. Zero schema / LLM-enricher / rule-engine changes. Sixteen new spec cases across assembler, generator, and job
 - `2e874e2` — Band C `MT3`: correlation rule target resolution is now tenant-scoped via a three-branch fallback in `EvaluatorService.target_sites_scope` and the mirror predicate `rule_targets_site?`. AO-bound rules resolve via AO (unchanged); nil-AO rules owned by an org-scoped commander resolve to sites in the creator's organization; nil-AO rules owned by an admin with no org resolve to `Site.active` (admin-global unchanged). `CorrelationRule.active.includes(:created_by)` avoids the per-rule N+1 the creator lookup would otherwise introduce. No schema / migration / policy change. Six new spec cases using `contain_exactly` invariants
+- `402cd00` — CTO P1 slice 1: `useReferenceTimeMs` threaded end-to-end through GlobePage → useGlobeEngine → sub-hooks (threaded but unused this slice — reserved for follow-up freshness rendering). Linked-entity cross-highlighting added on globe: selecting an asset outlines its home site; selecting a site outlines every asset rooted there. Color (`#5282ff`) + 4px outline width mirror the map's `site-linked-ring` / `asset-linked-ring` visual contract. Three new spec cases covering both directions + deselect. No backend / schema / auth / policy touched
 
 ## Phase 6 — Closed Slice Plan (historical context)
 
@@ -172,11 +177,13 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 - Band C `MT1` — shipped in `327d7ca`.
 - Band C `MT2` — shipped in `9b23365`.
 - Band C `MT3` — shipped in `2e874e2`.
-- All confirmed findings in the merged audit backlog are now closed. Next unresolved work: **CTO evaluation priorities P1–P4** — independent code-first scoping required per [cto_evaluation_roadmap.md](cto_evaluation_roadmap.md).
+- All confirmed findings in the merged audit backlog are now closed.
+- CTO P1 slice 1 (globe `useReferenceTimeMs` + linked-entity highlighting) — shipped in `402cd00`.
+- Next: CTO P1 evidence-ring follow-up slice (port map's `site-evidence-ring` via `useEvidenceLinkedIds`). Then CTO P2 (globe alert triage inspector). P3 requires a scope decision; P4 is deferred.
 
 ## Next
 
-- **Immediate next step:** scope CTO P1 (globe evidence + `useReferenceTimeMs`) against current code. P1–P4 are each unprejudged; see [cto_evaluation_roadmap.md](cto_evaluation_roadmap.md) for verification prompts. With Band C + D shipped, the remaining backlog is mostly frontend/UI/doc work — a production-grade `/loop` prompt for CTO P1+ is now a viable option to discuss with the user before starting.
+- **Immediate next step:** CTO P1 evidence-linked ring slice — port [useEvidenceLinkedIds](frontend/src/hooks/useEvidenceLinkedIds.ts) into globe consumers so selecting a signal highlights the sites linked to it via rule matches (parity with map's `site-evidence-ring` at [useMapSiteLayers.ts:140-145](frontend/src/hooks/map/useMapSiteLayers.ts#L140-L145)). Expected scope: add a third per-site outline layer (or tint) keyed on `evidenceSiteIds`, thread from GlobePage through useGlobeEngine into useGlobeSiteEntities. Follow same verification-driven pattern as slice 1.
 - **Full sweep order (approved by user 2026-04-22):** Band C `MT1` → `MT2` → `MT3` → CTO P1 (globe evidence + `useReferenceTimeMs`) → CTO P2 (globe alert triage in inspector) → scope CTO P3 (5-slice map+debrief workstation; needs explicit alignment before start) → defer CTO P4 unless a 6th map tool is planned.
 - **Legacy commit-target note (superseded by sweep):** whether to continue into Band C versus stop at the single-org boundary was resolved — Band C is on the sweep. Previously marked as "latent for single-org"; kept in the sweep for production-ready completeness before new roadmap work.
 - **External CTO evaluation (2026-04-22) — briefing:** see [memory/cto_evaluation_roadmap.md](cto_evaluation_roadmap.md). Full third-party report + per-priority disposition. P0 (`Date.now()` defaults → required) shipped in `368e079`. P1–P4 are open and each needs independent code-first evaluation before adopting — the file includes explicit verification prompts per priority. Neither model has pre-judged P1–P4; do not start any of them without scoping against current code first.
@@ -213,7 +220,22 @@ cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/api/cl
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (shipped remediation slice — Band C `MT3` correlation target sites tenant-scoped, committed in `2e874e2`, 2026-04-22)
+## Last Validation Results (CTO P1 slice 1 — globe `useReferenceTimeMs` + linked-entity highlighting, committed in `402cd00`, 2026-04-22)
+
+- Modified frontend files: `src/hooks/useGlobeEngine.ts`, `src/hooks/globe/useGlobeSiteEntities.ts`, `src/hooks/globe/useGlobeAssetEntities.ts`, `src/lib/globeEngineHelpers.ts`, `src/pages/GlobePage.tsx`
+- Modified spec files: `src/test/useGlobeEngine.test.ts` (+3 cases, FakeEntity.point extended with outlineColor/outlineWidth)
+- Focused frontend validation:
+  - `npx vitest run src/test/useGlobeEngine.test.ts` → **41 / 41 pass** (38 existing + 3 new)
+  - `npx vitest run src/test/GlobePage.test.tsx src/test/GlobeInspectorPanel.test.tsx` → **21 / 21 pass** (adjacent regression)
+- Full validation:
+  - `npx vitest run` → **663 / 663 pass across 90 files** (+3 vs MT3 baseline of 660)
+  - `npx tsc -p tsconfig.app.json --noEmit` → **0 errors**
+  - `npx eslint` on 6 touched files → **0 issues**
+  - `git diff --check` → **clean**
+- Diff stat: 6 files, +225/-2 lines.
+- Step 0 verification: confirmed P1 claim reproduced — zero `useReferenceTimeMs`/`linkedSiteId`/`evidenceSiteIds` in globe tree at pre-slice HEAD.
+
+## Prior Validation Results (shipped remediation slice — Band C `MT3` correlation target sites tenant-scoped, committed in `2e874e2`, 2026-04-22)
 
 - Modified backend files: `backend/app/services/correlations/evaluator_service.rb`
 - Modified spec files: `backend/spec/services/correlations/evaluator_service_spec.rb` (+6 cases)

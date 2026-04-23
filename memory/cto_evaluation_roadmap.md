@@ -300,12 +300,13 @@ P0 was shipped in `368e079` (see §3). P1–P4 are open.
 - **Validation at commit:** 656/656 Vitest, 0 TS errors, ESLint clean on all 13 touched files.
 - **Gate verdict:** READY TO COMMIT, no P0/P1/P2/P3 findings.
 
-### P1 — Globe evidence highlighting + `useReferenceTimeMs` threading — **OPEN**
+### P1 — Globe evidence highlighting + `useReferenceTimeMs` threading — **PARTIAL (slice 1/N shipped)**
 
-- Claimed scope: 1 slice.
-- Claimed justification: "Changes globe from 'demo' to 'operational.'"
-- Status: not yet started.
-- For Codex to evaluate — see §4.
+- Slice 1 shipped: linked-entity cross-highlighting on globe + `useReferenceTimeMs` threading through `GlobePage → useGlobeEngine → sub-hooks`.
+  - `useGlobeSiteEntities` and `useGlobeAssetEntities` now apply a blue (#5282ff) thicker outline when the linked-highlight target matches — mirror of map's `site-linked-ring` / `asset-linked-ring` semantics.
+  - `GlobePage` routes `asOf` through `useReferenceTimeMs` and passes the resulting clock into the engine. The clock is threaded but intentionally unused-by-this-slice; future globe freshness rendering (follow-up slice) consumes it without touching call sites again.
+- Deliberately deferred to follow-up slices: evidence-linked ring (sites linked via rule matches), freshness rendering on globe entity color/tint.
+- Step 0 verification confirmed the gap was real: zero `useReferenceTimeMs`/`linkedSiteId`/`evidenceSiteIds` in globe tree at pre-slice HEAD; map had all three.
 
 ### P2 — Globe alert triage in inspector — **OPEN**
 
