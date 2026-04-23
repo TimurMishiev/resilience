@@ -300,13 +300,17 @@ P0 was shipped in `368e079` (see §3). P1–P4 are open.
 - **Validation at commit:** 656/656 Vitest, 0 TS errors, ESLint clean on all 13 touched files.
 - **Gate verdict:** READY TO COMMIT, no P0/P1/P2/P3 findings.
 
-### P1 — Globe evidence highlighting + `useReferenceTimeMs` threading — **PARTIAL (slice 1/N shipped)**
+### P1 — Globe evidence highlighting + `useReferenceTimeMs` threading — **PARTIAL (slices 1–2 shipped)**
 
-- Slice 1 shipped: linked-entity cross-highlighting on globe + `useReferenceTimeMs` threading through `GlobePage → useGlobeEngine → sub-hooks`.
-  - `useGlobeSiteEntities` and `useGlobeAssetEntities` now apply a blue (#5282ff) thicker outline when the linked-highlight target matches — mirror of map's `site-linked-ring` / `asset-linked-ring` semantics.
-  - `GlobePage` routes `asOf` through `useReferenceTimeMs` and passes the resulting clock into the engine. The clock is threaded but intentionally unused-by-this-slice; future globe freshness rendering (follow-up slice) consumes it without touching call sites again.
-- Deliberately deferred to follow-up slices: evidence-linked ring (sites linked via rule matches), freshness rendering on globe entity color/tint.
-- Step 0 verification confirmed the gap was real: zero `useReferenceTimeMs`/`linkedSiteId`/`evidenceSiteIds` in globe tree at pre-slice HEAD; map had all three.
+- **Slice 1 shipped (`402cd00`):** linked-entity cross-highlighting on globe + `useReferenceTimeMs` threading through `GlobePage → useGlobeEngine → sub-hooks`.
+  - `useGlobeSiteEntities` and `useGlobeAssetEntities` apply a blue (#5282ff) 4px outline when the linked-highlight target matches — mirror of map's `site-linked-ring` / `asset-linked-ring` semantics.
+  - `GlobePage` routes `asOf` through `useReferenceTimeMs` and passes the clock into the engine (threaded but unused in slice 1; reserved for a future freshness slice).
+- **Slice 2 shipped (`d93d897`):** evidence-linked site ring on globe.
+  - `useGlobeSiteEntities` extended to three-state outline precedence: linked (blue, 4) > evidence (amber #f5a623, 3) > default (white, 2). Matches map's layer-order contract where `site-linked-ring` paints over `site-evidence-ring`.
+  - `GlobePage` calls `useEvidenceLinkedIds(selectedSiteId, selectedSignalId, asOf)` — same arguments `MapPage:188` uses — and threads `evidenceSiteIds` into the engine.
+  - Test facade upgraded so color values are preserved through `fromCssColorString`; tests assert on the visual contract (blue vs amber vs white) not just width.
+- **Deliberately deferred to follow-up slices:** freshness rendering on globe entity color/tint (consumes the threaded `referenceTimeMs`), and signal-side evidence highlighting (would modulate PointPrimitive colors — different infrastructure than Entity outlines).
+- Step 0 verifications confirmed both gaps were real at pre-slice HEAD.
 
 ### P2 — Globe alert triage in inspector — **OPEN**
 
