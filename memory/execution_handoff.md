@@ -16,19 +16,19 @@ Post-Phase-7 remediation (**active**)
 
 ## Current Slice
 
-**Audit remediation — Band C `MT1` + `MT2` shipped. Band C `MT3` next.**
+**Audit remediation — Band C closed (MT1 + MT2 + MT3 all shipped). CTO P1 next.**
 
-MT1 shipped in `327d7ca` (telemetry SSE tenant scoping). MT2 shipped in `9b23365` (recommendation generation per-tenant loop). Band D closed in `42f5af0`. User approved the **full remediation sweep**: Band D → Band C → CTO P1 → P2 → scope P3 → defer P4. Band C is being executed **manually** (scope-approval before coding) because each item is a high-blast-radius multi-tenancy change.
+MT1 shipped in `327d7ca` (telemetry SSE tenant scoping). MT2 shipped in `9b23365` (recommendation generation per-tenant loop). MT3 shipped in `2e874e2` (correlation target sites three-branch tenant resolution). Band D closed in `42f5af0`. User approved the **full remediation sweep**: Band D → Band C → CTO P1 → P2 → scope P3 → defer P4. Bands C + D were executed manually (scope-approval before coding). CTO P1+ may be a good fit for `/loop` because the remaining backlog is frontend-and-UI-heavy.
 
-Next unresolved by sweep order: **Band C `MT3`** (correlation target sites go global when rule AO is nil — confirmed latent defect; touches [evaluator_service.rb](backend/app/services/correlations/evaluator_service.rb), [correlation_rule.rb](backend/app/models/correlation_rule.rb), [correlation_rule_policy.rb](backend/app/policies/correlation_rule_policy.rb)). Scope proposal required before implementation.
+Next unresolved by sweep order: **CTO P1** (globe evidence threading + `useReferenceTimeMs`). Per [memory/cto_evaluation_roadmap.md](cto_evaluation_roadmap.md), P1 has **not been pre-judged** — scope against current code before starting.
 
 ## Current Repo State
 
-- Latest committed product slice: `9b23365` — Band C `MT2` recommendation generation per-tenant
-- Prior product slice: `327d7ca` — Band C `MT1` telemetry SSE org + AO scoping
-- Latest committed rotation: `8c6d767` — post-MT1 handoff rotation
+- Latest committed product slice: `2e874e2` — Band C `MT3` correlation target sites tenant-scoped
+- Prior product slice: `9b23365` — Band C `MT2` recommendation generation per-tenant
+- Latest committed rotation: `527618b` — post-MT2 handoff rotation
 - Working tree: **clean after rotation commit**
-- Branch state: `main` pushed at `9b23365` (product); handoff rotation follows
+- Branch state: `main` pushed at `2e874e2` (product); handoff rotation follows
 
 ## Phase 7 — Slice Plan
 
@@ -62,6 +62,7 @@ Sequenced:
 - `42f5af0` — Band D `M1`: `strong_migrations` 2.6.0 added to the default Gemfile group, baselined at `start_after = 20260415100001` via `config/initializers/strong_migrations.rb`; drift-guard spec fails if the baseline is ever bumped past an existing migration
 - `327d7ca` — Band C `MT1`: telemetry SSE stream now filters per-payload against the viewer's `policy_scope(Asset)` asset-id set (computed once at stream open). Comment on `TelemetryReadingPolicy` documents that per-payload tenant filtering is controller dispatch, not Pundit. Zero simulator / broadcaster / schema changes. Five new request specs cover unrestricted, org-only, AO-only, compound org+AO, and empty-scope viewers
 - `9b23365` — Band C `MT2`: recommendation generation is now per-tenant. `ContextAssembler.call(organization_id:)` scopes every query via site / AO / home_site anchors; `GeneratorService.call(organization_id:)` threads it and tags logs with tenant; `GenerationJob` enumerates `Organization.pluck(:id)` and runs one cycle per org (falls back to a single unscoped run when the deployment has no Organization rows — single-tenant backward compat). Per-tenant failures do not block remaining tenants. Zero schema / LLM-enricher / rule-engine changes. Sixteen new spec cases across assembler, generator, and job
+- `2e874e2` — Band C `MT3`: correlation rule target resolution is now tenant-scoped via a three-branch fallback in `EvaluatorService.target_sites_scope` and the mirror predicate `rule_targets_site?`. AO-bound rules resolve via AO (unchanged); nil-AO rules owned by an org-scoped commander resolve to sites in the creator's organization; nil-AO rules owned by an admin with no org resolve to `Site.active` (admin-global unchanged). `CorrelationRule.active.includes(:created_by)` avoids the per-rule N+1 the creator lookup would otherwise introduce. No schema / migration / policy change. Six new spec cases using `contain_exactly` invariants
 
 ## Phase 6 — Closed Slice Plan (historical context)
 
@@ -161,8 +162,8 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 - Phase 7 remains closed.
 - Audit remediation is active under the **full bulletproof sweep**:
   - Band D (F1, O1, J1, M1) — **shipped and pushed**
-  - Band C (MT1, MT2, MT3) — **in progress, manual one-at-a-time (not /loop)**
-  - CTO P1 → P2 → (scope P3) → defer P4 — queued after Band C
+  - Band C (MT1, MT2, MT3) — **shipped and pushed (manual scope-approval mode)**
+  - CTO P1 → P2 → (scope P3) → defer P4 — next
 - Band A (`I1`, `G1`, `API1`, `D1`) and Band B (`I2`, `R1`) — shipped in `27831e1`.
 - Band D `F1` — shipped in `43ea358`.
 - Band D `O1` — shipped in `e7eaccb`.
@@ -170,11 +171,12 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 - Band D `M1` — shipped in `42f5af0`.
 - Band C `MT1` — shipped in `327d7ca`.
 - Band C `MT2` — shipped in `9b23365`.
-- Next unresolved confirmed finding by sweep order: `MT3` — correlation target sites go global when rule AO is nil. Awaits scope-approval conversation before implementation.
+- Band C `MT3` — shipped in `2e874e2`.
+- All confirmed findings in the merged audit backlog are now closed. Next unresolved work: **CTO evaluation priorities P1–P4** — independent code-first scoping required per [cto_evaluation_roadmap.md](cto_evaluation_roadmap.md).
 
 ## Next
 
-- **Immediate next step:** open a scope-proposal conversation for Band C `MT3` (correlation target sites go global when rule AO is nil; needs tenant anchoring on correlation rules + evaluator target-site resolution). Do not write code for MT3 without user approval of the scope first.
+- **Immediate next step:** scope CTO P1 (globe evidence + `useReferenceTimeMs`) against current code. P1–P4 are each unprejudged; see [cto_evaluation_roadmap.md](cto_evaluation_roadmap.md) for verification prompts. With Band C + D shipped, the remaining backlog is mostly frontend/UI/doc work — a production-grade `/loop` prompt for CTO P1+ is now a viable option to discuss with the user before starting.
 - **Full sweep order (approved by user 2026-04-22):** Band C `MT1` → `MT2` → `MT3` → CTO P1 (globe evidence + `useReferenceTimeMs`) → CTO P2 (globe alert triage in inspector) → scope CTO P3 (5-slice map+debrief workstation; needs explicit alignment before start) → defer CTO P4 unless a 6th map tool is planned.
 - **Legacy commit-target note (superseded by sweep):** whether to continue into Band C versus stop at the single-org boundary was resolved — Band C is on the sweep. Previously marked as "latent for single-org"; kept in the sweep for production-ready completeness before new roadmap work.
 - **External CTO evaluation (2026-04-22) — briefing:** see [memory/cto_evaluation_roadmap.md](cto_evaluation_roadmap.md). Full third-party report + per-priority disposition. P0 (`Date.now()` defaults → required) shipped in `368e079`. P1–P4 are open and each needs independent code-first evaluation before adopting — the file includes explicit verification prompts per priority. Neither model has pre-judged P1–P4; do not start any of them without scoping against current code first.
@@ -211,7 +213,22 @@ cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/api/cl
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (shipped remediation slice — Band C `MT2` recommendation generation per-tenant, committed in `9b23365`, 2026-04-22)
+## Last Validation Results (shipped remediation slice — Band C `MT3` correlation target sites tenant-scoped, committed in `2e874e2`, 2026-04-22)
+
+- Modified backend files: `backend/app/services/correlations/evaluator_service.rb`
+- Modified spec files: `backend/spec/services/correlations/evaluator_service_spec.rb` (+6 cases)
+- Touched findings doc: `.claude/skills/resilience-remediation/references/findings.md`
+- Touched handoff: `memory/execution_handoff.md`
+- Focused backend validation:
+  - `TEST_DATABASE_PORT=5434 bundle exec rspec spec/services/correlations/evaluator_service_spec.rb` → **38 / 38 pass**
+  - `TEST_DATABASE_PORT=5434 bundle exec rspec spec/services/correlations/ spec/jobs/correlations/ spec/policies/correlation_rule_policy_spec.rb spec/requests/api/correlation_rules_spec.rb spec/requests/api/signals_spec.rb` → **196 / 196 pass** (adjacent regression)
+- Full validation:
+  - `TEST_DATABASE_PORT=5434 bundle exec rspec` → **2212 examples, 0 failures** (+6 vs MT2 baseline of 2206)
+  - `bundle exec brakeman --no-pager --exit-on-warn` → **0 warnings, 0 errors**
+  - `git diff --check` → **clean**
+- Diff stat: 2 files, +131/-2 lines. Test invariants use `contain_exactly` per MT2 mentor feedback.
+
+## Prior Validation Results (shipped remediation slice — Band C `MT2` recommendation generation per-tenant, committed in `9b23365`, 2026-04-22)
 
 - Modified backend files: `backend/app/services/recommendations/context_assembler.rb`, `backend/app/services/recommendations/generator_service.rb`, `backend/app/jobs/recommendations/generation_job.rb`
 - Modified spec files: `backend/spec/services/recommendations/context_assembler_spec.rb`, `backend/spec/services/recommendations/generator_service_spec.rb`, `backend/spec/jobs/recommendations/generation_job_spec.rb` (+16 cases)

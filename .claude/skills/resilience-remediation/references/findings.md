@@ -142,16 +142,16 @@ Use this file as the canonical remediation backlog.
 
 #### `MT3` — Correlation Target Sites Go Global When Rule AO Is Nil
 - Severity: `P2` for multi-tenant readiness
-- Status: confirmed latent defect
-- Why real:
-  - [evaluator_service.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/services/correlations/evaluator_service.rb) returns `Site.active` when `area_of_operation_id` is nil
-  - [correlation_rule.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/models/correlation_rule.rb) has no `organization_id`
-- Risk:
-  - rule evaluation and alert creation can cross tenant boundaries in shared-org deployment
-- Primary files:
-  - [evaluator_service.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/services/correlations/evaluator_service.rb)
-  - [correlation_rule.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/models/correlation_rule.rb)
-  - [correlation_rule_policy.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/policies/correlation_rule_policy.rb)
+- Status: fixed and shipped on `2026-04-22`
+- Fix summary:
+  - `Correlations::EvaluatorService.target_sites_scope` now uses a three-branch tenant resolution: (1) AO-scoped rule → sites in that AO; (2) nil-AO rule whose creator has an organization → sites in the creator's org; (3) nil-AO rule by an admin with no org → `Site.active` (unchanged, preserves admin-global rules).
+  - `Correlations::EvaluatorService.rule_targets_site?` mirrors the same three-branch logic so the single-site membership check used by `RuleFiringJob` stays consistent with bulk target resolution.
+  - `CorrelationRule.active.includes(:created_by)` preloads the creator in the evaluator to avoid an N+1 user query per rule per signal (ran every 30s via `Correlations::EvaluateRecentJob`).
+  - No schema change. No migration. No policy rewrite. The finding's literal "no `organization_id` column on correlation_rules" is a stylistic note; correctness is achieved via the existing tenant anchors (`area_of_operation.organization_id` and `created_by.organization_id`). A future schema-level canonical form remains strictly additive if desired.
+- Tests:
+  - `contain_exactly` invariants on `target_sites_scope` across all three branches plus the `site_id` short-circuit (4 cases)
+  - A consistency proof that `rule_targets_site?` agrees with `target_sites_scope` for every (rule, site) pair across all three branches (1 case)
+  - An end-to-end leak-closure case proving an org-A commander's nil-AO rule does not fire against an org-B signal at an org-B site (1 case)
 
 ### Band D — Lower-Priority Hardening
 
