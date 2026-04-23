@@ -24,6 +24,7 @@ import {
 } from '../../lib/globeEngineHelpers'
 import type { TelemetryMap } from '../../lib/telemetry'
 import {
+  ASSET_FRESHNESS_FILL_ALPHA,
   ASSET_FRESHNESS_THRESHOLDS,
   deriveFreshness,
   type FreshnessState,
@@ -34,19 +35,6 @@ import {
 const ASSET_LINKED_OUTLINE_CSS   = '#5282ff'
 const ASSET_LINKED_OUTLINE_WIDTH = 4
 const ASSET_DEFAULT_OUTLINE_WIDTH = 2
-
-// Freshness → fill alpha. Mirrors useMapAssetLayers' circle-opacity table so
-// the two surfaces render the same asset in the same visual "vividness"
-// given the same reference clock. Freshness modulates the point fill only;
-// outline state (linked/evidence/default) is owned by the prior slice's
-// outline effect and should remain untouched so the two visual channels
-// don't fight each other.
-const ASSET_FILL_ALPHA_BY_FRESHNESS: Record<FreshnessState, number> = {
-  fresh:       0.94,
-  aging:       0.72,
-  stale:       0.46,
-  unavailable: 0.32,
-}
 
 export interface GlobeAssetEntitiesInput {
   viewerRef:   React.RefObject<CesiumType.Viewer | null>
@@ -178,7 +166,7 @@ export function useGlobeAssetEntities({
         ? deriveFreshness(updatedAtMs, referenceTimeMs, ASSET_FRESHNESS_THRESHOLDS)
         : 'unavailable'
 
-      const alpha = ASSET_FILL_ALPHA_BY_FRESHNESS[freshness]
+      const alpha = ASSET_FRESHNESS_FILL_ALPHA[freshness]
       setEntityPointColor(Cesium, entity, Cesium.Color.CYAN.withAlpha(alpha))
     }
   }, [viewerReady, assets, referenceTimeMs, cesiumRef, viewerRef])

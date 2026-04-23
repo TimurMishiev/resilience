@@ -10,6 +10,7 @@ import type { Map as MapLibreMap, GeoJSONSource } from 'maplibre-gl'
 import type { Site, Asset } from '../../api/types'
 import { buildAssetFeatureCollection } from '../../lib/mapRenderData'
 import type { TelemetryMap } from '../../lib/telemetry'
+import { ASSET_FRESHNESS_FILL_ALPHA } from '../../lib/freshness'
 
 const EMPTY_READINGS: TelemetryMap = new Map()
 
@@ -59,13 +60,16 @@ export function useMapAssetLayers({
             'degraded', '#4a2f17',
             '#3a3f4b',
           ],
+          // Fill-opacity curve is shared with globe (useGlobeAssetEntities)
+          // via ASSET_FRESHNESS_FILL_ALPHA in lib/freshness.ts — one source
+          // of truth prevents silent drift across surfaces.
           'circle-opacity': [
             'match', ['get', 'freshness'],
-            'fresh', 0.94,
-            'aging', 0.72,
-            'stale', 0.46,
-            'unavailable', 0.32,
-            0.94,
+            'fresh',       ASSET_FRESHNESS_FILL_ALPHA.fresh,
+            'aging',       ASSET_FRESHNESS_FILL_ALPHA.aging,
+            'stale',       ASSET_FRESHNESS_FILL_ALPHA.stale,
+            'unavailable', ASSET_FRESHNESS_FILL_ALPHA.unavailable,
+            ASSET_FRESHNESS_FILL_ALPHA.fresh,
           ],
           'circle-stroke-width': 1.5,
           'circle-stroke-color': [

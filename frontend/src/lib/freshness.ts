@@ -31,6 +31,21 @@ export const ASSET_FRESHNESS_THRESHOLDS: FreshnessThresholds = {
   staleMs: 24 * 3_600_000,
 }
 
+/**
+ * Asset-fill opacity curve keyed by freshness state. Shared between map
+ * (useMapAssetLayers' `circle-opacity` paint expression) and globe
+ * (useGlobeAssetEntities' point.color alpha modulation) so the two surfaces
+ * fade stale assets identically for the same reference clock. Stroke and
+ * label opacity curves are surface-specific paint attributes — intentionally
+ * not shared here; diverging them is a visual-design choice per surface.
+ */
+export const ASSET_FRESHNESS_FILL_ALPHA: Record<FreshnessState, number> = {
+  fresh:       0.94,
+  aging:       0.72,
+  stale:       0.46,
+  unavailable: 0.32,
+}
+
 const DEFAULT_THRESHOLDS: FreshnessThresholds = {
   agingMs: 30_000,   // 30 seconds
   staleMs: 120_000,  // 2 minutes
