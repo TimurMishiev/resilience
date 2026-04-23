@@ -118,17 +118,14 @@ Use this file as the canonical remediation backlog.
 
 #### `MT1` — Telemetry SSE Stream Is Not Org-Scoped
 - Severity: `P1` for multi-tenant readiness
-- Status: confirmed latent defect
-- Why real:
-  - [telemetry_controller.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/controllers/api/telemetry_controller.rb) streams every broadcast payload to every subscriber
-  - [simulator_service.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/services/telemetry/simulator_service.rb) publishes no `organization_id`
-  - [telemetry_reading_policy.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/policies/telemetry_reading_policy.rb) allows `stream?` unconditionally
-- Risk:
-  - cross-tenant live telemetry leakage in a shared-org deployment
-- Primary files:
-  - [telemetry_controller.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/controllers/api/telemetry_controller.rb)
-  - [simulator_service.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/services/telemetry/simulator_service.rb)
-  - [telemetry_reading_policy.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/policies/telemetry_reading_policy.rb)
+- Status: fixed and shipped on `2026-04-22`
+- Fix summary:
+  - `Api::TelemetryController#stream` now snapshots `policy_scope(Asset).pluck(:id).to_set` once at stream open and drops any payload whose `asset_id` is outside that set. Uses the same `AssetPolicy::Scope` as the `/api/telemetry` snapshot endpoint, so live + replay share one authoritative tenant gate.
+  - Controller-local extraction `telemetry_payload_visible?` handles malformed queue payloads by logging and skipping (matches `Api::EventsController` pattern).
+  - `TelemetryReadingPolicy` carries a comment documenting that per-payload tenant filtering lives in the controller, not Pundit.
+  - No simulator, broadcaster, schema, or route changes — minimum-viable fix that closes the cross-tenant leakage risk without widening blast radius.
+- Tests:
+  - 5 new request specs in `spec/requests/api/telemetry_spec.rb` covering: unrestricted viewer, org-only viewer, AO-only viewer, compound org+AO viewer, empty-scope viewer.
 
 #### `MT2` — Recommendation Context Assembly Reads Global Operational State
 - Severity: `P1` for multi-tenant readiness
