@@ -3,6 +3,37 @@ import { describe, expect, it, vi } from 'vitest'
 import type { AreaOfOperation, Asset, Signal, Site, Task } from '../api/types'
 import type { TelemetryReading } from '../lib/telemetry'
 import type { Vessel } from '../api/vessels'
+
+// Mock the alerts section — its own behavior is covered by
+// MapSiteAlertsSection.test.tsx. Here we only need to assert that
+// GlobeInspectorPanel renders it with the right props when a site is
+// selected, without dragging in useQuery / useSignalRuleMatches wiring.
+vi.mock('../components/MapSiteAlertsSection', () => ({
+  MapSiteAlertsSection: ({
+    siteId, referenceTimeMs, canTriage, onSelectSignal,
+  }: {
+    siteId: string
+    referenceTimeMs: number
+    canTriage: boolean
+    onSelectSignal: (signalId: string) => void
+  }) => (
+    <div
+      data-testid="mock-map-site-alerts"
+      data-site-id={siteId}
+      data-reference-time-ms={referenceTimeMs}
+      data-can-triage={canTriage ? 'true' : 'false'}
+    >
+      <button
+        type="button"
+        data-testid="mock-map-site-alerts-trigger-select"
+        onClick={() => onSelectSignal('sig-from-alert')}
+      >
+        select signal
+      </button>
+    </div>
+  ),
+}))
+
 import { GlobeInspectorPanel } from '../components/GlobeInspectorPanel'
 
 const baseProps = {
@@ -21,6 +52,9 @@ const baseProps = {
   isReplaying: false,
   telemetryConnected: true,
   tacticalMapHref: '/map?site_id=site-1',
+  referenceTimeMs: 1704067200000,
+  canTriage: true,
+  onSelectSignal: vi.fn(),
   onClose: vi.fn(),
   navigate: vi.fn(),
 }
@@ -195,6 +229,59 @@ describe('GlobeInspectorPanel', () => {
     expect(screen.getByText('Tropical Cyclone')).toBeInTheDocument()
     expect(screen.getByText('Philippines')).toBeInTheDocument()
     expect(screen.getByText('2.5')).toBeInTheDocument()
+  })
+
+  it('renders MapSiteAlertsSection with the right props when a site is selected', () => {
+    render(
+      <GlobeInspectorPanel
+        {...baseProps}
+        selectedSite={site}
+        canTriage={true}
+        referenceTimeMs={1_711_200_000_000}
+      />,
+    )
+
+    const mock = screen.getByTestId('mock-map-site-alerts')
+    expect(mock.getAttribute('data-site-id')).toBe('site-1')
+    expect(mock.getAttribute('data-reference-time-ms')).toBe('1711200000000')
+    expect(mock.getAttribute('data-can-triage')).toBe('true')
+  })
+
+  it('propagates canTriage=false into the alerts section for viewer-role users', () => {
+    render(
+      <GlobeInspectorPanel
+        {...baseProps}
+        selectedSite={site}
+        canTriage={false}
+      />,
+    )
+
+    expect(screen.getByTestId('mock-map-site-alerts').getAttribute('data-can-triage')).toBe('false')
+  })
+
+  it('forwards onSelectSignal clicks from an alert row up to the page handler', () => {
+    const onSelectSignal = vi.fn()
+    render(
+      <GlobeInspectorPanel
+        {...baseProps}
+        selectedSite={site}
+        onSelectSignal={onSelectSignal}
+      />,
+    )
+
+    fireEvent.click(screen.getByTestId('mock-map-site-alerts-trigger-select'))
+    expect(onSelectSignal).toHaveBeenCalledWith('sig-from-alert')
+  })
+
+  it('does not render the alerts section when no site is selected', () => {
+    render(
+      <GlobeInspectorPanel
+        {...baseProps}
+        selectedAsset={asset}
+      />,
+    )
+
+    expect(screen.queryByTestId('mock-map-site-alerts')).toBeNull()
   })
 
   it('shows replay vessel context notice for vessel-position signals', () => {

@@ -13,6 +13,7 @@ import { useAllChokepoints } from '../hooks/useChokepoints'
 import { useReplayParams } from '../hooks/useReplayParams'
 import { useReferenceTimeMs } from '../hooks/useReferenceTimeMs'
 import { useEvidenceLinkedIds } from '../hooks/useEvidenceLinkedIds'
+import { useRole } from '../hooks/useRole'
 import { useEntitySelectionSync } from '../hooks/useEntitySelectionSync'
 import { useGlobeEngine } from '../hooks/useGlobeEngine'
 import { useGlobeE2EBridge } from '../hooks/useGlobeE2EBridge'
@@ -218,6 +219,11 @@ export default function GlobePage() {
   // surface (PointPrimitiveCollection, not Entity) and a follow-up concern.
   const { evidenceSiteIds } = useEvidenceLinkedIds(selectedSiteId, selectedSignalId, asOf)
 
+  // Role gating for triage actions — matches MapPage:61. The alerts section
+  // inside GlobeInspectorPanel hides Ack/Escalate buttons when the user lacks
+  // the commander/operator permission.
+  const { canTriageAlerts } = useRole()
+
   const { viewerReady, isCloseView, focusPosition, flyToHome, projectPosition, projectRenderedPosition, inspectCanvasPosition, dispatchSyntheticPick, pickCanvasPosition } = useGlobeEngine({
     containerRef, creditsRef,
     sites, assets, signals, tasksBySite, areaOfOperations, breachedSiteIds,
@@ -403,6 +409,9 @@ export default function GlobePage() {
           isReplaying={isReplaying}
           telemetryConnected={telemetryConnected}
           tacticalMapHref={tacticalMapHref}
+          referenceTimeMs={referenceTimeMs}
+          canTriage={canTriageAlerts}
+          onSelectSignal={onSignalClick}
           onClose={clearSelection}
           navigate={navigate}
         />

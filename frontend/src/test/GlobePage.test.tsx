@@ -153,6 +153,20 @@ vi.mock('../hooks/useSignalRuleMatches', () => ({
   }),
 }))
 
+// GlobePage now calls useRole() for the alerts-section canTriage gate. Mock
+// to avoid wrapping every test in AuthProvider; role is irrelevant to the
+// Cesium-side surface these tests cover.
+vi.mock('../hooks/useRole', () => ({
+  useRole: () => ({
+    role: 'commander',
+    isAdmin: false,
+    isCommander: true,
+    isOperator: false,
+    isViewer: false,
+    canTriageAlerts: true,
+  }),
+}))
+
 vi.mock('../hooks/useReplayParams', () => ({
   useReplayParams: () => mockReplay,
 }))

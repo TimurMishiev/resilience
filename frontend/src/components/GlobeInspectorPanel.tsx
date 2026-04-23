@@ -11,6 +11,12 @@ import {
   SOURCE_LABELS,
   ALERT_LEVEL_INTENT,
 } from '../lib/signalConfig'
+// Note: MapSiteAlertsSection is map-surface-named but entity-agnostic — props
+// are (siteId, referenceTimeMs, canTriage, onSelectSignal) with no map-
+// specific state coupling. Reused on globe for CTO P2 parity. A future
+// rename to SiteAlertsSection is a mechanical refactor, deliberately
+// deferred to keep this slice narrow.
+import { MapSiteAlertsSection } from './MapSiteAlertsSection'
 
 function assetTypeIcon(type: Asset['asset_type']): string {
   switch (type) {
@@ -37,6 +43,17 @@ export interface GlobeInspectorPanelProps {
   isReplaying: boolean
   telemetryConnected: boolean
   tacticalMapHref: string
+  /** Replay-aware clock threaded through by GlobePage — powers freshness
+   *  rendering and timestamp relative-times in the alerts section. */
+  referenceTimeMs: number
+  /** True when current user has the commander/operator role required to
+   *  acknowledge alerts. MapSiteAlertsSection hides Ack/Escalate buttons
+   *  when this is false. */
+  canTriage: boolean
+  /** Caller-owned handler invoked when the operator clicks "Inspect signal"
+   *  on an alert row. GlobePage wires this to onSignalClick so the selection
+   *  flows through the same route the 3D click handler uses. */
+  onSelectSignal: (signalId: string) => void
   onClose: () => void
   navigate: (path: string) => void
 }
@@ -57,6 +74,9 @@ export function GlobeInspectorPanel({
   isReplaying,
   telemetryConnected,
   tacticalMapHref,
+  referenceTimeMs,
+  canTriage,
+  onSelectSignal,
   onClose,
   navigate,
 }: GlobeInspectorPanelProps) {
@@ -117,6 +137,14 @@ export function GlobeInspectorPanel({
           ) : (
             <p className="bp6-text-muted globe-no-tasks">No tasks assigned.</p>
           )}
+
+          <Divider />
+          <MapSiteAlertsSection
+            siteId={selectedSite.id}
+            referenceTimeMs={referenceTimeMs}
+            canTriage={canTriage}
+            onSelectSignal={onSelectSignal}
+          />
 
           <Divider />
           <div className="globe-telemetry-readings">
