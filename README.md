@@ -1,10 +1,18 @@
 # Resilience
 
+[![CI](https://img.shields.io/github/actions/workflow/status/TimurMishiev/resilience/ci.yml?branch=main&label=CI)](https://github.com/TimurMishiev/resilience/actions)
+[![Backend specs](https://img.shields.io/badge/backend%20specs-2%2C212-brightgreen)](#test-coverage)
+[![Frontend tests](https://img.shields.io/badge/frontend%20tests-678-brightgreen)](#test-coverage)
+[![E2E scenarios](https://img.shields.io/badge/Playwright%20E2E-15-brightgreen)](#test-coverage)
+[![Security](https://img.shields.io/badge/Brakeman-0%20warnings-brightgreen)](#security)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](frontend/tsconfig.app.json)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 **Operational intelligence platform for monitoring distributed field operations, fusing multi-source intelligence, and coordinating tactical response in real time.**
 
 Resilience is the kind of software that runs inside a TOC (Tactical Operations Center). It ingests live sensor feeds, correlates threat patterns, fuses alerts into incidents, and gives operators a single operational picture across 2D map, 3D globe, and structured data surfaces. Every mutation is audit-logged transactionally. Every surface supports time-travel replay. The authorization model enforces organization and area-of-operation boundaries at every layer.
 
-Built as a portfolio project targeting defense-tech engineering roles (Palantir, Anduril, Reveal Technology, Shield AI). The codebase is production-hardened: 2,100+ backend specs, 650+ frontend tests, 15 Playwright E2E scenarios, Pundit authorization on every endpoint, and CI that gates on security scanning, type safety, and performance budgets before auto-deploying. Installable as a PWA with offline caching. Classification banner support (UNCLASSIFIED / CUI / SECRET).
+Built as a portfolio project targeting defense-tech engineering roles (Palantir, Anduril, Reveal Technology, Shield AI). The codebase is production-hardened: **2,212 backend specs, 678 frontend tests across 91 files, 15 Playwright E2E scenarios**, Pundit authorization on every endpoint, and CI that gates on security scanning, type safety, and performance budgets before auto-deploying. Installable as a PWA with offline caching. Classification banner support (UNCLASSIFIED / CUI / SECRET).
 
 **Live:** [https://resilience-ops.fly.dev](https://resilience-ops.fly.dev)
 
@@ -13,6 +21,29 @@ Built as a portfolio project targeting defense-tech engineering roles (Palantir,
 | Commander | commander@resilience.mil | password123 |
 | Operator | operator@resilience.mil | password123 |
 | Viewer | viewer@resilience.mil | password123 |
+
+---
+
+## Reviewer's Guide — If You Only Have 10 Minutes
+
+Busy? Open these five files. Each one is deliberately chosen to demonstrate a distinct staff-level property of the system, not just "some representative code."
+
+1. **Audit trail backbone** — [`backend/app/services/audit/event_writer.rb`](backend/app/services/audit/event_writer.rb)
+   Every mutation in the system writes a `before_snapshot` / `after_snapshot` through this service, **inside the same database transaction** as the mutation itself. The audit trail is structurally impossible to diverge from the data. Architectural commitment, not a logging afterthought.
+
+2. **Atomic cooldown under concurrency** — [`backend/app/services/correlations/rule_firing_service.rb`](backend/app/services/correlations/rule_firing_service.rb)
+   Correlation-rule cooldowns use `UPDATE ... WHERE last_fired_at <= ?` with `update_all`. If `rows_updated == 0`, the claim lost; another worker already fired. Exactly-once semantics via row lock, not via distributed lock or idempotency key. The paired spec — [`rule_firing_service_spec.rb`](backend/spec/services/correlations/rule_firing_service_spec.rb) — proves the concurrency invariant, not just the happy path.
+
+3. **Multi-tenant authorization with named helpers** — [`backend/app/policies/application_policy.rb`](backend/app/policies/application_policy.rb)
+   Notice the helper pair `owned_area_of_operation_accessible?` vs `area_of_operation_surface_accessible?`. The first hides org-null global AOs; the second exposes them. Every Pundit policy uses a **named** helper, never the raw flag. This is the anti-pattern to the "let's just check `organization_id`" sprawl that multi-tenant systems accrete. 30 policies, one discipline, enforced by `verify_authorized` after-action.
+
+4. **AI trust boundary** — [`backend/app/services/recommendations/validator.rb`](backend/app/services/recommendations/validator.rb)
+   LLM-produced recommendations run four checks before persistence: (1) surfaced entity exists, (2) each evidence item exists, (3) action-payload IDs exist, (4) payload IDs refer to the *same* entity as the surfaced entity. Check 4 is the one that matters — it prevents the model from displaying "Incident A" in the UI while carrying "Incident B" in the executable payload. LLM output is treated as untrusted input, same posture as user input.
+
+5. **Server-side replay engine** — [`docs/adr-001-server-side-replay.md`](docs/adr-001-server-side-replay.md) → [`backend/app/services/replay/projection_service.rb`](backend/app/services/replay/projection_service.rb)
+   `as_of` is a first-class query parameter that reconstructs entity state at any past timestamp by replaying the audit log. `MAX_EVENTS = 100_000` safety cap, comment explaining why `find_each` would break ordering, explicit "pure read operation, no side effects" contract. Read the ADR first for the design rationale, then the service for the implementation.
+
+Each file is worth ~2 minutes. If only one: pick #3 (authorization helpers) — it's the single cleanest demonstration of disciplined production code on a topic where most platforms get sloppy.
 
 ---
 
@@ -40,14 +71,14 @@ Open **http://localhost:3000**. Demo data (9 sites, 19 tasks, 7 signal types, ve
 ```
                           ┌──────────────────────────────────────────────┐
                           │            Frontend  (React 19 / TS)        │
-                          │  25 pages  ·  65 components  ·  58 hooks   │
+                          │  25 pages  ·  66 components  ·  58 hooks   │
                           │  Blueprint.js  ·  MapLibre GL  ·  CesiumJS │
                           └────────────────────┬─────────────────────────┘
                                                │  REST  +  SSE
                           ┌────────────────────▼─────────────────────────┐
                           │           Backend  (Rails 8 API)             │
-                          │  28 models  ·  30 policies  ·  63 services  │
-                          │  32 controllers  ·  13 jobs  ·  69 migrations│
+                          │  27 models  ·  30 policies  ·  63 services  │
+                          │  36 controllers  ·  13 jobs  ·  69 migrations│
                           └──┬──────────────────┬───────────────────┬────┘
                              │                  │                   │
                ┌─────────────▼──────┐  ┌───────▼────────┐  ┌──────▼──────────┐
@@ -188,8 +219,8 @@ SSE (Server-Sent Events) with PostgreSQL `LISTEN`/`NOTIFY` relay for cross-proce
 
 | Layer | Count | Tool |
 |-------|-------|------|
-| Backend specs | 2,179 | RSpec |
-| Frontend unit/integration | 657 (90 files) | Vitest |
+| Backend specs | 2,212 | RSpec |
+| Frontend unit/integration | 678 (91 files) | Vitest |
 | E2E critical paths | 15 scenarios | Playwright |
 | Security scanning | 0 warnings | Brakeman + bundler-audit |
 | Type safety | 0 errors | TypeScript strict |
@@ -233,7 +264,7 @@ Key test categories:
 push to main
   ├── Frontend: tsc + ESLint + Vitest + build
   ├── Backend Security: Brakeman + bundler-audit
-  ├── Backend Tests: RSpec (2,179 examples against PostGIS 17)
+  ├── Backend Tests: RSpec (2,212 examples against PostGIS 17)
   ├── Globe Benchmark: Playwright perf budget against Dockerized app
   └── E2E: Playwright critical paths against Dockerized app
         │
@@ -286,7 +317,7 @@ Open **http://localhost:5173**. The Vite dev server proxies `/api/*` to the Rail
 ```bash
 # Backend
 cd backend
-bundle exec rspec                          # 2,179 examples
+bundle exec rspec                          # 2,212 examples
 bundle exec brakeman --no-progress -q      # security scan
 bundle exec bundler-audit check            # CVE check
 
@@ -294,7 +325,7 @@ bundle exec bundler-audit check            # CVE check
 cd frontend
 npx tsc --noEmit                           # type check
 yarn lint                                  # ESLint
-npx vitest run                             # 657 tests
+npx vitest run                             # 678 tests (91 files)
 yarn build                                 # production build (tsc -b, stricter)
 ```
 
@@ -354,18 +385,18 @@ resilience/
 ├── frontend/                      # React 19 + TypeScript + Vite
 │   ├── src/
 │   │   ├── api/                   # 24 API client modules
-│   │   ├── components/            # 65 shared components (map/, dashboard/, shell/)
+│   │   ├── components/            # 66 shared components (map/, dashboard/, shell/)
 │   │   ├── context/               # AuthContext, ReplayContext
 │   │   ├── hooks/                 # 58 hooks (data, engine, telemetry, replay)
 │   │   ├── pages/                 # 25 page components
 │   │   ├── lib/                   # Utilities (colors, coverage, formatters, signals)
-│   │   └── test/                  # 90 Vitest test files
+│   │   └── test/                  # 91 Vitest test files
 │   └── e2e/                       # 15 Playwright E2E scenarios
 │
 └── backend/                       # Rails 8.1 API
     ├── app/
-    │   ├── controllers/api/       # 32 API controllers
-    │   ├── models/                # 28 ActiveRecord models
+    │   ├── controllers/api/       # 36 API controllers
+    │   ├── models/                # 27 ActiveRecord models
     │   ├── policies/              # 30 Pundit authorization policies
     │   ├── services/              # 63 service objects
     │   └── jobs/                  # 13 background jobs
@@ -374,7 +405,7 @@ resilience/
     ├── db/
     │   ├── migrate/               # 69 migrations
     │   └── structure.sql          # Committed PostGIS-aware schema
-    └── spec/                      # 2,179 RSpec examples
+    └── spec/                      # 2,212 RSpec examples
 ```
 
 ---
