@@ -95,6 +95,13 @@ export interface GlobeEngineInput {
    */
   evidenceSiteIds: string[]
 
+  /**
+   * Signals linked to the currently selected site via rule matches. Companion
+   * to evidenceSiteIds — useEvidenceLinkedIds returns both halves. Drives the
+   * amber outline on globe signal primitives.
+   */
+  evidenceSignalIds: string[]
+
   /** Optional center point for focused signal decluttering around the current selection. */
   signalFocusCenter: { lat: number; lng: number } | null
   selectedSiteId:    string | null
@@ -155,6 +162,7 @@ export function useGlobeEngine({
   isReplaying,
   referenceTimeMs,
   evidenceSiteIds,
+  evidenceSignalIds,
   signalFocusCenter,
   selectedSiteId,
   selectedAssetId,
@@ -306,6 +314,7 @@ export function useGlobeEngine({
 
   const { signalPrimitivesRef, visibleSignals } = useGlobeSignalPrimitives({
     viewerRef, cesiumRef, viewerReady, signals, showSignals, selectedSignalId, signalFocusCenter, signalCollectionRef,
+    evidenceSignalIds,
   })
 
   // Keep signalsRef fresh for click handler

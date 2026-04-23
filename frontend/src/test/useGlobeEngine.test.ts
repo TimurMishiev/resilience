@@ -75,6 +75,8 @@ type FakePrimitive = {
   id: string
   position: unknown
   color?: unknown
+  outlineColor?: unknown
+  outlineWidth?: number
   show?: boolean
   distanceDisplayCondition?: unknown
   disableDepthTestDistance?: number
@@ -484,6 +486,7 @@ function defaultInput(
     isReplaying:      false,
     referenceTimeMs:  1704067200000,
     evidenceSiteIds:  [],
+    evidenceSignalIds: [],
     signalFocusCenter: null,
     selectedSiteId:    null,
     selectedAssetId:   null,
@@ -1581,6 +1584,40 @@ describe('useGlobeEngine adapter', () => {
       const entity = cesium.entityRegistry.get('site-site-1')!
       expect(getOutlineWidth(entity)).toBe(4)
       expect(getOutlineCss(entity)).toBe('#5282ff')
+    })
+
+    // ── Signal-side evidence ring on PointPrimitives ─────────────────────
+    it('applies the amber evidence outline to signal primitives in evidenceSignalIds', async () => {
+      const refs    = makeContainerRef()
+      const signals = [
+        makeSignal('sig-1', '10', '20'),
+        makeSignal('sig-2', '11', '21'),
+        makeSignal('sig-3', '12', '22'),
+      ]
+      const hook = await bootGlobe(cesium, refs, defaultInput(refs, {
+        signals,
+        evidenceSignalIds: ['sig-1', 'sig-3'],
+      }))
+
+      function getPrimitiveOutlineCss(id: string): string | undefined {
+        const collection = cesium.getSignalCollection()
+        const primitive = collection?.primitives.find(p => p.id === `signal-${id}`)
+        const value = primitive?.outlineColor as { _css?: string } | undefined
+        return value?._css
+      }
+
+      // Evidence-linked → amber
+      expect(getPrimitiveOutlineCss('sig-1')).toBe('#f5a623')
+      expect(getPrimitiveOutlineCss('sig-3')).toBe('#f5a623')
+      // Non-evidence → default (per-signal-type base color, not amber)
+      expect(getPrimitiveOutlineCss('sig-2')).not.toBe('#f5a623')
+
+      // Clearing evidenceSignalIds reverts all outlines to default
+      await act(async () => {
+        hook.rerender(defaultInput(refs, { signals, evidenceSignalIds: [] }))
+      })
+      expect(getPrimitiveOutlineCss('sig-1')).not.toBe('#f5a623')
+      expect(getPrimitiveOutlineCss('sig-3')).not.toBe('#f5a623')
     })
   })
 })

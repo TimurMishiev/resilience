@@ -213,11 +213,11 @@ export default function GlobePage() {
   const referenceTimeMs = useReferenceTimeMs(asOf)
 
   // Evidence-linked entities — when a signal is selected, resolves to the set
-  // of sites tied to it via rule matches (same contract as MapPage:188). The
-  // signal-side companion (`evidenceSignalIds`) is intentionally unused on
-  // globe in this slice; signal-primitive evidence highlighting is a separate
-  // surface (PointPrimitiveCollection, not Entity) and a follow-up concern.
-  const { evidenceSiteIds } = useEvidenceLinkedIds(selectedSiteId, selectedSignalId, asOf)
+  // of sites tied to it via rule matches (MapPage:188 parity). Both halves
+  // (site and signal) are now threaded into the engine: sites drive the
+  // amber ring on site entities; signals drive the amber outline on signal
+  // primitives.
+  const { evidenceSiteIds, evidenceSignalIds } = useEvidenceLinkedIds(selectedSiteId, selectedSignalId, asOf)
 
   // Role gating for triage actions — matches MapPage:61. The alerts section
   // inside GlobeInspectorPanel hides Ack/Escalate buttons when the user lacks
@@ -233,6 +233,7 @@ export default function GlobePage() {
     asOf: asOf ?? undefined, isReplaying,
     referenceTimeMs,
     evidenceSiteIds,
+    evidenceSignalIds,
     signalFocusCenter: selectedCenter,
     selectedSiteId, selectedAssetId, selectedSignalId,
     onSiteClick, onAssetClick, onSignalClick,

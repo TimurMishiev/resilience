@@ -19,6 +19,14 @@ import {
 import { nowMs, recordPerfEvent } from '../../lib/perfInstrumentation'
 import { SIGNAL_COLORS } from '../../lib/signalConfig'
 
+// Mirrors the map signal-evidence-ring color from useMapSignalLayers so
+// evidence-linked signals look the same across surfaces. Two-state logic
+// (evidence | default); if a third outline state ever lands here, promote
+// this to a data-driven table (see prior slice's precedence rule).
+const SIGNAL_EVIDENCE_OUTLINE_CSS = '#f5a623'
+const SIGNAL_EVIDENCE_OUTLINE_ALPHA = 0.9
+const SIGNAL_DEFAULT_OUTLINE_ALPHA  = 0.35
+
 export interface GlobeSignalPrimitivesInput {
   viewerRef:   React.RefObject<CesiumType.Viewer | null>
   cesiumRef:   React.RefObject<CesiumModule | null>
@@ -28,6 +36,12 @@ export interface GlobeSignalPrimitivesInput {
   selectedSignalId:  string | null
   signalFocusCenter: { lat: number; lng: number } | null
   signalCollectionRef: React.RefObject<CesiumType.PointPrimitiveCollection | null>
+  /**
+   * Signals linked to the currently selected site via rule matches. Populated
+   * by useEvidenceLinkedIds; empty otherwise. Parity with map's
+   * `signal-evidence-ring` at useMapSignalLayers:159-173.
+   */
+  evidenceSignalIds: string[]
 }
 
 export interface GlobeSignalPrimitivesReturn {
@@ -45,6 +59,7 @@ export function useGlobeSignalPrimitives({
   selectedSignalId,
   signalFocusCenter,
   signalCollectionRef,
+  evidenceSignalIds,
 }: GlobeSignalPrimitivesInput): GlobeSignalPrimitivesReturn {
   const signalPrimitivesRef = useRef<Map<string, CesiumType.PointPrimitive>>(new Map())
   const previousVisibleSignalCountRef = useRef(0)
@@ -142,6 +157,31 @@ export function useGlobeSignalPrimitives({
     previousVisibleSignalCountRef.current = visibleSignals.length
     previousSignalFocusModeRef.current = nextFocusMode
   }, [viewerReady, selectedSignalId, showSignals, signalFocusCenter, visibleSignals, cesiumRef, viewerRef, signalCollectionRef])
+
+  // Evidence-linked outline. Signals tied to the selected site via rule
+  // matches render an amber outline (#f5a623, alpha 0.9). Non-linked signals
+  // revert to the default per-signal-type outline (base color @ alpha 0.35).
+  // Re-runs on visibleSignals AND evidenceSignalIds change, so freshly-added
+  // primitives pick up the correct outline on first render.
+  useEffect(() => {
+    const Cesium = cesiumRef.current
+    if (!viewerReady || !Cesium) return
+
+    const evidenceSet   = new Set(evidenceSignalIds)
+    const evidenceColor = Cesium.Color.fromCssColorString(SIGNAL_EVIDENCE_OUTLINE_CSS).withAlpha(SIGNAL_EVIDENCE_OUTLINE_ALPHA)
+
+    for (const signal of visibleSignals) {
+      const primitive = signalPrimitivesRef.current.get(`signal-${signal.id}`)
+      if (!primitive) continue
+
+      if (evidenceSet.has(signal.id)) {
+        primitive.outlineColor = evidenceColor
+      } else {
+        const base = Cesium.Color.fromCssColorString(SIGNAL_COLORS[signal.signal_type] ?? '#ffffff')
+        primitive.outlineColor = base.withAlpha(SIGNAL_DEFAULT_OUTLINE_ALPHA)
+      }
+    }
+  }, [viewerReady, visibleSignals, evidenceSignalIds, cesiumRef])
 
   return { signalPrimitivesRef, visibleSignals }
 }
