@@ -169,6 +169,143 @@ RSpec.describe "Api::Telemetry", type: :request do
       expect(broadcaster).to have_received(:unsubscribe).with(queue)
     end
 
+    describe "tenant filtering" do
+      # Exercises the per-payload guard in TelemetryController#stream. The
+      # broadcaster is always global (single-process in-memory pub/sub); the
+      # stream loop must drop payloads whose asset_id is outside the viewer's
+      # AssetPolicy::Scope. Covers both axes (organization + area_of_operation)
+      # and the compound case where both are pinned.
+
+      let(:queue) { Queue.new }
+      let(:broadcaster) { instance_double(Telemetry::Broadcaster, subscribe: queue, unsubscribe: nil) }
+
+      before do
+        allow(Telemetry::Broadcaster).to receive(:instance).and_return(broadcaster)
+      end
+
+      def push_reading(q, asset)
+        q.push({
+          asset_id: asset.id,
+          name:     asset.name,
+          lat:      1.0,
+          lng:      2.0,
+          heading:  0,
+          speed:    0,
+          battery:  100,
+          ts:       Time.current.to_i,
+        }.to_json)
+      end
+
+      def open_stream_as(user)
+        token = JwtAuthenticatable.encode_sse(user.id)
+        get "/api/telemetry/stream", params: { token: token }
+      end
+
+      it "unrestricted viewer (no org, no AO) receives every reading" do
+        unrestricted = create(:user, :commander)
+        push_reading(queue, asset_a)
+        push_reading(queue, asset_b)
+        queue.close
+
+        open_stream_as(unrestricted)
+
+        expect(response).to have_http_status(:ok)
+        expect(response.body.scan("event: telemetry").size).to eq(2)
+        expect(response.body).to include(%("asset_id":"#{asset_a.id}"))
+        expect(response.body).to include(%("asset_id":"#{asset_b.id}"))
+      end
+
+      it "org-only viewer drops cross-organization readings" do
+        org_a = create(:organization)
+        org_b = create(:organization)
+        site_a = create(:site, organization: org_a)
+        site_b = create(:site, organization: org_b)
+        asset_org_a = create(:asset, name: "Org A Asset", home_site: site_a)
+        asset_org_b = create(:asset, name: "Org B Asset", home_site: site_b)
+
+        viewer = create(:user, :commander, organization: org_a)
+
+        push_reading(queue, asset_org_a)
+        push_reading(queue, asset_org_b)
+        queue.close
+
+        open_stream_as(viewer)
+
+        expect(response).to have_http_status(:ok)
+        expect(response.body.scan("event: telemetry").size).to eq(1)
+        expect(response.body).to include(%("asset_id":"#{asset_org_a.id}"))
+        expect(response.body).not_to include(%("asset_id":"#{asset_org_b.id}"))
+      end
+
+      it "AO-only viewer drops cross-area-of-operation readings" do
+        ao_1 = create(:area_of_operation)
+        ao_2 = create(:area_of_operation)
+        site_ao_1 = create(:site, area_of_operation: ao_1)
+        site_ao_2 = create(:site, area_of_operation: ao_2)
+        asset_ao_1 = create(:asset, name: "AO 1 Asset", home_site: site_ao_1)
+        asset_ao_2 = create(:asset, name: "AO 2 Asset", home_site: site_ao_2)
+
+        viewer = create(:user, :commander, area_of_operation: ao_1)
+
+        push_reading(queue, asset_ao_1)
+        push_reading(queue, asset_ao_2)
+        queue.close
+
+        open_stream_as(viewer)
+
+        expect(response).to have_http_status(:ok)
+        expect(response.body.scan("event: telemetry").size).to eq(1)
+        expect(response.body).to include(%("asset_id":"#{asset_ao_1.id}"))
+        expect(response.body).not_to include(%("asset_id":"#{asset_ao_2.id}"))
+      end
+
+      it "compound org+AO viewer filters on both axes simultaneously" do
+        org_a = create(:organization)
+        org_b = create(:organization)
+        ao_1_in_org_a = create(:area_of_operation, organization: org_a)
+        ao_2_in_org_a = create(:area_of_operation, organization: org_a)
+        ao_1_in_org_b = create(:area_of_operation, organization: org_b)
+
+        site_match    = create(:site, organization: org_a, area_of_operation: ao_1_in_org_a)
+        site_wrong_ao = create(:site, organization: org_a, area_of_operation: ao_2_in_org_a)
+        site_wrong_org = create(:site, organization: org_b, area_of_operation: ao_1_in_org_b)
+
+        asset_match     = create(:asset, name: "Match", home_site: site_match)
+        asset_wrong_ao  = create(:asset, name: "Wrong AO", home_site: site_wrong_ao)
+        asset_wrong_org = create(:asset, name: "Wrong Org", home_site: site_wrong_org)
+
+        viewer = create(:user, :commander, organization: org_a, area_of_operation: ao_1_in_org_a)
+
+        push_reading(queue, asset_match)
+        push_reading(queue, asset_wrong_ao)
+        push_reading(queue, asset_wrong_org)
+        queue.close
+
+        open_stream_as(viewer)
+
+        expect(response).to have_http_status(:ok)
+        expect(response.body.scan("event: telemetry").size).to eq(1)
+        expect(response.body).to include(%("asset_id":"#{asset_match.id}"))
+        expect(response.body).not_to include(%("asset_id":"#{asset_wrong_ao.id}"))
+        expect(response.body).not_to include(%("asset_id":"#{asset_wrong_org.id}"))
+      end
+
+      it "empty-scope viewer (org with zero visible assets) drops every payload but keeps the stream open" do
+        org_empty = create(:organization)
+        viewer = create(:user, :commander, organization: org_empty)
+
+        push_reading(queue, asset_a)
+        push_reading(queue, asset_b)
+        queue.close
+
+        open_stream_as(viewer)
+
+        expect(response).to have_http_status(:ok)
+        expect(response.body).to include("event: connected")
+        expect(response.body).not_to include("event: telemetry")
+      end
+    end
+
     it "returns 429 when the remote IP is already at live stream capacity" do
       original_ip_limit = ENV["SSE_MAX_STREAMS_PER_IP"]
       ENV["SSE_MAX_STREAMS_PER_IP"] = "1"

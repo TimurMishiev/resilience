@@ -101,6 +101,14 @@ module Api
       # Send an initial connected event so the client knows the stream is live
       return unless sse_write(response.stream, event: "connected", data: { message: "telemetry stream open" })
 
+      # Snapshot the viewer's visible asset-id set once at stream open. Every
+      # subsequent payload is filtered against this set so that cross-tenant
+      # telemetry never reaches the client. AssetPolicy::Scope is the same
+      # authoritative gate used by /api/telemetry (the snapshot endpoint),
+      # which keeps live + replay consistent. New assets added to the viewer's
+      # scope mid-stream are picked up on reconnect.
+      allowed_asset_ids = policy_scope(Asset).pluck(:id).to_set
+
       # Heartbeat thread — keeps the connection alive through proxies / load balancers
       heartbeat = start_sse_heartbeat(stream_name: "telemetry") do
         refresh_sse_stream_lease(lease, stream_name: "telemetry") &&
@@ -112,6 +120,7 @@ module Api
         payload = queue.pop
         break if payload.nil?
         break unless refresh_sse_stream_lease(lease, stream_name: "telemetry")
+        next unless telemetry_payload_visible?(payload, allowed_asset_ids)
         response.stream.write("event: telemetry\ndata: #{payload}\n\n")
       rescue IOError, ActionController::Live::ClientDisconnected
         break
@@ -135,6 +144,16 @@ module Api
       stream.write("event: #{event}\ndata: #{data.to_json}\n\n")
       true
     rescue IOError, ActionController::Live::ClientDisconnected
+      false
+    end
+
+    # Drop payloads whose asset_id is outside the viewer's allowed set. A
+    # malformed payload is dropped and logged — never breaks the stream loop.
+    def telemetry_payload_visible?(payload, allowed_asset_ids)
+      parsed = JSON.parse(payload)
+      allowed_asset_ids.include?(parsed["asset_id"])
+    rescue JSON::ParserError => e
+      Rails.logger.error("[Telemetry] malformed queue payload — skipping: #{e.message}")
       false
     end
 
