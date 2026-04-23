@@ -56,7 +56,19 @@ async function resolveReconstructionTarget(event: ReconstructableEvent): Promise
   }
 }
 
-export default function DebriefPanel() {
+interface DebriefPanelProps {
+  /**
+   * When true, clicking a reconstructable event still calls setAsOf (so
+   * shared replay state advances) but skips the navigate-to-entity-page
+   * side effect. Used by the inline-on-map surface where the operator
+   * should stay on /map with the map entering replay, not be yanked to
+   * /sites/:id. Defaults to false — the standalone /debrief page keeps
+   * its navigate-away behavior unchanged.
+   */
+  noNavigate?: boolean
+}
+
+export default function DebriefPanel({ noNavigate = false }: DebriefPanelProps = {}) {
   const [range, setRange] = useState<DebriefRange>('24h')
   const [pendingEventId, setPendingEventId] = useState<string | null>(null)
   const [diffEvent, setDiffEvent] = useState<AuditEvent | null>(null)
@@ -88,11 +100,15 @@ export default function DebriefPanel() {
     if (requiresLookup) setPendingEventId(event.id)
 
     try {
-      const target = await resolveReconstructionTarget(event)
+      // Only resolve the target if we'll actually navigate. Skipping the
+      // lookup in noNavigate mode also avoids an unnecessary API call for
+      // Task/Asset reconstructions, which is the whole point of inline
+      // mode — replay-in-place, no cross-page redirect.
+      const target = noNavigate ? null : await resolveReconstructionTarget(event)
       if (token !== latestClickToken.current) return
       if (requiresLookup) setPendingEventId(null)
       setAsOf(event.occurred_at)
-      if (target) navigate(target)
+      if (!noNavigate && target) navigate(target)
     } catch (err) {
       if (token !== latestClickToken.current) return
       if (requiresLookup) setPendingEventId(null)

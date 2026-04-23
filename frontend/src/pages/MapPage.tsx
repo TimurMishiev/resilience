@@ -54,6 +54,7 @@ import {
 } from '../lib/mapRangeRings'
 import { MapOverlayControls } from '../components/map/MapOverlayControls'
 import { MapSelectionPanels } from '../components/map/MapSelectionPanels'
+import { MapInlineDebriefPanel } from '../components/map/MapInlineDebriefPanel'
 
 export default function MapPage() {
   const location    = useLocation()
@@ -809,6 +810,7 @@ export default function MapPage() {
             aria-label="Resize panel"
             data-testid="panel-resize-handle"
           />
+          <MapInlineDebriefPanel />
           {hasSelection ? (
             <MapSelectionPanels
               selectedSite={selectedSite}

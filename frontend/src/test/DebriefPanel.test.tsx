@@ -98,7 +98,7 @@ function LocationProbe() {
   return <div data-testid="location">{`${location.pathname}${location.search}`}</div>
 }
 
-function renderPanel() {
+function renderPanel(props: Parameters<typeof DebriefPanel>[0] = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const wrapper = ({ children }: { children: ReactNode }) => (
     <MemoryRouter initialEntries={['/debrief']}>
@@ -108,7 +108,7 @@ function renderPanel() {
       </QueryClientProvider>
     </MemoryRouter>
   )
-  return render(<DebriefPanel />, { wrapper })
+  return render(<DebriefPanel {...props} />, { wrapper })
 }
 
 describe('DebriefPanel', () => {
@@ -531,6 +531,36 @@ describe('DebriefPanel', () => {
       expect(screen.getByTestId('location')).toHaveTextContent('/sites/site-asset?asset=a1')
       expect(replayState.setAsOf).toHaveBeenLastCalledWith('2026-04-17T10:45:00Z')
       expect(replayState.setAsOf).not.toHaveBeenCalledWith('2026-04-17T11:30:00Z')
+    })
+  })
+
+  // ── noNavigate mode (inline-on-map surface) ───────────────────────────
+  describe('noNavigate mode', () => {
+    it('enters replay but does NOT navigate when clicking an Incident event', async () => {
+      const user = userEvent.setup()
+      renderPanel({ noNavigate: true })
+
+      await user.click(await screen.findByRole('button', { name: /Enter replay from Incident event/i }))
+
+      expect(replayState.setAsOf).toHaveBeenCalledWith('2026-04-17T12:00:00Z')
+      // Still on /debrief — no navigation side effect.
+      expect(screen.getByTestId('location')).toHaveTextContent('/debrief')
+    })
+
+    it('skips the Task lookup API call entirely in noNavigate mode', async () => {
+      const user = userEvent.setup()
+      const { getTask } = await import('../api/tasks')
+      renderPanel({ noNavigate: true })
+
+      await user.click(await screen.findByRole('button', { name: /Enter replay from Task event/i }))
+
+      // Replay clock still advances.
+      expect(replayState.setAsOf).toHaveBeenCalledWith('2026-04-17T11:30:00Z')
+      // But the reconstruction lookup is skipped — inline mode doesn't need the
+      // deep-link target, so we don't pay for the round-trip.
+      expect(getTask).not.toHaveBeenCalled()
+      // Location unchanged.
+      expect(screen.getByTestId('location')).toHaveTextContent('/debrief')
     })
   })
 })
