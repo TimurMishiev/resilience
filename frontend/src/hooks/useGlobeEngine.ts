@@ -86,6 +86,14 @@ export interface GlobeEngineInput {
    */
   referenceTimeMs: number
 
+  /**
+   * Sites linked to the currently selected signal via rule matches. Populated
+   * by useEvidenceLinkedIds when a signal is selected; empty array otherwise.
+   * Mirrors useMapLibreEngine's evidenceSiteIds contract so map and globe
+   * render the same set of evidence-linked sites for the same selection.
+   */
+  evidenceSiteIds: string[]
+
   /** Optional center point for focused signal decluttering around the current selection. */
   signalFocusCenter: { lat: number; lng: number } | null
   selectedSiteId:    string | null
@@ -145,6 +153,7 @@ export function useGlobeEngine({
   asOf,
   isReplaying,
   referenceTimeMs: _referenceTimeMs,
+  evidenceSiteIds,
   signalFocusCenter,
   selectedSiteId,
   selectedAssetId,
@@ -290,6 +299,7 @@ export function useGlobeEngine({
   const { siteEntitiesRef } = useGlobeSiteEntities({
     viewerRef, cesiumRef, viewerReady, sites, tasksBySite,
     linkedSiteId: selectedAssetHomeSiteId,
+    evidenceSiteIds,
   })
 
   const { assetEntitiesRef } = useGlobeAssetEntities({

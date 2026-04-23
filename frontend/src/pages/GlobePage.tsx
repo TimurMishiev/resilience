@@ -12,6 +12,7 @@ import { useActiveBreachSiteIds } from '../hooks/useSignalRuleMatches'
 import { useAllChokepoints } from '../hooks/useChokepoints'
 import { useReplayParams } from '../hooks/useReplayParams'
 import { useReferenceTimeMs } from '../hooks/useReferenceTimeMs'
+import { useEvidenceLinkedIds } from '../hooks/useEvidenceLinkedIds'
 import { useEntitySelectionSync } from '../hooks/useEntitySelectionSync'
 import { useGlobeEngine } from '../hooks/useGlobeEngine'
 import { useGlobeE2EBridge } from '../hooks/useGlobeE2EBridge'
@@ -210,6 +211,13 @@ export default function GlobePage() {
   // downstream freshness rendering can be added without another prop rewrite.
   const referenceTimeMs = useReferenceTimeMs(asOf)
 
+  // Evidence-linked entities — when a signal is selected, resolves to the set
+  // of sites tied to it via rule matches (same contract as MapPage:188). The
+  // signal-side companion (`evidenceSignalIds`) is intentionally unused on
+  // globe in this slice; signal-primitive evidence highlighting is a separate
+  // surface (PointPrimitiveCollection, not Entity) and a follow-up concern.
+  const { evidenceSiteIds } = useEvidenceLinkedIds(selectedSiteId, selectedSignalId, asOf)
+
   const { viewerReady, isCloseView, focusPosition, flyToHome, projectPosition, projectRenderedPosition, inspectCanvasPosition, dispatchSyntheticPick, pickCanvasPosition } = useGlobeEngine({
     containerRef, creditsRef,
     sites, assets, signals, tasksBySite, areaOfOperations, breachedSiteIds,
@@ -218,6 +226,7 @@ export default function GlobePage() {
     showTrails: isReplaying && showTrails,
     asOf: asOf ?? undefined, isReplaying,
     referenceTimeMs,
+    evidenceSiteIds,
     signalFocusCenter: selectedCenter,
     selectedSiteId, selectedAssetId, selectedSignalId,
     onSiteClick, onAssetClick, onSignalClick,

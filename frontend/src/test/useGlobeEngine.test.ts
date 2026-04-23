@@ -214,8 +214,13 @@ function buildCesiumFacade() {
   }
 
   // ---------- Color stub (all methods return the chain) ---------------------
+  //
+  // fromCssColorString returns a distinct object per call carrying the
+  // original css string on _css, so tests can assert on the visual contract
+  // (e.g. linked rings are blue #5282ff, evidence rings are amber #f5a623)
+  // rather than just the mechanical outlineWidth signal.
 
-  type ColorLike = { withAlpha: (_a: number) => ColorLike }
+  type ColorLike = { _css?: string; withAlpha: (_a: number) => ColorLike }
   const colorSelf: ColorLike = {
     withAlpha: (alpha: number) => {
       void alpha
@@ -232,9 +237,15 @@ function buildCesiumFacade() {
     BLACK:        colorSelf,
     WHITE:        colorSelf,
     TRANSPARENT:  colorSelf,
-    fromCssColorString: (hex: string): typeof colorSelf => {
-      void hex
-      return colorSelf
+    fromCssColorString: (hex: string): ColorLike => {
+      const tagged: ColorLike = {
+        _css: hex,
+        withAlpha: (alpha: number) => {
+          void alpha
+          return tagged
+        },
+      }
+      return tagged
     },
   }
 
@@ -455,6 +466,7 @@ function defaultInput(
     asOf:             undefined,
     isReplaying:      false,
     referenceTimeMs:  1704067200000,
+    evidenceSiteIds:  [],
     signalFocusCenter: null,
     selectedSiteId:    null,
     selectedAssetId:   null,
@@ -1348,6 +1360,16 @@ describe('useGlobeEngine adapter', () => {
       return typeof value === 'number' ? value : undefined
     }
 
+    // Returns the css color string the outline was set from. The facade's
+    // Color constructor records the original css string on fromCssColorString,
+    // which lets tests assert on the visual contract (blue for linked, amber
+    // for evidence) rather than just the mechanical outlineWidth signal.
+    function getOutlineCss(entity: FakeEntity): string | undefined {
+      const prop = entity.point?.outlineColor as { getValue?: () => unknown } | undefined
+      const value = prop?.getValue?.() as { _css?: string; _css_color?: string } | undefined
+      return value?._css ?? value?._css_color
+    }
+
     it('applies linked-highlight outline to the selected asset\'s home site', async () => {
       const refs  = makeContainerRef()
       const sites = [
@@ -1419,6 +1441,61 @@ describe('useGlobeEngine adapter', () => {
         hook.rerender(defaultInput(refs, { sites, assets, selectedAssetId: null }))
       })
       expect(getOutlineWidth(cesium.entityRegistry.get('site-site-1')!)).toBe(2)
+    })
+
+    // ── Evidence-linked ring (P1 slice 2) ────────────────────────────────
+    it('applies the evidence-linked amber outline to sites in evidenceSiteIds', async () => {
+      const refs  = makeContainerRef()
+      const sites = [
+        makeSite({ id: 'site-1' }),
+        makeSite({ id: 'site-2' }),
+        makeSite({ id: 'site-3' }),
+      ]
+      const hook = await bootGlobe(cesium, refs, defaultInput(refs, {
+        sites,
+        evidenceSiteIds: ['site-1', 'site-3'],
+      }))
+
+      const s1 = cesium.entityRegistry.get('site-site-1')!
+      const s2 = cesium.entityRegistry.get('site-site-2')!
+      const s3 = cesium.entityRegistry.get('site-site-3')!
+
+      // Evidence outline: amber (#f5a623) width 3
+      expect(getOutlineWidth(s1)).toBe(3)
+      expect(getOutlineCss(s1)).toBe('#f5a623')
+      expect(getOutlineWidth(s3)).toBe(3)
+      expect(getOutlineCss(s3)).toBe('#f5a623')
+
+      // Non-matching site: default outline, not amber
+      expect(getOutlineWidth(s2)).toBe(2)
+      expect(getOutlineCss(s2)).not.toBe('#f5a623')
+
+      // Clearing evidenceSiteIds returns every site to default
+      await act(async () => {
+        hook.rerender(defaultInput(refs, { sites, evidenceSiteIds: [] }))
+      })
+      for (const id of ['site-1', 'site-2', 'site-3']) {
+        expect(getOutlineWidth(cesium.entityRegistry.get(`site-${id}`)!)).toBe(2)
+      }
+    })
+
+    it('prefers linked-highlight over evidence when a site is both', async () => {
+      // A site that is both evidence-linked (via the selected signal) AND the
+      // home_site of the selected asset must render the blue linked ring, not
+      // the amber evidence ring. Matches the map layer-order contract where
+      // site-linked-ring paints over site-evidence-ring.
+      const refs  = makeContainerRef()
+      const sites  = [makeSite({ id: 'site-1' })]
+      const assets = [makeAsset({ id: 'asset-1', home_site_id: 'site-1' })]
+      await bootGlobe(cesium, refs, defaultInput(refs, {
+        sites, assets,
+        selectedAssetId: 'asset-1',
+        evidenceSiteIds: ['site-1'],
+      }))
+
+      const entity = cesium.entityRegistry.get('site-site-1')!
+      expect(getOutlineWidth(entity)).toBe(4)
+      expect(getOutlineCss(entity)).toBe('#5282ff')
     })
   })
 })

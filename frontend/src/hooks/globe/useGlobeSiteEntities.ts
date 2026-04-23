@@ -23,10 +23,20 @@ import {
   type CesiumModule,
 } from '../../lib/globeEngineHelpers'
 
-// Mirrors the map site-linked-ring color (#5282ff) from useMapSiteLayers so the
-// visual contract is consistent across the two operator surfaces.
-const SITE_LINKED_OUTLINE_CSS  = '#5282ff'
+// Outline palette mirrors the map site ring layers so the two operator
+// surfaces share a visual contract:
+//   linked    (#5282ff, width 4) — home site of the selected asset
+//   evidence  (#f5a623, width 3) — sites tied to the selected signal via
+//                                  rule matches (useEvidenceLinkedIds)
+//   default   (white,   width 2)
+// Precedence: linked wins over evidence wins over default. A site that is
+// both evidence-linked and the selected asset's home site shows the linked
+// ring, matching the map's layer-order semantics where site-linked-ring is
+// added after site-evidence-ring.
+const SITE_LINKED_OUTLINE_CSS   = '#5282ff'
 const SITE_LINKED_OUTLINE_WIDTH = 4
+const SITE_EVIDENCE_OUTLINE_CSS   = '#f5a623'
+const SITE_EVIDENCE_OUTLINE_WIDTH = 3
 const SITE_DEFAULT_OUTLINE_WIDTH = 2
 
 export interface GlobeSiteEntitiesInput {
@@ -40,6 +50,12 @@ export interface GlobeSiteEntitiesInput {
    * of the currently selected asset. Null clears the highlight.
    */
   linkedSiteId: string | null
+  /**
+   * Sites linked to the currently selected signal via rule matches. Parity
+   * with map's `site-evidence-ring` at useMapSiteLayers:140-145. Empty array
+   * when nothing is selected or no rule-match evidence exists.
+   */
+  evidenceSiteIds: string[]
 }
 
 export interface GlobeSiteEntitiesReturn {
@@ -53,6 +69,7 @@ export function useGlobeSiteEntities({
   sites,
   tasksBySite,
   linkedSiteId,
+  evidenceSiteIds,
 }: GlobeSiteEntitiesInput): GlobeSiteEntitiesReturn {
   const siteEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
 
@@ -114,24 +131,38 @@ export function useGlobeSiteEntities({
     }
   }, [viewerReady, sites, tasksBySite, cesiumRef, viewerRef])
 
-  // Linked-highlight outline — blue ring on the site that is the home_site of
-  // the currently selected asset. Re-runs on linkedSiteId change AND on sites
-  // change, so freshly-added entities pick up the correct outline state.
+  // Three-state outline precedence — linked > evidence > default. Re-runs on
+  // any of linkedSiteId / evidenceSiteIds / sites change, so freshly-added
+  // entities pick up the correct outline state without a second effect pass.
   useEffect(() => {
     const Cesium = cesiumRef.current
     const viewer = viewerRef.current
     if (!viewerReady || !viewer || !Cesium) return
 
-    const linkedColor  = Cesium.Color.fromCssColorString(SITE_LINKED_OUTLINE_CSS).withAlpha(0.95)
-    const defaultColor = Cesium.Color.WHITE.withAlpha(0.8)
+    const linkedColor   = Cesium.Color.fromCssColorString(SITE_LINKED_OUTLINE_CSS).withAlpha(0.95)
+    const evidenceColor = Cesium.Color.fromCssColorString(SITE_EVIDENCE_OUTLINE_CSS).withAlpha(0.9)
+    const defaultColor  = Cesium.Color.WHITE.withAlpha(0.8)
+    const evidenceSet   = new Set(evidenceSiteIds)
 
-    for (const [key, entity] of siteEntitiesRef.current.entries()) {
-      const id = key.replace(/^site-/, '')
-      const isLinked = linkedSiteId != null && id === linkedSiteId
-      setEntityPointOutlineColor(Cesium, entity, isLinked ? linkedColor : defaultColor)
-      setEntityPointOutlineWidth(Cesium, entity, isLinked ? SITE_LINKED_OUTLINE_WIDTH : SITE_DEFAULT_OUTLINE_WIDTH)
+    for (const site of sites) {
+      const entity = siteEntitiesRef.current.get(`site-${site.id}`)
+      if (!entity) continue
+
+      const isLinked   = linkedSiteId != null && site.id === linkedSiteId
+      const isEvidence = !isLinked && evidenceSet.has(site.id)
+
+      if (isLinked) {
+        setEntityPointOutlineColor(Cesium, entity, linkedColor)
+        setEntityPointOutlineWidth(Cesium, entity, SITE_LINKED_OUTLINE_WIDTH)
+      } else if (isEvidence) {
+        setEntityPointOutlineColor(Cesium, entity, evidenceColor)
+        setEntityPointOutlineWidth(Cesium, entity, SITE_EVIDENCE_OUTLINE_WIDTH)
+      } else {
+        setEntityPointOutlineColor(Cesium, entity, defaultColor)
+        setEntityPointOutlineWidth(Cesium, entity, SITE_DEFAULT_OUTLINE_WIDTH)
+      }
     }
-  }, [viewerReady, sites, linkedSiteId, cesiumRef, viewerRef])
+  }, [viewerReady, sites, linkedSiteId, evidenceSiteIds, cesiumRef, viewerRef])
 
   return { siteEntitiesRef }
 }
