@@ -14,6 +14,7 @@ import {
   setEntityLabelDisableDepthTestDistance,
   setEntityLabelHeightReference,
   setEntityLabelText,
+  setEntityPointColor,
   setEntityPointDisableDepthTestDistance,
   setEntityPointHeightReference,
   setEntityPointOutlineColor,
@@ -22,12 +23,30 @@ import {
   type CesiumModule,
 } from '../../lib/globeEngineHelpers'
 import type { TelemetryMap } from '../../lib/telemetry'
+import {
+  ASSET_FRESHNESS_THRESHOLDS,
+  deriveFreshness,
+  type FreshnessState,
+} from '../../lib/freshness'
 
 // Mirrors the map asset-linked-ring color (#5282ff) from useMapAssetLayers so
 // the visual contract is consistent with the map surface.
 const ASSET_LINKED_OUTLINE_CSS   = '#5282ff'
 const ASSET_LINKED_OUTLINE_WIDTH = 4
 const ASSET_DEFAULT_OUTLINE_WIDTH = 2
+
+// Freshness → fill alpha. Mirrors useMapAssetLayers' circle-opacity table so
+// the two surfaces render the same asset in the same visual "vividness"
+// given the same reference clock. Freshness modulates the point fill only;
+// outline state (linked/evidence/default) is owned by the prior slice's
+// outline effect and should remain untouched so the two visual channels
+// don't fight each other.
+const ASSET_FILL_ALPHA_BY_FRESHNESS: Record<FreshnessState, number> = {
+  fresh:       0.94,
+  aging:       0.72,
+  stale:       0.46,
+  unavailable: 0.32,
+}
 
 export interface GlobeAssetEntitiesInput {
   viewerRef:   React.RefObject<CesiumType.Viewer | null>
@@ -44,6 +63,12 @@ export interface GlobeAssetEntitiesInput {
    * to useMapAssetLayers#linkedSiteId.
    */
   linkedSiteId: string | null
+  /**
+   * Replay-aware clock. When set, each asset's point-fill alpha is modulated
+   * by deriveFreshness(last_reported_at, referenceTimeMs). Live or replay is
+   * decided at the page level — this hook just consumes the clock it is given.
+   */
+  referenceTimeMs: number
 }
 
 export interface GlobeAssetEntitiesReturn {
@@ -60,6 +85,7 @@ export function useGlobeAssetEntities({
   isReplaying,
   asOf,
   linkedSiteId,
+  referenceTimeMs,
 }: GlobeAssetEntitiesInput): GlobeAssetEntitiesReturn {
   const assetEntitiesRef = useRef<Map<string, CesiumType.Entity>>(new Map())
 
@@ -130,6 +156,32 @@ export function useGlobeAssetEntities({
       setEntityPosition(Cesium, entity, lng, lat)
     }
   }, [viewerReady, assets, readings, sites, isReplaying, asOf, cesiumRef, viewerRef])
+
+  // Freshness-driven fill alpha. Each asset's point color alpha reflects how
+  // stale the last telemetry update is relative to referenceTimeMs. Mirrors
+  // the map's circle-opacity table (useMapAssetLayers:62-69) so cross-surface
+  // rendering is consistent. Runs on every [assets, referenceTimeMs] change
+  // so replay scrubbing + live tick both re-apply correctly; freshly-created
+  // entities pick up the correct alpha on first render.
+  useEffect(() => {
+    const Cesium = cesiumRef.current
+    const viewer = viewerRef.current
+    if (!viewerReady || !viewer || !Cesium) return
+
+    for (const asset of assets) {
+      const entity = assetEntitiesRef.current.get(`asset-${asset.id}`)
+      if (!entity) continue
+
+      const timestamp  = asset.last_reported_at ?? asset.updated_at
+      const updatedAtMs = Date.parse(timestamp)
+      const freshness: FreshnessState = Number.isFinite(updatedAtMs)
+        ? deriveFreshness(updatedAtMs, referenceTimeMs, ASSET_FRESHNESS_THRESHOLDS)
+        : 'unavailable'
+
+      const alpha = ASSET_FILL_ALPHA_BY_FRESHNESS[freshness]
+      setEntityPointColor(Cesium, entity, Cesium.Color.CYAN.withAlpha(alpha))
+    }
+  }, [viewerReady, assets, referenceTimeMs, cesiumRef, viewerRef])
 
   // Linked-highlight outline — blue ring on assets whose home_site_id matches
   // the currently selected site. Re-runs on linkedSiteId AND assets change so

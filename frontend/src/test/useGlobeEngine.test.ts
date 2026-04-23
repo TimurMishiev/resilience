@@ -220,11 +220,24 @@ function buildCesiumFacade() {
   // (e.g. linked rings are blue #5282ff, evidence rings are amber #f5a623)
   // rather than just the mechanical outlineWidth signal.
 
-  type ColorLike = { _css?: string; withAlpha: (_a: number) => ColorLike }
+  // `_alpha` captures the argument to withAlpha so tests can assert on the
+  // freshness-driven alpha curve applied to asset point fills. Calls to
+  // .withAlpha always return a new tagged instance, never the shared
+  // constant reference — otherwise asset-A's alpha would overwrite asset-B's.
+  type ColorLike = { _css?: string; _alpha?: number; withAlpha: (_a: number) => ColorLike }
   const colorSelf: ColorLike = {
     withAlpha: (alpha: number) => {
-      void alpha
-      return colorSelf
+      const tagged: ColorLike = {
+        _alpha: alpha,
+        withAlpha: (nested: number) => {
+          const deeper: ColorLike = {
+            _alpha: nested,
+            withAlpha: () => deeper,
+          }
+          return deeper
+        },
+      }
+      return tagged
     },
   }
   const Color = {
@@ -238,14 +251,18 @@ function buildCesiumFacade() {
     WHITE:        colorSelf,
     TRANSPARENT:  colorSelf,
     fromCssColorString: (hex: string): ColorLike => {
-      const tagged: ColorLike = {
+      const base: ColorLike = {
         _css: hex,
         withAlpha: (alpha: number) => {
-          void alpha
-          return tagged
+          const withA: ColorLike = {
+            _css: hex,
+            _alpha: alpha,
+            withAlpha: (nested: number) => ({ ...withA, _alpha: nested }),
+          }
+          return withA
         },
       }
-      return tagged
+      return base
     },
   }
 
@@ -1477,6 +1494,74 @@ describe('useGlobeEngine adapter', () => {
       for (const id of ['site-1', 'site-2', 'site-3']) {
         expect(getOutlineWidth(cesium.entityRegistry.get(`site-${id}`)!)).toBe(2)
       }
+    })
+
+    // ── Asset freshness alpha (P1 follow-up — consumes the threaded clock) ──
+    it('maps asset telemetry freshness to the point-fill alpha curve from the map surface', async () => {
+      // Each asset has a distinct last_reported_at that places it in a
+      // specific freshness bucket relative to referenceTimeMs (fixed clock).
+      // Asserts the visible contract: fresh=0.94, aging=0.72, stale=0.46,
+      // unavailable=0.32. Matches useMapAssetLayers circle-opacity table.
+      const refs  = makeContainerRef()
+      const now   = 1_735_000_000_000
+
+      const sites  = [makeSite({ id: 'site-1' })]
+      const assets = [
+        makeAsset({ id: 'a-fresh',       home_site_id: 'site-1', last_reported_at: new Date(now - 60_000).toISOString() }),
+        makeAsset({ id: 'a-aging',       home_site_id: 'site-1', last_reported_at: new Date(now - 10 * 3_600_000).toISOString() }),
+        makeAsset({ id: 'a-stale',       home_site_id: 'site-1', last_reported_at: new Date(now - 30 * 3_600_000).toISOString() }),
+        makeAsset({ id: 'a-unavailable', home_site_id: 'site-1', last_reported_at: 'not-a-date' }),
+      ]
+
+      await bootGlobe(cesium, refs, defaultInput(refs, {
+        sites, assets, referenceTimeMs: now,
+      }))
+
+      function getFillAlpha(assetId: string): number | undefined {
+        const entity = cesium.entityRegistry.get(`asset-${assetId}`)
+        const prop = entity?.point?.color as { getValue?: () => unknown } | undefined
+        const value = prop?.getValue?.() as { _alpha?: number } | undefined
+        return value?._alpha
+      }
+
+      expect(getFillAlpha('a-fresh')).toBeCloseTo(0.94, 5)
+      expect(getFillAlpha('a-aging')).toBeCloseTo(0.72, 5)
+      expect(getFillAlpha('a-stale')).toBeCloseTo(0.46, 5)
+      expect(getFillAlpha('a-unavailable')).toBeCloseTo(0.32, 5)
+    })
+
+    it('re-applies freshness alpha when referenceTimeMs advances (live tick or replay scrub)', async () => {
+      // An asset that is fresh at t0 becomes stale at t0 + 30h. Re-rendering
+      // with a later referenceTimeMs must re-run the freshness effect and
+      // lower the alpha, not leave it stuck at the first-render value.
+      const refs = makeContainerRef()
+      const t0   = 1_735_000_000_000
+      const reportedAt = new Date(t0 - 60_000).toISOString() // 1 minute before t0
+
+      const sites  = [makeSite({ id: 'site-1' })]
+      const assets = [makeAsset({ id: 'a-1', home_site_id: 'site-1', last_reported_at: reportedAt })]
+
+      const hook = await bootGlobe(cesium, refs, defaultInput(refs, {
+        sites, assets, referenceTimeMs: t0,
+      }))
+
+      function getFillAlpha(): number | undefined {
+        const entity = cesium.entityRegistry.get('asset-a-1')
+        const prop = entity?.point?.color as { getValue?: () => unknown } | undefined
+        const value = prop?.getValue?.() as { _alpha?: number } | undefined
+        return value?._alpha
+      }
+
+      expect(getFillAlpha()).toBeCloseTo(0.94, 5)
+
+      await act(async () => {
+        hook.rerender(defaultInput(refs, {
+          sites, assets, referenceTimeMs: t0 + 30 * 3_600_000,
+        }))
+      })
+
+      // 30 hours after last report → stale bucket
+      expect(getFillAlpha()).toBeCloseTo(0.46, 5)
     })
 
     it('prefers linked-highlight over evidence when a site is both', async () => {

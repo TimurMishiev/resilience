@@ -79,10 +79,11 @@ export interface GlobeEngineInput {
   asOf:        string | undefined
   isReplaying: boolean
   /**
-   * Live-or-replay reference clock from useReferenceTimeMs. Threaded through so
-   * downstream freshness/time-aware rendering can be added without a prop-chain
-   * rewrite. Present-but-currently-unused flags are intentional — this slice
-   * (CTO P1) closes the plumbing gap; entity freshness rendering is follow-up.
+   * Live-or-replay reference clock from useReferenceTimeMs. Consumed by
+   * useGlobeAssetEntities to derive per-asset freshness state, which modulates
+   * the asset dot's fill alpha. The clock itself is replay-aware at the call
+   * site (GlobePage.useReferenceTimeMs(asOf)), so this hook doesn't need to
+   * branch on isReplaying.
    */
   referenceTimeMs: number
 
@@ -152,7 +153,7 @@ export function useGlobeEngine({
   showTrails,
   asOf,
   isReplaying,
-  referenceTimeMs: _referenceTimeMs,
+  referenceTimeMs,
   evidenceSiteIds,
   signalFocusCenter,
   selectedSiteId,
@@ -162,11 +163,6 @@ export function useGlobeEngine({
   onAssetClick,
   onSignalClick,
 }: GlobeEngineInput): GlobeEngineReturn {
-  // _referenceTimeMs is reserved for future freshness rendering on entities
-  // (see CTO evaluation roadmap — P1 follow-up). It is intentionally threaded
-  // now so call sites commit to the replay-aware clock contract; renaming it
-  // into use later should never require touching GlobePage.
-  void _referenceTimeMs
   const viewerRef       = useRef<CesiumType.Viewer | null>(null)
   const cesiumRef       = useRef<CesiumModule | null>(null)
 
@@ -305,6 +301,7 @@ export function useGlobeEngine({
   const { assetEntitiesRef } = useGlobeAssetEntities({
     viewerRef, cesiumRef, viewerReady, sites, assets, readings, isReplaying, asOf,
     linkedSiteId: selectedSiteId,
+    referenceTimeMs,
   })
 
   const { signalPrimitivesRef, visibleSignals } = useGlobeSignalPrimitives({

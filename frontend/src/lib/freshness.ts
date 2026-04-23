@@ -18,6 +18,19 @@ export interface FreshnessThresholds {
   staleMs: number
 }
 
+/**
+ * Asset-telemetry freshness thresholds shared by map and globe surfaces.
+ * An asset whose last_reported_at (or updated_at fallback) is older than
+ * 6 hours is "aging"; older than 24 hours is "stale". Both surfaces apply
+ * the same curve to entity opacity so cross-surface rendering stays
+ * consistent. If you need a surface-specific curve, introduce a distinct
+ * named threshold rather than diverging this one silently.
+ */
+export const ASSET_FRESHNESS_THRESHOLDS: FreshnessThresholds = {
+  agingMs: 6 * 3_600_000,
+  staleMs: 24 * 3_600_000,
+}
+
 const DEFAULT_THRESHOLDS: FreshnessThresholds = {
   agingMs: 30_000,   // 30 seconds
   staleMs: 120_000,  // 2 minutes

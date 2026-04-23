@@ -1,14 +1,9 @@
 import type { Asset, Site, Task } from '../api/types'
-import { deriveFreshness, type FreshnessThresholds } from './freshness'
+import { deriveFreshness, ASSET_FRESHNESS_THRESHOLDS } from './freshness'
 import { assetDisplayPosition } from './assetPresentation'
 import { SIGNAL_ICON_CHAR } from './signalIcons'
 import { SOURCE_LABELS, SIGNAL_COLORS, SIGNAL_LABELS } from './signalConfig'
 import type { TelemetryMap } from './telemetry'
-
-const ASSET_MAP_FRESHNESS_THRESHOLDS: FreshnessThresholds = {
-  agingMs: 6 * 3_600_000,
-  staleMs: 24 * 3_600_000,
-}
 
 function assetTypeIcon(type: Asset['asset_type']): string {
   switch (type) {
@@ -161,7 +156,7 @@ export function buildAssetFeatureCollection(
       const updatedAtMs = Date.parse(timestamp)
       const freshness =
         Number.isFinite(updatedAtMs)
-          ? deriveFreshness(updatedAtMs, referenceTimeMs, ASSET_MAP_FRESHNESS_THRESHOLDS)
+          ? deriveFreshness(updatedAtMs, referenceTimeMs, ASSET_FRESHNESS_THRESHOLDS)
           : 'unavailable'
       return {
         type: 'Feature' as const,
