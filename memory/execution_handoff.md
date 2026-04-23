@@ -16,21 +16,18 @@ Post-Phase-7 remediation (**active**)
 
 ## Current Slice
 
-**Audit remediation — Band D `M1` fixed in working tree (migration safety program)**
+**Audit remediation — Band D complete (F1 + O1 + J1 + M1 all shipped). Band C next.**
 
-The latest shipped remediation slice is `8ecc2c0` — "Add RevokedJwt pruning job (J1)". Prior Band D `O1` shipped in `e7eaccb`; Band D `F1` in `43ea358`; Band A + Band B in `27831e1`. User has approved the **full remediation sweep** (bulletproof-first, production-ready before any new roadmap work): Band D → Band C → CTO P1 → P2 → scope P3 → defer P4.
+The latest shipped remediation slice is `42f5af0` — "Seed migration safety program with strong_migrations (M1)". This closes Band D. Prior Band D `J1` shipped in `8ecc2c0`; `O1` in `e7eaccb`; `F1` in `43ea358`; Band A + Band B in `27831e1`. User has approved the **full remediation sweep** (bulletproof-first, production-ready before any new roadmap work): Band D → Band C → CTO P1 → P2 → scope P3 → defer P4.
 
-Current tranche in working tree: **`M1` — `strong_migrations` (2.6.0) added to the default Gemfile group, baselined at `start_after = 20260415100001` (latest existing migration).** Seeds the production-scale migration-safety program without retrospectively flagging historical migrations; any future migration is validated at write time during `db:prepare` (test env) and `db:migrate` (all envs). Drift-guard spec locks `start_after <= latest_migration_version` so nobody can silence warnings on a landed migration.
-
-Next unresolved by sweep order: **MT1** (Band C — telemetry SSE stream not org-scoped; latent cross-tenant leakage).
+Next unresolved by sweep order: **Band C `MT1`** (telemetry SSE stream not org-scoped — latent cross-tenant leakage). Scope before starting: controller, simulator payload, and policy all need tenant awareness.
 
 ## Current Repo State
 
-- Latest committed product slice: `8ecc2c0` — Band D `J1` `RevokedJwt` pruning job
+- Latest committed product slice: `42f5af0` — Band D `M1` strong_migrations seed
 - Latest committed rotation: `2ed89a5` — MD-file cleanup
-- Current tip commit (uncommitted working tree): M1 adds `backend/Gemfile` / `backend/Gemfile.lock` entry for `strong_migrations`, new `backend/config/initializers/strong_migrations.rb` baseline, new `backend/spec/config/strong_migrations_spec.rb` drift-guard spec
-- Working tree: **dirty** — M1 tranche pending commit
-- Branch state: `main` in sync with `origin/main` (the next commit will be the M1 remediation)
+- Working tree: **clean**
+- Branch state: `main` pushed to `origin/main` at `42f5af0`
 
 ## Phase 7 — Slice Plan
 
@@ -61,6 +58,7 @@ Sequenced:
 - `43ea358` — Band D `F1`: BriefingPanel stale-response race fixed by capturing briefing context at generate time, rendering the captured context as the result header, and exporting from captured params rather than live selector state
 - `e7eaccb` — Band D `O1`: `Metrics::Recorder::LATENCY_WINDOW` reconciled from `5.minutes` to `1.minute` to match the actual per-snapshot accumulation window (samples cleared on every snapshot; job runs every minute); `window_seconds` now truthfully equals 60
 - `8ecc2c0` — Band D `J1`: new `Auth::PruneRevokedJwtsJob` deletes expired `RevokedJwt` rows on a daily schedule (`every day at 2:30am`); inverse of `RevokedJwt.active`; boundary-alignment spec locks the inactive ⇄ prunable contract
+- `42f5af0` — Band D `M1`: `strong_migrations` 2.6.0 added to the default Gemfile group, baselined at `start_after = 20260415100001` via `config/initializers/strong_migrations.rb`; drift-guard spec fails if the baseline is ever bumped past an existing migration
 
 ## Phase 6 — Closed Slice Plan (historical context)
 
