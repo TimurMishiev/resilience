@@ -79,6 +79,13 @@ end
 
 gem "h3", "~> 3.7", require: false
 
+# Production-scale migration safety — catches dangerous migration patterns
+# (non-concurrent index adds, non-null column adds on large tables, long-held
+# locks, etc.) at write time. Baselined at the latest existing migration via
+# config/initializers/strong_migrations.rb so historical migrations are not
+# retroactively flagged.
+gem "strong_migrations"
+
 # PDF generation for operational briefing exports
 gem "prawn",       "~> 2.5"
 gem "prawn-table", "~> 0.2"

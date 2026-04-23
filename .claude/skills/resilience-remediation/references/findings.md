@@ -221,10 +221,24 @@ Use this file as the canonical remediation backlog.
 
 #### `M1` — Migration Safety Program
 - Severity: `P3`
-- Status: confirmed scale-only deployment risk
+- Status: fixed in working tree on `2026-04-22`
+- Why real:
+  - production-scale migrations on a live PostgreSQL deployment can hold long locks, backfill NOT NULL columns on large tables, or add non-concurrent indexes — each a known path to production stalls
+  - the repo had no write-time guardrail catching these patterns before deploy
+- Fix direction (applied):
+  - added `strong_migrations` (2.6.0) to the default group in [Gemfile](/Users/timurmishiev/Desktop/Code/resilience/backend/Gemfile)
+  - created [config/initializers/strong_migrations.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/config/initializers/strong_migrations.rb) with `start_after = 20260415100001` — the timestamp of the latest existing migration — so historical migrations are never retroactively flagged
+  - any migration added after the baseline is validated at write time; runs in the test env during every `db:prepare`, so CI (which runs the full RSpec suite) exercises the guardrail automatically
+  - added [spec/config/strong_migrations_spec.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/spec/config/strong_migrations_spec.rb) with a drift guard that fails if `start_after` is ever bumped past an existing migration (prevents silencing warnings on real new migrations)
+- Primary files:
+  - [Gemfile](/Users/timurmishiev/Desktop/Code/resilience/backend/Gemfile)
+  - [config/initializers/strong_migrations.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/config/initializers/strong_migrations.rb)
+  - [spec/config/strong_migrations_spec.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/spec/config/strong_migrations_spec.rb)
+- Validation minimum:
+  - focused spec proving the gem loads and the baseline cannot silently outrun existing migrations
 - Note:
-  - this is not a current product defect
-  - treat as a production-scale hardening program, not a local bugfix
+  - this is a seed, not a retrospective audit of past migrations — existing migrations have already been deployed; the program's value is catching future regressions
+  - if a future deploy does require changing a hot table's shape, the checker will raise with the documented safe-transform pattern and the operator will have a decision point
 
 ## Rejected / Unconfirmed / Strategic Only
 

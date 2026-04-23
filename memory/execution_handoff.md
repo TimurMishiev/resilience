@@ -16,21 +16,21 @@ Post-Phase-7 remediation (**active**)
 
 ## Current Slice
 
-**Audit remediation — Band D `J1` fixed in working tree (no `RevokedJwt` pruning job)**
+**Audit remediation — Band D `M1` fixed in working tree (migration safety program)**
 
-The latest shipped remediation slice is `e7eaccb` — "Reconcile metrics latency window claim (O1)". Prior Band D `F1` shipped in `43ea358`; Band A + Band B in `27831e1`. User has approved the **full remediation sweep** (bulletproof-first, production-ready before any new roadmap work): Band D → Band C → CTO P1 → P2 → scope P3 → defer P4.
+The latest shipped remediation slice is `8ecc2c0` — "Add RevokedJwt pruning job (J1)". Prior Band D `O1` shipped in `e7eaccb`; Band D `F1` in `43ea358`; Band A + Band B in `27831e1`. User has approved the **full remediation sweep** (bulletproof-first, production-ready before any new roadmap work): Band D → Band C → CTO P1 → P2 → scope P3 → defer P4.
 
-Current tranche in working tree: **`J1` — new `Auth::PruneRevokedJwtsJob` deletes `RevokedJwt` rows where `expires_at <= Time.current` on a daily schedule (`every day at 2:30am`), bounded by `RevokedJwt.active`'s inverse.** Prevents unbounded growth of the revocation table as tokens churn; auth-path semantics unchanged (indexed `.active` lookup still authoritative).
+Current tranche in working tree: **`M1` — `strong_migrations` (2.6.0) added to the default Gemfile group, baselined at `start_after = 20260415100001` (latest existing migration).** Seeds the production-scale migration-safety program without retrospectively flagging historical migrations; any future migration is validated at write time during `db:prepare` (test env) and `db:migrate` (all envs). Drift-guard spec locks `start_after <= latest_migration_version` so nobody can silence warnings on a landed migration.
 
-Next unresolved by sweep order: **M1** (migration safety program — scale-only deployment risk).
+Next unresolved by sweep order: **MT1** (Band C — telemetry SSE stream not org-scoped; latent cross-tenant leakage).
 
 ## Current Repo State
 
-- Latest committed product slice: `e7eaccb` — Band D `O1` metrics latency window reconciliation
+- Latest committed product slice: `8ecc2c0` — Band D `J1` `RevokedJwt` pruning job
 - Latest committed rotation: `2ed89a5` — MD-file cleanup
-- Current tip commit (uncommitted working tree): J1 new job at `backend/app/jobs/auth/prune_revoked_jwts_job.rb`, schedule entry in `config/recurring.yml`, spec at `spec/jobs/auth/prune_revoked_jwts_job_spec.rb`
-- Working tree: **dirty** — J1 tranche pending commit
-- Branch state: `main` in sync with `origin/main` (the next commit will be the J1 remediation)
+- Current tip commit (uncommitted working tree): M1 adds `backend/Gemfile` / `backend/Gemfile.lock` entry for `strong_migrations`, new `backend/config/initializers/strong_migrations.rb` baseline, new `backend/spec/config/strong_migrations_spec.rb` drift-guard spec
+- Working tree: **dirty** — M1 tranche pending commit
+- Branch state: `main` in sync with `origin/main` (the next commit will be the M1 remediation)
 
 ## Phase 7 — Slice Plan
 
@@ -60,6 +60,7 @@ Sequenced:
 - `368e079` — replay-hardening-dateNow: removed wall-clock defaults from shared library functions, threaded explicit reference clocks through admin/live call sites, and made replay clock choice compile-visible
 - `43ea358` — Band D `F1`: BriefingPanel stale-response race fixed by capturing briefing context at generate time, rendering the captured context as the result header, and exporting from captured params rather than live selector state
 - `e7eaccb` — Band D `O1`: `Metrics::Recorder::LATENCY_WINDOW` reconciled from `5.minutes` to `1.minute` to match the actual per-snapshot accumulation window (samples cleared on every snapshot; job runs every minute); `window_seconds` now truthfully equals 60
+- `8ecc2c0` — Band D `J1`: new `Auth::PruneRevokedJwtsJob` deletes expired `RevokedJwt` rows on a daily schedule (`every day at 2:30am`); inverse of `RevokedJwt.active`; boundary-alignment spec locks the inactive ⇄ prunable contract
 
 ## Phase 6 — Closed Slice Plan (historical context)
 
@@ -158,19 +159,20 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 
 - Phase 7 remains closed.
 - Audit remediation is active under the **full bulletproof sweep**:
-  - Band D (F1, O1, J1, M1) — in progress
+  - Band D (F1, O1, J1, M1) — **complete in working tree** (M1 pending commit)
   - Band C (MT1, MT2, MT3) — queued after Band D
   - CTO P1 → P2 → (scope P3) → defer P4 — queued after Band C
 - Band A (`I1`, `G1`, `API1`, `D1`) and Band B (`I2`, `R1`) — shipped in `27831e1`.
 - Band D `F1` — shipped in `43ea358`.
 - Band D `O1` — shipped in `e7eaccb`.
-- Band D `J1` — fixed in working tree; tests green; commit pending.
-- Next unresolved confirmed finding by sweep order: `M1` — migration safety program (scale-only deployment risk).
+- Band D `J1` — shipped in `8ecc2c0`.
+- Band D `M1` — fixed in working tree; tests green; commit pending.
+- Next unresolved confirmed finding by sweep order: `MT1` — telemetry SSE stream not org-scoped (Band C start).
 
 ## Next
 
-- **Immediate next step:** run `/gate`, then commit the `J1` tranche, then proceed to `M1` (migration safety program — note: explicitly framed as a production-scale hardening program, not a local bugfix; scope before starting).
-- **Full sweep order (approved by user 2026-04-22):** Band D `M1` → Band C `MT1` → `MT2` → `MT3` → CTO P1 (globe evidence + `useReferenceTimeMs`) → CTO P2 (globe alert triage in inspector) → scope CTO P3 (5-slice map+debrief workstation; needs explicit alignment before start) → defer CTO P4 unless a 6th map tool is planned.
+- **Immediate next step:** commit the `M1` tranche, then proceed to Band C `MT1` (telemetry SSE org scoping — confirmed latent defect; controller, simulator payload, and policy all need tenant awareness).
+- **Full sweep order (approved by user 2026-04-22):** Band C `MT1` → `MT2` → `MT3` → CTO P1 (globe evidence + `useReferenceTimeMs`) → CTO P2 (globe alert triage in inspector) → scope CTO P3 (5-slice map+debrief workstation; needs explicit alignment before start) → defer CTO P4 unless a 6th map tool is planned.
 - **Legacy commit-target note (superseded by sweep):** whether to continue into Band C versus stop at the single-org boundary was resolved — Band C is on the sweep. Previously marked as "latent for single-org"; kept in the sweep for production-ready completeness before new roadmap work.
 - **External CTO evaluation (2026-04-22) — briefing:** see [memory/cto_evaluation_roadmap.md](cto_evaluation_roadmap.md). Full third-party report + per-priority disposition. P0 (`Date.now()` defaults → required) shipped in `368e079`. P1–P4 are open and each needs independent code-first evaluation before adopting — the file includes explicit verification prompts per priority. Neither model has pre-judged P1–P4; do not start any of them without scoping against current code first.
 - **If Phase 7 reopens after remediation:** only reopen it if the confirmed remediation backlog is closed and a real missing operator tool still remains.
@@ -206,12 +208,25 @@ cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/api/cl
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (current uncommitted tranche — Band D `J1` RevokedJwt pruning job, 2026-04-22)
+## Last Validation Results (current uncommitted tranche — Band D `M1` migration safety program seed, 2026-04-22)
+
+- Modified backend files: `backend/Gemfile`, `backend/Gemfile.lock`
+- New backend files: `backend/config/initializers/strong_migrations.rb`, `backend/spec/config/strong_migrations_spec.rb`
+- Touched findings doc: `.claude/skills/resilience-remediation/references/findings.md`
+- Touched handoff: `memory/execution_handoff.md`
+- Focused backend validation:
+  - `TEST_DATABASE_PORT=5434 bundle exec rspec spec/config/strong_migrations_spec.rb` → **2 / 2 pass** (gem-loaded + drift-guard invariant)
+- Full validation:
+  - `TEST_DATABASE_PORT=5434 bundle exec rspec` → **2185 examples, 0 failures** (+2 new M1 cases vs J1 baseline)
+  - `bundle exec brakeman --no-pager --exit-on-warn` → **0 warnings, 0 errors**
+  - `bundle exec bundler-audit check --update` → **0 vulnerabilities** (includes new `strong_migrations 2.6.0` dependency)
+  - `git diff --check` → **clean**
+- Gemfile.lock delta is tight: only `strong_migrations 2.6.0` added (activerecord >= 7.2 dependency already satisfied); no collateral gem bumps.
+
+## Prior Validation Results (shipped remediation slice — Band D `J1` RevokedJwt pruning job, committed in `8ecc2c0`, 2026-04-22)
 
 - New backend files: `backend/app/jobs/auth/prune_revoked_jwts_job.rb`, `backend/spec/jobs/auth/prune_revoked_jwts_job_spec.rb`
 - Modified backend files: `backend/config/recurring.yml`
-- Touched findings doc: `.claude/skills/resilience-remediation/references/findings.md`
-- Touched handoff: `memory/execution_handoff.md`
 - Failing-first proof (pre-fix): `NameError: uninitialized constant Auth` when running the new spec against missing job
 - Focused backend validation (post-fix):
   - `TEST_DATABASE_PORT=5434 bundle exec rspec spec/jobs/auth spec/models/revoked_jwt_spec.rb spec/requests/api/auth_sessions_spec.rb spec/config/recurring_spec.rb` → **18 / 18 pass** (3 new job cases + 5 model + 9 auth-sessions request + 1 recurring.yml)
