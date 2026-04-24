@@ -23,12 +23,37 @@ class Rack::Attack
 
   # AI endpoints are expensive (Anthropic API calls) — limit tightly.
   # 10 requests per IP per minute; 100 per IP per hour.
-  throttle("ai/ip/minute", limit: 10, period: 60) do |req|
+  AI_IP_REQUESTS_PER_MINUTE = 10
+  AI_IP_REQUESTS_PER_HOUR   = 100
+
+  throttle("ai/ip/minute", limit: AI_IP_REQUESTS_PER_MINUTE, period: 60) do |req|
     req.ip if req.path.start_with?("/api/ai")
   end
 
-  throttle("ai/ip/hour", limit: 100, period: 3600) do |req|
+  throttle("ai/ip/hour", limit: AI_IP_REQUESTS_PER_HOUR, period: 3600) do |req|
     req.ip if req.path.start_with?("/api/ai")
+  end
+
+  # Per-user AI throttles. Without these, multiple commanders on a shared
+  # corporate NAT compete for one IP bucket — a single heavy user can burn
+  # the whole team's quota. Keyed on the JWT subject extracted from the
+  # request. Unauthenticated requests fall back to the IP throttles above;
+  # malformed tokens simply skip per-user throttling (IP throttle still
+  # applies).
+  #
+  # Per-user limits are intentionally tighter than per-IP so one user on a
+  # shared IP cannot monopolise the bucket: 5/min vs 10/min at IP, 60/hr vs
+  # 100/hr at IP. Two users sharing an IP can still each run at their full
+  # 5/min limit (10/min combined = IP ceiling).
+  AI_USER_REQUESTS_PER_MINUTE = 5
+  AI_USER_REQUESTS_PER_HOUR   = 60
+
+  throttle("ai/user/minute", limit: AI_USER_REQUESTS_PER_MINUTE, period: 60) do |req|
+    ai_user_key(req) if req.path.start_with?("/api/ai")
+  end
+
+  throttle("ai/user/hour", limit: AI_USER_REQUESTS_PER_HOUR, period: 3600) do |req|
+    ai_user_key(req) if req.path.start_with?("/api/ai")
   end
 
   # SSE token minting and stream opens are inexpensive individually but can
@@ -91,6 +116,24 @@ class Rack::Attack
         "/api/signals/stream",
         "/api/telemetry/stream",
       ].include?(req.path)
+    end
+
+    # Extracts the authenticated user id from the request for per-user
+    # throttling. Mirrors JwtAuthenticatable#extract_token's priority
+    # (Authorization: Bearer header → _resilience_session cookie). Returns
+    # nil on any decode failure; per-user throttle simply no-ops and the
+    # per-IP throttle still applies.
+    #
+    # decode_payload only performs a JWT signature check — no DB call, no
+    # revocation check — so this is cheap to evaluate per request.
+    def ai_user_key(req)
+      token = req.get_header("HTTP_AUTHORIZATION").to_s.delete_prefix("Bearer ").strip
+      token = Rack::Request.new(req.env).cookies["_resilience_session"].to_s.strip if token.blank?
+      return nil if token.blank?
+
+      JwtAuthenticatable.decode_payload(token)[:sub]
+    rescue StandardError
+      nil
     end
   end
 end

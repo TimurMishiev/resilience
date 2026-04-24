@@ -446,4 +446,39 @@ RSpec.describe "Api::Ai", type: :request do
       expect(JSON.parse(response.body)).to eq("errors" => ["Site not found"])
     end
   end
+
+  # ── Per-user rate limiting ─────────────────────────────────────────────────
+
+  describe "per-user AI throttle" do
+    let(:commander_a) { create(:user, :commander, email: "a@example.mil") }
+    let(:commander_b) { create(:user, :commander, email: "b@example.mil") }
+
+    before do
+      # Stub the filter service so the throttle — not Anthropic — drives the
+      # response. A success result keeps the response at 200 until the
+      # throttle trips.
+      allow(Ai::FilterService).to receive(:call).and_return(
+        ServiceResult.success(original_query: "q", filters: {})
+      )
+    end
+
+    it "throttles one user's AI calls without blocking a different user on the same IP" do
+      # Burn commander_a's per-minute bucket.
+      Rack::Attack::AI_USER_REQUESTS_PER_MINUTE.times do
+        get "/api/ai/filter", params: { q: "tasks" }, headers: auth_headers(commander_a)
+        expect(response).to have_http_status(:ok)
+      end
+
+      # Next call from commander_a is throttled — per-user limit hit.
+      get "/api/ai/filter", params: { q: "tasks" }, headers: auth_headers(commander_a)
+      expect(response).to have_http_status(:too_many_requests)
+
+      # A different user (same IP in a test env) can still call — proves the
+      # throttle is user-scoped, not IP-scoped. The IP throttle at
+      # AI_IP_REQUESTS_PER_MINUTE is higher than the per-user limit so we
+      # have room.
+      get "/api/ai/filter", params: { q: "tasks" }, headers: auth_headers(commander_b)
+      expect(response).to have_http_status(:ok)
+    end
+  end
 end
