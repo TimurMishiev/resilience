@@ -365,6 +365,20 @@ RSpec.describe "Api::SignalRuleMatches", type: :request do
       expect(body["failed"]).to be_empty
     end
 
+    it "reports the new workflow_status without requiring a per-match reload" do
+      # Guards against a regression where removing the in-loop reload left
+      # `workflow_status` stale. The service mutates @match in-place, so the
+      # controller can read workflow_status directly. A silent pre-reload
+      # value ("new") would be caught here.
+      post "/api/signal_rule_matches/bulk_transition",
+           params:  { ids: [match1.id, match2.id], to_status: "acknowledged" },
+           headers: auth_headers(user), as: :json
+
+      body = JSON.parse(response.body)
+      expect(body["succeeded"].map { |r| r["workflow_status"] })
+        .to contain_exactly("acknowledged", "acknowledged")
+    end
+
     it "reports per-alert failures without aborting the batch" do
       # Close match1 so it cannot be re-acknowledged (invalid transition)
       match1.update_column(:workflow_status, "closed")

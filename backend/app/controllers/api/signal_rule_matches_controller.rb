@@ -116,6 +116,10 @@ module Api
       succeeded = []
       failed    = []
 
+      # Alerts::TransitionService calls @match.update! in-place inside its
+      # transaction, so `match.workflow_status` is already the new status on
+      # success. A per-match `.reload` here would add a SELECT-by-PK per
+      # alert (up to MAX_BULK extra queries) with no behavioural value.
       policy_scope(SignalRuleMatch).where(id: ids).each do |match|
         result = Alerts::TransitionService.call(
           match:     match,
@@ -125,7 +129,7 @@ module Api
         )
 
         if result.success
-          succeeded << { id: match.id, workflow_status: match.reload.workflow_status }
+          succeeded << { id: match.id, workflow_status: match.workflow_status }
         else
           failed << { id: match.id, errors: result.errors }
         end
