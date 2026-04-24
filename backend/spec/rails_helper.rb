@@ -41,6 +41,22 @@ RSpec.configure do |config|
     DatabaseCleaner.cleaning { example.run }
   end
 
+  # Isolate Ai::CircuitBreaker state between examples. Without this, a prior
+  # example that opened the breaker leaks into the next and causes
+  # order-dependent failures across llm_enricher / summary / filter /
+  # ontology_query specs (the service short-circuits before even calling
+  # the mocked Anthropic client).
+  #
+  # In test env Rails.cache is NullStore, so the breaker uses its own
+  # class-level MemoryStore fallback (circuit_breaker.rb:68-71). Clearing
+  # Rails.cache alone is a no-op; we must clear the breaker's own store.
+  config.before(:each) do
+    Rails.cache.clear
+    Ai::CircuitBreaker::KNOWN_SERVICES.each do |service|
+      Ai::CircuitBreaker.record_success(service: service)
+    end
+  end
+
   # You can uncomment this line to turn off ActiveRecord support entirely.
   # config.use_active_record = false
 
