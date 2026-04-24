@@ -1,7 +1,7 @@
 require "rails_helper"
 
 RSpec.describe Ai::OntologyQueryService, type: :service do
-  let(:tool_block) { double("tool_block", type: "tool_use", name: described_class::TOOL_NAME, input: tool_input) }
+  let(:tool_block) { double("tool_block", type: :tool_use, name: described_class::TOOL_NAME, input: tool_input) }
   let(:fake_response) { double("anthropic_response", content: [tool_block]) }
   let(:fake_messages) { double("messages", create: fake_response) }
   let(:fake_client) { double("anthropic_client", messages: fake_messages) }
@@ -795,7 +795,7 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
       }
 
       allow(fake_messages).to receive(:create).and_return(
-        double("anthropic_response", content: [double("tool_block", type: "tool_use", name: described_class::TOOL_NAME, input: inactive_tool)]),
+        double("anthropic_response", content: [double("tool_block", type: :tool_use, name: described_class::TOOL_NAME, input: inactive_tool)]),
       )
 
       result = described_class.call(user: user, query: "show what is connected to Dormant Pier")

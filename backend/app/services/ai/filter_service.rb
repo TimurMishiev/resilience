@@ -46,10 +46,10 @@ module Ai
       )
       Metrics::Recorder.record_ai_call(service: "task_filter", duration_ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - ai_start) * 1000).round(1))
 
-      tool_block = response.content.find { |b| b.type == "tool_use" && b.name == TOOL_NAME }
+      tool_block = response.content.find { |b| b.type.to_s == "tool_use" && b.name == TOOL_NAME }
       return ServiceResult.failure(errors: ["AI did not return a filter tool call"]) unless tool_block
 
-      filters = validate_filters(tool_block.input || {}, sites)
+      filters = validate_filters((tool_block.input || {}).with_indifferent_access, sites)
       Ai::CircuitBreaker.record_success(service: BREAKER_SERVICE)
       ServiceResult.success({ original_query: @query, filters: filters })
 

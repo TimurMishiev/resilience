@@ -51,7 +51,7 @@ Two axes of mitigation must be chosen.
   Anthropic during an outage would amplify load and generate cascading
   requests.
 - **Circuit breaker (accepted):** Bounded failure count before opening;
-  explicit open window; half-open probe.
+  explicit open window; auto-reset on window expiry.
 
 ## Decisions
 
@@ -86,9 +86,12 @@ All Anthropic-backed services share a circuit-breaker pattern:
 - **2-minute open window.** All requests short-circuit during this
   period. No Anthropic traffic, no operator-visible errors beyond
   "AI temporarily unavailable."
-- **Half-open probe.** After the open window, one request is allowed
-  through to test the upstream. Success closes the breaker; failure
-  re-opens for another 2 minutes.
+- **Auto-reset after open window.** Once the 2-minute window elapses,
+  the breaker clears its state and the next request flows through. A
+  subsequent failure starts the counter fresh — three more failures are
+  required to re-open. This is simpler than a classic one-shot half-open
+  probe, but sufficient given AI-call frequency: spurious re-opens would
+  need a sustained upstream issue, not a single transient failure.
 - **Per-service tracking.** The briefing service's breaker is
   independent from the recommendations service's breaker — one can
   be degraded without affecting the others.
@@ -130,7 +133,7 @@ view of the data, not a superuser view.
 - **Testability.** The validator has unit specs for each of the four
   checks, including the cross-reference check (4). The circuit
   breaker has specs that simulate consecutive failures and verify
-  the open/half-open/closed transitions.
+  the open / auto-reset / closed transitions.
 
 ## What this is NOT
 

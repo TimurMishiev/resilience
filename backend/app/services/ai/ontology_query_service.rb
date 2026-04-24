@@ -118,10 +118,10 @@ module Ai
       )
       Metrics::Recorder.record_ai_call(service: "ontology_query", duration_ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - ai_start) * 1000).round(1))
 
-      tool_block = response.content.find { |block| block.type == "tool_use" && block.name == TOOL_NAME }
+      tool_block = response.content.find { |block| block.type.to_s == "tool_use" && block.name == TOOL_NAME }
       return ServiceResult.failure(errors: ["AI did not return an ontology query plan"]) unless tool_block
 
-      input = tool_block.input || {}
+      input = (tool_block.input || {}).with_indifferent_access
       root_type = ROOT_TYPES.include?(input["root_type"]) ? input["root_type"] : nil
       root_name = input["root_name"].to_s.strip
 

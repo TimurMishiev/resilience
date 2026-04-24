@@ -41,7 +41,7 @@ Busy? Open these five files. Each one is deliberately chosen to demonstrate a di
    LLM-produced recommendations run four checks before persistence: (1) surfaced entity exists, (2) each evidence item exists, (3) action-payload IDs exist, (4) payload IDs refer to the *same* entity as the surfaced entity. Check 4 is the one that matters — it prevents the model from displaying "Incident A" in the UI while carrying "Incident B" in the executable payload. LLM output is treated as untrusted input, same posture as user input.
 
 5. **Server-side replay engine** — [`docs/adr-001-server-side-replay.md`](docs/adr-001-server-side-replay.md) → [`backend/app/services/replay/projection_service.rb`](backend/app/services/replay/projection_service.rb)
-   `as_of` is a first-class query parameter that reconstructs entity state at any past timestamp by replaying the audit log. `MAX_EVENTS = 100_000` safety cap, comment explaining why `find_each` would break ordering, explicit "pure read operation, no side effects" contract. Read the ADR first for the design rationale, then the service for the implementation.
+   `as_of` is a first-class query parameter that reconstructs entity state at any past timestamp by replaying the audit log. Single-query projection via `DISTINCT ON (entity_id)` ordered by `occurred_at DESC, id DESC`; entities absent from the pre-`as_of` audit window are excluded (they did not yet exist). Explicit "pure read operation, no side effects" contract. Read the ADR first for the design rationale, then the service for the implementation.
 
 Each file is worth ~2 minutes. If only one: pick #3 (authorization helpers) — it's the single cleanest demonstration of disciplined production code on a topic where most platforms get sloppy.
 
@@ -82,7 +82,7 @@ Open **http://localhost:3000**. Demo data (9 sites, 19 tasks, 7 signal types, ve
                           ┌────────────────────▼─────────────────────────┐
                           │           Backend  (Rails 8 API)             │
                           │  27 models  ·  30 policies  ·  63 services  │
-                          │  36 controllers  ·  13 jobs  ·  69 migrations│
+                          │  31 controllers  ·  13 jobs  ·  69 migrations│
                           └──┬──────────────────┬───────────────────┬────┘
                              │                  │                   │
                ┌─────────────▼──────┐  ┌───────▼────────┐  ┌──────▼──────────┐
@@ -399,7 +399,7 @@ resilience/
 │
 └── backend/                       # Rails 8.1 API
     ├── app/
-    │   ├── controllers/api/       # 36 API controllers
+    │   ├── controllers/api/       # 31 API controllers
     │   ├── models/                # 27 ActiveRecord models
     │   ├── policies/              # 30 Pundit authorization policies
     │   ├── services/              # 63 service objects

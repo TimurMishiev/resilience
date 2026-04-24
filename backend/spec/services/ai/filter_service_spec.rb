@@ -1,7 +1,7 @@
 require "rails_helper"
 
 RSpec.describe Ai::FilterService, type: :service do
-  let(:tool_block) { double("tool_block", type: "tool_use", name: described_class::TOOL_NAME, input: tool_input) }
+  let(:tool_block) { double("tool_block", type: :tool_use, name: described_class::TOOL_NAME, input: tool_input) }
   let(:fake_response) { double("anthropic_response", content: [tool_block]) }
   let(:fake_messages) { double("messages", create: fake_response) }
   let(:fake_client) { double("anthropic_client", messages: fake_messages) }

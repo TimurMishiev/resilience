@@ -124,7 +124,7 @@ RSpec.describe "Api::Ai", type: :request do
       foreign_site = create(:site, name: "Foreign Site Bravo", organization: create(:organization))
 
       stub_const("ENV", ENV.to_h.merge("ANTHROPIC_API_KEY" => "test_key_for_specs"))
-      tool_block = double("tool_block", type: "tool_use", name: Ai::FilterService::TOOL_NAME, input: {
+      tool_block = double("tool_block", type: :tool_use, name: Ai::FilterService::TOOL_NAME, input: {
         "site_id" => foreign_site.id,
         "workflow_status" => "triaged",
       })
@@ -278,7 +278,7 @@ RSpec.describe "Api::Ai", type: :request do
       create(:site, name: "Foreign Site Bravo", organization: create(:organization))
 
       stub_const("ENV", ENV.to_h.merge("ANTHROPIC_API_KEY" => "test_key_for_specs"))
-      tool_block = double("tool_block", type: "tool_use", name: Ai::OntologyQueryService::TOOL_NAME, input: {
+      tool_block = double("tool_block", type: :tool_use, name: Ai::OntologyQueryService::TOOL_NAME, input: {
         "root_type" => "site",
         "root_name" => "Foreign Site Bravo",
         "relations" => ["incidents"],

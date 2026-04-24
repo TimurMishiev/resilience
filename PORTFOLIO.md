@@ -100,7 +100,9 @@ Use the live demo with the commander account. Do this sequence:
    types), dry-run it against historical signals, save.
 5. **AI Briefing** — ask for a briefing on any site. Notice that every
    entity reference the model cites resolves to a real record (see ADR-005
-   for why). Requires an Anthropic key; live demo has one configured.
+   for why). Requires an `ANTHROPIC_API_KEY` — the live demo does not have
+   one configured, so run locally to exercise this surface:
+   `ANTHROPIC_API_KEY=sk-ant-... docker compose up`.
 6. **Replay** — set a past timestamp. Sites, tasks, alerts, readiness
    scores, AO overlays, and the map view all reconstruct historical state.
    Mutations are disabled in replay (deliberately — replay is read-only).
@@ -146,7 +148,7 @@ after looking at this code:
 
 A senior reviewer will find these before you do. Better to name them:
 
-- **`MapPage.tsx` is 845 lines** with 29 `useState` + 31 `useCallback`. It
+- **`MapPage.tsx` is 847 lines** with 29 `useState` + 31 `useCallback`. It
   grew across five geospatial-tool additions without a refactor pass. The
   extraction (`useActiveMapTool` + per-tool hooks) is documented in the
   CTO evaluation as P4 but is currently gated on a sixth tool being

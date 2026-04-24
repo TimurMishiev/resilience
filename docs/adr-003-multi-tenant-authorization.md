@@ -12,7 +12,7 @@ assets, or audit events belonging to another. An org-scoped commander must
 not see another organization's data at all. Admins are unrestricted.
 
 Three authorization concerns must be enforced consistently across every one
-of 36 API controllers:
+of 31 API controllers:
 
 1. **Collection-level scope.** When the client reads `/api/sites`, the
    response must be limited to records the caller can see.

@@ -13,7 +13,7 @@ module Recommendations
 
     BREAKER_SERVICE           = "recommendation_llm_enricher"
     DEFAULT_MODEL             = "claude-haiku-4-5-20251001"
-    MAX_TOKENS                = 1024
+    MAX_TOKENS                = 2048
     TEMPERATURE               = 0.2   # low temp → more deterministic operational output
     VALID_REC_TYPES           = Recommendation::VALID_TYPES
     ANTHROPIC_TIMEOUT_SECONDS = 30
