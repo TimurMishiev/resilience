@@ -146,31 +146,64 @@ module Recommendations
     # affected_entity_*.  An LLM can produce a recommendation that passes all
     # existence checks while carrying a different entity in the executable
     # payload — this check closes that trust-boundary gap.
+    # Which affected_entity_type values are legally surface-able for each
+    # recommendation_type. Close_stale_alert / acknowledge_alert can be
+    # surfaced either directly against the alert (SignalRuleMatch) or
+    # against its parent incident — both are legitimate UIs. Naming the
+    # full valid set here lets validate_payload_target_match fail-closed
+    # on incoherent combinations (e.g. type=escalate_incident with
+    # entity_type=Site) instead of silently skipping check 4 of ADR-005.
+    EXPECTED_ENTITY_TYPES = {
+      "escalate_incident"   => %w[Incident].freeze,
+      "close_stale_alert"   => %w[Incident SignalRuleMatch].freeze,
+      "acknowledge_alert"   => %w[Incident SignalRuleMatch].freeze,
+      "flag_site"           => %w[Site].freeze,
+      "create_task"         => %w[Site].freeze,
+      "bulk_triage_alerts"  => %w[Site].freeze,
+      "assign_asset"        => %w[Task].freeze,
+    }.freeze
+
     def validate_payload_target_match(type, payload, entity_type, entity_id)
       return [] if entity_id.blank? || entity_type.blank?
+
+      expected_types = EXPECTED_ENTITY_TYPES[type]
+      if expected_types && !expected_types.include?(entity_type)
+        # Fail-closed: a type/entity mismatch means the downstream payload
+        # check cannot be meaningfully evaluated. Rejecting here prevents the
+        # "shown as Site, executes as Incident" class of failure that check 4
+        # of the trust boundary exists to catch.
+        expected_label = expected_types.size == 1 ? expected_types.first : expected_types.join(" or ")
+        return ["recommendation_type '#{type}' requires affected_entity_type '#{expected_label}', got '#{entity_type}'"]
+      end
 
       payload_h = (payload || {}).with_indifferent_access
       errors    = []
 
       case type
       when "escalate_incident"
-        if entity_type == "Incident" && payload_h[:incident_id].present? &&
+        if payload_h[:incident_id].present? &&
            payload_h[:incident_id].to_s != entity_id.to_s
           errors << "action_payload incident_id does not match affected_entity_id"
         end
       when "close_stale_alert", "acknowledge_alert"
-        if entity_type == "Incident" && payload_h[:alert_id].present?
-          unless SignalRuleMatch.where(id: payload_h[:alert_id], incident_id: entity_id).exists?
-            errors << "action_payload alert_id does not belong to the surfaced incident"
+        if payload_h[:alert_id].present?
+          # Two legal surfacings: directly against the alert, or against its
+          # parent incident. Each requires a different coherence check.
+          if entity_type == "Incident"
+            unless SignalRuleMatch.where(id: payload_h[:alert_id], incident_id: entity_id).exists?
+              errors << "action_payload alert_id does not belong to the surfaced incident"
+            end
+          elsif entity_type == "SignalRuleMatch" && payload_h[:alert_id].to_s != entity_id.to_s
+            errors << "action_payload alert_id does not match affected_entity_id"
           end
         end
       when "flag_site", "create_task", "bulk_triage_alerts"
-        if entity_type == "Site" && payload_h[:site_id].present? &&
+        if payload_h[:site_id].present? &&
            payload_h[:site_id].to_s != entity_id.to_s
           errors << "action_payload site_id does not match affected_entity_id"
         end
       when "assign_asset"
-        if entity_type == "Task" && payload_h[:task_id].present? &&
+        if payload_h[:task_id].present? &&
            payload_h[:task_id].to_s != entity_id.to_s
           errors << "action_payload task_id does not match affected_entity_id"
         end

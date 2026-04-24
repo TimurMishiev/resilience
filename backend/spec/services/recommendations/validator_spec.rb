@@ -168,6 +168,61 @@ RSpec.describe Recommendations::Validator, type: :service do
   end
 
   describe "cross-entity consistency (payload-to-target match)" do
+    # Regression: previously the type/entity coherence was checked only
+    # *inside* each case branch via `if entity_type == "Incident" ...`,
+    # which meant a mismatched entity_type silently bypassed the check 4
+    # guarantee (ADR-005). An LLM producing `type: escalate_incident` with
+    # `affected_entity_type: Site` would pass validation and execute an
+    # escalation against an unrelated incident id in the payload.
+    it "rejects escalate_incident when affected_entity_type is not Incident" do
+      incident = create(:incident, site: site)
+      attrs = valid_attrs(
+        recommendation_type:  "escalate_incident",
+        affected_entity_type: "Site",
+        affected_entity_id:   site.id,
+        action_payload:       { "incident_id" => incident.id, "to_status" => "acknowledged" },
+        evidence:             []
+      )
+      result = described_class.call(recommendations: [attrs])
+      expect(result.valid).to be_empty
+      expect(result.invalid.first[:errors].join).to match(
+        /recommendation_type 'escalate_incident' requires affected_entity_type 'Incident', got 'Site'/
+      )
+    end
+
+    it "rejects flag_site when affected_entity_type is not Site" do
+      incident = create(:incident, site: site)
+      attrs = valid_attrs(
+        recommendation_type:  "flag_site",
+        affected_entity_type: "Incident",
+        affected_entity_id:   incident.id,
+        action_payload:       { "site_id" => site.id },
+        evidence:             []
+      )
+      result = described_class.call(recommendations: [attrs])
+      expect(result.valid).to be_empty
+      expect(result.invalid.first[:errors].join).to match(
+        /recommendation_type 'flag_site' requires affected_entity_type 'Site'/
+      )
+    end
+
+    it "rejects assign_asset when affected_entity_type is not Task" do
+      task = create(:task, site: site)
+      asset = create(:asset, home_site: site)
+      attrs = valid_attrs(
+        recommendation_type:  "assign_asset",
+        affected_entity_type: "Site",
+        affected_entity_id:   site.id,
+        action_payload:       { "task_id" => task.id, "asset_id" => asset.id },
+        evidence:             []
+      )
+      result = described_class.call(recommendations: [attrs])
+      expect(result.valid).to be_empty
+      expect(result.invalid.first[:errors].join).to match(
+        /recommendation_type 'assign_asset' requires affected_entity_type 'Task'/
+      )
+    end
+
     it "rejects escalate_incident when payload incident_id differs from affected_entity_id" do
       incident_a = create(:incident, site: site)
       incident_b = create(:incident, site: site)
