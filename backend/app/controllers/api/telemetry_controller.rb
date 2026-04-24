@@ -8,6 +8,13 @@ module Api
     TRAIL_WINDOW_MINUTES_DEFAULT = 30
     TRAIL_WINDOW_MINUTES_MAX = 120
 
+    # Interval between refreshes of the SSE stream's allowed_asset_ids
+    # snapshot. Long-lived streams (often hours) must not continue delivering
+    # telemetry for assets the viewer lost visibility into mid-stream (asset
+    # reassigned, AO scope revoked). 30s aligns with the signal-feed cadence
+    # and keeps revocation-latency operator-visible.
+    ALLOWED_ASSETS_REFRESH_SECONDS = 30
+
     # GET /api/telemetry
     # Returns the latest telemetry reading per asset, optionally as of a replay
     # timestamp. This gives replay mode a deterministic snapshot instead of
@@ -101,13 +108,20 @@ module Api
       # Send an initial connected event so the client knows the stream is live
       return unless sse_write(response.stream, event: "connected", data: { message: "telemetry stream open" })
 
-      # Snapshot the viewer's visible asset-id set once at stream open. Every
-      # subsequent payload is filtered against this set so that cross-tenant
-      # telemetry never reaches the client. AssetPolicy::Scope is the same
+      # Snapshot the viewer's visible asset-id set. Every subsequent
+      # payload is filtered against this set so cross-tenant telemetry
+      # never reaches the client. AssetPolicy::Scope is the same
       # authoritative gate used by /api/telemetry (the snapshot endpoint),
-      # which keeps live + replay consistent. New assets added to the viewer's
-      # scope mid-stream are picked up on reconnect.
+      # keeping live + replay consistent.
+      #
+      # The set is refreshed every ALLOWED_ASSETS_REFRESH_SECONDS (30s).
+      # Without this, a long-lived SSE stream (often hours) would keep
+      # delivering telemetry for assets the viewer lost visibility into
+      # mid-stream — asset reassigned to another org, viewer's AO scope
+      # revoked, etc. The refresh is a bounded SELECT over the viewer's
+      # tenant scope; cost is negligible vs. the tenant-leak risk it closes.
       allowed_asset_ids = policy_scope(Asset).pluck(:id).to_set
+      allowed_asset_ids_refreshed_at = Time.current
 
       # Heartbeat thread — keeps the connection alive through proxies / load balancers
       heartbeat = start_sse_heartbeat(stream_name: "telemetry") do
@@ -120,6 +134,18 @@ module Api
         payload = queue.pop
         break if payload.nil?
         break unless refresh_sse_stream_lease(lease, stream_name: "telemetry")
+
+        if Time.current - allowed_asset_ids_refreshed_at >= ALLOWED_ASSETS_REFRESH_SECONDS
+          # Rebuild the scope from scratch (bypassing Pundit's per-request
+          # policy_scope memoisation) and disable AR's query cache so we
+          # actually re-read the tenant state instead of the cached
+          # snapshot from stream open.
+          allowed_asset_ids = ActiveRecord::Base.uncached do
+            AssetPolicy::Scope.new(current_user, Asset.all).resolve.pluck(:id).to_set
+          end
+          allowed_asset_ids_refreshed_at = Time.current
+        end
+
         next unless telemetry_payload_visible?(payload, allowed_asset_ids)
         response.stream.write("event: telemetry\ndata: #{payload}\n\n")
       rescue IOError, ActionController::Live::ClientDisconnected

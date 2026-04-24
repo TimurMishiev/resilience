@@ -304,6 +304,59 @@ RSpec.describe "Api::Telemetry", type: :request do
         expect(response.body).to include("event: connected")
         expect(response.body).not_to include("event: telemetry")
       end
+
+      it "re-evaluates allowed_asset_ids mid-stream so revoked access stops delivery" do
+        # Regression: without a periodic refresh, a long-lived SSE stream
+        # (hours) continued to deliver telemetry for assets the viewer lost
+        # visibility into mid-stream (reassignment, AO revocation). The
+        # refresh cadence is ALLOWED_ASSETS_REFRESH_SECONDS; stub to 0 so
+        # it fires on every loop iteration and we can assert on behaviour
+        # inside a single request.
+        stub_const("Api::TelemetryController::ALLOWED_ASSETS_REFRESH_SECONDS", 0)
+
+        # Build an org-scoped site + asset so the viewer is actually
+        # restricted. The default `site` factory has no organization,
+        # which makes policy_scope(Asset) return everything.
+        org_a            = create(:organization)
+        foreign_org      = create(:organization)
+        scoped_site      = create(:site, organization: org_a)
+        scoped_asset     = create(:asset, name: "Scoped Asset", home_site: scoped_site)
+        viewer           = create(:user, :commander, organization: org_a)
+
+        # A queue that reassigns the asset's home_site to a foreign org
+        # between the first and second pop — simulates the scope
+        # revocation that the refresh must catch up with.
+        payloads = [
+          { asset_id: scoped_asset.id, name: scoped_asset.name, lat: 1.0, lng: 2.0, heading: 0, speed: 0, battery: 100, ts: 1 }.to_json,
+          { asset_id: scoped_asset.id, name: scoped_asset.name, lat: 1.1, lng: 2.1, heading: 0, speed: 0, battery: 100, ts: 2 }.to_json,
+        ]
+        mid_stream_queue = Class.new do
+          def initialize(payloads, site, new_org)
+            @payloads = payloads.dup
+            @site = site
+            @new_org = new_org
+            @pop_count = 0
+          end
+          def pop
+            @pop_count += 1
+            @site.update!(organization: @new_org) if @pop_count == 2
+            @payloads.shift
+          end
+          def close; end
+        end.new(payloads, scoped_site, foreign_org)
+        allow(Telemetry::Broadcaster).to receive(:instance).and_return(
+          instance_double(Telemetry::Broadcaster, subscribe: mid_stream_queue, unsubscribe: nil)
+        )
+
+        open_stream_as(viewer)
+
+        expect(response).to have_http_status(:ok)
+        # First payload landed while the viewer still had access — delivered.
+        expect(response.body).to include(%("ts":1))
+        # Second payload popped after the reassignment; refresh picks up the
+        # empty scope and the payload is filtered out.
+        expect(response.body).not_to include(%("ts":2))
+      end
     end
 
     it "returns 429 when the remote IP is already at live stream capacity" do
