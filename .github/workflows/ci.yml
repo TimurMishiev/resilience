@@ -31,6 +31,22 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
+      - name: Yarn audit (fail on high or critical CVE)
+        # Yarn 1's exit code is a bitmask of discovered severities:
+        #   1=info, 2=low, 4=moderate, 8=high, 16=critical.
+        # Fail only on high/critical (bits 8 or 16 set). Moderate and
+        # below surface in Dependabot's weekly PRs without blocking CI.
+        run: |
+          set +e
+          yarn audit --level high
+          status=$?
+          set -e
+          if [ $((status & 24)) -ne 0 ]; then
+            echo "::error::High or critical vulnerability found in frontend dependencies"
+            exit 1
+          fi
+          exit 0
+
       - name: TypeScript typecheck
         run: npx tsc -p tsconfig.app.json --noEmit
 
