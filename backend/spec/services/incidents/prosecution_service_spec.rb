@@ -67,6 +67,31 @@ RSpec.describe Incidents::ProsecutionService, type: :service do
       call
     end
 
+    it "resolves organization_id via the site for site-scoped incidents" do
+      org          = create(:organization)
+      site         = create(:site, organization: org)
+      site_scoped  = create(:incident, site: site, status: "open")
+
+      expect(Sse::Broadcaster.instance).to receive(:publish).with(
+        hash_including(event: "prosecution_started", organization_id: org.id)
+      )
+      described_class.call(operation: :initiate, incident: site_scoped, actor: commander)
+    end
+
+    it "falls back to area_of_operation.organization_id when the incident has no site" do
+      # AO-only incidents are supported by the incident_policy (see
+      # ApplicationPolicy#incident_accessible?) but previously leaked to all
+      # orgs because the SSE broadcast only consulted site.organization_id.
+      org        = create(:organization)
+      ao         = create(:area_of_operation, organization: org)
+      ao_only    = create(:incident, site: nil, area_of_operation: ao, status: "open")
+
+      expect(Sse::Broadcaster.instance).to receive(:publish).with(
+        hash_including(event: "prosecution_started", organization_id: org.id)
+      )
+      described_class.call(operation: :initiate, incident: ao_only, actor: commander)
+    end
+
     context "when the incident is already being prosecuted" do
       before { call }
 
@@ -212,6 +237,21 @@ RSpec.describe Incidents::ProsecutionService, type: :service do
         )
       )
       call
+    end
+
+    it "broadcasts step_added with the AO's org_id when the incident has no site" do
+      org     = create(:organization)
+      ao      = create(:area_of_operation, organization: org)
+      ao_only = create(:incident, site: nil, area_of_operation: ao, status: "open")
+      described_class.call(operation: :initiate, incident: ao_only, actor: commander)
+
+      expect(Sse::Broadcaster.instance).to receive(:publish).with(
+        hash_including(event: "prosecution_step_added", organization_id: org.id)
+      )
+      described_class.call(
+        operation: :add_step, incident: ao_only, actor: commander,
+        phase: "executing", action_type: "phase_transition", notes: "step"
+      )
     end
 
     it "rolls back on step save failure without changing prosecution_phase" do

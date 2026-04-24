@@ -89,7 +89,7 @@ module Incidents
       begin
         Sse::Broadcaster.instance.publish(
           event: "prosecution_started",
-          organization_id: @incident.site&.organization_id,
+          organization_id: resolve_org_id,
           data:  { incident_id: @incident.id, prosecution_phase: "assessing" }
         )
       rescue StandardError => e
@@ -169,7 +169,7 @@ module Incidents
       begin
         Sse::Broadcaster.instance.publish(
           event: "prosecution_step_added",
-          organization_id: @incident.site&.organization_id,
+          organization_id: resolve_org_id,
           data:  { incident_id: @incident.id, prosecution_phase: @incident.prosecution_phase }
         )
       rescue StandardError => e
@@ -187,6 +187,15 @@ module Incidents
     end
 
     # ── helpers ──────────────────────────────────────────────────────────────────
+
+    # Resolves organization_id for SSE scoping. Mirrors Audit::EventWriter's
+    # COALESCE(sites.organization_id, areas_of_operation.organization_id): an
+    # incident scoped only to an AO (site_id nil) still belongs to the AO's
+    # org. Without this fallback, Sse::EventsController would treat the
+    # payload as a global event and broadcast to every scoped user.
+    def resolve_org_id
+      @incident.site&.organization_id || @incident.area_of_operation&.organization_id
+    end
 
     def terminal_status?
       %w[resolved closed].include?(@incident.status)
