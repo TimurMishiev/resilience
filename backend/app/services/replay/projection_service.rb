@@ -16,11 +16,16 @@ module Replay
     def call
       return ServiceResult.success(snapshots: []) if @entity_ids.empty?
 
+      # Tie-break on `sequence DESC` — a bigserial that increments on every
+      # insert — so two events with identical occurred_at microseconds
+      # (concurrent writes) still resolve deterministically to the later
+      # insert. `id DESC` on a UUIDv4 primary key would pick an arbitrary
+      # winner because random UUIDs have no temporal ordering.
       latest_events = AuditEvent
         .select("DISTINCT ON (entity_id) entity_id, after_snapshot")
         .where(entity_type: @entity_type, entity_id: @entity_ids)
         .where("occurred_at <= ?", @as_of)
-        .order(Arel.sql("entity_id, occurred_at DESC, id DESC"))
+        .order(Arel.sql("entity_id, occurred_at DESC, sequence DESC"))
 
       latest_by_entity_id = latest_events.index_by(&:entity_id)
 

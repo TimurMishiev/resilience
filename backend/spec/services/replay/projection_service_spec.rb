@@ -112,5 +112,51 @@ RSpec.describe Replay::ProjectionService, type: :service do
         { "workflow_status" => "noisy-149" },
       ])
     end
+
+    it "breaks ties on identical occurred_at via insertion-order sequence" do
+      # Concurrent writes can produce two audit events with the same
+      # microsecond occurred_at. The projection must return the LATER
+      # insert deterministically, not a random UUID winner.
+      #
+      # Before the sequence column existed, ORDER BY id DESC picked an
+      # arbitrary event because audit_events.id is gen_random_uuid().
+      task   = create(:task)
+      cutoff = 1.hour.ago.change(usec: 0)
+      same_moment = cutoff - 5.minutes
+
+      earlier = create(
+        :audit_event,
+        entity_type: "Task",
+        entity_id: task.id,
+        event_type: "task.transitioned",
+        after_snapshot: { "workflow_status" => "earlier-insert" },
+        occurred_at: same_moment,
+      )
+      later = create(
+        :audit_event,
+        entity_type: "Task",
+        entity_id: task.id,
+        event_type: "task.transitioned",
+        after_snapshot: { "workflow_status" => "later-insert" },
+        occurred_at: same_moment,
+      )
+
+      # Sanity: confirm the two events share the exact occurred_at (no
+      # accidental drift through the factory).
+      expect(earlier.occurred_at).to eq(later.occurred_at)
+      # And that sequence increased monotonically at the DB layer.
+      expect(later.reload.sequence).to be > earlier.reload.sequence
+
+      result = described_class.call(
+        entity_type: "Task",
+        entity_ids: [task.id],
+        as_of: cutoff,
+      )
+
+      expect(result).to be_success
+      expect(result.snapshots).to eq([
+        { "workflow_status" => "later-insert" },
+      ])
+    end
   end
 end
