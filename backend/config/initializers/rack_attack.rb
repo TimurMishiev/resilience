@@ -12,13 +12,37 @@ class Rack::Attack
   ### Throttles ###
 
   # Login endpoint — prevent brute-force credential stuffing.
-  # 5 attempts per IP per minute; 20 per IP per hour.
-  throttle("login/ip/minute", limit: 5, period: 60) do |req|
+  # Per-IP: 5 attempts per minute, 20 per hour (generic bot floor).
+  LOGIN_IP_REQUESTS_PER_MINUTE = 5
+  LOGIN_IP_REQUESTS_PER_HOUR   = 20
+
+  throttle("login/ip/minute", limit: LOGIN_IP_REQUESTS_PER_MINUTE, period: 60) do |req|
     req.ip if req.path == "/api/auth/login" && req.post?
   end
 
-  throttle("login/ip/hour", limit: 20, period: 3600) do |req|
+  throttle("login/ip/hour", limit: LOGIN_IP_REQUESTS_PER_HOUR, period: 3600) do |req|
     req.ip if req.path == "/api/auth/login" && req.post?
+  end
+
+  # Per-email throttle — defends against distributed credential stuffing
+  # where an attacker rotates source IPs across a botnet to stay under the
+  # per-IP limit while targeting one account. Without this, a single
+  # account can be attacked from 100 IPs × 5 attempts/min = 500 guesses/min
+  # undetected.
+  #
+  # Intentionally tighter than per-IP (3/min vs 5, 10/hr vs 20) so one
+  # targeted account cannot be probed more than 10 times per hour from any
+  # combination of IPs. Legitimate users retrying a typoed password retry
+  # well under these limits.
+  LOGIN_EMAIL_REQUESTS_PER_MINUTE = 3
+  LOGIN_EMAIL_REQUESTS_PER_HOUR   = 10
+
+  throttle("login/email/minute", limit: LOGIN_EMAIL_REQUESTS_PER_MINUTE, period: 60) do |req|
+    login_email_key(req)
+  end
+
+  throttle("login/email/hour", limit: LOGIN_EMAIL_REQUESTS_PER_HOUR, period: 3600) do |req|
+    login_email_key(req)
   end
 
   # AI endpoints are expensive (Anthropic API calls) — limit tightly.
@@ -132,6 +156,35 @@ class Rack::Attack
       return nil if token.blank?
 
       JwtAuthenticatable.decode_payload(token)[:sub]
+    rescue StandardError
+      nil
+    end
+
+    # Extracts the login email from a POST /api/auth/login body for
+    # per-email throttling. Handles the JSON-body shape the SPA sends
+    # (`{"email": "...", "password": "..."}`) and Rails' wrap_parameters
+    # variant (`{"session": {"email": "...", "password": "..."}}`).
+    # Returns nil (throttle no-ops) for any other path, method, content
+    # type, or parse failure.
+    #
+    # Body is rewound after reading so ActionDispatch can parse it
+    # downstream — without this the login controller would see an empty
+    # body and reject every request.
+    def login_email_key(req)
+      return nil unless req.post? && req.path == "/api/auth/login"
+      return nil unless req.content_type.to_s.include?("application/json")
+      return nil unless req.body.respond_to?(:read)
+
+      req.body.rewind if req.body.respond_to?(:rewind)
+      raw = req.body.read
+      req.body.rewind if req.body.respond_to?(:rewind)
+      return nil if raw.blank?
+
+      parsed = JSON.parse(raw)
+      email = parsed["email"] || parsed.dig("session", "email")
+      return nil unless email.is_a?(String)
+
+      email.downcase.strip.presence
     rescue StandardError
       nil
     end

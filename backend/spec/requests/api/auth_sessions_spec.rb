@@ -23,6 +23,49 @@ RSpec.describe "Api::Auth::Sessions", type: :request do
       expect(JSON.parse(response.body)).to include("user" => include("email" => user.email, "role" => "commander"))
       expect(UserSession.where(user: user).count).to eq(1)
     end
+
+    it "throttles repeated login attempts against a single email" do
+      create(:user, email: "victim@example.mil", password: "correct-password")
+      create(:user, email: "other@example.mil",  password: "correct-password")
+
+      # Burn the per-email bucket against victim@ with wrong-password attempts.
+      Rack::Attack::LOGIN_EMAIL_REQUESTS_PER_MINUTE.times do
+        post "/api/auth/login",
+             params: { email: "victim@example.mil", password: "guess" },
+             as: :json
+        expect(response).to have_http_status(:unauthorized)
+      end
+
+      # Next attempt against the same email is throttled, even though the IP
+      # bucket still has headroom (per-IP is 5, per-email is 3).
+      post "/api/auth/login",
+           params: { email: "victim@example.mil", password: "guess" },
+           as: :json
+      expect(response).to have_http_status(:too_many_requests)
+
+      # Different email from the same IP is not throttled — proves the
+      # throttle key is the email, not the IP. This is the distributed
+      # credential-stuffing defence: an attacker rotating IPs still shares
+      # the per-email bucket when they target one account.
+      post "/api/auth/login",
+           params: { email: "other@example.mil", password: "guess" },
+           as: :json
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "normalises email case and whitespace so throttle cannot be bypassed" do
+      # Two different castings of the same email hit the same bucket.
+      Rack::Attack::LOGIN_EMAIL_REQUESTS_PER_MINUTE.times do
+        post "/api/auth/login",
+             params: { email: "VICTIM@example.mil", password: "g" },
+             as: :json
+      end
+
+      post "/api/auth/login",
+           params: { email: "  victim@example.mil  ", password: "g" },
+           as: :json
+      expect(response).to have_http_status(:too_many_requests)
+    end
   end
 
   describe "DELETE /api/auth/logout" do
