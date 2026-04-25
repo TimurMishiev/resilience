@@ -24,6 +24,100 @@ RSpec.describe "Api::Auth::Sessions", type: :request do
       expect(UserSession.where(user: user).count).to eq(1)
     end
 
+    # ── MFA login flow (Tranche 3B / ADR-009 item 4) ───────────────────────
+    context "when the user has TOTP MFA enabled" do
+      let(:enrollment) do
+        result = Mfa::EnrollmentService.begin_enrollment(user)
+        Mfa::EnrollmentService.confirm_enrollment(user, ROTP::TOTP.new(result.secret).now)
+        result
+      end
+
+      it "returns 401 with mfa_required when only email+password are supplied" do
+        enrollment
+
+        post "/api/auth/login", params: { session: { email: user.email, password: "password123" } }
+
+        expect(response).to have_http_status(:unauthorized)
+        body = JSON.parse(response.body)
+        expect(body["mfa_required"]).to be(true)
+        expect(body["errors"]).to eq([ "MFA code required" ])
+        expect(response.cookies["_resilience_session"]).to be_blank
+        expect(UserSession.where(user: user).count).to eq(0)
+      end
+
+      it "issues the session cookie when a valid TOTP code is supplied alongside the password" do
+        secret = enrollment.secret
+        travel 31.seconds do
+          live_code = ROTP::TOTP.new(secret).now
+
+          post "/api/auth/login", params: {
+            session: {
+              email:     user.email,
+              password:  "password123",
+              totp_code: live_code,
+            },
+          }
+
+          expect(response).to have_http_status(:created)
+          expect(response.cookies["_resilience_session"]).to be_present
+          expect(UserSession.where(user: user).count).to eq(1)
+        end
+      end
+
+      it "issues the session cookie when a recovery code is supplied (and consumes it)" do
+        codes = enrollment.recovery_codes
+
+        post "/api/auth/login", params: {
+          session: {
+            email:         user.email,
+            password:      "password123",
+            recovery_code: codes.first,
+          },
+        }
+
+        expect(response).to have_http_status(:created)
+        expect(response.cookies["_resilience_session"]).to be_present
+        expect(user.mfa_recovery_codes.used.count).to eq(1)
+      end
+
+      it "rejects an invalid TOTP code with mfa_required=true and no session cookie" do
+        enrollment
+
+        post "/api/auth/login", params: {
+          session: {
+            email:     user.email,
+            password:  "password123",
+            totp_code: "000000",
+          },
+        }
+
+        expect(response).to have_http_status(:unauthorized)
+        body = JSON.parse(response.body)
+        expect(body["mfa_required"]).to be(true)
+        expect(body["errors"]).to eq([ "Invalid TOTP code" ])
+        expect(response.cookies["_resilience_session"]).to be_blank
+      end
+
+      it "rejects bad password before considering TOTP (no mfa_required leak in this case)" do
+        enrollment
+
+        post "/api/auth/login", params: {
+          session: {
+            email:     user.email,
+            password:  "wrong-password",
+            totp_code: "000000",
+          },
+        }
+
+        expect(response).to have_http_status(:unauthorized)
+        body = JSON.parse(response.body)
+        expect(body["errors"]).to eq([ "Invalid email or password" ])
+        # The mfa_required signal must NOT be returned here — it
+        # would let an attacker enumerate which accounts have MFA.
+        expect(body["mfa_required"]).to be_nil
+      end
+    end
+
     it "rejects a login request whose Origin header is not in CORS_ORIGINS (defence-in-depth login-CSRF guard)" do
       stub_const("ENV", ENV.to_h.merge("CORS_ORIGINS" => "https://app.resilience-ops.fly.dev"))
 

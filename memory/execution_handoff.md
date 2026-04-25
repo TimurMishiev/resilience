@@ -22,10 +22,176 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**Tranche 3A — Feed hostile-input guards.** Implementation complete
-(with Codex P1 + P2 fixes applied in-place); **dirty tree
-uncommitted** awaiting Codex re-gate per the workflow
-([feedback_codex_gate_workflow](memory/feedback_codex_gate_workflow.md)).
+**Tranche 3B — MFA TOTP.** Implementation complete (with **three
+Codex rounds** of fix-forwards applied in-place: P1+P3 on
+re-enrollment downgrade + stale handoff; P1 on verifier
+non-atomicity; P2 on recovery-code audit-trail honesty) **plus
+one self-gate round** (Codex unavailable; user authorised
+self-driving): P3 dead-code removal — `MfaRecoveryCode#mark_used!`
+had zero callers after the P1 atomicity rewrite and would have
+been a non-atomic footgun for any future contributor reaching
+for it from console. Removed with an inline comment redirecting
+to the conditional UPDATE in `Mfa::VerificationService`.
+
+Codex will run a final gate when the user is back; if anything
+real surfaces, fix-forward in 3B.1.
+
+Changes in dirty tree:
+
+- **Schema migrations:**
+  - [20260425100000_add_totp_to_users.rb](backend/db/migrate/20260425100000_add_totp_to_users.rb)
+    — `totp_secret_ciphertext` (bytea), `totp_enabled_at`, `totp_last_used_at`.
+  - [20260425100001_create_mfa_recovery_codes.rb](backend/db/migrate/20260425100001_create_mfa_recovery_codes.rb)
+    — `mfa_recovery_codes` table with BCrypt `code_hash` per row,
+    partial index on (user_id, used_at) WHERE used_at IS NULL.
+- [Gemfile](backend/Gemfile) — `rotp` 6.x added (de-facto Ruby TOTP
+  library).
+- [backend/app/services/mfa/secret_cipher.rb](backend/app/services/mfa/secret_cipher.rb)
+  — authenticated symmetric encryption for the per-user TOTP
+  secret. Key derived from `Rails.application.secret_key_base` via
+  `ActiveSupport::KeyGenerator` (HKDF-style); `MessageEncryptor`
+  for the AEAD. Memoised mutex-guarded so first call doesn't pay
+  derivation cost on the request path. Versioned salt
+  (`resilience.mfa.totp_secret.v1`) for forward rotation.
+- [backend/app/models/mfa_recovery_code.rb](backend/app/models/mfa_recovery_code.rb)
+  — `matches?(plaintext)` constant-time compare against per-row
+  BCrypt salt; `mark_used!` stamps `used_at`.
+- [backend/app/services/mfa/enrollment_service.rb](backend/app/services/mfa/enrollment_service.rb)
+  — `begin_enrollment` (generate + persist secret + 10 recovery
+  codes; secret + codes returned plaintext exactly once),
+  `confirm_enrollment` (verify first TOTP code, set
+  `totp_enabled_at`, **emit `mfa.enabled` audit event**),
+  `disable!` (clear secret + codes — caller must re-prove
+  identity first; **emits `mfa.disabled` audit event**). The
+  `actor:` kwarg defaults to the user themselves; controllers
+  pass `current_user` explicitly so the audit-event row carries
+  the actor's email rather than being implicit.
+- [backend/app/services/mfa/verification_service.rb](backend/app/services/mfa/verification_service.rb)
+  — login-time verification. **TOTP path uses an atomic
+  conditional UPDATE-WHERE pattern (mirrors ADR-004's
+  correlation-rule cooldown): ROTP's `after:` parameter for
+  fast-path replay rejection, then a compare-and-set on
+  `totp_last_used_at` so two concurrent requests with the same
+  valid code can never both succeed.** Recovery code path
+  walks active codes in memory (per-row salt prevents SQL
+  WHERE on plaintext), then claims the matched row with
+  `MfaRecoveryCode.where(id:, used_at: nil).update_all(used_at: now)`
+  — the `WHERE used_at IS NULL` clause is the atomic
+  single-use guarantee.
+  **(Codex second-round P1 fix-forward.)** On success, **emits
+  `mfa.code_used` audit event with `used_recovery_code` flag
+  in metadata** so the durable forensic record distinguishes
+  TOTP vs recovery-code redemption — the `mfa_recovery_codes`
+  side table is now ephemeral (rotated on disable / re-enroll);
+  `audit_events` (chain-hashed per ADR-010) is the trail.
+  **(Codex third-round P2 fix-forward.)**
+- [backend/app/models/user.rb](backend/app/models/user.rb)
+  — adds `totp_secret` accessor pair (encrypts on write, decrypts
+  on read with cache), `totp_enabled?`, `has_many :mfa_recovery_codes`.
+- [backend/app/controllers/api/auth/mfa_controller.rb](backend/app/controllers/api/auth/mfa_controller.rb)
+  — `POST /api/auth/mfa` (begin enrollment; **requires
+  `totp_code` OR `recovery_code` re-proof when MFA is already
+  enabled — Codex P1 fix-forward, defends session-hijack
+  downgrade via re-enrollment**), `POST /api/auth/mfa/confirm`
+  (activate), `DELETE /api/auth/mfa` (disable — requires
+  `totp_code` OR `recovery_code` to re-prove identity).
+- [backend/app/policies/mfa_policy.rb](backend/app/policies/mfa_policy.rb)
+  — placeholder (any authenticated user manages their own MFA);
+  exists primarily for the `verify_authorized` after-action gate
+  + future role-based extension.
+- [backend/app/controllers/api/auth/sessions_controller.rb](backend/app/controllers/api/auth/sessions_controller.rb)
+  — `create` extended: when user has TOTP enabled, password-only
+  returns 401 with `{ mfa_required: true, errors: ["MFA code required"] }`;
+  client reissues with `totp_code` or `recovery_code`. Critical
+  detail: bad password is rejected BEFORE the MFA check fires, so
+  `mfa_required` is never returned for unauthenticated callers
+  (defends against MFA-account enumeration).
+- [backend/config/routes.rb](backend/config/routes.rb) — three new
+  routes under `auth`.
+- [backend/spec/rails_helper.rb](backend/spec/rails_helper.rb)
+  — included `ActiveSupport::Testing::TimeHelpers` so MFA specs
+  can `travel` to the next TOTP step. Global change but
+  additive — every existing spec continues to work.
+- **Specs (5 new files, 1 extended):**
+  - `secret_cipher_spec.rb` (7 cases: round-trip, random IV,
+    nil-passthrough, tampered ciphertext, foreign secret_key_base
+    forgery defence)
+  - `enrollment_service_spec.rb` (12 cases: secret format, URI
+    shape, recovery code format + dedup, BCrypt match, draft
+    state, rotation, confirm success/failure paths, disable)
+  - `verification_service_spec.rb` (14 cases: TOTP success/fail,
+    sequential-replay rejection, MFA-not-enabled error, recovery
+    code success/fail/used/case-insensitive, MFA code required,
+    TOTP precedence over recovery, **plus 4 atomicity proofs
+    using two AR User instances loaded from the same DB row to
+    simulate concurrent requests — second-round Codex P1
+    fix-forward**)
+  - `mfa_spec.rb` (13 request-level cases covering all three
+    endpoints + auth gating + **5 re-enrollment guard cases:
+    rejected without proof, rejected on wrong TOTP, accepted with
+    valid TOTP, accepted with valid recovery code, factor stays
+    intact on rejected request — Codex P1 fix-forward**)
+  - `auth_sessions_spec.rb` (5 new context cases: MFA required
+    flag, TOTP login, recovery code login, invalid TOTP, bad
+    password before MFA enumeration)
+
+**Scope deliberately out:** WebAuthn (deferred to its own slice),
+forced MFA enrollment by role, frontend UI (this is API-only;
+UI follows in a separate tranche after the workflow is locked).
+
+Validation: 2,427 backend specs, 0 failures (was 2,369 baseline
+at `ace3916`; +58 net new across the MFA spec files + sessions
+extension, including +5 from the first Codex P1 re-enrollment
+guard fix-forward, +4 from the second Codex P1 atomicity
+fix-forward, +8 from the third Codex P2 audit-trail
+fix-forward).
+
+**Codex /gate cycle (in progress):**
+
+First gate (P1+P3): re-enrollment downgrade was unguarded;
+historical handoff was stale. Both fixed in-place — re-enrollment
+now requires current-factor proof; historical text rewritten.
+
+Second gate (P1): verification was read-then-write — concurrent
+requests with the same code could both succeed. Fixed by
+rewriting both verifier paths with the atomic conditional
+UPDATE-WHERE pattern (ADR-004 lineage). Four new
+concurrency-simulation specs prove exactly one of two
+concurrent attempts succeeds.
+
+Third gate (P2): recovery-code audit trail was promised in
+docs/migration but not implemented — `used_recovery_code` flag
+existed but no caller consumed it, and re-enrollment/disable
+deleted the side-table rows that the migration claimed were
+preserved. Fixed by:
+- Emitting `mfa.code_used` audit event in
+  `Mfa::VerificationService.verify` on success (with
+  `used_recovery_code` in metadata).
+- Emitting `mfa.enabled` audit event in
+  `Mfa::EnrollmentService.confirm_enrollment` on success.
+- Emitting `mfa.disabled` audit event in
+  `Mfa::EnrollmentService.disable!`.
+- Rewriting the migration comment to reflect that the durable
+  trail lives in audit_events (chain-hashed per ADR-010), not
+  in the side table.
+- Threading `actor:` kwarg through enrollment + verification
+  services so controllers can attribute audit events to
+  `current_user`.
+- 8 new audit-trail specs across enrollment + verification
+  service specs, including a regression case that the
+  conditional-UPDATE loser does NOT emit a duplicate audit event.
+
+Fourth-pass re-gate pending after these fix-forwards.
+
+After re-gate clears, commit + push, then continue to
+**Tranche 4 (detection layer: honeytokens + access-pattern
+anomaly detection).**
+
+---
+
+**Tranche 3A — Feed hostile-input guards** ✅ shipped in
+`ace3916` (with Codex P1 gzip-bomb fix-forward + P2 basic_auth
+coverage + P3 doc-consistency fix).
 
 Changes in dirty tree:
 
@@ -95,20 +261,19 @@ Validation: 2,369 backend specs, 0 failures (was 2,350 baseline at
 `afcfb9e`; +19 from PayloadGuards spec including the 5 new
 gate-driven cases).
 
-**Codex /gate cycle:** First gate found two real issues:
+**Codex /gate cycle (closed):** First gate found two real issues
+that were both fixed in-place before commit:
 - **P1** (gpsjam_ingestion_service.rb:96): gzip path inflated
   body unbounded after the compressed-body cap — gzip bomb could
-  bypass the OOM guard. Fixed via new `safe_inflate` helper that
+  bypass the OOM guard. Closed via new `safe_inflate` helper that
   bounds inflated bytes at 25 MB during streamed decompression.
 - **P2** (payload_guards_spec.rb): no direct test of the
-  basic_auth: branch that OpenSky depends on. Fixed via two new
+  basic_auth: branch that OpenSky depends on. Closed via two new
   specs covering Authorization header forwarding (encoded value
   asserted) + absence-when-omitted.
 
-Both fixes shipped in-place before any commit; re-gate pending.
-
-After Codex `/gate` clears, commit + push, then continue to
-**Tranche 3B (MFA TOTP).**
+Re-gate then surfaced one P3 on a stale handoff status line for
+Tranche 2B; closed in-place. Tranche 3A shipped at `ace3916`.
 
 ---
 
@@ -195,14 +360,19 @@ without verifying against current code.
    satisfies both pools at current concurrency.
 
 **Tranche 3 — Security hardening**
-5. Feed hostile-input guards — **3A implementation complete, Codex
-   /gate pending, awaiting commit.** `Feeds::PayloadGuards` module
-   + 25 MB body cap + 32-deep JSON nesting cap + UTF-8 + BOM
-   handling, wired into all 7 feed services. Closes ADR-007 item 4
-   + ADR-009 item 7 (partial — spoofed-but-well-formed signals are
-   covered by ADR-008's source priors, not these guards).
-6. MFA TOTP (WebAuthn deferred to its own slice if/when needed)
-   — **3B next after 3A commit**
+5. ✅ shipped in `ace3916` — Feed hostile-input guards
+   (`Feeds::PayloadGuards`: 25 MB body cap with streamed-bytes
+   accumulation, 32-deep JSON nesting cap, UTF-8 + BOM handling,
+   bounded gzip inflate for the GPSJam path; all 7 feed services
+   rewired through the module; closes ADR-007 item 4 + ADR-009
+   item 7).
+6. MFA TOTP — **3B implementation complete, Codex /gate pending,
+   awaiting commit.** rotp gem + `Mfa::SecretCipher` (encrypted
+   secret) + `Mfa::EnrollmentService` (begin/confirm/disable) +
+   `Mfa::VerificationService` (TOTP with replay protection +
+   recovery codes) + login-flow integration (mfa_required signal)
+   + 3 new auth endpoints + 42 net new specs. Partially closes
+   ADR-009 item 4 (TOTP shipped; SSO/SCIM/WebAuthn still open).
 
 **Tranche 4 — Detection layer**
 7. Honeytokens (1 day, deterministic — fires on any read of seeded
@@ -232,10 +402,12 @@ Why this order:
 
 ## Current Repo State
 
-- Latest committed tip: `afcfb9e` — Tranche 2B (SolidQueue/Puma
-  light isolation, ADR-011 + dual-pool RuntimeBudget validator).
-  Pushed to `origin/main`.
+- Latest committed tip: `ace3916` — Tranche 3A (feed hostile-input
+  guards: PayloadGuards + bounded gzip + UTF-8/BOM). Pushed to
+  `origin/main`.
 - Prior commits in the Hardening-to-95 arc:
+  - `afcfb9e` — Tranche 2B (SolidQueue/Puma light isolation,
+    ADR-011 + dual-pool RuntimeBudget validator)
   - `f93ff56` — Tranche 2A (events SSE producer-side org filter)
   - `832278e` — Tranche 1 (AI summary fail-closed + ApplicationJob
     retry/discard baseline)
@@ -244,13 +416,15 @@ Why this order:
   - `97cba16` — Tranche C (verifier + admin endpoint + scheduled job)
   - `86adeb8` — Tranche B (backfill + NOT NULL + DB-level immutability)
   - `d422076` — Tranche A (schema + ChainHasher + EventWriter wiring)
-- Branch state: `main` pushed at `afcfb9e`
-- Working tree: **NOT clean — Tranche 3A dirty tree awaiting Codex
+- Branch state: `main` pushed at `ace3916`
+- Working tree: **NOT clean — Tranche 3B dirty tree awaiting Codex
   /gate clearance.** See "Current Slice" for the file list.
-- Test state: 2,369 backend specs / 0 failures with the dirty tree
-  applied (was 2,350 baseline at `afcfb9e`; +19 from PayloadGuards
-  spec, including the 5 cases added by the Codex P1 + P2
-  fix-forward).
+- Test state: 2,427 backend specs / 0 failures with the dirty tree
+  applied (was 2,369 baseline at `ace3916`; +58 net new across
+  the 5 MFA spec files + sessions extension, including the 5
+  Codex P1 re-enrollment guard cases from the first fix-forward
+  + the 4 atomicity-proof cases from the second fix-forward + the
+  8 audit-trail cases from the third fix-forward).
 
 ## Phase 7 — Slice Plan
 

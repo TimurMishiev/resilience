@@ -32,6 +32,7 @@ class User < ApplicationRecord
   has_many :prosecuted_incidents,       class_name: "Incident",         foreign_key: :prosecuted_by_id,   dependent: :nullify, inverse_of: :prosecuted_by
   has_many :sse_stream_leases,          class_name: "SseStreamLease",   dependent: :destroy
   has_many :reviewed_recommendations,   class_name: "Recommendation",   foreign_key: :reviewed_by_id,     dependent: :nullify, inverse_of: :reviewer
+  has_many :mfa_recovery_codes,         dependent: :delete_all
 
   validates :email, presence: true, uniqueness: { case_sensitive: false },
                     format: { with: URI::MailTo::EMAIL_REGEXP }
@@ -39,6 +40,25 @@ class User < ApplicationRecord
   validate :area_of_operation_belongs_to_organization
 
   before_save { self.email = email.downcase }
+
+  # TOTP accessor pair (Tranche 3B / ADR-009 item 4). The plaintext
+  # base32 secret is encrypted on write via Mfa::SecretCipher and
+  # decrypted on read; the underlying column (totp_secret_ciphertext)
+  # is bytea. mfa_recovery_codes are deleted with the user — the
+  # backup-code rotation is part of the same root of trust that
+  # rotates with the secret.
+  def totp_secret
+    @totp_secret_plaintext_cache ||= Mfa::SecretCipher.decrypt(totp_secret_ciphertext)
+  end
+
+  def totp_secret=(plaintext)
+    @totp_secret_plaintext_cache = nil
+    self.totp_secret_ciphertext  = Mfa::SecretCipher.encrypt(plaintext)
+  end
+
+  def totp_enabled?
+    totp_enabled_at.present?
+  end
 
   # Role predicates — use these in policies, never compare role strings directly.
   def viewer?

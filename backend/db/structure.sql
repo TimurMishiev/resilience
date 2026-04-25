@@ -348,6 +348,19 @@ CREATE TABLE public.ingestion_cursors (
 
 
 --
+-- Name: mfa_recovery_codes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.mfa_recovery_codes (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    user_id uuid NOT NULL,
+    code_hash text NOT NULL,
+    used_at timestamp(6) without time zone,
+    created_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
 -- Name: operational_statuses; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1260,6 +1273,9 @@ CREATE TABLE public.users (
     tokens_valid_after timestamp(6) without time zone,
     area_of_operation_id uuid,
     organization_id uuid,
+    totp_secret_ciphertext bytea,
+    totp_enabled_at timestamp(6) without time zone,
+    totp_last_used_at timestamp(6) without time zone,
     CONSTRAINT users_role_check CHECK (((role)::text = ANY (ARRAY[('viewer'::character varying)::text, ('operator'::character varying)::text, ('commander'::character varying)::text, ('admin'::character varying)::text])))
 );
 
@@ -1659,6 +1675,14 @@ ALTER TABLE ONLY public.ingestion_cursors
 
 
 --
+-- Name: mfa_recovery_codes mfa_recovery_codes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.mfa_recovery_codes
+    ADD CONSTRAINT mfa_recovery_codes_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: operational_statuses operational_statuses_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1827,6 +1851,13 @@ CREATE UNIQUE INDEX idx_geofence_breach_signal_site_unique ON public.signal_rule
 --
 
 CREATE INDEX idx_incidents_active_prosecution ON public.incidents USING btree (prosecution_phase) WHERE (prosecution_phase IS NOT NULL);
+
+
+--
+-- Name: idx_mfa_recovery_codes_active_per_user; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_mfa_recovery_codes_active_per_user ON public.mfa_recovery_codes USING btree (user_id, used_at) WHERE (used_at IS NULL);
 
 
 --
@@ -2177,6 +2208,13 @@ CREATE INDEX index_incidents_on_status ON public.incidents USING btree (status);
 --
 
 CREATE UNIQUE INDEX index_ingestion_cursors_on_name_unique ON public.ingestion_cursors USING btree (name);
+
+
+--
+-- Name: index_mfa_recovery_codes_on_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_mfa_recovery_codes_on_user_id ON public.mfa_recovery_codes USING btree (user_id);
 
 
 --
@@ -3713,6 +3751,14 @@ ALTER TABLE ONLY public.prosecution_steps
 
 
 --
+-- Name: mfa_recovery_codes fk_rails_4c8a297a66; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.mfa_recovery_codes
+    ADD CONSTRAINT fk_rails_4c8a297a66 FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
 -- Name: tasks fk_rails_546c3973b4; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3967,6 +4013,8 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260425100001'),
+('20260425100000'),
 ('20260424220004'),
 ('20260424220003'),
 ('20260424220002'),

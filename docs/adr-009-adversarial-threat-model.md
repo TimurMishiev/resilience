@@ -144,9 +144,18 @@ stack.
 These are the items a defence-tech acquirer would specifically test
 for and find missing:
 
-1. **No enterprise identity.** No SSO / OIDC / SAML integration. No
-   SCIM provisioning. No MFA. Users authenticate with email +
-   password only.
+1. **Enterprise identity — partial.** **TOTP MFA shipped 2026-04-25
+   in Tranche 3B**: per-user TOTP secret (encrypted via
+   `Mfa::SecretCipher` over the secret_key_base root of trust),
+   provisioning URI for any RFC 6238 authenticator app, 10
+   single-use BCrypt-hashed recovery codes per user, replay
+   protection via `totp_last_used_at` + ROTP's `after:` parameter.
+   Login flow: password-only returns 401 with
+   `{ mfa_required: true }`; reissue with `totp_code` or
+   `recovery_code` to complete. Disable requires re-proof.
+   **Still open**: SSO / OIDC / SAML integration, SCIM
+   provisioning, WebAuthn (deferred to a follow-up tranche per
+   the locked plan), forced-MFA-by-role policy.
 2. **No data classification / compartmentalization.** Multi-tenancy is
    organization + AO; no "this user can see this tenant's data but
    only the SECRET-level subset." No per-record sensitivity labels.
@@ -191,7 +200,7 @@ cost-benefit:
 | 1 | ~~Chain-of-custody on audit_events~~ **SHIPPED 2026-04-25** | 2-3 days | See ADR-010. Per-org SHA-256 hash chain + DB-level immutability triggers + verifier service + admin endpoint + scheduled daily sweep. |
 | 2 | Anomaly detection on access patterns | 3-5 days | Background job computes rolling access velocity / off-hours multipliers per user; alerts when a user's pattern deviates. Requires a `user_access_profile` table. |
 | 3 | ~~Feed connector hostile-input guards~~ **SHIPPED 2026-04-25** | 1-2 days | See ADR-007 item 4 + `Feeds::PayloadGuards`. 25 MB body cap, 32-deep JSON nesting cap, UTF-8 + BOM normalisation across all 7 feeds. |
-| 4 | MFA (TOTP + WebAuthn) | 2-3 days | Mostly gem + UI work. Required for any defence-tech pilot. |
+| 4 | ~~MFA (TOTP)~~ **TOTP SHIPPED 2026-04-25** / WebAuthn deferred | 2-3 days | TOTP shipped via `rotp` gem + `Mfa::EnrollmentService` + login-flow integration + 10 BCrypt-hashed recovery codes per user + replay protection via `totp_last_used_at`. WebAuthn deferred to a follow-up tranche; pilot blocker for the TOTP requirement is resolved. |
 | 5 | SCIM provisioning endpoint | 3-5 days | Enterprise-IdP integration. Deferred until a real customer conversation justifies the shape. |
 | 6 | Per-record classification labels | 5+ days | Requires a product conversation about classification scheme. Don't build until an operator tells us what schema they need. |
 | 7 | Honeytoken strategy | 1 day | Low effort, high signal. Seed a known-fake site / incident; fire an alert if any user reads it. |

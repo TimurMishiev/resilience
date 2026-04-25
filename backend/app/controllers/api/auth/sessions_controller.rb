@@ -12,32 +12,64 @@ module Api
       skip_before_action :authenticate_request!, only: :create
 
       # POST /api/auth/login
+      #
+      # Body: { session: { email, password, totp_code?, recovery_code? } }
+      #
+      # MFA flow (Tranche 3B / ADR-009 item 4): when a user has
+      # TOTP enabled, the login response from the password-only
+      # call is 401 with `{ mfa_required: true }`. The client
+      # reissues the login with `totp_code` (6-digit authenticator
+      # code) or `recovery_code` (one of the user's 10 single-use
+      # backup codes). We never issue a "challenge token" or
+      # short-lived intermediate JWT — keeping the protocol
+      # one-step-or-two avoids a third token shape on the wire.
       def create
         authorize :session, :create?
         return render(json: { errors: ["Login request from unauthorised origin"] }, status: :forbidden) unless browser_origin_permitted?
 
         user = User.find_by(email: params.dig(:session, :email)&.downcase)
 
-        if user&.authenticate(params.dig(:session, :password))
-          token = JwtAuthenticatable.encode(sub: user.id, email: user.email, role: user.role)
-          payload = JwtAuthenticatable.decode_payload(token)
-          UserSession.issue!(user: user, token_payload: payload, request: request)
-
-          response.set_cookie(
-            :_resilience_session,
-            value:     token,
-            httponly:  true,
-            same_site: :lax,
-            secure:    Rails.configuration.assume_ssl || request.ssl?,
-            path:      "/",
-            expires:   JwtAuthenticatable::TTL.from_now
-          )
-
-          render json: { user: serialize_user(user) },
-                 status: :created
-        else
+        unless user&.authenticate(params.dig(:session, :password))
           render json: { errors: ["Invalid email or password"] }, status: :unauthorized
+          return
         end
+
+        if user.totp_enabled?
+          totp_code     = params.dig(:session, :totp_code)
+          recovery_code = params.dig(:session, :recovery_code)
+
+          if totp_code.blank? && recovery_code.blank?
+            render json: { errors: ["MFA code required"], mfa_required: true }, status: :unauthorized
+            return
+          end
+
+          mfa_result = Mfa::VerificationService.verify(
+            user:          user,
+            totp_code:     totp_code,
+            recovery_code: recovery_code,
+            actor:         user,
+          )
+          unless mfa_result.ok?
+            render json: { errors: [ mfa_result.error ], mfa_required: true }, status: :unauthorized
+            return
+          end
+        end
+
+        token = JwtAuthenticatable.encode(sub: user.id, email: user.email, role: user.role)
+        payload = JwtAuthenticatable.decode_payload(token)
+        UserSession.issue!(user: user, token_payload: payload, request: request)
+
+        response.set_cookie(
+          :_resilience_session,
+          value:     token,
+          httponly:  true,
+          same_site: :lax,
+          secure:    Rails.configuration.assume_ssl || request.ssl?,
+          path:      "/",
+          expires:   JwtAuthenticatable::TTL.from_now
+        )
+
+        render json: { user: serialize_user(user) }, status: :created
       end
 
       # GET /api/auth/sessions

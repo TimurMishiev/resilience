@@ -22,6 +22,11 @@ Rails.application.routes.draw do
       get    :sessions,      to: "sessions#index"
       delete :sessions,      to: "sessions#revoke_all"
       delete "sessions/:id", to: "sessions#revoke"
+
+      # MFA TOTP enrollment + management (ADR-009 item 4)
+      post   :mfa,         to: "mfa#create"
+      post   "mfa/confirm", to: "mfa#confirm"
+      delete :mfa,         to: "mfa#destroy"
     end
 
     resources :sites, only: %i[index show] do
