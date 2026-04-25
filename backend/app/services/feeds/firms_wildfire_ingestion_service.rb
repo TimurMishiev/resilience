@@ -81,7 +81,7 @@ module Feeds
       uri = URI(url)
 
       http     = ssl_http(uri.host, uri.port, timeout: TIMEOUT)
-      response = http.get(uri.request_uri)
+      response = Feeds::PayloadGuards.safe_get(http, uri.request_uri)
       unless response.code == "200"
         Rails.logger.warn "[FIRMSFeed] HTTP #{response.code} for #{box[:name]}"
         metrics.increment(:error_count)
@@ -89,7 +89,7 @@ module Feeds
         return nil
       end
 
-      CSV.parse(response.body, headers: true, skip_blanks: true)
+      CSV.parse(Feeds::PayloadGuards.normalise_utf8(response.body), headers: true, skip_blanks: true)
     rescue => e
       Rails.logger.warn "[FIRMSFeed] fetch error for #{box[:name]}: #{e.class}: #{e.message}"
       metrics.increment(:error_count)

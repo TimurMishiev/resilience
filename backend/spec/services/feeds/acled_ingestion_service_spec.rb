@@ -199,34 +199,43 @@ RSpec.describe Feeds::AcledIngestionService, type: :service do
       stub_const("#{described_class}::PER_PAGE", 2)
     end
 
+    # Tranche 3A (2026-04-25): the feed now routes HTTP through
+    # Feeds::PayloadGuards.safe_get for body-size + UTF-8 guards.
+    # Specs stub at that boundary instead of Net::HTTP#get so the
+    # PayloadGuards module's behaviour is exercised in its own spec
+    # and these specs stay focused on feed logic.
+    def safe_response(body)
+      Feeds::PayloadGuards::SafeResponse.new(code: "200", body: body, headers: {})
+    end
+
     it "paginates through ACLED pages for the current footprint" do
       create(:site, latitude: 35.5, longitude: 37.2)
 
       http = instance_double(Net::HTTP)
-      page_1 = instance_double(Net::HTTPResponse, code: "200", body: {
+      page_1 = safe_response({
         "data" => [
           raw_event.merge("event_id_cnty" => "SYR-1"),
           raw_event.merge("event_id_cnty" => "SYR-2", "latitude" => "35.6", "longitude" => "37.3"),
         ],
       }.to_json)
-      page_2 = instance_double(Net::HTTPResponse, code: "200", body: {
+      page_2 = safe_response({
         "data" => [
           raw_event.merge("event_id_cnty" => "SYR-3", "latitude" => "35.7", "longitude" => "37.4"),
         ],
       }.to_json)
 
       allow(service).to receive(:ssl_http).and_return(http)
-      allow(http).to receive(:get).and_return(page_1, page_2)
+      allow(Feeds::PayloadGuards).to receive(:safe_get).and_return(page_1, page_2)
 
       result = nil
       expect {
         result = service.call
       }.to change(ExternalSignal, :count).by(3)
-      expect(http).to have_received(:get).twice
-      expect(http).to have_received(:get).with(include("page=1"))
-      expect(http).to have_received(:get).with(include("page=2"))
-      expect(http).to have_received(:get).with(include("latitude_where=BETWEEN")).at_least(:once)
-      expect(http).to have_received(:get).with(include("longitude_where=BETWEEN")).at_least(:once)
+      expect(Feeds::PayloadGuards).to have_received(:safe_get).twice
+      expect(Feeds::PayloadGuards).to have_received(:safe_get).with(http, include("page=1"))
+      expect(Feeds::PayloadGuards).to have_received(:safe_get).with(http, include("page=2"))
+      expect(Feeds::PayloadGuards).to have_received(:safe_get).with(http, include("latitude_where=BETWEEN")).at_least(:once)
+      expect(Feeds::PayloadGuards).to have_received(:safe_get).with(http, include("longitude_where=BETWEEN")).at_least(:once)
       expect(result.payload[:feed_health]).to include(
         feed: "acled",
         status: "ok",
@@ -241,18 +250,16 @@ RSpec.describe Feeds::AcledIngestionService, type: :service do
       create(:site, latitude: 35.5, longitude: 37.2)
 
       http = instance_double(Net::HTTP)
-      response = instance_double(Net::HTTPResponse, code: "200", body: {
+      response       = safe_response({
         "data" => [
           raw_event.merge("event_id_cnty" => "SYR-1"),
           raw_event.merge("event_id_cnty" => "FAR-1", "latitude" => "-15.0", "longitude" => "-65.0"),
         ],
       }.to_json)
-      empty_response = instance_double(Net::HTTPResponse, code: "200", body: {
-        "data" => [],
-      }.to_json)
+      empty_response = safe_response({ "data" => [] }.to_json)
 
       allow(service).to receive(:ssl_http).and_return(http)
-      allow(http).to receive(:get).and_return(response, empty_response)
+      allow(Feeds::PayloadGuards).to receive(:safe_get).and_return(response, empty_response)
 
       expect { service.call }.to change(ExternalSignal, :count).by(1)
       expect(ExternalSignal.last.external_id).to eq("SYR-1")
@@ -270,12 +277,12 @@ RSpec.describe Feeds::AcledIngestionService, type: :service do
       create(:site, latitude: 35.6, longitude: 37.3, area_of_operation: area)
 
       http = instance_double(Net::HTTP)
-      response = instance_double(Net::HTTPResponse, code: "200", body: {
-        "data" => [raw_event.merge("event_id_cnty" => "SYR-DEDUP")],
+      response = safe_response({
+        "data" => [ raw_event.merge("event_id_cnty" => "SYR-DEDUP") ],
       }.to_json)
 
       allow(service).to receive(:ssl_http).and_return(http)
-      allow(http).to receive(:get).and_return(response, response)
+      allow(Feeds::PayloadGuards).to receive(:safe_get).and_return(response, response)
 
       expect(service).to receive(:ingest_event).once.and_call_original
       service.call

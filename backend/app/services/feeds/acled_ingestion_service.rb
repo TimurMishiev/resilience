@@ -141,7 +141,7 @@ module Feeds
 
       loop do
         uri = build_uri(api_key, email, box: box, page: page)
-        response = http.get(uri.request_uri)
+        response = Feeds::PayloadGuards.safe_get(http, uri.request_uri)
 
         unless response.code == "200"
           throttled_warn("fetch", "HTTP #{response.code}")
@@ -149,7 +149,7 @@ module Feeds
           break
         end
 
-        body = JSON.parse(response.body)
+        body = Feeds::PayloadGuards.safe_parse_json(response.body)
         page_events = Array(body["data"])
         metrics.increment(:page_count)
         metrics.increment(:fetched_count, page_events.size)

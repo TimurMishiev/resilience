@@ -144,10 +144,11 @@ module Feeds
 
       http = ssl_http(uri.host, uri.port, timeout: TIMEOUT)
 
-      request = Net::HTTP::Get.new(uri)
-      request.basic_auth(opensky_username, opensky_password) if opensky_username
-
-      response = http.request(request)
+      response = Feeds::PayloadGuards.safe_get(
+        http,
+        uri.request_uri,
+        basic_auth: opensky_username ? [ opensky_username, opensky_password ] : nil,
+      )
 
       unless response.code == "200"
         throttled_warn(box[:name], "HTTP #{response.code}")
@@ -156,7 +157,7 @@ module Feeds
         return nil
       end
 
-      JSON.parse(response.body)
+      Feeds::PayloadGuards.safe_parse_json(response.body)
     rescue => e
       throttled_warn(box[:name], e.message)
       metrics.increment(:error_count)

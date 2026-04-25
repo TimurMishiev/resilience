@@ -52,7 +52,7 @@ module Feeds
 
       uri  = build_uri
       http = ssl_http(uri.host, uri.port, timeout: TIMEOUT)
-      response = http.get(uri.request_uri)
+      response = Feeds::PayloadGuards.safe_get(http, uri.request_uri)
 
       unless response.code == "200"
         throttled_warn("fetch", "HTTP #{response.code}")
@@ -60,7 +60,7 @@ module Feeds
         return ServiceResult.success(metrics.success_payload(status: "degraded", errors: ["HTTP #{response.code}"]))
       end
 
-      body     = JSON.parse(response.body)
+      body     = Feeds::PayloadGuards.safe_parse_json(response.body)
       features = body["features"] || []
       ingested = 0
       metrics.increment(:fetched_count, features.size)

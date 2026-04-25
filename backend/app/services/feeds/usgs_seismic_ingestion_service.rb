@@ -35,7 +35,7 @@ module Feeds
       )
 
       http     = ssl_http(uri.host, uri.port, timeout: TIMEOUT)
-      response = http.get(uri.request_uri)
+      response = Feeds::PayloadGuards.safe_get(http, uri.request_uri)
       unless response.code == "200"
         metrics.increment(:error_count)
         return ServiceResult.failure(
@@ -44,7 +44,7 @@ module Feeds
         )
       end
 
-      data     = JSON.parse(response.body)
+      data     = Feeds::PayloadGuards.safe_parse_json(response.body)
       features = data["features"] || []
       ingested = 0
       metrics.increment(:fetched_count, features.size)

@@ -85,12 +85,19 @@ end
    reconstruct-from-raw is not a documented or tested operation. If
    the parser had a bug for a week, recovering correct state requires
    a manual SQL query and a custom backfill script.
-4. **No hostile-data assumptions.** Every feed assumes the upstream
-   returns well-formed data within size limits. A maliciously crafted
-   GeoJSON with deeply-nested coordinates, a 500MB JSON response, or
-   a UTF-8-with-BOM payload that breaks our parser is not defended
-   against. Real defence-tech ingestion needs adversarial-input
-   posture; portfolio-grade does not.
+4. ~~**No hostile-data assumptions.**~~ **CLOSED 2026-04-25 in
+   Tranche 3A** via [`Feeds::PayloadGuards`](../backend/app/services/feeds/payload_guards.rb).
+   All 7 feed services now route HTTP through `safe_get` (25 MB
+   body cap with both Content-Length pre-check and streamed-bytes
+   accumulation) and parse JSON via `safe_parse_json` (32-deep
+   nesting cap, UTF-8 validation, leading-BOM strip). The two CSV
+   feeds (FIRMS, GPSJam) call `normalise_utf8` on the body before
+   `CSV.parse`. Limits are conservative — large enough to absorb
+   the heaviest legitimate payload (~10 MB OpenSky ADS-B globally;
+   ~5 levels deep for GeoJSON FeatureCollection) but small enough
+   that any payload exceeding them is almost certainly adversarial
+   or a misconfigured upstream that should not silently land in
+   the signal table.
 5. **No connector-level circuit breaker.** Per-feed transient errors
    are caught and retried via `TransientErrors`, but a feed that's
    been failing for 6 hours keeps polling at the same cadence,

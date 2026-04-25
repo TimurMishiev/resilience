@@ -80,7 +80,11 @@ module Feeds
     def fetch_csv_for(date, metrics)
       uri  = URI("#{BASE_URL}/#{date}-h3_4.csv")
       http = ssl_http(uri.host, uri.port, timeout: TIMEOUT)
-      resp = http.get(uri.request_uri, "Accept-Encoding" => "gzip")
+      resp = Feeds::PayloadGuards.safe_get(
+        http,
+        uri.request_uri,
+        headers: { "Accept-Encoding" => "gzip" },
+      )
 
       unless resp.code == "200"
         throttled_warn("fetch_#{date}", "HTTP #{resp.code}")
@@ -90,11 +94,20 @@ module Feeds
       end
 
       body = resp.body
-      # Decompress if gzip
+      # Decompress if gzip — bounded by Feeds::PayloadGuards.safe_inflate's
+      # decompressed-byte ceiling so a gzip bomb under the compressed
+      # 25 MB cap cannot expand into a process-killing payload here.
+      # Without this, a hostile upstream could ship 25 MB of compressed
+      # zeros that inflates to 1+ GB and OOMs the worker — exactly the
+      # OOM scenario Tranche 3A is supposed to close.
       if resp["Content-Encoding"] == "gzip" || body.b.start_with?("\x1F\x8B".b)
-        body = Zlib::GzipReader.new(StringIO.new(body)).read
+        body = Feeds::PayloadGuards.safe_inflate(body)
       end
-      body
+      # Validate UTF-8 on the decompressed CSV body before parsing —
+      # the byte cap already covered the compressed payload, but the
+      # decompressed body could still smuggle invalid bytes through
+      # CSV.parse.
+      Feeds::PayloadGuards.normalise_utf8(body)
     rescue => e
       throttled_warn("fetch_#{date}", e.message)
       metrics.increment(:error_count)

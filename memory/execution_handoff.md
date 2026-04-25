@@ -22,10 +22,98 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**Tranche 2B — SolidQueue/Puma light isolation.** Implementation
-complete (with Codex P1 fix applied in-place); **dirty tree
-uncommitted** awaiting Codex re-gate per the new workflow
+**Tranche 3A — Feed hostile-input guards.** Implementation complete
+(with Codex P1 + P2 fixes applied in-place); **dirty tree
+uncommitted** awaiting Codex re-gate per the workflow
 ([feedback_codex_gate_workflow](memory/feedback_codex_gate_workflow.md)).
+
+Changes in dirty tree:
+
+- [backend/app/services/feeds/payload_guards.rb](backend/app/services/feeds/payload_guards.rb)
+  — new module. `safe_get(http, request_uri, headers:, basic_auth:, max_bytes:)`
+  performs the HTTP GET with both Content-Length pre-check and
+  streamed-bytes accumulation against a 25 MB cap (defends against
+  a hostile upstream that lies about Content-Length). Returns a
+  `SafeResponse` struct with code/body/headers and a `[]` accessor
+  matching Net::HTTPResponse's case-insensitive header lookup.
+  `safe_parse_json(body, max_nesting:)` validates UTF-8, strips
+  leading BOM, and parses with a 32-deep nesting cap (Ruby's
+  default is 100; legitimate feed payloads nest ~5 levels).
+  `safe_inflate(compressed_body, max_bytes:)` decompresses gzip
+  bodies in 64 KB chunks, raising OversizedPayloadError if the
+  inflated total exceeds the cap — defends against gzip bombs
+  (Codex P1 fix-forward, 2026-04-25). `normalise_utf8(body)`
+  exposes the encoding check for CSV-parsing feeds (FIRMS, GPSJam)
+  that bypass JSON.
+
+- All 7 feed services rewired:
+  - [usgs_seismic_ingestion_service.rb](backend/app/services/feeds/usgs_seismic_ingestion_service.rb)
+  - [gdacs_ingestion_service.rb](backend/app/services/feeds/gdacs_ingestion_service.rb)
+  - [ais_ingestion_service.rb](backend/app/services/feeds/ais_ingestion_service.rb)
+  - [open_sky_ingestion_service.rb](backend/app/services/feeds/open_sky_ingestion_service.rb)
+    (basic_auth threaded via the kwarg)
+  - [acled_ingestion_service.rb](backend/app/services/feeds/acled_ingestion_service.rb)
+  - [gpsjam_ingestion_service.rb](backend/app/services/feeds/gpsjam_ingestion_service.rb)
+    (custom Accept-Encoding gzip header preserved via headers kwarg;
+    gzip body now goes through `safe_inflate` for bounded
+    decompression — Codex P1 fix-forward — before `normalise_utf8`
+    + `CSV.parse`)
+  - [firms_wildfire_ingestion_service.rb](backend/app/services/feeds/firms_wildfire_ingestion_service.rb)
+    (CSV body normalised before parse)
+
+- [backend/spec/services/feeds/payload_guards_spec.rb](backend/spec/services/feeds/payload_guards_spec.rb)
+  — 19 specs covering: body size guard (Content-Length pre-check,
+  streamed-bytes accumulation, multi-chunk concat, normal small
+  payload, headers forwarded, **basic_auth credentials forwarded
+  via base64 Authorization header — Codex P2 fix-forward**,
+  Authorization absent when basic_auth omitted), JSON parse guard
+  (normal, max_nesting enforced, max_nesting boundary, invalid
+  UTF-8 rejected, BOM stripped, binary→UTF-8 transparent),
+  **safe_inflate (gzip-bomb regression — real GzipWriter-built
+  payload of 1 MB zeros that compresses to ~1 KB raises
+  OversizedPayloadError when inflated past the cap; reader closed
+  cleanly on early-exit — Codex P1 fix-forward)**, normalise_utf8
+  helper, and pinned constants.
+
+- 3 existing feed specs updated to stub `Feeds::PayloadGuards.safe_get`
+  instead of `http.get` (USGS, GDACS, ACLED) — the PayloadGuards
+  module's behaviour is now exercised in its own spec, so feed
+  specs stay focused on feed logic.
+
+- [docs/adr-007-connector-framework.md](docs/adr-007-connector-framework.md)
+  — gap item 4 ("No hostile-data assumptions") flipped to
+  CLOSED 2026-04-25, with a pointer to the PayloadGuards module
+  + the limits used.
+- [docs/adr-009-adversarial-threat-model.md](docs/adr-009-adversarial-threat-model.md)
+  — gap item 7 (adversarial-input posture) flipped to
+  partial-CLOSED, mitigation roadmap row 3 marked SHIPPED, threat
+  surface table for "External feed injection" updated. Spoofed-but-
+  well-formed AIS/ADS-B remains an explicit separate concern (handled
+  by ADR-008's source reliability priors, not the input guards).
+
+Validation: 2,369 backend specs, 0 failures (was 2,350 baseline at
+`afcfb9e`; +19 from PayloadGuards spec including the 5 new
+gate-driven cases).
+
+**Codex /gate cycle:** First gate found two real issues:
+- **P1** (gpsjam_ingestion_service.rb:96): gzip path inflated
+  body unbounded after the compressed-body cap — gzip bomb could
+  bypass the OOM guard. Fixed via new `safe_inflate` helper that
+  bounds inflated bytes at 25 MB during streamed decompression.
+- **P2** (payload_guards_spec.rb): no direct test of the
+  basic_auth: branch that OpenSky depends on. Fixed via two new
+  specs covering Authorization header forwarding (encoded value
+  asserted) + absence-when-omitted.
+
+Both fixes shipped in-place before any commit; re-gate pending.
+
+After Codex `/gate` clears, commit + push, then continue to
+**Tranche 3B (MFA TOTP).**
+
+---
+
+**Tranche 2B — SolidQueue/Puma light isolation** ✅ shipped in
+`afcfb9e` (with Codex P1 dual-pool fix-forward + two P3 doc fixes).
 
 Changes in dirty tree:
 
@@ -96,21 +184,25 @@ without verifying against current code.
 3. ✅ shipped in `f93ff56` — Generic events SSE tenant routing
    (2A: producer-side org filter via Subscription, P2 follow-up
    pinned the controller wire-up)
-4. SolidQueue/Puma light isolation — **2B implementation complete
-   (Codex P1 dual-pool fix applied in-place), Codex re-gate pending,
-   awaiting commit.** ADR-011 + dual-pool RuntimeBudget::Validator
-   (primary pool: Puma + LISTEN + headroom = 22 required; queue pool:
+4. ✅ shipped in `afcfb9e` — SolidQueue/Puma light isolation
+   (ADR-011 + dual-pool RuntimeBudget::Validator: primary pool =
+   Puma + LISTEN + headroom = 22 required; queue pool =
    SQ workers + dispatcher + headroom = 5 required, only checked
-   when SOLID_QUEUE_IN_PUMA=true) + boot-time initializer wired with
-   `SolidQueue::Record.connection_pool`. The pre-fix `DB_POOL=30`
-   bump in fly.toml was reverted — the implicit
-   `RAILS_MAX_THREADS + 5 = 25` default satisfies both pools at
-   current concurrency.
+   when SOLID_QUEUE_IN_PUMA=true; boot-time initializer wired with
+   `SolidQueue::Record.connection_pool`). The pre-fix `DB_POOL=30`
+   bump in fly.toml was reverted as part of the Codex P1 dual-pool
+   fix-forward — the implicit `RAILS_MAX_THREADS + 5 = 25` default
+   satisfies both pools at current concurrency.
 
 **Tranche 3 — Security hardening**
-5. Feed hostile-input guards (payload size caps, depth limits,
-   charset normalisation across the 7 feed connectors)
+5. Feed hostile-input guards — **3A implementation complete, Codex
+   /gate pending, awaiting commit.** `Feeds::PayloadGuards` module
+   + 25 MB body cap + 32-deep JSON nesting cap + UTF-8 + BOM
+   handling, wired into all 7 feed services. Closes ADR-007 item 4
+   + ADR-009 item 7 (partial — spoofed-but-well-formed signals are
+   covered by ADR-008's source priors, not these guards).
 6. MFA TOTP (WebAuthn deferred to its own slice if/when needed)
+   — **3B next after 3A commit**
 
 **Tranche 4 — Detection layer**
 7. Honeytokens (1 day, deterministic — fires on any read of seeded
@@ -140,9 +232,11 @@ Why this order:
 
 ## Current Repo State
 
-- Latest committed tip: `f93ff56` — Tranche 2A (events SSE
-  producer-side organization filter). Pushed to `origin/main`.
+- Latest committed tip: `afcfb9e` — Tranche 2B (SolidQueue/Puma
+  light isolation, ADR-011 + dual-pool RuntimeBudget validator).
+  Pushed to `origin/main`.
 - Prior commits in the Hardening-to-95 arc:
+  - `f93ff56` — Tranche 2A (events SSE producer-side org filter)
   - `832278e` — Tranche 1 (AI summary fail-closed + ApplicationJob
     retry/discard baseline)
 - Prior commits in the chain-of-custody arc (closes ADR-009 item 1):
@@ -150,12 +244,13 @@ Why this order:
   - `97cba16` — Tranche C (verifier + admin endpoint + scheduled job)
   - `86adeb8` — Tranche B (backfill + NOT NULL + DB-level immutability)
   - `d422076` — Tranche A (schema + ChainHasher + EventWriter wiring)
-- Branch state: `main` pushed at `f93ff56`
-- Working tree: **NOT clean — Tranche 2B dirty tree awaiting Codex
+- Branch state: `main` pushed at `afcfb9e`
+- Working tree: **NOT clean — Tranche 3A dirty tree awaiting Codex
   /gate clearance.** See "Current Slice" for the file list.
-- Test state: 2,350 backend specs / 0 failures with the dirty tree
-  applied (was 2,328 baseline at `f93ff56`; +22 net new in 2B after
-  Codex P1 fix-forward).
+- Test state: 2,369 backend specs / 0 failures with the dirty tree
+  applied (was 2,350 baseline at `afcfb9e`; +19 from PayloadGuards
+  spec, including the 5 cases added by the Codex P1 + P2
+  fix-forward).
 
 ## Phase 7 — Slice Plan
 

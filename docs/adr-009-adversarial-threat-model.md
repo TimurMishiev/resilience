@@ -88,7 +88,7 @@ authentication or must compromise the auth layer first.
 | `/api/ai/*` | Burn Anthropic credit via unauthenticated calls | `require_commander!` before_action plus Pundit authorize — no unauthenticated access. |
 | API endpoints at large | SQL injection, mass assignment, XSS | Brakeman passes with zero warnings. Strong params on every controller. Response is JSON only — no template rendering, no XSS surface. `CSP default-src 'none'` on every response. |
 | SSE streams | DoS via reconnect storm | Admission control via `SseStreamLease` (advisory locks + per-user/per-IP caps). Thread-per-connection ceiling documented in ADR-002. |
-| External feed injection | Malicious data in a feed payload | **GAP** — feed ingestion has no adversarial-input posture (no payload size cap, no deep-nesting guard, no UTF-8 BOM handling). See ADR-007 for the connector-framework items. |
+| External feed injection | Malicious data in a feed payload | ~~GAP~~ **CLOSED 2026-04-25 in Tranche 3A**: `Feeds::PayloadGuards` adds a 25 MB body cap, 32-deep JSON nesting cap, UTF-8 validation, and BOM stripping across all 7 feeds. See ADR-007 for the (now-shipped) hostile-data posture; spoofed-but-well-formed AIS / ADS-B signals are still a separate concern (covered by ADR-008's source reliability priors, not the input guards). |
 
 ### 3. Nation-state / targeted adversary
 
@@ -168,10 +168,13 @@ for and find missing:
 6. **No air-gap / disconnected operation.** Live AI features require
    internet to Anthropic. Map tiles are hosted externally. Whole
    product assumes connectivity.
-7. **No adversarial-input posture on feeds.** Spoofed AIS / ADS-B
-   flow through at their nominal source reliability. Malformed
-   feed payloads (oversized JSON, deep nesting) have no explicit
-   guard.
+7. **Adversarial-input posture on feeds — partial.** Malformed
+   feed payloads (oversized body, deeply nested JSON, invalid
+   UTF-8) **CLOSED 2026-04-25 in Tranche 3A** via
+   `Feeds::PayloadGuards` — see ADR-007 item 4. Spoofed-but-
+   well-formed AIS / ADS-B signals still flow through at their
+   nominal source reliability — that's a separate concern handled
+   by ADR-008's source-reliability priors, not the input guards.
 8. **No forensic-determinism contract.** Replay uses `DISTINCT ON`
    with `(occurred_at, sequence)` tie-breaking (see ADR-001 plus
    the sequence-column commit `4bb9d36`). The contract works today,
@@ -187,7 +190,7 @@ cost-benefit:
 |---|---|---|---|
 | 1 | ~~Chain-of-custody on audit_events~~ **SHIPPED 2026-04-25** | 2-3 days | See ADR-010. Per-org SHA-256 hash chain + DB-level immutability triggers + verifier service + admin endpoint + scheduled daily sweep. |
 | 2 | Anomaly detection on access patterns | 3-5 days | Background job computes rolling access velocity / off-hours multipliers per user; alerts when a user's pattern deviates. Requires a `user_access_profile` table. |
-| 3 | Feed connector hostile-input guards | 1-2 days | Payload size caps, depth limits, charset normalisation. See ADR-007 for the framework context. |
+| 3 | ~~Feed connector hostile-input guards~~ **SHIPPED 2026-04-25** | 1-2 days | See ADR-007 item 4 + `Feeds::PayloadGuards`. 25 MB body cap, 32-deep JSON nesting cap, UTF-8 + BOM normalisation across all 7 feeds. |
 | 4 | MFA (TOTP + WebAuthn) | 2-3 days | Mostly gem + UI work. Required for any defence-tech pilot. |
 | 5 | SCIM provisioning endpoint | 3-5 days | Enterprise-IdP integration. Deferred until a real customer conversation justifies the shape. |
 | 6 | Per-record classification labels | 5+ days | Requires a product conversation about classification scheme. Don't build until an operator tells us what schema they need. |

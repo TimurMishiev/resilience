@@ -87,7 +87,7 @@ module Feeds
       )
 
       http     = ssl_http(uri.host, uri.port, timeout: TIMEOUT)
-      response = http.get(uri.request_uri)
+      response = Feeds::PayloadGuards.safe_get(http, uri.request_uri)
 
       unless response.code == "200"
         Rails.logger.warn "[AISFeed] HTTP #{response.code} for #{box[:name]}"
@@ -96,7 +96,7 @@ module Feeds
         return nil
       end
 
-      parsed = JSON.parse(response.body)
+      parsed = Feeds::PayloadGuards.safe_parse_json(response.body)
 
       # AIS Hub response format: [metadata_hash, vessel_hash, vessel_hash, ...]
       # where metadata_hash = {"ERROR": false, "USERNAME": "...", ...}

@@ -90,19 +90,22 @@ RSpec.describe Feeds::UsgsSeismicIngestionService, type: :service do
   end
 
   describe "#call error handling" do
+    # Tranche 3A (2026-04-25): Net::HTTP fetch is now wrapped by
+    # Feeds::PayloadGuards.safe_get for body-size + UTF-8 guards.
+    # Stub at that boundary to keep these specs as-pure-as-before.
     it "re-raises transient network errors so PollJob can retry" do
-      allow_any_instance_of(Net::HTTP).to receive(:get).and_raise(Net::ReadTimeout)
+      allow(Feeds::PayloadGuards).to receive(:safe_get).and_raise(Net::ReadTimeout)
       expect { described_class.call }.to raise_error(Net::ReadTimeout)
     end
 
     it "records health status before re-raising transient errors" do
-      allow_any_instance_of(Net::HTTP).to receive(:get).and_raise(Errno::ECONNREFUSED)
+      allow(Feeds::PayloadGuards).to receive(:safe_get).and_raise(Errno::ECONNREFUSED)
       expect(Feeds::HealthRegistry).to receive(:record).with(hash_including(status: "error"))
       expect { described_class.call }.to raise_error(Errno::ECONNREFUSED)
     end
 
     it "swallows non-transient errors and returns failure" do
-      allow_any_instance_of(Net::HTTP).to receive(:get).and_raise(RuntimeError, "unexpected")
+      allow(Feeds::PayloadGuards).to receive(:safe_get).and_raise(RuntimeError, "unexpected")
       result = described_class.call
       expect(result.success).to be false
     end

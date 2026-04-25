@@ -160,14 +160,19 @@ RSpec.describe Feeds::GdacsIngestionService, type: :service do
   end
 
   describe "#call (HTTP error handling)" do
-    # Stub at the Net::HTTP level to avoid needing webmock/vcr in the Gemfile.
-    # We fake the response object returned by http.get().
-
+    # Stub at the PayloadGuards boundary (Tranche 3A, 2026-04-25):
+    # all feed services now route HTTP through
+    # Feeds::PayloadGuards.safe_get for body-size + UTF-8 guards, so
+    # specs no longer need to fake Net::HTTPResponse's streaming
+    # interface — they just return a SafeResponse with the desired
+    # code + body.
     def fake_response(code, body)
-      resp = instance_double(Net::HTTPResponse, code: code.to_s, body: body)
-      http  = instance_double(Net::HTTP)
-      allow(http).to receive(:get).and_return(resp)
-      allow(service).to receive(:ssl_http).and_return(http)
+      resp = Feeds::PayloadGuards::SafeResponse.new(
+        code:    code.to_s,
+        body:    body,
+        headers: {},
+      )
+      allow(Feeds::PayloadGuards).to receive(:safe_get).and_return(resp)
     end
 
     it "returns success with 0 ingested on non-200 response" do
