@@ -1,20 +1,35 @@
 ---
 name: project_production_readiness_plan
-description: Closeout record for the completed production-readiness program
+description: Closeout record for the original production-readiness program plus subsequent CTO/audit-driven hardening
 type: closeout
 ---
 
 # Resilience — Production Readiness Closeout
 
-Last reconciled with code: 2026-04-10
+Last reconciled with code: 2026-04-24
 
 ## Status
 
-The production-readiness program is complete as of 2026-04-09.
+The original production-readiness program closed on 2026-04-09 against the
+declared operating envelope (single-machine Fly.io, bounded SSE concurrency,
+demo-scale tenant load). Three subsequent third-party reviews surfaced
+**production-grade concerns the original program did not enumerate** —
+those have now also been addressed and are listed in the *Post-Closeout
+Hardening* section below.
 
-This file is no longer the active execution queue. It is preserved as a closeout record so future agents can understand what the production-readiness program covered, what it shipped, and which caveats were deliberately accepted for the current deployment target.
+What this file is **NOT** anymore: a claim that the system is "production
+ready" in the universal sense (multi-region, high-concurrency, defence-tech
+adversarial-resistant). What it IS: a record of the demo-grade posture the
+original program targeted, plus the harder-bar fixes shipped after external
+review reframed the scope.
 
-Future work now lives in `memory/project_roadmap.md`, and ongoing debt/program tracking lives in `memory/project_open_findings.md`.
+Recalibrated framing per third-party CTO review (2026-04-24): the system is
+"good enough for a public demo on a single Fly machine with a small handful
+of concurrent operators." Production deployment at multi-tenant scale
+requires the items in the *Open scale work* section below.
+
+Future work now lives in `memory/project_roadmap.md`; ongoing debt /
+program tracking lives in `memory/project_open_findings.md`.
 
 ## Source Of Truth Order
 
@@ -115,15 +130,66 @@ The program was closed after the following repo-level checks ran green:
 - `bundle exec bundler-audit check --update`
 - `git diff --check`
 
+## Post-Closeout Hardening (added 2026-04-24)
+
+Three third-party reviews after the original closeout surfaced concerns
+the program did not enumerate. Each was verified against actual code,
+shipped, and locked with a regression spec:
+
+- **F1 — SSE controller DB connection pinning** (`5bfbba5`).
+  `ActionController::Live` held the controller's checked-out connection
+  for the entire stream lifetime; ~25 concurrent streams would exhaust
+  the prod pool of 25 and hard-block every other API request. Fixed
+  via explicit `release_connection` before the loop and `with_connection`
+  scoping for in-loop queries.
+- **F3 — Silent incident-fusion data loss** (`0c8e3a8`). FusionService
+  ran synchronously after the cooldown-claim transaction; a transient
+  failure left the SignalRuleMatch orphaned forever. Now enqueues
+  `Incidents::FusionJob` via SolidQueue with retry policy + dead-letter
+  on exhaustion.
+- **Login-CSRF defence-in-depth** (`c86727a`). Controller-layer Origin
+  allowlist on `/api/auth/login` so a misconfigured Rack::Cors setting
+  cannot silently widen the login surface.
+- **pg_notify payload size guard** (`432badd`). Postgres' 8000-byte
+  NOTIFY limit would fail silently in cross-machine relay; explicit
+  guard returns false and surfaces to Observability instead.
+- **CTO P0-P3 evaluation items** (commits `368e079` through `a395601`).
+  Date.now defaults removed, globe operational parity, alert triage on
+  globe inspector, inline debrief panel.
+- **Audit findings Band A-D** (commits `327d7ca` through `b780ee4`).
+  Telemetry SSE per-payload tenant scoping, recommendation
+  per-tenant generation, correlation target-site three-branch
+  resolution, briefing stale-response race, latency window
+  reconciliation, RevokedJwt pruning, strong_migrations baseline.
+
 ## Accepted Caveats
 
-The closeout claim is scoped to the current declared operating envelope:
+The closeout claim — even with the post-closeout hardening — is still
+scoped to the demo operating envelope:
 
 - single-machine Fly.io deployment
-- bounded SSE concurrency
-- current org/AO scoped tenant model, not a full workspace-management product
+- bounded SSE concurrency (now ~Puma thread budget rather than DB pool;
+  thread-per-connection ceiling unchanged)
+- current org/AO scoped tenant model, not a full workspace product
+- in-memory Rack::Attack throttle store (single-machine only)
+- single Anthropic provider with no eval harness (defensive integration,
+  not agentic AI)
 
-If those assumptions change, reopen the relevant future roadmap tracks instead of treating this closeout as universally sufficient.
+If any of those assumptions change, reopen the relevant future roadmap
+tracks instead of treating this closeout as universally sufficient.
+
+## Open Scale Work (NOT shipped — explicit roadmap items)
+
+- ADR-002 horizontal-scaling implementation (Redis-backed throttles,
+  ActionCable or out-of-process SSE, separate SolidQueue machine)
+- Tenant-routed broadcaster (per-org channels) so high signal volume
+  doesn't fan out to every connected client globally
+- AI evals harness (golden tests, schema conformance, latency/cost
+  dashboards)
+- Trust-model rebuild (calibrated soft falloff, source-trust
+  weighting, feedback loop on confirmed/rejected matches)
+- Adversarial threat model + chain-of-custody event signing for
+  defence-tech compliance
 
 ## Future Work Lives Elsewhere
 
