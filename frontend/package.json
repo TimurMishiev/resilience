@@ -22,7 +22,7 @@
     "test:coverage": "node node_modules/vitest/vitest.mjs run --coverage"
   },
   "dependencies": {
-    "@blueprintjs/core": "^6.10.0",
+    "@blueprintjs/core": "^6.12.1",
     "@blueprintjs/icons": "^6.7.0",
     "@sentry/react": "^10.46.0",
     "@tanstack/react-query": "^5.90.21",
