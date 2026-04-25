@@ -15,7 +15,13 @@ module Correlations
     # Upper bound on signals processed per tick. Prevents a long backlog
     # from starving the DB — the next tick picks up the rest. Sized
     # generously vs. typical ingest rates so routine bursts clear in one
-    # tick without chunking.
+    # tick without chunking. Note: changed from `find_each` (1k batches)
+    # to `.limit(MAX).to_a` (full materialisation) when the cursor was
+    # introduced because the cursor advance needs the last processed
+    # signal in hand. Memory at MAX=2_000 with the SELECT projection
+    # below is ~1 MB — fine. If MAX is ever raised significantly,
+    # revisit and reintroduce batched iteration with a per-batch
+    # cursor advance.
     MAX_SIGNALS_PER_TICK = 2_000
 
     # Name identifying this consumer's cursor in the ingestion_cursors table.

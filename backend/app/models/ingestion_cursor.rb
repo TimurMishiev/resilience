@@ -15,11 +15,18 @@ class IngestionCursor < ApplicationRecord
   # initial cursor is set to `initial_lookback.ago` so the first tick
   # picks up signals ingested during the deploy window without
   # swallowing the backlog from before the feature existed.
+  #
+  # Race-safe across multiple workers booting simultaneously: the unique
+  # index on `name` means at most one INSERT wins; losers rescue the
+  # ActiveRecord::RecordNotUnique and read the winner's row instead of
+  # propagating noise into retry_on.
   def self.for(name, initial_lookback: 1.minute)
     find_or_create_by!(name: name) do |cursor|
       cursor.last_ingested_at = initial_lookback.ago
       cursor.last_signal_id = nil
     end
+  rescue ActiveRecord::RecordNotUnique
+    find_by!(name: name)
   end
 
   # Returns the ActiveRecord scope of signals strictly after this cursor.
@@ -42,13 +49,36 @@ class IngestionCursor < ApplicationRecord
     end
   end
 
-  # Advances the cursor to the given signal (the last one in the batch).
-  # Idempotent: advancing to an already-passed point is a no-op.
+  # Advances the cursor to the given signal via an atomic compare-and-set
+  # so concurrent workers cannot regress the high-water mark.
+  #
+  # Why atomic: two ticks racing on the same cursor would each load the
+  # current state, decide the new value is greater, and both UPDATE.
+  # Without a guarded UPDATE the LATER write wins regardless of whose
+  # value is actually higher — if worker B's signal is earlier than
+  # worker A's, B's write would *regress* the cursor and cause A's
+  # already-processed signals to be re-fetched on the next tick.
+  # Downstream idempotency on SignalRuleMatch saves us from double-fires
+  # but cannot save us from a regressed high-water mark; this guard
+  # makes the regression impossible.
+  #
+  # Mirrors the row-lock claim pattern in Correlations::RuleFiringService:
+  # an UPDATE ... WHERE that succeeds only when the precondition holds.
+  # UUID `<` is the standard PostgreSQL lexicographic comparison
+  # (gen_random_uuid produces hex strings whose lexicographic order is a
+  # stable, total ordering — exactly what we need for tie-breaking).
   def advance_to(signal)
     return if signal.nil?
-    return if last_ingested_at > signal.ingested_at
-    return if last_ingested_at == signal.ingested_at && last_signal_id.to_s >= signal.id.to_s
 
-    update!(last_ingested_at: signal.ingested_at, last_signal_id: signal.id)
+    rows_updated = self.class
+      .where(id: id)
+      .where(
+        "last_ingested_at < :ts OR " \
+        "(last_ingested_at = :ts AND (last_signal_id IS NULL OR last_signal_id < :sid))",
+        ts: signal.ingested_at, sid: signal.id
+      )
+      .update_all(last_ingested_at: signal.ingested_at, last_signal_id: signal.id)
+
+    reload if rows_updated.positive?
   end
 end
