@@ -24,6 +24,42 @@ RSpec.describe "Api::Auth::Sessions", type: :request do
       expect(UserSession.where(user: user).count).to eq(1)
     end
 
+    it "rejects a login request whose Origin header is not in CORS_ORIGINS (defence-in-depth login-CSRF guard)" do
+      stub_const("ENV", ENV.to_h.merge("CORS_ORIGINS" => "https://app.resilience-ops.fly.dev"))
+
+      post "/api/auth/login",
+           params: { session: { email: user.email, password: "password123" } },
+           headers: { "Origin" => "https://evil.example.com" },
+           as: :json
+
+      expect(response).to have_http_status(:forbidden)
+      expect(JSON.parse(response.body).fetch("errors").first).to match(/unauthorised origin/i)
+    end
+
+    it "accepts a login request whose Origin matches CORS_ORIGINS" do
+      stub_const("ENV", ENV.to_h.merge("CORS_ORIGINS" => "https://app.resilience-ops.fly.dev"))
+
+      post "/api/auth/login",
+           params: { session: { email: user.email, password: "password123" } },
+           headers: { "Origin" => "https://app.resilience-ops.fly.dev" },
+           as: :json
+
+      expect(response).to have_http_status(:created)
+    end
+
+    it "permits login requests with no Origin/Referer header (server-to-server, curl, tests)" do
+      # Bypassing the check on absent headers preserves the prior contract
+      # for non-browser clients and the existing test suite. SameSite=Lax
+      # + Rack::Cors handle the browser case at the middleware layer.
+      stub_const("ENV", ENV.to_h.merge("CORS_ORIGINS" => "https://app.resilience-ops.fly.dev"))
+
+      post "/api/auth/login",
+           params: { session: { email: user.email, password: "password123" } },
+           as: :json
+
+      expect(response).to have_http_status(:created)
+    end
+
     it "throttles repeated login attempts against a single email" do
       create(:user, email: "victim@example.mil", password: "correct-password")
       create(:user, email: "other@example.mil",  password: "correct-password")

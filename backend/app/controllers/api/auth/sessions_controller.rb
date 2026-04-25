@@ -14,6 +14,8 @@ module Api
       # POST /api/auth/login
       def create
         authorize :session, :create?
+        return render(json: { errors: ["Login request from unauthorised origin"] }, status: :forbidden) unless browser_origin_permitted?
+
         user = User.find_by(email: params.dig(:session, :email)&.downcase)
 
         if user&.authenticate(params.dig(:session, :password))
@@ -127,6 +129,36 @@ module Api
       end
 
       private
+
+      # Defence-in-depth against login-CSRF: a malicious cross-origin page
+      # cannot make a victim's browser perform a login that would set our
+      # session cookie. Multiple layers already mitigate this:
+      #   - Rack::Cors restricts the allowed origins; cross-origin POSTs
+      #     with Content-Type: application/json trigger a preflight that
+      #     a non-allowlisted origin cannot pass.
+      #   - The session cookie is SameSite=Lax, so browsers do not attach
+      #     it to cross-site subresource requests in the first place.
+      #
+      # This controller-layer check duplicates the origin allowlist
+      # *inside* the application so a misconfigured Rack::Cors setting
+      # (e.g. accidental wildcard via env var) does not silently widen
+      # the login surface. Server-to-server clients and test suites
+      # typically omit Origin/Referer; they bypass this check, matching
+      # the prior contract.
+      def browser_origin_permitted?
+        origin_header = request.headers["Origin"].presence || request.headers["Referer"].presence
+        return true if origin_header.blank?
+
+        origin_host = (URI.parse(origin_header).host rescue nil)
+        return true if origin_host.blank?
+
+        allowed_hosts = ENV.fetch("CORS_ORIGINS", "http://localhost:5173")
+                           .split(",")
+                           .map { |o| (URI.parse(o.strip).host rescue nil) }
+                           .compact
+
+        allowed_hosts.include?(origin_host)
+      end
 
       def extract_logout_token
         request.cookies["_resilience_session"]&.strip ||
