@@ -39,4 +39,39 @@ RSpec.describe Realtime::PostgresRelay, type: :service do
     thread&.kill
     thread&.join(1)
   end
+
+  describe ".publish" do
+    it "rejects payloads larger than the NOTIFY safety cap and skips the cross-machine relay" do
+      # Postgres' NOTIFY hard limit is 8000 bytes; we cap at 7_900 to leave
+      # protocol headroom. A payload over the cap must NOT silently call
+      # pg_notify (which would raise PG::InvalidParameterValue from deep
+      # inside a fire-and-forget code path) — we log loudly and return
+      # false so callers can fall back to a different transport if needed.
+      oversized = "x" * (described_class::NOTIFY_PAYLOAD_BYTE_LIMIT + 1)
+
+      expect(Rails.logger).to receive(:error).with(/payload too large for NOTIFY/)
+      # No DB call should reach the connection.
+      expect(ActiveRecord::Base.connection_pool).not_to receive(:with_connection)
+
+      result = described_class.publish(channel: "telemetry", payload: oversized)
+
+      expect(result).to be false
+    end
+
+    it "publishes payloads at or below the safety cap" do
+      payload = "x" * described_class::NOTIFY_PAYLOAD_BYTE_LIMIT
+
+      stub_conn = instance_double(PG::Connection)
+      ar_conn = instance_double(ActiveRecord::ConnectionAdapters::AbstractAdapter, raw_connection: stub_conn)
+      allow(ActiveRecord::Base.connection_pool).to receive(:with_connection).and_yield(ar_conn)
+      expect(stub_conn).to receive(:exec_params).with(
+        "SELECT pg_notify($1, $2)",
+        ["telemetry", payload],
+      )
+
+      result = described_class.publish(channel: "telemetry", payload: payload)
+
+      expect(result).to be true
+    end
+  end
 end
