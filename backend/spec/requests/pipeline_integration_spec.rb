@@ -16,6 +16,8 @@ require "rails_helper"
 # to run synchronously without an ActiveJob adapter dependency.
 # ---------------------------------------------------------------------------
 RSpec.describe "End-to-end signal pipeline", type: :request do
+  include ActiveJob::TestHelper
+
   let!(:commander) { create(:user, :commander) }
   let!(:area)      { create(:area_of_operation, threat_level: "red") }
 
@@ -82,7 +84,12 @@ RSpec.describe "End-to-end signal pipeline", type: :request do
     expect(task.title).to include(site.name)
 
     # ── Phase 6: incident fused ────────────────────────────────────────────
-    # FusionService is called inside RuleFiringService post-commit.
+    # RuleFiringService now enqueues Incidents::FusionJob (transactional
+    # outbox via SolidQueue) instead of calling FusionService inline. The
+    # job is performed here to keep this end-to-end pipeline test
+    # exercising the full critical path. In production, SolidQueue
+    # picks the job up and retries on transient failures.
+    perform_enqueued_jobs(only: Incidents::FusionJob)
     match.reload
     expect(match.incident_id).not_to be_nil
 

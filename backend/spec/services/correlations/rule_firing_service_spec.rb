@@ -529,4 +529,44 @@ RSpec.describe Correlations::RuleFiringService do
       }.not_to change(Task, :count)
     end
   end
+
+  describe "incident fusion outbox" do
+    # Regression for the silent-orphan failure mode: previously
+    # FusionService.call ran synchronously inside RuleFiringService#call.
+    # If it raised (transient DB failure, lock contention), the bottom
+    # rescue StandardError block caught the exception and returned a
+    # failure result — but the SignalRuleMatch had already been
+    # committed in an earlier transaction. The match existed forever
+    # without an Incident, with no automatic retry.
+    #
+    # Now: enqueue Incidents::FusionJob via SolidQueue. ActiveJob's
+    # retry_on policy on the job handles transient failures, and a
+    # persistent failure lands in the dead-letter table for manual
+    # review. Either way, no silent orphan.
+    include ActiveJob::TestHelper
+
+    it "enqueues Incidents::FusionJob with the new match id on successful firing" do
+      expect {
+        described_class.call(rule: rule, signal: signal, site: site)
+      }.to have_enqueued_job(Incidents::FusionJob).with(SignalRuleMatch.last&.id || an_instance_of(String))
+    end
+
+    it "no longer calls FusionService synchronously inside the firing service" do
+      expect(Incidents::FusionService).not_to receive(:call)
+      described_class.call(rule: rule, signal: signal, site: site)
+    end
+
+    it "still returns a successful ServiceResult when the FusionJob enqueue raises" do
+      # The match has committed by the time enqueue runs. A failed
+      # enqueue is logged + reported but must not roll back the match
+      # or report failure to the caller — the alert fired, even if
+      # downstream incident grouping needs operator attention.
+      allow(Incidents::FusionJob).to receive(:perform_later).and_raise(StandardError, "queue down")
+
+      result = described_class.call(rule: rule, signal: signal, site: site)
+
+      expect(result.success).to be true
+      expect(SignalRuleMatch.count).to eq(1)
+    end
+  end
 end

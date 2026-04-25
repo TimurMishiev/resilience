@@ -102,8 +102,39 @@ module Correlations
         Rails.logger.error "[RuleFiringService] SSE broadcast failed (non-fatal): #{e.class}: #{e.message}"
       end
 
-      # Incident fusion — runs after commit, non-transactional.
-      Incidents::FusionService.call(match: match) if match
+      # Incident fusion enqueue — durable retry path.
+      #
+      # Previously FusionService.call ran here synchronously. If it raised
+      # (transient DB lock, unrelated downstream failure), the bottom
+      # rescue StandardError block below caught the exception, logged it,
+      # and returned ServiceResult.failure. The SignalRuleMatch was
+      # already committed in the transaction above — the match existed
+      # but was never fused into an Incident, with no automatic retry.
+      # Permanent silent orphan.
+      #
+      # Now: enqueue Incidents::FusionJob via SolidQueue. The job writes
+      # to solid_queue_jobs and runs in a worker with its own retry_on
+      # StandardError, polynomially_longer, attempts: 5. Transient
+      # failures retry automatically; persistent failures land in
+      # SolidQueue's dead-letter table for manual review.
+      #
+      # The perform_later call itself can fail (e.g. queue DB
+      # unreachable) — that's a much narrower failure window than
+      # FusionService's full execution path, but we still log loudly so
+      # the orphan is diagnosable rather than silent.
+      if match
+        begin
+          Incidents::FusionJob.perform_later(match.id)
+        rescue StandardError => e
+          Rails.logger.error("[RuleFiringService] FusionJob enqueue failed match=#{match.id} error=#{e.class}: #{e.message}")
+          Observability.capture_exception(
+            e,
+            tags: { component: "fusion_enqueue", match_id: match.id },
+            throttle_key: "fusion_enqueue:#{e.class}",
+            throttle_seconds: 60,
+          )
+        end
+      end
 
       log_outcome(
         :info,
