@@ -22,61 +22,45 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**Tranche 4A — Site honeytokens.** Implementation complete; user
-authorised self-driving while Codex is unavailable; **dirty tree
-uncommitted** pending self-gate cycle.
+**Tranche 4A.1 — MFA audit-event deadlock retry.** Implementation
+complete; **dirty tree uncommitted** pending Codex re-gate.
 
-Changes in dirty tree:
-- [backend/db/migrate/20260425200000_add_honeytoken_to_sites.rb](backend/db/migrate/20260425200000_add_honeytoken_to_sites.rb)
-  — `sites.honeytoken` boolean column, default false, NOT NULL.
-  Constant default — rewrite-free in PG11+.
-- [backend/app/models/site.rb](backend/app/models/site.rb) — adds
-  `:honeytokens` scope and documents the `honeytoken?` predicate.
-- [backend/app/models/operational_status.rb](backend/app/models/operational_status.rb)
-  — `threat_detection` added to `CATEGORIES`.
-- [backend/app/services/threat_detection/honeytoken_alert_service.rb](backend/app/services/threat_detection/honeytoken_alert_service.rb)
-  — new module. `alert!(record:, accessed_by:, request:)` writes
-  three layered records: chain-hashed `honeytoken.accessed`
-  AuditEvent (forensic, tamper-evident per ADR-010); upsert
-  `OperationalStatus("threat_detection", "honeytoken_access")`
-  for the operator dashboard; structured WARN log for SIEM.
-  Non-blocking — alert failures never raise out of the request
-  path, so an attacker cannot fingerprint honeytokens via
-  differentiated 500-vs-200 responses.
-- [backend/app/controllers/api/sites_controller.rb](backend/app/controllers/api/sites_controller.rb)
-  — `#show` calls the alert service AFTER authorization (so
-  unauthorized reads don't leak honeytoken existence). `#index`
-  deliberately does NOT trigger — honeytokens stay plausible
-  decoys in list views; bulk-list scraping detection is Tranche
-  4B's anomaly-detection job.
-- [docs/adr-009-adversarial-threat-model.md](docs/adr-009-adversarial-threat-model.md)
-  — mitigation roadmap row 7 (Honeytoken strategy) flipped to
-  SHIPPED with the architecture summary. (No new gap entry —
-  honeytokens are no longer a gap; the existing item 8
-  forensic-determinism gap is unchanged.)
+Context: Codex's post-commit gate on `3d4aadb` flagged a P1 —
+the full backend suite reported 4 `ActiveRecord::Deadlocked`
+failures rooted at the MFA audit-event writes (mfa.enabled /
+mfa.disabled / mfa.code_used). Failures didn't reproduce in
+isolated slices and **don't reproduce locally on Claude's
+machine** (3 runs across default + two random seeds = 2,441
+specs / 0 failures each). The local-vs-Codex divergence is
+treated as evidence of a real interaction-pressure regression
+that surfaces only under broader concurrent load.
 
-Specs:
-- `spec/services/threat_detection/honeytoken_alert_service_spec.rb`
-  (6 cases: audit event written, OperationalStatus recorded,
-  WARN log emitted, ok? Result on success, non-blocking on
-  failure path, nil-request tolerance).
-- `spec/requests/api/sites_spec.rb` extended with 4 cases:
-  honeytoken triggers alert + serves response normally,
-  honeytoken read writes audit event, honeytoken read records
-  OperationalStatus, normal site does NOT trigger.
+Fix-forward in dirty tree:
+- [backend/app/services/audit/event_writer.rb](backend/app/services/audit/event_writer.rb)
+  — extracted the chain-write internals into a private
+  `write_chained_event` helper, then wrapped the public `.write`
+  entry with a deadlock-retry loop: on `ActiveRecord::Deadlocked`,
+  log a structured WARN line, sleep with polynomial backoff
+  (`50ms * 2^(attempt-1)`), and retry up to
+  `MAX_DEADLOCK_RETRIES = 3`. Re-raise after exhaustion. The
+  retry is safe because pg_advisory_xact_lock is transaction-
+  scoped — on rollback the lock is released, the chain tip
+  re-resolves cleanly, and the retry writes a new chain_position
+  with no partial state. A real chain-of-custody bug would
+  deadlock every attempt and re-raise after the budget is gone.
+- [backend/spec/services/audit/event_writer_spec.rb](backend/spec/services/audit/event_writer_spec.rb)
+  — 4 new specs covering: retry succeeds on second attempt,
+  structured log lines emitted per attempt, re-raise after
+  budget exhaustion, polynomial backoff durations.
 
-**Scope deliberately out:** honeytokens on other entity types
-(Tasks/Incidents/Recommendations — same pattern, easy to add
-later); list-action trip-wires (Tranche 4B); per-org seed
-script (operators can `update_column(:honeytoken, true)` from
-console for now); admin "this is a honeytoken" UI (not part of
-the API contract).
+Validation: 2,441 backend specs, 0 failures (was 2,437 baseline
+at `3d4aadb`; +4 new deadlock-retry cases). Deliberately retried
+the full suite across three different orderings (default + two
+randomized seeds) — none triggered the deadlock locally, but
+the retry is now in place for any environment that does.
 
-Validation: 2,437 backend specs, 0 failures (was 2,427 baseline
-at `77b7c54`; +10 new for honeytokens).
-
-After self-gate clears + Codex final pass when user is back,
-continue to **Tranche 4B (access-pattern anomaly detection).**
+After Codex re-gate clears, commit + push, then continue to
+**Tranche 4B (access-pattern anomaly detection).**
 
 ---
 
@@ -471,13 +455,12 @@ Why this order:
   - `97cba16` — Tranche C (verifier + admin endpoint + scheduled job)
   - `86adeb8` — Tranche B (backfill + NOT NULL + DB-level immutability)
   - `d422076` — Tranche A (schema + ChainHasher + EventWriter wiring)
-- Branch state: `main` pushed at `77b7c54`
-- Working tree: **NOT clean — Tranche 4A dirty tree pending
-  self-gate clearance (Codex offline).** See "Current Slice"
-  for the file list.
-- Test state: 2,437 backend specs / 0 failures with the dirty
-  tree applied (was 2,427 baseline at `77b7c54`; +10 from the
-  honeytoken alert service + sites controller integration specs).
+- Branch state: `main` pushed at `3d4aadb`
+- Working tree: **NOT clean — Tranche 4A.1 dirty tree pending
+  Codex re-gate.** EventWriter deadlock-retry + 4 new specs.
+- Test state with dirty tree: 2,441 backend specs / 0 failures
+  across default + 2 randomized orderings (was 2,437 baseline at
+  `3d4aadb`; +4 deadlock-retry cases).
 
 ## Phase 7 — Slice Plan
 

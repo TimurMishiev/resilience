@@ -301,5 +301,110 @@ RSpec.describe Audit::EventWriter do
       expect(first.chain_position).to eq(1)
       expect(first.prev_hash).to eq(Audit::ChainHasher.genesis_prev_hash(nil))
     end
+
+    # Tranche 4A.1 deadlock-retry (Codex post-commit P1 fix-forward,
+    # 2026-04-25): the full-suite run surfaced ActiveRecord::Deadlocked
+    # errors rooted at the audit chain write under broader concurrent
+    # pressure. EventWriter.write now retries up to MAX_DEADLOCK_RETRIES
+    # with polynomial backoff; a real chain-of-custody bug would
+    # deadlock every attempt and re-raise after exhausting the budget.
+    describe "deadlock retry" do
+      let(:org) { create(:organization) }
+
+      it "retries on ActiveRecord::Deadlocked and succeeds on the second attempt" do
+        call_count = 0
+        original = described_class.method(:write_chained_event)
+        allow(described_class).to receive(:write_chained_event) do |**kwargs|
+          call_count += 1
+          raise ActiveRecord::Deadlocked, "deadlock detected" if call_count == 1
+          original.call(**kwargs)
+        end
+        allow(described_class).to receive(:sleep) # don't actually sleep in spec
+
+        event = described_class.write(
+          actor:          actor,
+          entity_type:    "Organization",
+          entity_id:      org.id,
+          event_type:     "org.touched",
+          action:         "touch",
+          after_snapshot: { "id" => org.id },
+          correlation_id: SecureRandom.uuid,
+        )
+
+        expect(call_count).to eq(2)
+        expect(event).to be_a(AuditEvent)
+        expect(event.organization_id).to eq(org.id)
+      end
+
+      it "logs each retry attempt with structured context" do
+        call_count = 0
+        original = described_class.method(:write_chained_event)
+        allow(described_class).to receive(:write_chained_event) do |**kwargs|
+          call_count += 1
+          raise ActiveRecord::Deadlocked, "deadlock detected" if call_count <= 2
+          original.call(**kwargs)
+        end
+        allow(described_class).to receive(:sleep)
+        allow(Rails.logger).to receive(:warn)
+
+        described_class.write(
+          actor:          actor,
+          entity_type:    "Organization",
+          entity_id:      org.id,
+          event_type:     "org.touched",
+          after_snapshot: { "id" => org.id },
+          correlation_id: SecureRandom.uuid,
+        )
+
+        expect(Rails.logger).to have_received(:warn).twice
+        expect(Rails.logger).to have_received(:warn)
+          .with(a_string_matching(/deadlock_retry attempt=1\/3.*event_type=org.touched/))
+        expect(Rails.logger).to have_received(:warn)
+          .with(a_string_matching(/deadlock_retry attempt=2\/3.*event_type=org.touched/))
+      end
+
+      it "re-raises ActiveRecord::Deadlocked when the retry budget is exhausted" do
+        allow(described_class).to receive(:write_chained_event)
+          .and_raise(ActiveRecord::Deadlocked, "persistent lock cycle")
+        allow(described_class).to receive(:sleep)
+        allow(Rails.logger).to receive(:warn)
+
+        expect {
+          described_class.write(
+            actor:          actor,
+            entity_type:    "Organization",
+            entity_id:      org.id,
+            event_type:     "org.touched",
+            after_snapshot: { "id" => org.id },
+            correlation_id: SecureRandom.uuid,
+          )
+        }.to raise_error(ActiveRecord::Deadlocked, /persistent lock cycle/)
+      end
+
+      it "uses polynomial backoff between attempts" do
+        sleep_durations = []
+        allow(described_class).to receive(:sleep) { |duration| sleep_durations << duration }
+
+        allow(described_class).to receive(:write_chained_event)
+          .and_raise(ActiveRecord::Deadlocked, "deadlock")
+        allow(Rails.logger).to receive(:warn)
+
+        expect {
+          described_class.write(
+            actor:          actor,
+            entity_type:    "Organization",
+            entity_id:      org.id,
+            event_type:     "org.touched",
+            after_snapshot: { "id" => org.id },
+            correlation_id: SecureRandom.uuid,
+          )
+        }.to raise_error(ActiveRecord::Deadlocked)
+
+        # Backoff: 0.05 * 2^0 = 0.05s, 0.05 * 2^1 = 0.10s. Two sleeps
+        # because attempts 1 and 2 fail (attempt 3 also fails but
+        # there's no sleep before re-raising).
+        expect(sleep_durations).to eq([ 0.05, 0.10 ])
+      end
+    end
   end
 end

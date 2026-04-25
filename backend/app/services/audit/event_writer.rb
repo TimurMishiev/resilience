@@ -15,6 +15,25 @@ module Audit
   class EventWriter
     CHAIN_LOCK_DOMAIN = "audit_chain"
 
+    # Deadlock retry budget for the audit chain write. Codex's
+    # post-commit gate on Tranche 4A surfaced four
+    # ActiveRecord::Deadlocked failures in the full backend suite
+    # rooted at this method — the new MFA audit-event paths
+    # (mfa.enabled / mfa.disabled / mfa.code_used) interact with
+    # other concurrent audit writers under broader suite pressure.
+    # The realistic deadlock vector: writer A holds the audit row
+    # lock + waits for the per-org advisory lock; writer B holds
+    # the advisory lock + waits for a row touched in A's
+    # entity-resolution path. PG aborts one transaction on lock-
+    # cycle detection, releasing the advisory lock; the retry
+    # starts fresh, re-resolves the chain tip, and writes a new
+    # chain_position cleanly. Three attempts with polynomial
+    # backoff handles the realistic-load case without masking a
+    # real chain-of-custody bug (which would deadlock every
+    # attempt).
+    MAX_DEADLOCK_RETRIES = 3
+    DEADLOCK_BACKOFF_BASE_SECONDS = 0.05
+
     def self.write(
       actor:,
       entity_type:,
@@ -33,6 +52,37 @@ module Audit
                        organization_id
                      end
 
+      attempts = 0
+      begin
+        attempts += 1
+        write_chained_event(
+          actor:            actor,
+          entity_type:      entity_type,
+          entity_id:        entity_id,
+          event_type:       event_type,
+          after_snapshot:   after_snapshot,
+          correlation_id:   correlation_id,
+          action:           action,
+          before_snapshot:  before_snapshot,
+          metadata:         metadata,
+          resolved_org:     resolved_org,
+        )
+      rescue ActiveRecord::Deadlocked => e
+        raise if attempts >= MAX_DEADLOCK_RETRIES
+        Rails.logger.warn(
+          "[Audit::EventWriter] deadlock_retry attempt=#{attempts}/#{MAX_DEADLOCK_RETRIES} " \
+          "event_type=#{event_type} entity_type=#{entity_type} entity_id=#{entity_id} " \
+          "error=#{e.message.lines.first&.strip}"
+        )
+        sleep(DEADLOCK_BACKOFF_BASE_SECONDS * (2 ** (attempts - 1)))
+        retry
+      end
+    end
+
+    def self.write_chained_event(
+      actor:, entity_type:, entity_id:, event_type:, after_snapshot:,
+      correlation_id:, action:, before_snapshot:, metadata:, resolved_org:
+    )
       AuditEvent.transaction(requires_new: false) do
         acquire_chain_lock!(resolved_org)
 
