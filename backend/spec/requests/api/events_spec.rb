@@ -73,7 +73,7 @@ RSpec.describe "Api::Events", type: :request do
         { event: event, data: data, organization_id: organization_id }.to_json
       end
 
-      it "delivers events matching the user's organization" do
+      it "delivers events matching the user's organization and subscribes with the producer-side org filter" do
         q = Queue.new
         q << enqueue_event(event: "task_created", organization_id: org.id)
         q.close
@@ -84,6 +84,13 @@ RSpec.describe "Api::Events", type: :request do
 
         expect(response).to have_http_status(:ok)
         expect(response.body).to include("event: task_created")
+        # Pins the Tranche 2A wire-up: the controller MUST forward the
+        # subscribing user's organization_id so the broadcaster can drop
+        # cross-tenant events at publish time. Without this assertion, a
+        # regression that called .subscribe with no kwargs would silently
+        # restore the pre-2A global fan-out cost while the consumer-side
+        # filter kept the suite green.
+        expect(broadcaster).to have_received(:subscribe).with(organization_id: org.id)
       end
 
       it "filters out events from a different organization" do
@@ -113,7 +120,7 @@ RSpec.describe "Api::Events", type: :request do
         expect(response.body).to include("event: alert_transitioned")
       end
 
-      it "delivers all events to users without an organization (unrestricted)" do
+      it "delivers all events to users without an organization (unrestricted) and subscribes without an org filter" do
         unrestricted_user = create(:user, organization: nil)
         unrestricted_token = JwtAuthenticatable.encode_sse(unrestricted_user.id)
 
@@ -129,6 +136,12 @@ RSpec.describe "Api::Events", type: :request do
         expect(response).to have_http_status(:ok)
         expect(response.body).to include("event: rule_fired")
         expect(response.body).to include("event: task_created")
+        # The unrestricted (no-tenant) subscriber must reach the
+        # broadcaster with organization_id: nil so the producer-side
+        # filter admits every event regardless of org. Mirror of the
+        # org-scoped assertion above; together they pin both branches
+        # of the Tranche 2A wire-up.
+        expect(broadcaster).to have_received(:subscribe).with(organization_id: nil)
       end
 
       context "AO-scoped event filtering" do

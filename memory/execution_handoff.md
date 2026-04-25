@@ -22,26 +22,49 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**Tranche 1 — Quick correctness wins.** Bundles two ~half-day fixes
-into a single commit:
+**Tranche 2A — Generic events SSE tenant routing.** Implementation
+complete; Codex P2 finding addressed; **dirty tree uncommitted**
+awaiting Codex re-gate per the new workflow ([feedback_codex_gate_workflow](memory/feedback_codex_gate_workflow.md)).
 
-1. **AI summary fail-closed on invalid `from` / `to`.** Currently
-   [api/ai_controller.rb:70-71](backend/app/controllers/api/ai_controller.rb#L70-L71)
-   uses `safe_parse_datetime` which returns `nil` on garbage input
-   (see [base_controller.rb:67-73](backend/app/controllers/api/base_controller.rb#L67-L73)).
-   Service treats nil as "no filter" → silent semantic drift.
-   Compare [signals_controller.rb:16-19](backend/app/controllers/api/signals_controller.rb#L16-L19)
-   which validates and 400s. Fix: AI summary controller should reject
-   malformed datetime params with 400, same shape as signals.
-2. **`ApplicationJob` retry/discard baseline.** Currently
-   [application_job.rb](backend/app/jobs/application_job.rb) has
-   commented-out `retry_on` / `discard_on`. Add real policies for
-   `ActiveRecord::Deadlocked` (retry), `ActiveJob::DeserializationError`
-   (discard), `ActiveRecord::RecordNotFound` (discard), with documented
-   idempotency expectation in the docstring.
+Changes in dirty tree:
 
-Shipping in a single commit since both are ~half-day-each correctness
-fixes with no architectural overlap.
+- [backend/app/services/sse/broadcaster.rb](backend/app/services/sse/broadcaster.rb)
+  — added `Subscription` wrapper with frozen-scope reassignment
+  pattern (mirrors `Telemetry::Broadcaster`); `subscribe(organization_id:)`
+  keyword + `update_subscription(queue, organization_id:)`; `publish`
+  does producer-side org match before delivery; relay payloads also
+  pass through the producer-side filter.
+- [backend/app/controllers/api/events_controller.rb](backend/app/controllers/api/events_controller.rb)
+  — calls `broadcaster.subscribe(organization_id: current_user.organization_id)`.
+  Consumer-side `event_visible_to_scope?` retained as defence-in-depth
+  (still does AO filtering, which stays consumer-side; org check is
+  now redundant but cheap).
+- [backend/spec/services/sse/broadcaster_spec.rb](backend/spec/services/sse/broadcaster_spec.rb)
+  — `@clients` ivar refs renamed to `@subscribers`, plus 7 new specs
+  covering org routing, global event fan-out, unrestricted admin,
+  scope memory across publishes, relay payload filtering,
+  `update_subscription` revocation propagation, and back-compat
+  default for callers that omit `organization_id`.
+- [backend/spec/requests/api/events_spec.rb](backend/spec/requests/api/events_spec.rb)
+  — **Codex P2 fix:** two new
+  `have_received(:subscribe).with(organization_id: ...)` assertions
+  pinning both wire-up branches (org-scoped + unrestricted) so a
+  future regression to `subscribe` (no kwargs) cannot silently
+  restore the pre-2A global fan-out.
+
+**Scope decision worth flagging:** AO filtering stays consumer-side.
+Reason: events don't carry `area_of_operation_id` at publish time —
+many carry `data.site_id` and the controller resolves site → AO
+lazily via per-stream cache. Pushing AO resolution to producer-side
+would require touching every publisher (13 call sites) to do the
+lookup at publish time. Documented in the broadcaster's class
+comment as the deliberate org-vs-AO scope split.
+
+Validation: 2,328 backend specs, 0 failures (was 2,321 baseline at
+`832278e`; +7 new).
+
+After Codex re-gate clears, commit + push, then continue to
+**Tranche 2B (SolidQueue/Puma light isolation).**
 
 ## Active Initiative — Hardening to 95+ (locked plan)
 
@@ -49,17 +72,18 @@ Sequence agreed by Claude Code + Codex 2026-04-25. Both models verified
 each item against `HEAD ffcf1c4` before locking. Do not re-prioritise
 without verifying against current code.
 
-**Tranche 1 — Quick correctness wins** (current)
+**Tranche 1 — Quick correctness wins** ✅ shipped in `832278e`
 1. AI summary fail-closed on invalid `from` / `to`
 2. `ApplicationJob` retry/discard baseline
 
 **Tranche 2 — Stream/runtime hardening**
-3. Generic events SSE tenant routing (move off global fan-out +
-   consumer-side filter; mirror the telemetry SSE pattern)
+3. Generic events SSE tenant routing — **2A implementation complete,
+   Codex re-gate pending, awaiting commit**
 4. SolidQueue/Puma light isolation (ADR + budget asserts; explicit
    runtime budget, documented failure boundary, config-level
    enforcement). Decision gate: if light isn't credible enough,
    schedule heavy version (separate Fly process) as its own tranche.
+   **— next after 2A commit**
 
 **Tranche 3 — Security hardening**
 5. Feed hostile-input guards (payload size caps, depth limits,
@@ -94,16 +118,20 @@ Why this order:
 
 ## Current Repo State
 
-- Latest committed tip: `ffcf1c4` — Tranche D (ADR-010 chain-of-custody
-  docs + ADR-009 status flip)
-- Prior commits in chain-of-custody arc:
+- Latest committed tip: `832278e` — Tranche 1 (AI summary fail-closed
+  + ApplicationJob retry/discard baseline). Pushed to `origin/main`.
+- Prior commits in the Hardening-to-95 arc:
+  - (none — Tranche 1 is the first)
+- Prior commits in the chain-of-custody arc (closes ADR-009 item 1):
+  - `ffcf1c4` — Tranche D (ADR-010 docs + ADR-009 status flip)
   - `97cba16` — Tranche C (verifier + admin endpoint + scheduled job)
   - `86adeb8` — Tranche B (backfill + NOT NULL + DB-level immutability)
   - `d422076` — Tranche A (schema + ChainHasher + EventWriter wiring)
-- Branch state: `main` pushed at `ffcf1c4`
-- Working tree: clean
-- Test state: 2,312 backend specs / 0 failures (last verified
-  2026-04-25 against `ffcf1c4` from a freshly-loaded structure.sql)
+- Branch state: `main` pushed at `832278e`
+- Working tree: **NOT clean — Tranche 2A dirty tree awaiting Codex
+  re-gate clearance.** See "Current Slice" for the file list.
+- Test state: 2,328 backend specs / 0 failures with the dirty tree
+  applied (was 2,321 baseline at `832278e`; +7 new in 2A).
 
 ## Phase 7 — Slice Plan
 
@@ -325,7 +353,29 @@ cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx eslint src/api/cl
 git -C /Users/timurmishiev/Desktop/Code/resilience diff --check
 ```
 
-## Last Validation Results (CTO P3 reduced-scope — inline debrief panel on map, committed in `a395601`, 2026-04-23)
+## Last Validation Results (Tranche 2A — events SSE producer-side org filter, **uncommitted**, 2026-04-25)
+
+- Modified backend files: `app/services/sse/broadcaster.rb`, `app/controllers/api/events_controller.rb`
+- Modified spec files: `spec/services/sse/broadcaster_spec.rb` (+7 routing specs + ivar rename `@clients` → `@subscribers`), `spec/requests/api/events_spec.rb` (+2 `have_received(:subscribe).with(...)` assertions, Codex P2 fix)
+- Focused validation:
+  - `bundle exec rspec spec/services/sse/broadcaster_spec.rb spec/requests/api/events_spec.rb` → **25 / 25 pass**
+- Full validation:
+  - `bundle exec rspec` → **2,328 / 2,328 pass** (+7 vs Tranche 1 baseline of 2,321 at `832278e`)
+  - One transient flake on first run (`signals_spec.rb:66`); passed on rerun + on `--order rand` with seed 43696. Not reproducible.
+- Codex `/gate` cycle: P2 finding raised on missing `subscribe` argument verification at [events_spec.rb:7](backend/spec/requests/api/events_spec.rb#L7); fixed in-place by adding two `expect(broadcaster).to have_received(:subscribe).with(organization_id: ...)` assertions covering org-scoped + unrestricted branches. Re-gate pending.
+
+## Prior Validation Results (Tranche 1 — AI summary fail-closed + ApplicationJob retry/discard baseline, committed in `832278e`, 2026-04-25)
+
+- Modified backend files: `app/controllers/api/ai_controller.rb` (swap `safe_parse_datetime` → `parse_datetime_param!` for `from`/`to`), `app/jobs/application_job.rb` (real retry/discard baseline)
+- Modified spec files: `spec/requests/api/ai_spec.rb` (+4 datetime cases — bad `from`, bad `to`, blank passthrough, well-formed forwarding)
+- New spec files: `spec/jobs/application_job_spec.rb` (+5 cases — 4 handler registration + 1 discard behaviour proof)
+- Modified docs: `memory/execution_handoff.md` (handoff + locked Hardening-to-95 plan)
+- Full validation:
+  - `bundle exec rspec` → **2,321 / 2,321 pass** (+9 vs chain-of-custody Tranche D baseline of 2,312 at `ffcf1c4`)
+- Diff stat: 5 files, +291/-24 lines.
+- Step 0 verification: confirmed `safe_parse_datetime` returns nil on garbage at [base_controller.rb:67-73](backend/app/controllers/api/base_controller.rb#L67-L73); confirmed `parse_datetime_param!` already raises `InvalidDatetimeParamError` → 400 in same file; ontology_query already uses the fail-closed helper as the cross-reference pattern. ApplicationJob baseline confirmed bare via grep — every transient infra retry was duplicated across subclasses.
+
+## Prior Validation Results (CTO P3 reduced-scope — inline debrief panel on map, committed in `a395601`, 2026-04-23)
 
 - Modified frontend files: `src/components/DebriefPanel.tsx`, `src/pages/MapPage.tsx`
 - New frontend files: `src/components/map/MapInlineDebriefPanel.tsx`

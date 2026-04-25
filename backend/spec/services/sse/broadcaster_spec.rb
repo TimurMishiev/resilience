@@ -4,16 +4,16 @@ RSpec.describe Sse::Broadcaster do
   let(:broadcaster) { described_class.instance }
 
   before do
-    broadcaster.instance_variable_set(:@clients, [])
+    broadcaster.instance_variable_set(:@subscribers, [])
     broadcaster.instance_variable_set(:@relay_listener, nil)
     allow(Realtime::PostgresRelay).to receive(:publish)
   end
 
   after do
-    broadcaster.instance_variable_get(:@clients).each do |queue|
-      queue.close unless queue.closed?
+    broadcaster.instance_variable_get(:@subscribers).each do |sub|
+      sub.queue.close unless sub.queue.closed?
     end
-    broadcaster.instance_variable_set(:@clients, [])
+    broadcaster.instance_variable_set(:@subscribers, [])
   end
 
   it "logs subscribe context for new clients" do
@@ -119,5 +119,90 @@ RSpec.describe Sse::Broadcaster do
     )
 
     expect(queue.size).to eq(0)
+  end
+
+  describe "tenant routing (Tranche 2A — producer-side organization_id filter)" do
+    let(:org_a) { SecureRandom.uuid }
+    let(:org_b) { SecureRandom.uuid }
+
+    it "delivers an org-A event only to org-A subscribers, not org-B" do
+      queue_a = broadcaster.subscribe(organization_id: org_a)
+      queue_b = broadcaster.subscribe(organization_id: org_b)
+
+      broadcaster.publish(event: "task_updated", organization_id: org_a, data: { id: "t-1" })
+
+      expect(queue_a.size).to eq(1)
+      expect(queue_b.size).to eq(0)
+    end
+
+    it "delivers a global (organization_id=nil) event to every subscriber" do
+      queue_a   = broadcaster.subscribe(organization_id: org_a)
+      queue_b   = broadcaster.subscribe(organization_id: org_b)
+      queue_admin = broadcaster.subscribe(organization_id: nil)
+
+      broadcaster.publish(event: "system_alert", organization_id: nil, data: {})
+
+      expect(queue_a.size).to eq(1)
+      expect(queue_b.size).to eq(1)
+      expect(queue_admin.size).to eq(1)
+    end
+
+    it "delivers every event to an unrestricted (organization_id=nil) subscriber, regardless of org" do
+      queue_admin = broadcaster.subscribe(organization_id: nil)
+
+      broadcaster.publish(event: "task_updated", organization_id: org_a, data: {})
+      broadcaster.publish(event: "task_updated", organization_id: org_b, data: {})
+
+      expect(queue_admin.size).to eq(2)
+    end
+
+    it "remembers a subscriber's scope across multiple publishes" do
+      queue_a = broadcaster.subscribe(organization_id: org_a)
+
+      5.times { broadcaster.publish(event: "task_updated", organization_id: org_a, data: {}) }
+      5.times { broadcaster.publish(event: "task_updated", organization_id: org_b, data: {}) }
+
+      expect(queue_a.size).to eq(5)
+    end
+
+    it "applies producer-side filtering to relayed payloads from other processes" do
+      queue_a = broadcaster.subscribe(organization_id: org_a)
+      queue_b = broadcaster.subscribe(organization_id: org_b)
+
+      broadcaster.send(
+        :handle_relay_payload,
+        { origin: "remote-process", event: "task_updated", organization_id: org_a, data: { id: "t-9" } }.to_json
+      )
+
+      expect(queue_a.size).to eq(1)
+      expect(queue_b.size).to eq(0)
+    end
+
+    it "respects an updated subscription scope (revocation propagation)" do
+      queue = broadcaster.subscribe(organization_id: org_a)
+
+      broadcaster.publish(event: "task_updated", organization_id: org_a, data: {})
+      expect(queue.size).to eq(1)
+      queue.pop
+
+      broadcaster.update_subscription(queue, organization_id: org_b)
+
+      broadcaster.publish(event: "task_updated", organization_id: org_a, data: {})
+      expect(queue.size).to eq(0)
+
+      broadcaster.publish(event: "task_updated", organization_id: org_b, data: {})
+      expect(queue.size).to eq(1)
+    end
+
+    it "defaults to unrestricted subscription when organization_id is omitted (back-compat)" do
+      # Pre-2A callers that just call subscribe() with no kwargs continue
+      # to behave as unrestricted admin viewers — no silent loss of events.
+      queue = broadcaster.subscribe
+
+      broadcaster.publish(event: "task_updated", organization_id: org_a, data: {})
+      broadcaster.publish(event: "task_updated", organization_id: org_b, data: {})
+
+      expect(queue.size).to eq(2)
+    end
   end
 end

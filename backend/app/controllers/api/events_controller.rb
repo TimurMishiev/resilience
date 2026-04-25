@@ -23,7 +23,13 @@ module Api
       response.headers["X-Accel-Buffering"] = "no"
 
       broadcaster = Sse::Broadcaster.instance
-      queue       = broadcaster.subscribe
+      # Producer-side org filter (Tranche 2A, 2026-04-25): the
+      # broadcaster matches subscriber.organization_id against
+      # event.organization_id at publish time, so cross-tenant events
+      # never reach this queue. AO filtering remains consumer-side
+      # (event_visible_to_scope? below) — see Sse::Broadcaster comment
+      # for the org-vs-AO scope split rationale.
+      queue       = broadcaster.subscribe(organization_id: current_user.organization_id)
 
       # Send an initial connection confirmation event
       return unless sse_write(response.stream, event: "connected", data: { message: "stream open" })
@@ -93,7 +99,13 @@ module Api
     end
 
     def event_visible_to_scope?(parsed, user_org_id:, user_ao_id:, site_area_cache:)
-      # Org-scoped filtering: skip events from a different organization.
+      # Org-scoped filtering: kept as defence-in-depth on the consumer
+      # side. The broadcaster's producer-side filter (Tranche 2A,
+      # 2026-04-25) already drops cross-tenant events before they
+      # reach this queue, but a scope change between subscribe and
+      # consume — or a relay payload that bypassed the local filter
+      # — could still surface a mismatched event. Repeating the cheap
+      # comparison here costs nothing and preserves the guarantee.
       # Events without an organization_id pass through (global events).
       # Users without an organization_id see everything (unrestricted).
       event_org_id = parsed["organization_id"]
