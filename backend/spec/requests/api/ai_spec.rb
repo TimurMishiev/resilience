@@ -445,6 +445,62 @@ RSpec.describe "Api::Ai", type: :request do
       expect(response).to have_http_status(:unprocessable_content)
       expect(JSON.parse(response.body)).to eq("errors" => ["Site not found"])
     end
+
+    # Tranche 1 fix: malformed datetime params now fail closed at the
+    # controller boundary instead of silently nil-ing through to the
+    # service. Mirrors signals_controller's pattern + ontology_query.
+    it "returns 400 when 'from' is a malformed datetime" do
+      expect(Ai::SummaryService).not_to receive(:call)
+
+      post "/api/ai/summary",
+           params: valid_payload.merge(from: "not-a-date"),
+           headers: auth_headers(commander),
+           as: :json
+
+      expect(response).to have_http_status(:bad_request)
+      expect(JSON.parse(response.body)).to eq("errors" => ["Invalid 'from' datetime"])
+    end
+
+    it "returns 400 when 'to' is a malformed datetime" do
+      expect(Ai::SummaryService).not_to receive(:call)
+
+      post "/api/ai/summary",
+           params: valid_payload.merge(to: "garbage"),
+           headers: auth_headers(commander),
+           as: :json
+
+      expect(response).to have_http_status(:bad_request)
+      expect(JSON.parse(response.body)).to eq("errors" => ["Invalid 'to' datetime"])
+    end
+
+    it "still treats blank 'from' / 'to' as nil (no filter), not as a 400" do
+      expect(Ai::SummaryService).to receive(:call).with(
+        hash_including(from: nil, to: nil)
+      ).and_return(ServiceResult.success(summary: "ok", citations: [], context_counts: {}))
+
+      post "/api/ai/summary",
+           params: valid_payload.merge(from: "", to: ""),
+           headers: auth_headers(commander),
+           as: :json
+
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "accepts a well-formed 'from' / 'to' and forwards parsed Time values to the service" do
+      expect(Ai::SummaryService).to receive(:call) do |kwargs|
+        expect(kwargs[:from]).to be_a(ActiveSupport::TimeWithZone)
+        expect(kwargs[:to]).to   be_a(ActiveSupport::TimeWithZone)
+        expect(kwargs[:from].iso8601).to eq("2026-04-01T00:00:00Z")
+        ServiceResult.success(summary: "ok", citations: [], context_counts: {})
+      end
+
+      post "/api/ai/summary",
+           params: valid_payload.merge(from: "2026-04-01T00:00:00Z", to: "2026-04-25T00:00:00Z"),
+           headers: auth_headers(commander),
+           as: :json
+
+      expect(response).to have_http_status(:ok)
+    end
   end
 
   # ── Per-user rate limiting ─────────────────────────────────────────────────

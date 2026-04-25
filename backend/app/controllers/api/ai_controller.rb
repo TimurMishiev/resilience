@@ -63,12 +63,19 @@ module Api
 
     # POST /api/ai/summary
     # Body: { summary_type:, site_id:, from:, to: }
+    #
+    # Datetime params are fail-closed: malformed `from` or `to` returns
+    # 400 via parse_datetime_param! → InvalidDatetimeParamError. Until
+    # 2026-04-25 the controller used safe_parse_datetime which silently
+    # returned nil on garbage input, causing the AI summary to run over
+    # the wrong window without surfacing a contract break to the caller.
+    # Mirrors signals_controller's fail-closed pattern + ontology_query.
     def summary
       result = Ai::SummaryService.call(
         summary_type: params.require(:summary_type),
         site_id:      params[:site_id],
-        from:         safe_parse_datetime(params[:from]),
-        to:           safe_parse_datetime(params[:to]),
+        from:         parse_datetime_param!(params[:from], param_name: "from"),
+        to:           parse_datetime_param!(params[:to],   param_name: "to"),
         user:         current_user,
       )
 

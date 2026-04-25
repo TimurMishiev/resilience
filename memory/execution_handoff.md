@@ -6,29 +6,104 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-22
+Last updated: 2026-04-25
 
 ## Current Phase
 
-Post-Phase-7 remediation (**active**)
+**Hardening-to-95 initiative (active).** Eleven-item plan locked
+2026-04-25 in agreement between Claude Code and Codex. Sequenced
+correctness → architecture → security → detection → proof → wow.
+Each tranche is independently reviewable; commit between tranches.
 
-(Phase 4 — Debrief closed. Phase 5 — Evidence Threading complete. Phase 6 Slice 6-1 fully shipped and closed in `aa07c91`. Phase 7 is closed with latest shipped tip `368e079`. Current work is audit-driven remediation before any new roadmap expansion.)
+(Phase 4 / 5 / 6 / 7 closed. Audit-driven remediation closed. CTO P0–P3
+addressed; P4 deferred. Chain-of-custody on audit_events shipped
+2026-04-25 across 4 tranches, latest tip `ffcf1c4` — closes ADR-009
+item 1, see ADR-010.)
 
 ## Current Slice
 
-**Audit remediation — Band A/B/C/D closed. CTO P1 parity + P2 + P3 reduced-scope shipped.**
+**Tranche 1 — Quick correctness wins.** Bundles two ~half-day fixes
+into a single commit:
 
-All confirmed findings from the merged audit are closed. CTO P1 + P2 are fully shipped (see Shipped In This Phase for the commit chain). CTO P3 shipped in the *reduced-scope* interpretation (`a395601`) — inline debrief panel on `/map` using the existing shared replay state, with `noNavigate` preventing the yank-to-entity-page side effect. The full 5-slice workstation remains deferred pending usage signal.
+1. **AI summary fail-closed on invalid `from` / `to`.** Currently
+   [api/ai_controller.rb:70-71](backend/app/controllers/api/ai_controller.rb#L70-L71)
+   uses `safe_parse_datetime` which returns `nil` on garbage input
+   (see [base_controller.rb:67-73](backend/app/controllers/api/base_controller.rb#L67-L73)).
+   Service treats nil as "no filter" → silent semantic drift.
+   Compare [signals_controller.rb:16-19](backend/app/controllers/api/signals_controller.rb#L16-L19)
+   which validates and 400s. Fix: AI summary controller should reject
+   malformed datetime params with 400, same shape as signals.
+2. **`ApplicationJob` retry/discard baseline.** Currently
+   [application_job.rb](backend/app/jobs/application_job.rb) has
+   commented-out `retry_on` / `discard_on`. Add real policies for
+   `ActiveRecord::Deadlocked` (retry), `ActiveJob::DeserializationError`
+   (discard), `ActiveRecord::RecordNotFound` (discard), with documented
+   idempotency expectation in the docstring.
 
-Running under the approved autonomous loop. Outstanding stop-condition items: CTO P4 (conditional on a 6th map tool) and the full CTO P3 workstation (product-direction call, not reopened unless the reduced-scope surface proves operator-valuable in practice).
+Shipping in a single commit since both are ~half-day-each correctness
+fixes with no architectural overlap.
+
+## Active Initiative — Hardening to 95+ (locked plan)
+
+Sequence agreed by Claude Code + Codex 2026-04-25. Both models verified
+each item against `HEAD ffcf1c4` before locking. Do not re-prioritise
+without verifying against current code.
+
+**Tranche 1 — Quick correctness wins** (current)
+1. AI summary fail-closed on invalid `from` / `to`
+2. `ApplicationJob` retry/discard baseline
+
+**Tranche 2 — Stream/runtime hardening**
+3. Generic events SSE tenant routing (move off global fan-out +
+   consumer-side filter; mirror the telemetry SSE pattern)
+4. SolidQueue/Puma light isolation (ADR + budget asserts; explicit
+   runtime budget, documented failure boundary, config-level
+   enforcement). Decision gate: if light isn't credible enough,
+   schedule heavy version (separate Fly process) as its own tranche.
+
+**Tranche 3 — Security hardening**
+5. Feed hostile-input guards (payload size caps, depth limits,
+   charset normalisation across the 7 feed connectors)
+6. MFA TOTP (WebAuthn deferred to its own slice if/when needed)
+
+**Tranche 4 — Detection layer**
+7. Honeytokens (1 day, deterministic — fires on any read of seeded
+   fake records via `OperationalStatus("threat_detection",
+   "honeytoken_access")`)
+8. Access-pattern anomaly detection (rolling per-user velocity /
+   off-hours / geography signal; 3-5 days plus tuning)
+
+**Tranche 5 — Proof layer**
+9. Live-model AI eval lane + cost/token tracking
+10. Load/runtime artifact + short written report (k6 or wrk against
+    the running app; published as a CHANGELOG-linked doc)
+
+**Tranche 6 — Wow work**
+11. Map/globe differentiation features (paused mid-October pending
+    this hardening tranche; resume after Tranche 5)
+    - + `MapPage` decomposition if still justified by upcoming work
+
+Why this order:
+- Tranches 1-2 are correctness/architecture cleanup that should land
+  before any security/feature work touches the same code.
+- Tranches 3-4 are defence-tech credibility extending the
+  chain-of-custody narrative shipped in ADR-010.
+- Tranche 5 is the "we can prove it" layer — AI evals + load test
+  give us empirical defensibility, not just architectural.
+- Tranche 6 is wow-factor work, gated on the rest landing.
 
 ## Current Repo State
 
-- Latest committed product slice: `a395601` — CTO P3 reduced-scope (inline debrief panel on map)
-- Prior product slice: `6646db5` — per-signal-type default-outline precomputation (mentor P3)
-- Latest committed rotation: `30ef130` — post-mentor-P3-refactors handoff rotation
-- Working tree: **clean after rotation commit**
-- Branch state: `main` pushed at `a395601` (product); handoff rotation follows
+- Latest committed tip: `ffcf1c4` — Tranche D (ADR-010 chain-of-custody
+  docs + ADR-009 status flip)
+- Prior commits in chain-of-custody arc:
+  - `97cba16` — Tranche C (verifier + admin endpoint + scheduled job)
+  - `86adeb8` — Tranche B (backfill + NOT NULL + DB-level immutability)
+  - `d422076` — Tranche A (schema + ChainHasher + EventWriter wiring)
+- Branch state: `main` pushed at `ffcf1c4`
+- Working tree: clean
+- Test state: 2,312 backend specs / 0 failures (last verified
+  2026-04-25 against `ffcf1c4` from a freshly-loaded structure.sql)
 
 ## Phase 7 — Slice Plan
 
@@ -193,11 +268,32 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 
 ## Next
 
-- **No autonomous-safe work remaining.** All confirmed findings shipped; CTO P0–P3 addressed (P3 at reduced scope); no open mentor-review P3s. Loop has run to natural completion.
-- **Two outstanding product-direction decisions** — neither blocks the current codebase:
-  - **Escalate CTO P3 to the full 5-slice workstation?** Current reduced-scope slice (`a395601`) proves the cross-panel pattern. Escalation would add independent replay authority per pane, responsive breakpoints, and `AlertChainDrawer` reconciliation across mounted panels. Only worthwhile if the inline surface proves operator-valuable in practice.
-  - **Start CTO P4 (MapPage decomposition)?** Per the roadmap, conditional on a 6th map tool being planned. Not currently planned.
-- **External CTO evaluation (2026-04-22) — briefing:** see [memory/cto_evaluation_roadmap.md](cto_evaluation_roadmap.md). P0 shipped in `368e079`; P1 + P2 shipped; P3 reduced-scope shipped; P4 deferred.
+**Active: Tranche 1 of the Hardening-to-95 initiative** (see "Active
+Initiative" section above for full plan).
+
+Work in progress this session:
+
+- AI summary controller: switch from `safe_parse_datetime` (silent nil)
+  to a fail-closed parse that returns `400` on malformed `from` / `to`,
+  matching the [signals_controller.rb:16-19](backend/app/controllers/api/signals_controller.rb#L16-L19)
+  pattern. Add request specs for the bad-datetime cases.
+- `ApplicationJob`: add real `retry_on` for transient infra (deadlock,
+  pool timeout) + `discard_on` for unrecoverable shapes (deserialization,
+  not-found). Document idempotency expectation in the class docstring.
+
+After Tranche 1 commits:
+- Tranche 2 — generic events SSE tenant routing + SolidQueue/Puma light
+  isolation (ADR + budget asserts).
+
+**Older deferred items still on the books** (these remain valid but are
+not currently scheduled):
+- Escalate CTO P3 to the full 5-slice workstation — only if the
+  reduced-scope inline debrief surface proves operator-valuable.
+- CTO P4 (MapPage decomposition) — conditional on a 6th map tool.
+- External CTO evaluation (2026-04-22) briefing —
+  see [memory/cto_evaluation_roadmap.md](cto_evaluation_roadmap.md).
+  P0 shipped in `368e079`; P1 + P2 shipped; P3 reduced-scope
+  shipped; P4 deferred.
 - **Watch the first real `frontend-perf` CI run on `aa07c91` (or its first PR descendant).** Watch points:
     - 1k tier: budgets are 15/25/30ms; current local p95-of-p95s is 10.2ms. Headroom is ~2×. CI runner variance may eat into that.
     - 10k tier: p95 budget is 120ms; current p95-of-p95s is 57.4ms. Headroom is ~2.1× (raised from 80ms after gate flagged that ~1.4× was tight for ubuntu-latest). Should hold first time; re-anchor via env if real CI numbers prove otherwise.
