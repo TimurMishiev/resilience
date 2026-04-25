@@ -192,9 +192,18 @@ RSpec.describe IngestionCursor, type: :model do
       expect(updates).not_to be_empty,
         "expected an UPDATE on ingestion_cursors; saw: #{app_sql.inspect}"
 
-      guarded = updates.find { |sql| sql.include?("last_ingested_at <") || sql.include?("last_signal_id <") }
+      # Both halves of the tuple precondition must appear: the timestamp
+      # guard (last_ingested_at <) AND the tie-breaker on same-microsecond
+      # signals (last_signal_id IS NULL OR last_signal_id <). A regression
+      # that drops EITHER half is a real correctness break — dropping the
+      # timestamp guard re-enables cursor regression; dropping the
+      # tie-breaker silently mishandles same-microsecond ingest bursts.
+      guarded = updates.find do |sql|
+        sql.include?("last_ingested_at <") &&
+          (sql.include?("last_signal_id IS NULL") || sql.include?("last_signal_id <"))
+      end
       expect(guarded).to be_present,
-        "UPDATE on ingestion_cursors fired without a precondition guard; SQL: #{updates.inspect}"
+        "UPDATE on ingestion_cursors fired without a complete precondition guard; SQL: #{updates.inspect}"
     end
 
     it "logs at debug level when an advance is refused (silent races would be invisible otherwise)" do
