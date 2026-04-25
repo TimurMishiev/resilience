@@ -102,27 +102,26 @@ module Api
       response.headers["Cache-Control"]     = "no-cache"
       response.headers["X-Accel-Buffering"] = "no"
 
+      # Snapshot the viewer's visible asset-id set. Used for both:
+      #   1. The broadcaster's tenant-routed delivery (only payloads
+      #      for assets in this set are pushed to the subscriber's
+      #      queue at all — replaces the old global fan-out).
+      #   2. A defence-in-depth per-payload filter inside the loop
+      #      below (catches revocations between 30s refresh ticks).
+      #
+      # Admin/unrestricted users (no org/AO) get :all so the routing
+      # layer behaves identically to the previous fan-out for them.
+      allowed_asset_ids = ActiveRecord::Base.connection_pool.with_connection do
+        policy_scope(Asset).pluck(:id).to_set
+      end
+      broadcaster_filter = unrestricted_viewer? ? :all : allowed_asset_ids
+
       broadcaster = Telemetry::Broadcaster.instance
-      queue       = broadcaster.subscribe
+      queue       = broadcaster.subscribe(asset_ids: broadcaster_filter)
 
       # Send an initial connected event so the client knows the stream is live
       return unless sse_write(response.stream, event: "connected", data: { message: "telemetry stream open" })
 
-      # Snapshot the viewer's visible asset-id set. Every subsequent
-      # payload is filtered against this set so cross-tenant telemetry
-      # never reaches the client. AssetPolicy::Scope is the same
-      # authoritative gate used by /api/telemetry (the snapshot endpoint),
-      # keeping live + replay consistent.
-      #
-      # The set is refreshed every ALLOWED_ASSETS_REFRESH_SECONDS (30s).
-      # Without this, a long-lived SSE stream (often hours) would keep
-      # delivering telemetry for assets the viewer lost visibility into
-      # mid-stream — asset reassigned to another org, viewer's AO scope
-      # revoked, etc. The refresh is a bounded SELECT over the viewer's
-      # tenant scope; cost is negligible vs. the tenant-leak risk it closes.
-      allowed_asset_ids = ActiveRecord::Base.connection_pool.with_connection do
-        policy_scope(Asset).pluck(:id).to_set
-      end
       allowed_asset_ids_refreshed_at = Time.current
 
       # Release the controller-action's checked-out DB connection now that
@@ -160,6 +159,10 @@ module Api
               AssetPolicy::Scope.new(current_user, Asset.all).resolve.pluck(:id).to_set
             end
           end
+          # Push the refreshed set to the broadcaster too — without this,
+          # the broadcaster's filter would stay anchored to whatever was
+          # registered at stream open, defeating the point of refreshing.
+          broadcaster.update_subscription(queue, asset_ids: unrestricted_viewer? ? :all : allowed_asset_ids)
           allowed_asset_ids_refreshed_at = Time.current
         end
 
@@ -181,6 +184,16 @@ module Api
     # normal API/browser auth semantics.
     def sse_endpoint?
       action_name == "stream"
+    end
+
+    # Admin users with no organization or area-of-operation pin see every
+    # asset. For routing purposes we register them with the :all sentinel
+    # so the broadcaster does not bother computing a filter check on
+    # every payload. The per-payload filter in the loop is also a no-op
+    # for them — `allowed_asset_ids` contains every asset id, every
+    # payload matches.
+    def unrestricted_viewer?
+      current_user.organization_id.blank? && current_user.area_of_operation_id.blank?
     end
 
     def sse_write(stream, event:, data:)

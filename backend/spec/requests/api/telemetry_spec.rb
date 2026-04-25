@@ -152,7 +152,7 @@ RSpec.describe "Api::Telemetry", type: :request do
 
   describe "GET /api/telemetry/stream" do
     let(:queue) { Queue.new }
-    let(:broadcaster) { instance_double(Telemetry::Broadcaster, subscribe: queue, unsubscribe: nil) }
+    let(:broadcaster) { instance_double(Telemetry::Broadcaster, subscribe: queue, unsubscribe: nil, update_subscription: nil) }
 
     before do
       allow(Telemetry::Broadcaster).to receive(:instance).and_return(broadcaster)
@@ -194,7 +194,7 @@ RSpec.describe "Api::Telemetry", type: :request do
       # and the compound case where both are pinned.
 
       let(:queue) { Queue.new }
-      let(:broadcaster) { instance_double(Telemetry::Broadcaster, subscribe: queue, unsubscribe: nil) }
+      let(:broadcaster) { instance_double(Telemetry::Broadcaster, subscribe: queue, unsubscribe: nil, update_subscription: nil) }
 
       before do
         allow(Telemetry::Broadcaster).to receive(:instance).and_return(broadcaster)
@@ -362,7 +362,7 @@ RSpec.describe "Api::Telemetry", type: :request do
           def close; end
         end.new(payloads, scoped_site, foreign_org)
         allow(Telemetry::Broadcaster).to receive(:instance).and_return(
-          instance_double(Telemetry::Broadcaster, subscribe: mid_stream_queue, unsubscribe: nil)
+          instance_double(Telemetry::Broadcaster, subscribe: mid_stream_queue, unsubscribe: nil, update_subscription: nil)
         )
 
         open_stream_as(viewer)
