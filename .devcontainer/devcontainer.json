@@ -1,0 +1,33 @@
+{
+  "name": "Resilience",
+  "image": "mcr.microsoft.com/devcontainers/ruby:3.4-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22.13.0"
+    },
+    "ghcr.io/itsmechlark/features/postgresql:1": {
+      "version": "17"
+    }
+  },
+  "forwardPorts": [
+    3000,
+    5173,
+    5432
+  ],
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "remoteEnv": {
+    "RAILS_ENV": "development",
+    "TEST_DATABASE_PORT": "5432"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "Shopify.ruby-lsp",
+        "rebornix.ruby",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "ms-azuretools.vscode-docker"
+      ]
+    }
+  }
+}

@@ -2,25 +2,54 @@
 
 ## Development Setup
 
+### Three ways to set up, ordered by least friction
+
+**1. Devcontainer / GitHub Codespaces (zero local install).**
+Open the repo in VS Code with the Dev Containers extension installed,
+or in a Codespace. The container image pins Ruby 3.4.7, Node 22.13.0,
+and PostgreSQL 17 — same versions CI uses. `.devcontainer/setup.sh`
+runs `bundle install`, `yarn install`, and `db:schema:load`
+automatically.
+
+**2. asdf or mise (single-command tool sync).**
+The repo carries a `.tool-versions` file. With asdf installed:
+```bash
+asdf install
+```
+This installs Ruby 3.4.7, Node 22.13.0, and PostgreSQL 17 to the
+exact versions CI uses. mise (`mise install`) reads the same file.
+
+**3. Manual install.**
+
 ### Prerequisites
 
-- Ruby 3.4.7 (via rbenv, rvm, or asdf)
-- Node.js 22.13+ (via nvm, fnm, or asdf)
+- Ruby 3.4.7 (via rbenv, rvm, asdf, or mise)
+- Node.js 22.13.0 (via nvm, fnm, asdf, or mise)
 - Yarn 1.22+
-- PostgreSQL 17 with PostGIS 3.5+
+- **PostgreSQL 17** with PostGIS 3.5+ (PG 16 and earlier will not work
+  — `backend/db/structure.sql` uses `transaction_timeout` which is a
+  PG17-only configuration parameter; older psql binaries fail with
+  `unrecognized configuration parameter` on `db:schema:load`).
 
 ### macOS Quick Setup
 
 ```bash
-# PostgreSQL + PostGIS
+# PostgreSQL + PostGIS — must be 17.x specifically
 brew install postgresql@17 postgis
 brew services start postgresql@17
+# Confirm the right psql is on PATH (asdf/mise users skip this):
+psql --version  # must report "psql (PostgreSQL) 17.x"
 
-# Ruby
+# Ruby + Node
 rbenv install 3.4.7
-
-# Node
 nvm install 22.13.0
+```
+
+If `psql --version` reports 14.x or 16.x, prepend the PG17 binary
+path before any backend command:
+
+```bash
+PATH="/opt/homebrew/opt/postgresql@17/bin:$PATH" bundle exec rails db:schema:load
 ```
 
 ### Backend

@@ -1,0 +1,12 @@
+# Tool versions used by this project. Pin exactly what CI uses
+# (.github/workflows/ci.yml) so a fresh clone via asdf or mise sets
+# up an identical local environment in one command.
+#
+# Why PostgreSQL is pinned to 17: backend/db/structure.sql contains
+# the SET transaction_timeout = 0 directive (added by Rails 8 / PG17
+# on db:schema:dump). PG 16.x and earlier psql binaries fail with
+# `unrecognized configuration parameter "transaction_timeout"` when
+# loading the schema — a real friction surface for new contributors.
+ruby 3.4.7
+nodejs 22.13.0
+postgres 17
