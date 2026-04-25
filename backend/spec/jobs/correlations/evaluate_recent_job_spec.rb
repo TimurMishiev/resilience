@@ -158,6 +158,116 @@ RSpec.describe Correlations::EvaluateRecentJob, type: :job do
     end
   end
 
+  describe "cursor-based progress (queue-latency drop guard)" do
+    # Regression for the old wall-clock design: WINDOW_SECONDS = 32 with a
+    # 2-second overlap over the 30-second cadence. A queue backlog of only
+    # a few seconds dropped every signal that landed in the latency gap.
+    # The cursor tolerates arbitrary backlog — the next successful tick
+    # picks up exactly where the last one stopped.
+
+    let(:site) do
+      Site.create!(
+        name: "Alpha Base",
+        latitude: 51.5,
+        longitude: -0.1,
+        geofence_radius_km: 50,
+        status: "active"
+      )
+    end
+
+    def create_signal(ingested_at:, external_id:)
+      ExternalSignal.create!(
+        source: "usgs_seismic",
+        signal_type: "seismic_event",
+        external_id: external_id,
+        lat: 51.6,
+        lng: 0.0,
+        occurred_at: ingested_at,
+        ingested_at: ingested_at,
+        raw_payload: {}
+      )
+    end
+
+    it "processes signals ingested during a multi-minute queue backlog" do
+      # Sequence:
+      #   t=0s      — baseline, cursor initialised
+      #   t=+45s    — signal_stale ingested
+      #   t=+10min  — job finally runs (simulates long backlog)
+      # Old 32-second window would miss signal_stale because
+      # window_start = t+10min - 32s is well past t+45s. The cursor
+      # stays anchored 1 minute before t=0, so signal_stale is still
+      # strictly after the cursor and is processed.
+      base = Time.zone.parse("2026-04-22 10:00:00 UTC")
+
+      travel_to(base) { IngestionCursor.for(described_class::CURSOR_NAME) }
+
+      signal_stale = nil
+      travel_to(base + 45.seconds) do
+        signal_stale = create_signal(ingested_at: Time.current, external_id: "backlog-signal")
+      end
+
+      site
+      allow(Sites::GeofenceBreachService).to receive(:call)
+
+      travel_to(base + 10.minutes) do
+        expect(Correlations::EvaluatorService).to receive(:call).with(signal: having_attributes(id: signal_stale.id))
+        described_class.new.perform
+      end
+    end
+
+    it "advances the cursor to the last processed signal so the next tick does not replay" do
+      base = Time.zone.parse("2026-04-22 10:00:00 UTC")
+      travel_to(base) { IngestionCursor.for(described_class::CURSOR_NAME) }
+
+      signals = []
+      travel_to(base + 30.seconds) do
+        signals << create_signal(ingested_at: Time.current, external_id: "advance-a")
+        signals << create_signal(ingested_at: Time.current + 0.001, external_id: "advance-b")
+      end
+
+      allow(Correlations::EvaluatorService).to receive(:call)
+      allow(Sites::GeofenceBreachService).to receive(:call)
+
+      travel_to(base + 1.minute) { described_class.new.perform }
+
+      cursor = IngestionCursor.find_by!(name: described_class::CURSOR_NAME)
+      expect(cursor.last_ingested_at).to be_within(0.01).of(signals.last.ingested_at)
+      expect(cursor.last_signal_id).to eq(signals.last.id)
+
+      # Second tick with no new signals: nothing replays, cursor unchanged.
+      expect(Correlations::EvaluatorService).not_to receive(:call)
+      travel_to(base + 2.minutes) { described_class.new.perform }
+    end
+
+    it "keeps the cursor anchored when a signal raises so the failure reprocesses on retry" do
+      base = Time.zone.parse("2026-04-22 10:00:00 UTC")
+      travel_to(base) { IngestionCursor.for(described_class::CURSOR_NAME) }
+
+      signal = nil
+      travel_to(base + 30.seconds) { signal = create_signal(ingested_at: Time.current, external_id: "failing") }
+
+      allow(Correlations::EvaluatorService).to receive(:call).and_raise(StandardError, "downstream failed")
+      allow(Sites::GeofenceBreachService).to receive(:call)
+
+      cursor_before = IngestionCursor.find_by!(name: described_class::CURSOR_NAME)
+      anchor = cursor_before.last_ingested_at
+
+      # retry_on catches; the final attempt propagates. We only care that
+      # the cursor is NOT advanced regardless of which attempt we observe.
+      travel_to(base + 1.minute) do
+        begin
+          described_class.new.perform
+        rescue StandardError
+          # expected — retry_on exhausted in this invocation
+        end
+      end
+
+      expect(cursor_before.reload.last_ingested_at).to eq(anchor)
+      expect(cursor_before.last_signal_id).to be_nil
+      expect(signal).to be_persisted
+    end
+  end
+
   describe "recurring schedule" do
     it "is registered in recurring.yml for both production and development" do
       config = YAML.load_file(Rails.root.join("config/recurring.yml"))

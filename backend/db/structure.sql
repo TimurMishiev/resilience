@@ -304,6 +304,20 @@ CREATE TABLE public.incidents (
 
 
 --
+-- Name: ingestion_cursors; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ingestion_cursors (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    name character varying NOT NULL,
+    last_ingested_at timestamp(6) without time zone NOT NULL,
+    last_signal_id uuid,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
 -- Name: operational_statuses; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1607,6 +1621,14 @@ ALTER TABLE ONLY public.incidents
 
 
 --
+-- Name: ingestion_cursors ingestion_cursors_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ingestion_cursors
+    ADD CONSTRAINT ingestion_cursors_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: operational_statuses operational_statuses_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2104,6 +2126,13 @@ CREATE INDEX index_incidents_on_site_id ON public.incidents USING btree (site_id
 --
 
 CREATE INDEX index_incidents_on_status ON public.incidents USING btree (status);
+
+
+--
+-- Name: index_ingestion_cursors_on_name_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_ingestion_cursors_on_name_unique ON public.ingestion_cursors USING btree (name);
 
 
 --
@@ -3880,6 +3909,7 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260424200000'),
 ('20260424180000'),
 ('20260415100001'),
 ('20260415100000'),
