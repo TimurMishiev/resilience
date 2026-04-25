@@ -79,6 +79,18 @@ class IngestionCursor < ApplicationRecord
       )
       .update_all(last_ingested_at: signal.ingested_at, last_signal_id: signal.id)
 
-    reload if rows_updated.positive?
+    if rows_updated.positive?
+      reload
+    else
+      # Refused advance — another worker already wrote a later state. The
+      # cursor is correct; this attempt is harmlessly redundant. Log at
+      # debug so multi-worker races are diagnosable post-mortem without
+      # polluting steady-state INFO logs (which would be noisy on every
+      # idle tick under concurrent recurring schedules).
+      Rails.logger.debug do
+        "[IngestionCursor:#{name}] advance refused (cursor at later state) " \
+          "attempted_ingested_at=#{signal.ingested_at.iso8601(3)} attempted_signal_id=#{signal.id}"
+      end
+    end
   end
 end

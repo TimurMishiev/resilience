@@ -24,25 +24,36 @@ RSpec.describe IngestionCursor, type: :model do
       expect(described_class.where(name: "test.consumer").count).to eq(1)
     end
 
-    it "rescues RecordNotUnique on race and returns the winning row" do
-      # Simulate two workers booting simultaneously: the first
-      # find_or_create_by! call inside the rescue context returns nil,
-      # then the second one (the recovery) finds the row another worker
-      # raced and inserted in between.
+    it "rescues RecordNotUnique and recovers the existing row via a live find_by!" do
+      # Proves the rescue path is wired end-to-end: when find_or_create_by!
+      # raises (as it would when Postgres' unique index rejects a
+      # racing INSERT), the rescue clause calls find_by!(name:) — which
+      # is NOT stubbed — and returns the actual persisted row, complete
+      # with all the attributes the previous winner wrote.
+      #
+      # We can't easily exercise the inner code path of find_or_create_by!
+      # because it goes through a relation's find_by, not the class
+      # method, so a stub at the class level wouldn't intercept it. The
+      # honest test stubs find_or_create_by! at the module-method level
+      # to raise the same error a real index violation would, and
+      # asserts the rescue's find_by! call hits the real DB.
       preexisting = described_class.create!(
         name: "test.consumer",
         last_ingested_at: 5.minutes.ago,
       )
 
-      # Force the find_or_create path to think there's no row, attempt
-      # an insert, hit the unique index, and recover via find_by.
       allow(described_class).to receive(:find_or_create_by!).and_raise(
-        ActiveRecord::RecordNotUnique.new("simulated race")
+        ActiveRecord::RecordNotUnique.new("simulated race"),
       )
 
       result = described_class.for("test.consumer")
 
+      # Rescue must return the actual persisted row, not nil and not a
+      # new transient instance — the recovered cursor carries the
+      # last_ingested_at the previous winner wrote.
+      expect(result).to be_a(described_class)
       expect(result.id).to eq(preexisting.id)
+      expect(result.last_ingested_at).to be_within(0.01).of(preexisting.last_ingested_at)
     end
   end
 
@@ -161,17 +172,50 @@ RSpec.describe IngestionCursor, type: :model do
       expect(cursor.reload.last_signal_id).to eq(larger_id)
     end
 
-    it "issues an atomic UPDATE ... WHERE rather than a read-then-write" do
+    it "fires a guarded UPDATE with a precondition (not a SELECT-then-UPDATE)" do
+      # Asserts on the actual SQL that hits the database, not on Ruby
+      # method-call shape. A future refactor that reaches the same SQL
+      # via a different relation chain still passes; a regression that
+      # silently drops the precondition (e.g. someone "simplifies" back
+      # to `update!`) fails because the WHERE clause loses its guard.
       signal = make_signal_at(30.minutes.ago, "atomic")
+      sql_events = []
+      callback = ->(_, _, _, _, payload) { sql_events << payload[:sql] if payload[:sql] }
 
-      # Spy on the relation chain. The fix must build a guarded scope
-      # before update_all — a plain `update!` would skip these calls.
-      relation = described_class.where(id: cursor.id)
-      allow(described_class).to receive(:where).with(id: cursor.id).and_return(relation)
-      expect(relation).to receive(:where).and_call_original
-      expect_any_instance_of(ActiveRecord::Relation).to receive(:update_all).and_call_original
+      ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+        cursor.advance_to(signal)
+      end
 
-      cursor.advance_to(signal)
+      app_sql = sql_events.reject { |sql| sql =~ /SCHEMA|SAVEPOINT|BEGIN|COMMIT|ROLLBACK/i }
+      updates = app_sql.select { |sql| sql =~ /\AUPDATE "ingestion_cursors"/i }
+
+      expect(updates).not_to be_empty,
+        "expected an UPDATE on ingestion_cursors; saw: #{app_sql.inspect}"
+
+      guarded = updates.find { |sql| sql.include?("last_ingested_at <") || sql.include?("last_signal_id <") }
+      expect(guarded).to be_present,
+        "UPDATE on ingestion_cursors fired without a precondition guard; SQL: #{updates.inspect}"
+    end
+
+    it "logs at debug level when an advance is refused (silent races would be invisible otherwise)" do
+      later   = make_signal_at(10.minutes.ago, "later")
+      earlier = make_signal_at(40.minutes.ago, "earlier")
+      cursor.advance_to(later)
+
+      # Capture every Rails.logger.debug invocation and assert one of
+      # them carries our refusal message. A blanket `expect(...).to
+      # receive(:debug)` would over-match on AR SQL debug logs and fail
+      # even in the success path.
+      captured = []
+      allow(Rails.logger).to receive(:debug) do |*args, &block|
+        captured << (block ? block.call.to_s : args.first.to_s)
+      end
+
+      cursor.advance_to(earlier)
+
+      refusal_log = captured.find { |line| line.include?("advance refused") }
+      expect(refusal_log).to be_present, "expected an 'advance refused' debug log; got: #{captured.inspect}"
+      expect(refusal_log).to include("attempted_signal_id=#{earlier.id}")
     end
   end
 end
