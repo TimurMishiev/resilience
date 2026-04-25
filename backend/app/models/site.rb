@@ -20,8 +20,14 @@ class Site < ApplicationRecord
 
   before_validation :sync_organization_from_area_of_operation
 
-  scope :active,  -> { where(status: "active") }
-  scope :flagged, -> { where.not(flagged_at: nil) }
+  scope :active,      -> { where(status: "active") }
+  scope :flagged,     -> { where.not(flagged_at: nil) }
+  scope :honeytokens, -> { where(honeytoken: true) }
+
+  # honeytoken? predicate is a thin convenience over the column —
+  # call sites read better as `site.honeytoken?` than
+  # `site.honeytoken == true`. Used by Api::SitesController#show
+  # to gate the ThreatDetection::HoneytokenAlertService trigger.
 
   private
 

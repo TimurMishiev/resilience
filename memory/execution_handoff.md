@@ -22,19 +22,72 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**Tranche 3B — MFA TOTP.** Implementation complete (with **three
-Codex rounds** of fix-forwards applied in-place: P1+P3 on
-re-enrollment downgrade + stale handoff; P1 on verifier
-non-atomicity; P2 on recovery-code audit-trail honesty) **plus
-one self-gate round** (Codex unavailable; user authorised
-self-driving): P3 dead-code removal — `MfaRecoveryCode#mark_used!`
-had zero callers after the P1 atomicity rewrite and would have
-been a non-atomic footgun for any future contributor reaching
-for it from console. Removed with an inline comment redirecting
-to the conditional UPDATE in `Mfa::VerificationService`.
+**Tranche 4A — Site honeytokens.** Implementation complete; user
+authorised self-driving while Codex is unavailable; **dirty tree
+uncommitted** pending self-gate cycle.
 
-Codex will run a final gate when the user is back; if anything
-real surfaces, fix-forward in 3B.1.
+Changes in dirty tree:
+- [backend/db/migrate/20260425200000_add_honeytoken_to_sites.rb](backend/db/migrate/20260425200000_add_honeytoken_to_sites.rb)
+  — `sites.honeytoken` boolean column, default false, NOT NULL.
+  Constant default — rewrite-free in PG11+.
+- [backend/app/models/site.rb](backend/app/models/site.rb) — adds
+  `:honeytokens` scope and documents the `honeytoken?` predicate.
+- [backend/app/models/operational_status.rb](backend/app/models/operational_status.rb)
+  — `threat_detection` added to `CATEGORIES`.
+- [backend/app/services/threat_detection/honeytoken_alert_service.rb](backend/app/services/threat_detection/honeytoken_alert_service.rb)
+  — new module. `alert!(record:, accessed_by:, request:)` writes
+  three layered records: chain-hashed `honeytoken.accessed`
+  AuditEvent (forensic, tamper-evident per ADR-010); upsert
+  `OperationalStatus("threat_detection", "honeytoken_access")`
+  for the operator dashboard; structured WARN log for SIEM.
+  Non-blocking — alert failures never raise out of the request
+  path, so an attacker cannot fingerprint honeytokens via
+  differentiated 500-vs-200 responses.
+- [backend/app/controllers/api/sites_controller.rb](backend/app/controllers/api/sites_controller.rb)
+  — `#show` calls the alert service AFTER authorization (so
+  unauthorized reads don't leak honeytoken existence). `#index`
+  deliberately does NOT trigger — honeytokens stay plausible
+  decoys in list views; bulk-list scraping detection is Tranche
+  4B's anomaly-detection job.
+- [docs/adr-009-adversarial-threat-model.md](docs/adr-009-adversarial-threat-model.md)
+  — mitigation roadmap row 7 (Honeytoken strategy) flipped to
+  SHIPPED with the architecture summary. (No new gap entry —
+  honeytokens are no longer a gap; the existing item 8
+  forensic-determinism gap is unchanged.)
+
+Specs:
+- `spec/services/threat_detection/honeytoken_alert_service_spec.rb`
+  (6 cases: audit event written, OperationalStatus recorded,
+  WARN log emitted, ok? Result on success, non-blocking on
+  failure path, nil-request tolerance).
+- `spec/requests/api/sites_spec.rb` extended with 4 cases:
+  honeytoken triggers alert + serves response normally,
+  honeytoken read writes audit event, honeytoken read records
+  OperationalStatus, normal site does NOT trigger.
+
+**Scope deliberately out:** honeytokens on other entity types
+(Tasks/Incidents/Recommendations — same pattern, easy to add
+later); list-action trip-wires (Tranche 4B); per-org seed
+script (operators can `update_column(:honeytoken, true)` from
+console for now); admin "this is a honeytoken" UI (not part of
+the API contract).
+
+Validation: 2,437 backend specs, 0 failures (was 2,427 baseline
+at `77b7c54`; +10 new for honeytokens).
+
+After self-gate clears + Codex final pass when user is back,
+continue to **Tranche 4B (access-pattern anomaly detection).**
+
+---
+
+**Tranche 3B — MFA TOTP** ✅ shipped in `77b7c54` (three Codex
+rounds of fix-forwards: P1+P3 re-enrollment + handoff; P1
+verifier atomicity; P2 audit-trail honesty; plus one self-gate
+P3 dead-code removal of `MfaRecoveryCode#mark_used!`).
+
+---
+
+**Historical Tranche 3B detail (kept for context):**
 
 Changes in dirty tree:
 
@@ -366,20 +419,23 @@ without verifying against current code.
    bounded gzip inflate for the GPSJam path; all 7 feed services
    rewired through the module; closes ADR-007 item 4 + ADR-009
    item 7).
-6. MFA TOTP — **3B implementation complete, Codex /gate pending,
-   awaiting commit.** rotp gem + `Mfa::SecretCipher` (encrypted
-   secret) + `Mfa::EnrollmentService` (begin/confirm/disable) +
-   `Mfa::VerificationService` (TOTP with replay protection +
-   recovery codes) + login-flow integration (mfa_required signal)
-   + 3 new auth endpoints + 42 net new specs. Partially closes
-   ADR-009 item 4 (TOTP shipped; SSO/SCIM/WebAuthn still open).
+6. ✅ shipped in `77b7c54` — MFA TOTP (rotp gem +
+   `Mfa::SecretCipher` encrypted secret + `Mfa::EnrollmentService`
+   + atomic `Mfa::VerificationService` + login-flow integration
+   + 3 new auth endpoints + chain-hashed audit trail.
+   Partially closes ADR-009 item 4 — TOTP shipped; SSO/SCIM/
+   WebAuthn still open).
 
 **Tranche 4 — Detection layer**
-7. Honeytokens (1 day, deterministic — fires on any read of seeded
-   fake records via `OperationalStatus("threat_detection",
-   "honeytoken_access")`)
-8. Access-pattern anomaly detection (rolling per-user velocity /
-   off-hours / geography signal; 3-5 days plus tuning)
+7. Site honeytokens — **4A implementation complete, self-gate
+   pending, awaiting commit.** `sites.honeytoken` boolean +
+   `ThreatDetection::HoneytokenAlertService` + `Sites#show`
+   trip-wire. Closes ADR-009 mitigation roadmap row 7.
+8. Access-pattern anomaly detection — **4B next after 4A
+   commit.**
+
+(Tranche 4 status: see above — Tranche 4A is the active dirty
+slice; 4B follows.)
 
 **Tranche 5 — Proof layer**
 9. Live-model AI eval lane + cost/token tracking
@@ -402,12 +458,11 @@ Why this order:
 
 ## Current Repo State
 
-- Latest committed tip: `ace3916` — Tranche 3A (feed hostile-input
-  guards: PayloadGuards + bounded gzip + UTF-8/BOM). Pushed to
-  `origin/main`.
+- Latest committed tip: `77b7c54` — Tranche 3B (MFA TOTP).
+  Pushed to `origin/main`.
 - Prior commits in the Hardening-to-95 arc:
-  - `afcfb9e` — Tranche 2B (SolidQueue/Puma light isolation,
-    ADR-011 + dual-pool RuntimeBudget validator)
+  - `ace3916` — Tranche 3A (feed hostile-input guards)
+  - `afcfb9e` — Tranche 2B (SolidQueue/Puma light isolation)
   - `f93ff56` — Tranche 2A (events SSE producer-side org filter)
   - `832278e` — Tranche 1 (AI summary fail-closed + ApplicationJob
     retry/discard baseline)
@@ -416,15 +471,13 @@ Why this order:
   - `97cba16` — Tranche C (verifier + admin endpoint + scheduled job)
   - `86adeb8` — Tranche B (backfill + NOT NULL + DB-level immutability)
   - `d422076` — Tranche A (schema + ChainHasher + EventWriter wiring)
-- Branch state: `main` pushed at `ace3916`
-- Working tree: **NOT clean — Tranche 3B dirty tree awaiting Codex
-  /gate clearance.** See "Current Slice" for the file list.
-- Test state: 2,427 backend specs / 0 failures with the dirty tree
-  applied (was 2,369 baseline at `ace3916`; +58 net new across
-  the 5 MFA spec files + sessions extension, including the 5
-  Codex P1 re-enrollment guard cases from the first fix-forward
-  + the 4 atomicity-proof cases from the second fix-forward + the
-  8 audit-trail cases from the third fix-forward).
+- Branch state: `main` pushed at `77b7c54`
+- Working tree: **NOT clean — Tranche 4A dirty tree pending
+  self-gate clearance (Codex offline).** See "Current Slice"
+  for the file list.
+- Test state: 2,437 backend specs / 0 failures with the dirty
+  tree applied (was 2,427 baseline at `77b7c54`; +10 from the
+  honeytoken alert service + sites controller integration specs).
 
 ## Phase 7 — Slice Plan
 

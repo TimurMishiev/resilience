@@ -184,6 +184,7 @@ for and find missing:
    well-formed AIS / ADS-B signals still flow through at their
    nominal source reliability — that's a separate concern handled
    by ADR-008's source-reliability priors, not the input guards.
+
 8. **No forensic-determinism contract.** Replay uses `DISTINCT ON`
    with `(occurred_at, sequence)` tie-breaking (see ADR-001 plus
    the sequence-column commit `4bb9d36`). The contract works today,
@@ -203,7 +204,7 @@ cost-benefit:
 | 4 | ~~MFA (TOTP)~~ **TOTP SHIPPED 2026-04-25** / WebAuthn deferred | 2-3 days | TOTP shipped via `rotp` gem + `Mfa::EnrollmentService` + login-flow integration + 10 BCrypt-hashed recovery codes per user + replay protection via `totp_last_used_at`. WebAuthn deferred to a follow-up tranche; pilot blocker for the TOTP requirement is resolved. |
 | 5 | SCIM provisioning endpoint | 3-5 days | Enterprise-IdP integration. Deferred until a real customer conversation justifies the shape. |
 | 6 | Per-record classification labels | 5+ days | Requires a product conversation about classification scheme. Don't build until an operator tells us what schema they need. |
-| 7 | Honeytoken strategy | 1 day | Low effort, high signal. Seed a known-fake site / incident; fire an alert if any user reads it. |
+| 7 | ~~Honeytoken strategy~~ **Site honeytokens SHIPPED 2026-04-25** | 1 day | Tranche 4A: `honeytoken` boolean on `sites` + `ThreatDetection::HoneytokenAlertService` (chain-hashed audit event + OperationalStatus + structured WARN log) wired into `Sites#show`. Non-blocking so attackers cannot fingerprint honeytokens via differentiated responses. Honeytokens on other entity types + list-action triggers + per-org seeding remain follow-up work. |
 | 8 | Air-gap / offline AI | multi-week | Requires a local model deployment story. Out of scope for the current portfolio posture. |
 
 ## Consequences

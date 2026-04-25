@@ -567,7 +567,8 @@ CREATE TABLE public.sites (
     flagged_at timestamp(6) without time zone,
     flag_reason text,
     geofence_radius_km double precision DEFAULT 50.0 NOT NULL,
-    organization_id uuid
+    organization_id uuid,
+    honeytoken boolean DEFAULT false NOT NULL
 );
 
 
@@ -4013,6 +4014,7 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260425200000'),
 ('20260425100001'),
 ('20260425100000'),
 ('20260424220004'),

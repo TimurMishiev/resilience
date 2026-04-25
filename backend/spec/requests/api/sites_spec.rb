@@ -84,6 +84,52 @@ RSpec.describe "Api::Sites", type: :request do
       get "/api/sites/00000000-0000-0000-0000-000000000000", headers: auth_headers(current_user)
       expect(response).to have_http_status(:not_found)
     end
+
+    # ── Honeytoken trip-wire (Tranche 4A / ADR-009 item 7) ──────────────
+    context "when the site is a honeytoken" do
+      let!(:trap) { create(:site, name: "FOB Crimson", honeytoken: true) }
+
+      it "fires ThreatDetection::HoneytokenAlertService and serves the response normally" do
+        expect(ThreatDetection::HoneytokenAlertService).to receive(:alert!)
+          .with(hash_including(record: trap, accessed_by: current_user))
+          .and_call_original
+
+        get "/api/sites/#{trap.id}", headers: auth_headers(current_user)
+
+        # Critical: the alert fires AND the request completes
+        # successfully. An attacker probing site IDs cannot
+        # distinguish honeytokens via differentiated responses
+        # (timing or status code) — both real and trap return 200.
+        expect(response).to have_http_status(:ok)
+        body = JSON.parse(response.body)
+        expect(body["id"]).to eq(trap.id)
+      end
+
+      it "writes a chain-hashed audit event for the read" do
+        expect {
+          get "/api/sites/#{trap.id}", headers: auth_headers(current_user)
+        }.to change {
+          AuditEvent.where(event_type: "honeytoken.accessed", entity_id: trap.id).count
+        }.by(1)
+      end
+
+      it "records a threat_detection / honeytoken_access OperationalStatus row" do
+        get "/api/sites/#{trap.id}", headers: auth_headers(current_user)
+
+        status = OperationalStatus.find_by(category: "threat_detection", key: "honeytoken_access")
+        expect(status).to be_present
+        expect(status.payload["record_id"]).to eq(trap.id)
+        expect(status.payload["accessed_by_id"]).to eq(current_user.id)
+      end
+    end
+
+    context "when the site is NOT a honeytoken" do
+      it "does not call the threat-detection service for normal sites" do
+        expect(ThreatDetection::HoneytokenAlertService).not_to receive(:alert!)
+        get "/api/sites/#{alpha.id}", headers: auth_headers(current_user)
+        expect(response).to have_http_status(:ok)
+      end
+    end
   end
 
   describe "PATCH /api/sites/:id/toggle_status" do

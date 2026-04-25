@@ -29,6 +29,23 @@ module Api
       site = scoped_record(Site, params[:id])
       authorize site
 
+      # Honeytoken trip-wire (Tranche 4A, ADR-009 item 7).
+      # Reading a site flagged as a honeytoken is by construction
+      # an event no legitimate operator should generate — the
+      # record is fake and was planted to detect exactly this. We
+      # alert AFTER authorization so we only trigger on reads the
+      # caller could have made, and we always serve the
+      # response (the alert service never raises out of the
+      # request path) so an attacker cannot fingerprint
+      # honeytokens via differentiated responses.
+      if site.honeytoken?
+        ThreatDetection::HoneytokenAlertService.alert!(
+          record:      site,
+          accessed_by: current_user,
+          request:     request,
+        )
+      end
+
       if as_of
         return render json: { errors: ["Site not found"] }, status: :not_found if site.created_at > as_of
 
