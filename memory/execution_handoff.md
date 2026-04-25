@@ -22,49 +22,65 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**Tranche 2A — Generic events SSE tenant routing.** Implementation
-complete; Codex P2 finding addressed; **dirty tree uncommitted**
-awaiting Codex re-gate per the new workflow ([feedback_codex_gate_workflow](memory/feedback_codex_gate_workflow.md)).
+**Tranche 2B — SolidQueue/Puma light isolation.** Implementation
+complete (with Codex P1 fix applied in-place); **dirty tree
+uncommitted** awaiting Codex re-gate per the new workflow
+([feedback_codex_gate_workflow](memory/feedback_codex_gate_workflow.md)).
 
 Changes in dirty tree:
 
-- [backend/app/services/sse/broadcaster.rb](backend/app/services/sse/broadcaster.rb)
-  — added `Subscription` wrapper with frozen-scope reassignment
-  pattern (mirrors `Telemetry::Broadcaster`); `subscribe(organization_id:)`
-  keyword + `update_subscription(queue, organization_id:)`; `publish`
-  does producer-side org match before delivery; relay payloads also
-  pass through the producer-side filter.
-- [backend/app/controllers/api/events_controller.rb](backend/app/controllers/api/events_controller.rb)
-  — calls `broadcaster.subscribe(organization_id: current_user.organization_id)`.
-  Consumer-side `event_visible_to_scope?` retained as defence-in-depth
-  (still does AO filtering, which stays consumer-side; org check is
-  now redundant but cheap).
-- [backend/spec/services/sse/broadcaster_spec.rb](backend/spec/services/sse/broadcaster_spec.rb)
-  — `@clients` ivar refs renamed to `@subscribers`, plus 7 new specs
-  covering org routing, global event fan-out, unrestricted admin,
-  scope memory across publishes, relay payload filtering,
-  `update_subscription` revocation propagation, and back-compat
-  default for callers that omit `organization_id`.
-- [backend/spec/requests/api/events_spec.rb](backend/spec/requests/api/events_spec.rb)
-  — **Codex P2 fix:** two new
-  `have_received(:subscribe).with(organization_id: ...)` assertions
-  pinning both wire-up branches (org-scoped + unrestricted) so a
-  future regression to `subscribe` (no kwargs) cannot silently
-  restore the pre-2A global fan-out.
+- [backend/app/services/runtime_budget/validator.rb](backend/app/services/runtime_budget/validator.rb)
+  — new module. **Validates two pools independently** (Codex P1
+  fix): the primary pool against Puma + LISTEN + headroom, and the
+  queue pool against SQ workers + dispatcher + headroom. SolidQueue
+  uses the `:queue` connection via [production.rb:55](backend/config/environments/production.rb#L55)
+  so its consumers don't compete with the primary pool. The earlier
+  conflated-pool design overstated `primary_required` and produced a
+  false off-by-one finding. The corrected math is: primary = 22,
+  queue = 5 with current config.
+- [backend/config/initializers/runtime_budget.rb](backend/config/initializers/runtime_budget.rb)
+  — initializer wires `SolidQueue::Record.connection_pool` as the
+  queue pool; tolerates absence (defensive default) so an emergency
+  boot before SQ activation doesn't false-fail.
+- [backend/spec/services/runtime_budget/validator_spec.rb](backend/spec/services/runtime_budget/validator_spec.rb)
+  — 22 specs covering: primary required = puma_threads + LISTEN +
+  headroom (independent of JOB_CONCURRENCY and SOLID_QUEUE_IN_PUMA),
+  queue required scales with JOB_CONCURRENCY, queue check skipped
+  when SOLID_QUEUE_IN_PUMA=false, queue check skipped when
+  queue_pool not injected (defensive), combined-ok matrix, error
+  message format split per pool, production-gate logic, and three
+  regression-guard sanity-check specs pinning the current production
+  config + the failure direction for both pools.
+- [fly.toml](fly.toml) — **the DB_POOL=30 line added in the first
+  draft of this tranche has been REVERTED.** The original bump was
+  based on the conflated-pool math; with the corrected math the
+  implicit default of 25 (= RAILS_MAX_THREADS + 5) satisfies both
+  pools' requirements. Comment block now documents the dual-pool
+  reality and the trigger for an explicit DB_POOL override
+  (JOB_CONCURRENCY > 1 → required >= max(22, JOB_CONCURRENCY × 3 + 2)).
+- [backend/config/puma.rb](backend/config/puma.rb) — comment block
+  rewritten again to reflect the corrected dual-pool framing.
+- [docs/adr-011-runtime-budget.md](docs/adr-011-runtime-budget.md)
+  — substantial rewrite. Documents the dual-pool architecture
+  (primary pool vs queue pool), what each consumer claims, why
+  SOLID_QUEUE_IN_PUMA does not change pool routing, the decision
+  gate for going heavy, and a "Provenance" section recording the
+  Codex P1 finding + the conflated-pool false alarm so a future
+  reader understands the corrected contract.
 
-**Scope decision worth flagging:** AO filtering stays consumer-side.
-Reason: events don't carry `area_of_operation_id` at publish time —
-many carry `data.site_id` and the controller resolves site → AO
-lazily via per-stream cache. Pushing AO resolution to producer-side
-would require touching every publisher (13 call sites) to do the
-lookup at publish time. Documented in the broadcaster's class
-comment as the deliberate org-vs-AO scope split.
+**Codex P1 finding addressed in-place** (Correctness / Scale
+readiness / Contract integrity, validator.rb:26): original validator
+counted SQ dispatcher overhead against the primary pool even though
+production routes SQ to the separate `:queue` pool. Fix replaces the
+single-pool model with explicit per-pool checks. The `DB_POOL=30`
+fly.toml bump was reverted because the conflated-pool math
+overstated the requirement.
 
-Validation: 2,328 backend specs, 0 failures (was 2,321 baseline at
-`832278e`; +7 new).
+Validation: 2,350 backend specs, 0 failures (was 2,328 baseline at
+`f93ff56`; +22 net in validator spec).
 
 After Codex re-gate clears, commit + push, then continue to
-**Tranche 2B (SolidQueue/Puma light isolation).**
+**Tranche 3 (security hardening: feed hostile-input guards + MFA TOTP).**
 
 ## Active Initiative — Hardening to 95+ (locked plan)
 
@@ -77,13 +93,19 @@ without verifying against current code.
 2. `ApplicationJob` retry/discard baseline
 
 **Tranche 2 — Stream/runtime hardening**
-3. Generic events SSE tenant routing — **2A implementation complete,
-   Codex re-gate pending, awaiting commit**
-4. SolidQueue/Puma light isolation (ADR + budget asserts; explicit
-   runtime budget, documented failure boundary, config-level
-   enforcement). Decision gate: if light isn't credible enough,
-   schedule heavy version (separate Fly process) as its own tranche.
-   **— next after 2A commit**
+3. ✅ shipped in `f93ff56` — Generic events SSE tenant routing
+   (2A: producer-side org filter via Subscription, P2 follow-up
+   pinned the controller wire-up)
+4. SolidQueue/Puma light isolation — **2B implementation complete
+   (Codex P1 dual-pool fix applied in-place), Codex re-gate pending,
+   awaiting commit.** ADR-011 + dual-pool RuntimeBudget::Validator
+   (primary pool: Puma + LISTEN + headroom = 22 required; queue pool:
+   SQ workers + dispatcher + headroom = 5 required, only checked
+   when SOLID_QUEUE_IN_PUMA=true) + boot-time initializer wired with
+   `SolidQueue::Record.connection_pool`. The pre-fix `DB_POOL=30`
+   bump in fly.toml was reverted — the implicit
+   `RAILS_MAX_THREADS + 5 = 25` default satisfies both pools at
+   current concurrency.
 
 **Tranche 3 — Security hardening**
 5. Feed hostile-input guards (payload size caps, depth limits,
@@ -118,20 +140,22 @@ Why this order:
 
 ## Current Repo State
 
-- Latest committed tip: `832278e` — Tranche 1 (AI summary fail-closed
-  + ApplicationJob retry/discard baseline). Pushed to `origin/main`.
+- Latest committed tip: `f93ff56` — Tranche 2A (events SSE
+  producer-side organization filter). Pushed to `origin/main`.
 - Prior commits in the Hardening-to-95 arc:
-  - (none — Tranche 1 is the first)
+  - `832278e` — Tranche 1 (AI summary fail-closed + ApplicationJob
+    retry/discard baseline)
 - Prior commits in the chain-of-custody arc (closes ADR-009 item 1):
   - `ffcf1c4` — Tranche D (ADR-010 docs + ADR-009 status flip)
   - `97cba16` — Tranche C (verifier + admin endpoint + scheduled job)
   - `86adeb8` — Tranche B (backfill + NOT NULL + DB-level immutability)
   - `d422076` — Tranche A (schema + ChainHasher + EventWriter wiring)
-- Branch state: `main` pushed at `832278e`
-- Working tree: **NOT clean — Tranche 2A dirty tree awaiting Codex
-  re-gate clearance.** See "Current Slice" for the file list.
-- Test state: 2,328 backend specs / 0 failures with the dirty tree
-  applied (was 2,321 baseline at `832278e`; +7 new in 2A).
+- Branch state: `main` pushed at `f93ff56`
+- Working tree: **NOT clean — Tranche 2B dirty tree awaiting Codex
+  /gate clearance.** See "Current Slice" for the file list.
+- Test state: 2,350 backend specs / 0 failures with the dirty tree
+  applied (was 2,328 baseline at `f93ff56`; +22 net new in 2B after
+  Codex P1 fix-forward).
 
 ## Phase 7 — Slice Plan
 

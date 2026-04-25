@@ -38,7 +38,13 @@ primary_region = "iad"
   SOLID_QUEUE_IN_PUMA      = "true"
   # Thread count for 1 GB machine. With jemalloc each thread costs ~20–30 MB
   # in steady state. 20 threads leaves headroom for Solid Queue + OS overhead.
-  # DB pool inherits this value from database.yml (pool: ENV["RAILS_MAX_THREADS"]).
+  # DB pool inherits this value via database.yml: pool = DB_POOL || (RAILS_MAX_THREADS + 5).
+  # The runtime budget enforced at boot by config/initializers/runtime_budget.rb (ADR-011)
+  # validates both the primary pool (Puma + LISTEN + headroom = 22 required) and the
+  # queue pool (SQ workers + dispatcher + headroom = 5 required). The implicit default
+  # of RAILS_MAX_THREADS+5 = 25 satisfies both, so no DB_POOL override is required at
+  # current concurrency levels. If JOB_CONCURRENCY is bumped past 1, set DB_POOL
+  # explicitly: required >= max(22, JOB_CONCURRENCY × 3 + 2).
   RAILS_MAX_THREADS        = "20"
   # SSE thread budget: 3 stream types × N concurrent users must fit inside
   # RAILS_MAX_THREADS while leaving headroom for regular API requests.

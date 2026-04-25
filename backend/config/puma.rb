@@ -25,22 +25,32 @@
 # Any libraries that use a connection pool or another resource pool should
 # be configured to provide at least as many connections as the number of
 # threads. This includes Active Record's `pool` parameter in `database.yml`.
+#
+# ── Runtime budget contract (ADR-011) ────────────────────────────────────────
+# Two independent connection pools must be sized correctly:
+#   Primary pool: RAILS_MAX_THREADS + LISTEN + headroom = 22 (with RAILS_MAX_THREADS=20)
+#   Queue pool:   JOB_CONCURRENCY × 3 + dispatcher + headroom = 5 (with JOB_CONCURRENCY=1)
+# SolidQueue routes its connections to the :queue pool via
+# config/environments/production.rb's `solid_queue.connects_to` — it does NOT
+# share the primary pool with Puma. Both pools currently inherit `pool:` from
+# the primary_production YAML anchor, so a single DB_POOL satisfies both.
+# The contract is enforced at boot by config/initializers/runtime_budget.rb;
+# math + decision gate (light vs heavy isolation) + emergency override are
+# documented in docs/adr-011-runtime-budget.md.
+#
 # ── SSE thread budget ────────────────────────────────────────────────────────
 # SSE (Server-Sent Events) streams permanently occupy a Puma thread for their
 # entire lifetime — they never return the thread to the pool while connected.
 # This makes the thread pool the hard capacity ceiling for concurrent SSE clients.
 #
-# Constraint chain:
-#   Code default: RAILS_MAX_THREADS = 32 (see ENV.fetch below)
-#   Production (fly.toml): RAILS_MAX_THREADS = 20
-#   SSE_MAX_STREAMS_PER_USER = 4  → max 4 streams per authenticated user
-#   SSE_MAX_STREAMS_PER_IP   = 12 → max 12 streams per source IP
-#   Fly hard_limit = 25 connections (HTTP), enforced at the load balancer
+# Constraint chain (production):
+#   RAILS_MAX_THREADS        = 20
+#   DB_POOL                  = (implicit) RAILS_MAX_THREADS + 5 = 25
+#   SSE_MAX_STREAMS_PER_USER = 4
+#   SSE_MAX_STREAMS_PER_IP   = 12
+#   Fly hard_limit           = 25 connections (HTTP), enforced at the LB
 #
-# Production budget (RAILS_MAX_THREADS=20):
-#   At full SSE occupancy (12 streams) → 8 threads remain for API calls.
-#   The Fly hard_limit of 25 exceeds 20 threads intentionally, as most API
-#   requests complete in <10 ms, keeping average thread utilization low.
+# At full SSE occupancy (12 streams) → 8 threads remain for API calls.
 #
 # Local/default budget (RAILS_MAX_THREADS=32):
 #   At full SSE occupancy (12 streams) → 20 threads remain for API calls.
