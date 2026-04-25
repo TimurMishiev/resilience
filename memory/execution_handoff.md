@@ -22,45 +22,28 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**Tranche 4A.1 — MFA audit-event deadlock retry.** Implementation
-complete; **dirty tree uncommitted** pending Codex re-gate.
+**No active slice — paused awaiting user direction on Tranche 4B
+(access-pattern anomaly detection).**
 
-Context: Codex's post-commit gate on `3d4aadb` flagged a P1 —
-the full backend suite reported 4 `ActiveRecord::Deadlocked`
-failures rooted at the MFA audit-event writes (mfa.enabled /
-mfa.disabled / mfa.code_used). Failures didn't reproduce in
-isolated slices and **don't reproduce locally on Claude's
-machine** (3 runs across default + two random seeds = 2,441
-specs / 0 failures each). The local-vs-Codex divergence is
-treated as evidence of a real interaction-pressure regression
-that surfaces only under broader concurrent load.
+The 4A.1 deadlock-retry fix-forward shipped clean — Codex's
+re-gate verdict was COMMIT WITH NOTES, with only a P2 on this
+handoff doc itself (now closed). The full backend suite is
+green at 2,441 / 0 across default + two randomized orderings.
 
-Fix-forward in dirty tree:
-- [backend/app/services/audit/event_writer.rb](backend/app/services/audit/event_writer.rb)
-  — extracted the chain-write internals into a private
-  `write_chained_event` helper, then wrapped the public `.write`
-  entry with a deadlock-retry loop: on `ActiveRecord::Deadlocked`,
-  log a structured WARN line, sleep with polynomial backoff
-  (`50ms * 2^(attempt-1)`), and retry up to
-  `MAX_DEADLOCK_RETRIES = 3`. Re-raise after exhaustion. The
-  retry is safe because pg_advisory_xact_lock is transaction-
-  scoped — on rollback the lock is released, the chain tip
-  re-resolves cleanly, and the retry writes a new chain_position
-  with no partial state. A real chain-of-custody bug would
-  deadlock every attempt and re-raise after the budget is gone.
-- [backend/spec/services/audit/event_writer_spec.rb](backend/spec/services/audit/event_writer_spec.rb)
-  — 4 new specs covering: retry succeeds on second attempt,
-  structured log lines emitted per attempt, re-raise after
-  budget exhaustion, polynomial backoff durations.
+Tranche 4B is the next planned slice but Claude paused it before
+the user stepped away — anomaly detection has real design
+choices (where to track reads — middleware vs per-controller;
+what counts as anomalous — velocity, geography, off-hours;
+threshold tuning) that warrant the user's read on the threat
+model before implementation. Resume from this point with one of:
 
-Validation: 2,441 backend specs, 0 failures (was 2,437 baseline
-at `3d4aadb`; +4 new deadlock-retry cases). Deliberately retried
-the full suite across three different orderings (default + two
-randomized seeds) — none triggered the deadlock locally, but
-the retry is now in place for any environment that does.
-
-After Codex re-gate clears, commit + push, then continue to
-**Tranche 4B (access-pattern anomaly detection).**
+  - Direct 4B implementation per a chosen design.
+  - Skip 4B and ship Tranche 5 (load test + AI eval lane) first.
+  - Pause Hardening-to-95 entirely and pivot to the wow-factor
+    map/globe work (Tranche 6) — defence-tech checkmarks are
+    already strong with chain-of-custody (ADR-010), MFA TOTP,
+    feed hostile-input guards, runtime budget enforcement, and
+    site honeytokens.
 
 ---
 
@@ -411,15 +394,18 @@ without verifying against current code.
    WebAuthn still open).
 
 **Tranche 4 — Detection layer**
-7. Site honeytokens — **4A implementation complete, self-gate
-   pending, awaiting commit.** `sites.honeytoken` boolean +
-   `ThreatDetection::HoneytokenAlertService` + `Sites#show`
-   trip-wire. Closes ADR-009 mitigation roadmap row 7.
-8. Access-pattern anomaly detection — **4B next after 4A
-   commit.**
-
-(Tranche 4 status: see above — Tranche 4A is the active dirty
-slice; 4B follows.)
+7. ✅ shipped in `3d4aadb` — Site honeytokens
+   (`sites.honeytoken` boolean + `ThreatDetection::HoneytokenAlertService`
+   + `Sites#show` trip-wire writing chain-hashed AuditEvent +
+   OperationalStatus + structured WARN log; closes ADR-009
+   mitigation roadmap row 7).
+   Plus `72cab55` — 4A.1 fix-forward: deadlock-retry on
+   `Audit::EventWriter.write` to close Codex's post-commit P1
+   on the MFA audit-event regression that surfaced under
+   full-suite pressure.
+8. Access-pattern anomaly detection — **4B paused awaiting user
+   direction on threat model + design (read-tracking shape,
+   anomaly definition, threshold tuning).**
 
 **Tranche 5 — Proof layer**
 9. Live-model AI eval lane + cost/token tracking
@@ -455,12 +441,21 @@ Why this order:
   - `97cba16` — Tranche C (verifier + admin endpoint + scheduled job)
   - `86adeb8` — Tranche B (backfill + NOT NULL + DB-level immutability)
   - `d422076` — Tranche A (schema + ChainHasher + EventWriter wiring)
-- Branch state: `main` pushed at `3d4aadb`
-- Working tree: **NOT clean — Tranche 4A.1 dirty tree pending
-  Codex re-gate.** EventWriter deadlock-retry + 4 new specs.
-- Test state with dirty tree: 2,441 backend specs / 0 failures
-  across default + 2 randomized orderings (was 2,437 baseline at
-  `3d4aadb`; +4 deadlock-retry cases).
+- Latest committed tip: `72cab55` — Tranche 4A.1 (Audit::EventWriter
+  deadlock retry — Codex P1 fix-forward on the post-commit gate
+  for 3d4aadb). Pushed to `origin/main`.
+- Prior commits in the Hardening-to-95 arc:
+  - `3d4aadb` — Tranche 4A (site honeytokens)
+  - `77b7c54` — Tranche 3B (MFA TOTP)
+  - `ace3916` — Tranche 3A (feed hostile-input guards)
+  - `afcfb9e` — Tranche 2B (SolidQueue/Puma light isolation)
+  - `f93ff56` — Tranche 2A (events SSE producer-side org filter)
+  - `832278e` — Tranche 1 (AI summary fail-closed +
+    ApplicationJob retry/discard baseline)
+- Branch state: `main` pushed at `72cab55`
+- Working tree: clean
+- Test state at `72cab55`: 2,441 backend specs / 0 failures
+  across default + 2 randomized orderings.
 
 ## Phase 7 — Slice Plan
 
