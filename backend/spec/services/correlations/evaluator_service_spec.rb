@@ -645,5 +645,54 @@ RSpec.describe Correlations::EvaluatorService do
         expect(SignalRuleMatch.where(site_id: site_org_b.id)).to be_empty
       end
     end
+
+    describe "#call site-resolution query count (N+1 guard)" do
+      # Regression: target_sites(rule) previously returned an
+      # ActiveRecord::Relation that executed one SQL query per rule when
+      # iterated. At scale this was R×S queries every 30 seconds. The fix
+      # preloads Site.active once per evaluator invocation and filters in
+      # memory. This test pins the behaviour: site resolution must issue a
+      # constant number of site queries regardless of how many rules exist.
+      it "issues a constant number of site queries regardless of rule count" do
+        org = create(:organization)
+        creator = create(:user, :commander, organization: org)
+        site = create(:site, organization: org, latitude: 10.0, longitude: 20.0)
+        signal = create(:external_signal, lat: 10.0, lng: 20.0, signal_type: "seismic_event")
+
+        rule_conditions = { "signal_type" => "seismic_event", "proximity_km" => 50 }
+
+        query_for_sites = ->(count) do
+          count.times do |i|
+            create(:correlation_rule,
+                   conditions:   rule_conditions,
+                   actions:      { "create_task" => { "title" => "t#{i}" } },
+                   area_of_operation_id: nil,
+                   created_by:   creator)
+          end
+
+          sql_events = []
+          callback = ->(_n, _s, _f, _id, payload) { sql_events << payload[:sql] if payload[:sql] }
+          ActiveSupport::Notifications.subscribed(callback, "sql.active_record") do
+            described_class.call(signal: signal)
+          end
+
+          sql_events.count { |sql| sql =~ /FROM "sites"/i && sql !~ /\bINSERT\b|\bUPDATE\b/i }
+        end
+
+        # Baseline: 5 rules.
+        CorrelationRule.delete_all
+        five_rule_query_count = query_for_sites.call(5)
+
+        # Scale: 25 rules (5x). If the N+1 were still present, query count
+        # would grow roughly linearly with rule count.
+        CorrelationRule.delete_all
+        twentyfive_rule_query_count = query_for_sites.call(25)
+
+        # Allow a small constant delta for single-site-rule lookups, but the
+        # 5× scaling must not produce anywhere near 5× the queries.
+        expect(twentyfive_rule_query_count).to be <= five_rule_query_count + 2,
+          "site query count scaled with rule count (5→#{five_rule_query_count} vs 25→#{twentyfive_rule_query_count})"
+      end
+    end
   end
 end

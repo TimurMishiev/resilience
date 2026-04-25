@@ -91,14 +91,23 @@ module Correlations
     def call
       # Preload :created_by so the per-rule tenant fallback in
       # target_sites_scope / rule_targets_site? does not issue a user query
-      # per rule (N+1 at 30s cadence across all active rules).
+      # per rule.
       rules = CorrelationRule.active.includes(:created_by)
+
+      # Preload every active site exactly once per evaluator invocation.
+      # The previous `target_sites(rule).each do |site|` pattern executed
+      # one Site scope SQL query per active rule — an N×R cliff that,
+      # under real rule/site counts, dominated every 30-second tick. The
+      # per-rule scope resolution is now a pure in-memory filter via
+      # rule_targets_site? (same predicate used by RuleFiringJob so the
+      # scoped set and per-site membership check cannot drift).
+      active_sites = Site.active.to_a
       fired = []
 
       rules.each do |rule|
         next if rule.on_cooldown?
 
-        target_sites(rule).each do |site|
+        target_sites_for(rule, active_sites).each do |site|
           next unless matches_rule_at_site?(rule, site)
 
           Correlations::RuleFiringJob.perform_later(rule.id, @signal.id, site.id)
@@ -107,6 +116,20 @@ module Correlations
       end
 
       ServiceResult.success(fired_count: fired.size, matches: fired)
+    end
+
+    # Resolves the target site set for a rule against a preloaded list of
+    # active sites. Single-site rules (conditions["site_id"] present) still
+    # go through a direct lookup because the referenced site may be
+    # inactive — preserving the original target_sites_scope behavior.
+    def target_sites_for(rule, preloaded_active_sites)
+      site_id = rule.conditions.is_a?(Hash) ? rule.conditions["site_id"] : nil
+      if site_id.present?
+        site = Site.find_by(id: site_id)
+        return site ? [site] : []
+      end
+
+      preloaded_active_sites.select { |site| self.class.rule_targets_site?(rule: rule, site: site) }
     end
 
     def matches_rule_at_site?(rule, site)
