@@ -1,7 +1,7 @@
 # Resilience
 
 [![CI](https://img.shields.io/github/actions/workflow/status/TimurMishiev/resilience/ci.yml?branch=main&label=CI)](https://github.com/TimurMishiev/resilience/actions)
-[![Backend specs](https://img.shields.io/badge/backend%20specs-2%2C212-brightgreen)](#test-coverage)
+[![Backend specs](https://img.shields.io/badge/backend%20specs-2%2C312-brightgreen)](#test-coverage)
 [![Frontend tests](https://img.shields.io/badge/frontend%20tests-678-brightgreen)](#test-coverage)
 [![E2E scenarios](https://img.shields.io/badge/Playwright%20E2E-15-brightgreen)](#test-coverage)
 [![Security](https://img.shields.io/badge/Brakeman-0%20warnings-brightgreen)](#security)
@@ -12,7 +12,7 @@
 
 Resilience is the kind of software that runs inside a TOC (Tactical Operations Center). It ingests live sensor feeds, correlates threat patterns, fuses alerts into incidents, and gives operators a single operational picture across 2D map, 3D globe, and structured data surfaces. Every mutation is audit-logged transactionally. Every surface supports time-travel replay. The authorization model enforces organization and area-of-operation boundaries at every layer.
 
-Built as a portfolio project targeting defense-tech engineering roles (Palantir, Anduril, Reveal Technology, Shield AI). The codebase is production-hardened: **2,212 backend specs, 678 frontend tests across 91 files, 15 Playwright E2E scenarios**, Pundit authorization on every endpoint, and CI that gates on security scanning, type safety, and performance budgets before auto-deploying. Installable as a PWA with offline caching. Classification banner support (UNCLASSIFIED / CUI / SECRET).
+Built as a portfolio project targeting defense-tech engineering roles (Palantir, Anduril, Reveal Technology, Shield AI). The codebase is production-hardened: **2,312 backend specs, 678 frontend tests across 91 files, 15 Playwright E2E scenarios**, Pundit authorization on every endpoint, and CI that gates on security scanning, type safety, and performance budgets before auto-deploying. Installable as a PWA with offline caching. Classification banner support (UNCLASSIFIED / CUI / SECRET).
 
 **Live:** [https://resilience-ops.fly.dev](https://resilience-ops.fly.dev)
 
@@ -28,8 +28,8 @@ Built as a portfolio project targeting defense-tech engineering roles (Palantir,
 
 Busy? Open these five files. Each one is deliberately chosen to demonstrate a distinct staff-level property of the system, not just "some representative code."
 
-1. **Audit trail backbone** — [`backend/app/services/audit/event_writer.rb`](backend/app/services/audit/event_writer.rb)
-   Every mutation in the system writes a `before_snapshot` / `after_snapshot` through this service, **inside the same database transaction** as the mutation itself. The audit trail is structurally impossible to diverge from the data. Architectural commitment, not a logging afterthought.
+1. **Audit trail with chain-of-custody** — [`backend/app/services/audit/event_writer.rb`](backend/app/services/audit/event_writer.rb) + [`chain_hasher.rb`](backend/app/services/audit/chain_hasher.rb) + [`chain_verifier.rb`](backend/app/services/audit/chain_verifier.rb)
+   Every mutation writes `before_snapshot` / `after_snapshot` through `EventWriter` **inside the same database transaction** as the mutation itself, and every row is hash-chained per organization with DB-level immutability triggers ([ADR-010](docs/adr-010-audit-chain-of-custody.md)). Tampering survives Ruby readonly → fails on the trigger. Trigger drop survives → fails on the chain. A daily scheduled job + admin-only on-demand endpoint walk every chain and report the exact `chain_position` of any break. Architectural commitment, not a logging afterthought.
 
 2. **Atomic cooldown under concurrency** — [`backend/app/services/correlations/rule_firing_service.rb`](backend/app/services/correlations/rule_firing_service.rb)
    Correlation-rule cooldowns use `UPDATE ... WHERE last_fired_at <= ?` with `update_all`. If `rows_updated == 0`, the claim lost; another worker already fired. Exactly-once semantics via row lock, not via distributed lock or idempotency key. The paired spec — [`rule_firing_service_spec.rb`](backend/spec/services/correlations/rule_firing_service_spec.rb) — proves the concurrency invariant, not just the happy path.
@@ -223,7 +223,7 @@ SSE (Server-Sent Events) with PostgreSQL `LISTEN`/`NOTIFY` relay for cross-proce
 
 | Layer | Count | Tool |
 |-------|-------|------|
-| Backend specs | 2,212 | RSpec |
+| Backend specs | 2,312 | RSpec |
 | Frontend unit/integration | 678 (91 files) | Vitest |
 | E2E critical paths | 15 scenarios | Playwright |
 | Security scanning | 0 warnings | Brakeman + bundler-audit |
@@ -268,7 +268,7 @@ Key test categories:
 push to main
   ├── Frontend: tsc + ESLint + Vitest + build
   ├── Backend Security: Brakeman + bundler-audit
-  ├── Backend Tests: RSpec (2,212 examples against PostGIS 17)
+  ├── Backend Tests: RSpec (2,312 examples against PostGIS 17)
   ├── Globe Benchmark: Playwright perf budget against Dockerized app
   └── E2E: Playwright critical paths against Dockerized app
         │
@@ -321,7 +321,7 @@ Open **http://localhost:5173**. The Vite dev server proxies `/api/*` to the Rail
 ```bash
 # Backend
 cd backend
-bundle exec rspec                          # 2,212 examples
+bundle exec rspec                          # 2,312 examples
 bundle exec brakeman --no-progress -q      # security scan
 bundle exec bundler-audit check            # CVE check
 
@@ -409,7 +409,7 @@ resilience/
     ├── db/
     │   ├── migrate/               # 69 migrations
     │   └── structure.sql          # Committed PostGIS-aware schema
-    └── spec/                      # 2,212 RSpec examples
+    └── spec/                      # 2,312 RSpec examples
 ```
 
 ---
@@ -423,6 +423,11 @@ Design decisions are documented in [`docs/`](docs/):
 - [ADR-003: Multi-Tenant Authorization via Named Boundary Helpers](docs/adr-003-multi-tenant-authorization.md) -- Accepted
 - [ADR-004: Correlation Engine — Atomic Cooldown + Compound Rules via Discriminator](docs/adr-004-correlation-engine-atomic-cooldown.md) -- Accepted
 - [ADR-005: AI Trust Boundary — Validator Pattern + Circuit Breaker](docs/adr-005-ai-trust-boundary.md) -- Accepted
+- [ADR-006: Tenancy Contract — Documented Org/AO Scope Rules](docs/adr-006-tenancy-contract.md) -- Accepted
+- [ADR-007: Connector Framework — 7-Feed Flat Shape, Framework Deferred](docs/adr-007-connector-framework.md) -- Accepted
+- [ADR-008: Trust Model — Smooth Falloff + Source Reliability Priors](docs/adr-008-trust-model.md) -- Accepted
+- [ADR-009: Adversarial Threat Model](docs/adr-009-adversarial-threat-model.md) -- Accepted
+- [ADR-010: Audit Chain of Custody — Hash Chain + DB-Level Immutability](docs/adr-010-audit-chain-of-custody.md) -- Accepted
 
 ---
 

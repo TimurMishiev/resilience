@@ -16,11 +16,30 @@ multi-audit findings matrix, and a third-party CTO evaluation. Both were
 worked through the confirmed-findings backlog before new features were
 considered.
 
+### Chain-of-custody on audit_events (ADR-010, 2026-04-25)
+
+Closes the highest-leverage gap from ADR-009 (adversarial threat
+model): every `audit_events` row is now hash-chained per organization
+with SHA-256 + DB-level immutability triggers + a daily verifier
+sweep + an admin-only on-demand endpoint.
+
+- **Tranche A**: schema migration + `Audit::ChainHasher` + `EventWriter`
+  wiring under per-org advisory locks.
+- **Tranche B**: backfill via `Audit::ChainBackfiller` + NOT NULL
+  enforcement + `prevent_audit_event_update` / `prevent_audit_event_delete`
+  triggers (replacing the documentation-only claim from ADR-009).
+- **Tranche C**: `Audit::ChainVerifier` + `Audit::VerifyAllChainsJob` +
+  `GET /api/admin/audit_chain` (admin-only) + tamper-detection coverage
+  for every break mode.
+- **Tranche D**: ADR-010 design rationale + ADR-009 status flip.
+
 ### Portfolio Polish
 
-- **Three new ADRs** (`docs/adr-003…005`) documenting the subsystems the
-  CTO evaluation called out as staff-level: multi-tenant authorization,
-  correlation engine, AI trust boundary.
+- **Eight new ADRs** (`docs/adr-003…010`) documenting the subsystems
+  the CTO evaluation called out as staff-level: multi-tenant
+  authorization, correlation engine, AI trust boundary, tenancy
+  contract, connector framework, trust model, adversarial threat
+  model, and chain-of-custody.
 - **README refresh** for hiring evaluators: badge strip, Reviewer's
   Guide section pointing at 5 specific files, stale test-count fixes.
 - **This CHANGELOG** + [`PORTFOLIO.md`](PORTFOLIO.md) with tiered

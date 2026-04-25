@@ -1,6 +1,6 @@
 # ADR-009: Adversarial Threat Model
 
-**Status:** Accepted (threat model documented; mitigations partial; enterprise-identity gaps explicit)
+**Status:** Accepted (threat model documented; item 1 of mitigation roadmap shipped via ADR-010; remaining mitigations partial; enterprise-identity gaps explicit)
 **Date:** 2026-04-25
 
 ## Context
@@ -67,9 +67,11 @@ session cookie, JWT, or direct password. Could be:
 - No automatic anomaly detection on access patterns (geography,
   velocity, off-hours, mass-read).
 - No honeytoken / canary strategy.
-- No retention limit on audit_events — in principle, a compromised
-  admin could delete the log of their own actions. Model-layer
-  immutability would close this (see "Mitigation roadmap" below).
+- No retention limit on audit_events — but the chain-of-custody
+  hash chain (ADR-010) closes the "compromised admin can edit the
+  log" path: the DB-level immutability triggers raise on UPDATE /
+  DELETE, and any tampering that drops the triggers and rewrites
+  rows is detected by the daily Audit::VerifyAllChainsJob.
 
 ### 2. External attacker (no credentials)
 
@@ -127,9 +129,12 @@ stack.
 - **Supply-chain hygiene**: bundler-audit + yarn audit gates on every
   PR; Dependabot for weekly updates.
 - **Audit trail**: Every mutation flows through `EventWriter` in
-  the same transaction as the mutation. Append-only schema-enforced
-  via `prevent_audit_event_updates` / `prevent_audit_event_deletes`
-  migrations.
+  the same transaction as the mutation. Append-only at the DB level
+  via `prevent_audit_event_update` / `prevent_audit_event_delete`
+  triggers, plus a per-organization SHA-256 hash chain that detects
+  tampering even if the triggers are dropped (ADR-010). Daily
+  `Audit::VerifyAllChainsJob` walks every chain and reports breaks
+  via `OperationalStatus("job_health", "audit_chain_integrity")`.
 - **Circuit breaker for external services**: AI services have per-
   service circuit breakers (3-failure / 2-minute window / auto-
   reset) so an Anthropic outage does not cascade.
@@ -145,10 +150,16 @@ for and find missing:
 2. **No data classification / compartmentalization.** Multi-tenancy is
    organization + AO; no "this user can see this tenant's data but
    only the SECRET-level subset." No per-record sensitivity labels.
-3. **No chain-of-custody / tamper-evident audit log.** `audit_events`
-   is append-only at the migration level but is not hash-chained.
-   A compromised DB admin could re-order or remove events. No
-   signature, no external attestation, no Merkle-chained sequencing.
+3. **Chain-of-custody / tamper-evident audit log.** **CLOSED** in
+   ADR-010 (shipped 2026-04-25). Every `audit_events` row carries a
+   per-org SHA-256 chain (`row_hash` over a canonical payload,
+   `prev_hash` linking to the previous row's `row_hash`). DB-level
+   triggers refuse UPDATE / DELETE. `Audit::ChainVerifier` walks the
+   chain end-to-end and reports the exact `chain_position` of any
+   tampering. Daily scheduled sweep + admin-only on-demand endpoint.
+   Out of scope: external attestation (committing the chain tip to a
+   third-party time-stamping service or SIEM) — noted as future
+   hardening in ADR-010.
 4. **No anomaly detection on access patterns.** Velocity, geography,
    off-hours, mass-read volume — none are automatically monitored
    or alerted.
@@ -174,7 +185,7 @@ cost-benefit:
 
 | Priority | Item | Effort | Why |
 |---|---|---|---|
-| 1 | Chain-of-custody on audit_events | 2-3 days | `audit_events.prev_hash` column computed as `sha256(prev.id || prev.hash || current.payload_json)`. Tamper-evident at the row level. Key to defence-tech credibility. |
+| 1 | ~~Chain-of-custody on audit_events~~ **SHIPPED 2026-04-25** | 2-3 days | See ADR-010. Per-org SHA-256 hash chain + DB-level immutability triggers + verifier service + admin endpoint + scheduled daily sweep. |
 | 2 | Anomaly detection on access patterns | 3-5 days | Background job computes rolling access velocity / off-hours multipliers per user; alerts when a user's pattern deviates. Requires a `user_access_profile` table. |
 | 3 | Feed connector hostile-input guards | 1-2 days | Payload size caps, depth limits, charset normalisation. See ADR-007 for the framework context. |
 | 4 | MFA (TOTP + WebAuthn) | 2-3 days | Mostly gem + UI work. Required for any defence-tech pilot. |

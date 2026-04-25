@@ -34,7 +34,14 @@ Read the [Reviewer's Guide section of the README](README.md#reviewers-guide--if-
 Five deliberately-chosen files, each demonstrating a distinct staff-level
 property:
 
-1. **Audit trail backbone** — `backend/app/services/audit/event_writer.rb`
+1. **Audit trail with chain-of-custody** —
+   `backend/app/services/audit/event_writer.rb` +
+   `backend/app/services/audit/chain_hasher.rb` +
+   `backend/app/services/audit/chain_verifier.rb`. Per-org SHA-256
+   hash chain + DB-level immutability triggers + scheduled verifier
+   sweep (ADR-010). Defence-in-depth: tampering survives Ruby
+   readonly, fails on the trigger; trigger drop survives, fails on
+   the chain.
 2. **Atomic cooldown under concurrency** —
    `backend/app/services/correlations/rule_firing_service.rb`
    (and its paired spec, which proves the invariant, not just the happy path)
@@ -61,6 +68,11 @@ Five ADRs document the non-obvious design decisions:
 - [ADR-003: Multi-Tenant Authorization via Named Boundary Helpers](docs/adr-003-multi-tenant-authorization.md)
 - [ADR-004: Correlation Engine — Atomic Cooldown + Compound Discriminator](docs/adr-004-correlation-engine-atomic-cooldown.md)
 - [ADR-005: AI Trust Boundary — Validator Pattern + Circuit Breaker](docs/adr-005-ai-trust-boundary.md)
+- [ADR-006: Tenancy Contract — Documented Org/AO Scope Rules](docs/adr-006-tenancy-contract.md)
+- [ADR-007: Connector Framework — 7-Feed Flat Shape, Framework Deferred](docs/adr-007-connector-framework.md)
+- [ADR-008: Trust Model — Smooth Falloff + Source Reliability Priors](docs/adr-008-trust-model.md)
+- [ADR-009: Adversarial Threat Model](docs/adr-009-adversarial-threat-model.md)
+- [ADR-010: Audit Chain of Custody — Hash Chain + DB-Level Immutability](docs/adr-010-audit-chain-of-custody.md)
 
 Each ADR has a "**What this is NOT**" section. Read those first if you're
 looking for honesty signals. They're where I name scope limits that would
@@ -75,7 +87,7 @@ git clone https://github.com/TimurMishiev/resilience.git
 cd resilience
 docker compose up                         # seeds demo data, opens localhost:3000
 # In another shell:
-cd backend && bundle exec rspec           # 2,212 examples against PostGIS
+cd backend && bundle exec rspec           # 2,312 examples against PostGIS
 cd frontend && npx vitest run             # 678 tests across 91 files
 ```
 
@@ -115,10 +127,13 @@ Not exhaustive. The things a senior reviewer would actually write down
 after looking at this code:
 
 - **Systems thinking, not feature thinking.** The audit trail isn't bolted
-  on — every mutation writes through it transactionally. The replay system
-  isn't a feature — it's a property of the data model. The authorization
-  boundary isn't a policy — it's a helper discipline that every policy
-  consumes. These are architectural commitments, not feature checkboxes.
+  on — every mutation writes through it transactionally, and every row is
+  hash-chained with DB-level immutability triggers (ADR-010) so a
+  compromised admin or a raw-SQL bypass is detected, not silently
+  trusted. The replay system isn't a feature — it's a property of the
+  data model. The authorization boundary isn't a policy — it's a helper
+  discipline that every policy consumes. These are architectural
+  commitments, not feature checkboxes.
 
 - **Concurrency correctness as a native concern.** The atomic cooldown
   claim (ADR-004), the `RecordNotUnique` rescue in `IngestService`, the
@@ -131,7 +146,7 @@ after looking at this code:
   written by someone who's seen hallucinated references cause bad
   operator decisions.
 
-- **Test quality over test count.** 2,212 backend specs and 678 frontend
+- **Test quality over test count.** 2,312 backend specs and 678 frontend
   tests, but what matters is what they prove: org-isolation specs,
   scoped-access request specs, concurrency-invariant specs for the rule
   engine, adapter-level engine tests for the map/globe, role-boundary E2E
