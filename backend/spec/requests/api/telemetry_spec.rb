@@ -169,6 +169,23 @@ RSpec.describe "Api::Telemetry", type: :request do
       expect(broadcaster).to have_received(:unsubscribe).with(queue)
     end
 
+    it "releases the pre-loop DB connection so an SSE stream does not pin a pool slot for its lifetime" do
+      # Regression for the connection-pinning class of bug: ActionController::Live
+      # would otherwise hold the controller's checked-out connection for the
+      # entire stream lifetime. With prod pool=25, ~25 concurrent streams
+      # would exhaust the pool and every other API request would block on
+      # ConnectionTimeoutError. The controller now explicitly releases the
+      # connection before entering queue.pop and uses with_connection for
+      # in-loop queries.
+      queue.close
+
+      expect(ActiveRecord::Base.connection_pool).to receive(:release_connection).at_least(:once).and_call_original
+
+      get "/api/telemetry/stream", params: { token: sse_token }
+
+      expect(response).to have_http_status(:ok)
+    end
+
     describe "tenant filtering" do
       # Exercises the per-payload guard in TelemetryController#stream. The
       # broadcaster is always global (single-process in-memory pub/sub); the

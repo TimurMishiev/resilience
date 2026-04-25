@@ -120,8 +120,21 @@ module Api
       # mid-stream — asset reassigned to another org, viewer's AO scope
       # revoked, etc. The refresh is a bounded SELECT over the viewer's
       # tenant scope; cost is negligible vs. the tenant-leak risk it closes.
-      allowed_asset_ids = policy_scope(Asset).pluck(:id).to_set
+      allowed_asset_ids = ActiveRecord::Base.connection_pool.with_connection do
+        policy_scope(Asset).pluck(:id).to_set
+      end
       allowed_asset_ids_refreshed_at = Time.current
+
+      # Release the controller-action's checked-out DB connection now that
+      # we've read the initial scope. Without this, ActionController::Live
+      # holds the connection for the *entire* SSE stream lifetime (often
+      # hours) — Rails normally checks connections back in only when the
+      # request finishes. With pool=25 in production, ~25 concurrent
+      # streams exhaust the pool and every subsequent API request blocks
+      # on `ActiveRecord::ConnectionTimeoutError`. Subsequent in-loop
+      # queries below check out a connection only for the duration of the
+      # query and release it immediately.
+      ActiveRecord::Base.connection_pool.release_connection
 
       # Heartbeat thread — keeps the connection alive through proxies / load balancers
       heartbeat = start_sse_heartbeat(stream_name: "telemetry") do
@@ -139,9 +152,13 @@ module Api
           # Rebuild the scope from scratch (bypassing Pundit's per-request
           # policy_scope memoisation) and disable AR's query cache so we
           # actually re-read the tenant state instead of the cached
-          # snapshot from stream open.
-          allowed_asset_ids = ActiveRecord::Base.uncached do
-            AssetPolicy::Scope.new(current_user, Asset.all).resolve.pluck(:id).to_set
+          # snapshot from stream open. with_connection bounds the
+          # connection checkout to this query only — the SSE thread is
+          # not holding a DB connection while it blocks on queue.pop.
+          allowed_asset_ids = ActiveRecord::Base.connection_pool.with_connection do
+            ActiveRecord::Base.uncached do
+              AssetPolicy::Scope.new(current_user, Asset.all).resolve.pluck(:id).to_set
+            end
           end
           allowed_asset_ids_refreshed_at = Time.current
         end

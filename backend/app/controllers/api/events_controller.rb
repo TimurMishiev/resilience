@@ -44,6 +44,15 @@ module Api
       user_ao_id  = current_user.area_of_operation_id
       site_area_cache = {}
 
+      # Release the controller-action's checked-out DB connection before
+      # entering the blocking loop. Without this, ActionController::Live
+      # holds the connection for the entire SSE lifetime — at pool=25 in
+      # production, ~25 concurrent streams exhaust the pool and every
+      # other API request blocks on ConnectionTimeoutError. In-loop
+      # queries below check out a connection only for the query's
+      # duration via with_connection.
+      ActiveRecord::Base.connection_pool.release_connection
+
       loop do
         payload = queue.pop          # blocks until a message arrives
         break if payload.nil?
@@ -107,7 +116,11 @@ module Api
       return nil if site_id.blank?
 
       site_area_cache.fetch(site_id) do
-        site_area_cache[site_id] = Site.where(id: site_id).pick(:area_of_operation_id) || :unknown
+        # with_connection scopes the checkout to this query only — the
+        # SSE thread does not hold a DB connection between events.
+        site_area_cache[site_id] = ActiveRecord::Base.connection_pool.with_connection do
+          Site.where(id: site_id).pick(:area_of_operation_id)
+        end || :unknown
       end
     end
   end
