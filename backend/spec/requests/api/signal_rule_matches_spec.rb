@@ -266,7 +266,7 @@ RSpec.describe "Api::SignalRuleMatches", type: :request do
         fired_at: 40.minutes.ago
       )
 
-      AuditEvent.create!(
+      create(:audit_event,
         actor: "system",
         entity_type: "Site",
         entity_id: replay_site.id,
@@ -279,7 +279,7 @@ RSpec.describe "Api::SignalRuleMatches", type: :request do
         occurred_at: 2.hours.ago,
         correlation_id: SecureRandom.uuid,
       )
-      AuditEvent.create!(
+      create(:audit_event,
         actor: "system",
         entity_type: "CorrelationRule",
         entity_id: replay_rule.id,
@@ -297,7 +297,7 @@ RSpec.describe "Api::SignalRuleMatches", type: :request do
         replay_site.update!(name: "Site Renamed")
         replay_rule.update!(name: "Rule Renamed")
 
-        AuditEvent.create!(
+        create(:audit_event,
           actor: "system",
           entity_type: "Site",
           entity_id: replay_site.id,
@@ -312,7 +312,7 @@ RSpec.describe "Api::SignalRuleMatches", type: :request do
           occurred_at: Time.current,
           correlation_id: SecureRandom.uuid,
         )
-        AuditEvent.create!(
+        create(:audit_event,
           actor: "system",
           entity_type: "CorrelationRule",
           entity_id: replay_rule.id,
@@ -329,7 +329,7 @@ RSpec.describe "Api::SignalRuleMatches", type: :request do
         )
       end
 
-      AuditEvent.create!(
+      create(:audit_event,
         actor: "system",
         entity_type: "Task",
         entity_id: future_task.id,

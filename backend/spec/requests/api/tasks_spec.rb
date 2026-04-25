@@ -370,7 +370,7 @@ RSpec.describe "Api::Tasks", type: :request do
     let(:as_of_past) { 1.hour.ago.iso8601 }
 
     before do
-      AuditEvent.create!(
+      create(:audit_event,
         schema_version: 1,
         actor: "test",
         entity_type: "Task",
@@ -409,7 +409,7 @@ RSpec.describe "Api::Tasks", type: :request do
 
     it "excludes tasks created after as_of" do
       future_task = create(:task, site: site)
-      AuditEvent.create!(
+      create(:audit_event,
         schema_version: 1,
         actor: "test",
         entity_type: "Task",
@@ -430,7 +430,7 @@ RSpec.describe "Api::Tasks", type: :request do
 
     it "applies workflow filters to historical state, not the live row" do
       task.update!(workflow_status: "resolved", resolved_at: 15.minutes.ago)
-      AuditEvent.create!(
+      create(:audit_event,
         schema_version: 1,
         actor: "test",
         entity_type: "Task",

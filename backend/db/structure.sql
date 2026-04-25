@@ -39,6 +39,32 @@ COMMENT ON EXTENSION postgis IS 'PostGIS geometry and geography spatial types an
 
 
 --
+-- Name: prevent_audit_event_delete(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.prevent_audit_event_delete() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  RAISE EXCEPTION 'audit_events are append-only — deletes are not permitted (see ADR-009 item 1, ADR-010)';
+END;
+$$;
+
+
+--
+-- Name: prevent_audit_event_update(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.prevent_audit_event_update() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  RAISE EXCEPTION 'audit_events are immutable — updates are not permitted (see ADR-009 item 1, ADR-010)';
+END;
+$$;
+
+
+--
 -- Name: prevent_incident_note_delete(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -155,9 +181,9 @@ CREATE TABLE public.audit_events (
     after_workflow_status text GENERATED ALWAYS AS ((after_snapshot ->> 'workflow_status'::text)) STORED,
     organization_id uuid,
     sequence bigint NOT NULL,
-    chain_position bigint,
-    prev_hash bytea,
-    row_hash bytea,
+    chain_position bigint NOT NULL,
+    prev_hash bytea NOT NULL,
+    row_hash bytea NOT NULL,
     hash_version smallint DEFAULT 1 NOT NULL
 );
 
@@ -1769,6 +1795,20 @@ ALTER TABLE ONLY public.vessels
 
 
 --
+-- Name: idx_audit_events_chain_position_scoped; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_audit_events_chain_position_scoped ON public.audit_events USING btree (organization_id, chain_position) WHERE (organization_id IS NOT NULL);
+
+
+--
+-- Name: idx_audit_events_chain_position_unscoped; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_audit_events_chain_position_unscoped ON public.audit_events USING btree (chain_position) WHERE (organization_id IS NULL);
+
+
+--
 -- Name: idx_external_signals_location_gist; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1787,20 +1827,6 @@ CREATE UNIQUE INDEX idx_geofence_breach_signal_site_unique ON public.signal_rule
 --
 
 CREATE INDEX idx_incidents_active_prosecution ON public.incidents USING btree (prosecution_phase) WHERE (prosecution_phase IS NOT NULL);
-
-
---
--- Name: idx_audit_events_chain_position_scoped; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX idx_audit_events_chain_position_scoped ON public.audit_events USING btree (organization_id, chain_position) WHERE (organization_id IS NOT NULL);
-
-
---
--- Name: idx_audit_events_chain_position_unscoped; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX idx_audit_events_chain_position_unscoped ON public.audit_events USING btree (chain_position) WHERE (organization_id IS NULL);
 
 
 --
@@ -3540,6 +3566,20 @@ ALTER INDEX public.index_telemetry_readings_on_occurred_at ATTACH PARTITION publ
 
 
 --
+-- Name: audit_events audit_events_immutable_delete; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER audit_events_immutable_delete BEFORE DELETE ON public.audit_events FOR EACH ROW EXECUTE FUNCTION public.prevent_audit_event_delete();
+
+
+--
+-- Name: audit_events audit_events_immutable_update; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER audit_events_immutable_update BEFORE UPDATE ON public.audit_events FOR EACH ROW EXECUTE FUNCTION public.prevent_audit_event_update();
+
+
+--
 -- Name: incident_notes incident_notes_immutable; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -3927,6 +3967,9 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260424220004'),
+('20260424220003'),
+('20260424220002'),
 ('20260424220001'),
 ('20260424220000'),
 ('20260424200000'),

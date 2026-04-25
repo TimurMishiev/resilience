@@ -99,7 +99,7 @@ RSpec.describe "Api::CorrelationRules", type: :request do
         mitre_tags: @historical_rule.mitre_tags || [],
       }
 
-      AuditEvent.create!(
+      create(:audit_event,
         schema_version: 1,
         actor: "test",
         entity_type: "CorrelationRule",
@@ -119,7 +119,7 @@ RSpec.describe "Api::CorrelationRules", type: :request do
         updated_at: updated_at
       )
 
-      AuditEvent.create!(
+      create(:audit_event,
         schema_version: 1,
         actor: "test",
         entity_type: "CorrelationRule",

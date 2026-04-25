@@ -77,7 +77,7 @@ RSpec.describe "Api::AreasOfOperation", type: :request do
       )
       @historical_area.update_columns(created_at: created_at, updated_at: created_at)
 
-      AuditEvent.create!(
+      create(:audit_event,
         schema_version: 1,
         actor: "test",
         entity_type: "AreaOfOperation",
@@ -100,7 +100,7 @@ RSpec.describe "Api::AreasOfOperation", type: :request do
 
       historical_area.update_columns(threat_level: "red", color: "#ff4757", updated_at: updated_at)
 
-      AuditEvent.create!(
+      create(:audit_event,
         schema_version: 1,
         actor: "test",
         entity_type: "AreaOfOperation",

@@ -78,7 +78,7 @@ RSpec.describe "Api::Assets", type: :request do
       )
       @historical_asset.update_columns(created_at: created_at, updated_at: created_at)
 
-      AuditEvent.create!(
+      create(:audit_event,
         schema_version: 1,
         actor: "test",
         entity_type: "Asset",
@@ -99,7 +99,7 @@ RSpec.describe "Api::Assets", type: :request do
         updated_at: updated_at
       )
 
-      AuditEvent.create!(
+      create(:audit_event,
         schema_version: 1,
         actor: "test",
         entity_type: "Asset",

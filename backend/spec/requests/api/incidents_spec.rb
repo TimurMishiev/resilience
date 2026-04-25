@@ -82,7 +82,7 @@ RSpec.describe "Api::Incidents", type: :request do
     end
 
     it "preserves untouched fields when future partial audit events exist" do
-      AuditEvent.create!(
+      create(:audit_event,
         actor: "system",
         entity_type: "Incident",
         entity_id: incident.id,
@@ -171,7 +171,7 @@ RSpec.describe "Api::Incidents", type: :request do
         )
       end
 
-      AuditEvent.create!(
+      create(:audit_event,
         actor: "system",
         entity_type: "Task",
         entity_id: task.id,
@@ -207,7 +207,7 @@ RSpec.describe "Api::Incidents", type: :request do
       rule = create(:correlation_rule, name: "Perimeter Watch")
       create(:signal_rule_match, :without_task, incident: incident, site: site, correlation_rule: rule, fired_at: 2.hours.ago)
 
-      AuditEvent.create!(
+      create(:audit_event,
         actor: "system",
         entity_type: "Site",
         entity_id: site.id,
@@ -221,7 +221,7 @@ RSpec.describe "Api::Incidents", type: :request do
         occurred_at: 2.hours.ago,
         correlation_id: SecureRandom.uuid,
       )
-      AuditEvent.create!(
+      create(:audit_event,
         actor: "system",
         entity_type: "AreaOfOperation",
         entity_id: area.id,
@@ -235,7 +235,7 @@ RSpec.describe "Api::Incidents", type: :request do
         occurred_at: 2.hours.ago,
         correlation_id: SecureRandom.uuid,
       )
-      AuditEvent.create!(
+      create(:audit_event,
         actor: "system",
         entity_type: "CorrelationRule",
         entity_id: rule.id,
@@ -254,7 +254,7 @@ RSpec.describe "Api::Incidents", type: :request do
         area.update!(name: "Renamed AO", posture: "weapons_free")
         rule.update!(name: "Renamed Rule")
 
-        AuditEvent.create!(
+        create(:audit_event,
           actor: "system",
           entity_type: "Site",
           entity_id: site.id,
@@ -271,7 +271,7 @@ RSpec.describe "Api::Incidents", type: :request do
           occurred_at: Time.current,
           correlation_id: SecureRandom.uuid,
         )
-        AuditEvent.create!(
+        create(:audit_event,
           actor: "system",
           entity_type: "AreaOfOperation",
           entity_id: area.id,
@@ -288,7 +288,7 @@ RSpec.describe "Api::Incidents", type: :request do
           occurred_at: Time.current,
           correlation_id: SecureRandom.uuid,
         )
-        AuditEvent.create!(
+        create(:audit_event,
           actor: "system",
           entity_type: "CorrelationRule",
           entity_id: rule.id,
@@ -592,7 +592,7 @@ RSpec.describe "Api::Incidents", type: :request do
         )
       end
 
-      AuditEvent.create!(
+      create(:audit_event,
         actor: "system",
         entity_type: "Task",
         entity_id: task.id,

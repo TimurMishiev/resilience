@@ -55,7 +55,7 @@ RSpec.describe "Api::Readiness", type: :request do
     let(:as_of_time) { 1.hour.ago }
 
     before do
-      AuditEvent.create!(
+      create(:audit_event,
         schema_version: 1,
         actor: "test",
         entity_type: "Task",

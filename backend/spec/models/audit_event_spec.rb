@@ -31,6 +31,28 @@ RSpec.describe AuditEvent, type: :model do
       reloaded = AuditEvent.find(event.id)
       expect { reloaded.update!(actor: "changed") }.to raise_error(ActiveRecord::ReadOnlyRecord)
     end
+
+    # Defence-in-depth: even when Ruby's readonly! is bypassed, the
+    # database-level trigger blocks the UPDATE/DELETE. update_columns
+    # skips Rails' readonly check so it actually issues SQL.
+    describe "DB-level triggers (ADR-010)" do
+      let!(:event) { create(:audit_event) }
+
+      it "blocks UPDATE at the trigger" do
+        expect {
+          event.update_columns(actor: "tampered")
+        }.to raise_error(ActiveRecord::StatementInvalid, /audit_events are immutable/)
+      end
+
+      it "blocks DELETE at the trigger" do
+        expect {
+          AuditEvent.connection.execute(
+            ActiveRecord::Base.send(:sanitize_sql_array,
+              [ "DELETE FROM audit_events WHERE id = ?", event.id ])
+          )
+        }.to raise_error(ActiveRecord::StatementInvalid, /audit_events are append-only/)
+      end
+    end
   end
 
   # ── Scopes ──────────────────────────────────────────────────────────────────
