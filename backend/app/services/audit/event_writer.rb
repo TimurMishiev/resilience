@@ -4,7 +4,17 @@ module Audit
   #
   # All service objects that mutate state should call this.
   # Never call from model callbacks.
+  #
+  # Chain-of-custody contract (ADR-010): every row is hash-chained to the
+  # previous row in its organization's chain. The chain is serialised by a
+  # per-org Postgres advisory transaction lock — concurrent writers in the
+  # same org wait; concurrent writers in different orgs run in parallel.
+  # The lock auto-releases when the surrounding transaction commits or
+  # rolls back; the model fields are computed and persisted atomically
+  # with the rest of the row.
   class EventWriter
+    CHAIN_LOCK_DOMAIN = "audit_chain"
+
     def self.write(
       actor:,
       entity_type:,
@@ -23,20 +33,76 @@ module Audit
                        organization_id
                      end
 
-      AuditEvent.create!(
-        schema_version: 1,
-        actor: actor,
-        entity_type: entity_type,
-        entity_id: entity_id,
-        event_type: event_type,
-        action: action,
-        before_snapshot: before_snapshot,
-        after_snapshot: after_snapshot,
-        metadata: metadata,
-        correlation_id: correlation_id,
-        occurred_at: Time.current,
-        organization_id: resolved_org
+      AuditEvent.transaction(requires_new: false) do
+        acquire_chain_lock!(resolved_org)
+
+        tip            = chain_tip_for(resolved_org)
+        chain_position = (tip[:position] || 0) + 1
+        prev_hash      = tip[:row_hash] || ChainHasher.genesis_prev_hash(resolved_org)
+
+        id          = SecureRandom.uuid
+        sequence    = AuditEvent.connection.select_value(
+          "SELECT nextval('audit_events_sequence_seq')"
+        ).to_i
+        occurred_at = Time.current
+
+        attrs = {
+          id:               id,
+          schema_version:   1,
+          actor:            actor,
+          entity_type:      entity_type,
+          entity_id:        entity_id,
+          event_type:       event_type,
+          action:           action,
+          before_snapshot:  before_snapshot,
+          after_snapshot:   after_snapshot,
+          metadata:         metadata,
+          correlation_id:   correlation_id,
+          occurred_at:      occurred_at,
+          organization_id:  resolved_org,
+          sequence:         sequence,
+          chain_position:   chain_position,
+          prev_hash:        prev_hash,
+          hash_version:     ChainHasher::HASH_VERSION,
+        }
+        row_hash = ChainHasher.compute(attrs)
+
+        AuditEvent.create!(attrs.merge(row_hash: row_hash))
+      end
+    end
+
+    def self.acquire_chain_lock!(organization_id)
+      key = chain_lock_key(organization_id)
+      AuditEvent.connection.execute(
+        ActiveRecord::Base.send(
+          :sanitize_sql_array,
+          [ "SELECT pg_advisory_xact_lock(?)", key ]
+        )
       )
+    end
+
+    # The lock key is a stable bigint derived from a per-org domain
+    # string. hashtextextended() (Postgres 11+) returns a deterministic
+    # bigint suitable for advisory-lock keys; the literal string is
+    # written into the SQL with sanitize_sql_array so an exotic
+    # organization_id cannot inject. Returns the hashed value as an int.
+    def self.chain_lock_key(organization_id)
+      scope = organization_id.present? ? "org:#{organization_id}" : "global"
+      AuditEvent.connection.select_value(
+        ActiveRecord::Base.send(
+          :sanitize_sql_array,
+          [ "SELECT hashtextextended(?, 0)", "#{CHAIN_LOCK_DOMAIN}:#{scope}" ]
+        )
+      ).to_i
+    end
+
+    def self.chain_tip_for(organization_id)
+      scope = AuditEvent.where(organization_id: organization_id)
+      row   = scope.order(chain_position: :desc).limit(1).pick(:chain_position, :row_hash)
+      return { position: nil, row_hash: nil } if row.nil?
+
+      position, row_hash = row
+      { position: position, row_hash: row_hash }
     end
 
     def self.resolve_organization_id(entity_type, entity_id, before_snapshot: nil)

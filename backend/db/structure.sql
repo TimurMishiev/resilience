@@ -154,7 +154,11 @@ CREATE TABLE public.audit_events (
     occurred_at timestamp(6) without time zone DEFAULT now() NOT NULL,
     after_workflow_status text GENERATED ALWAYS AS ((after_snapshot ->> 'workflow_status'::text)) STORED,
     organization_id uuid,
-    sequence bigint NOT NULL
+    sequence bigint NOT NULL,
+    chain_position bigint,
+    prev_hash bytea,
+    row_hash bytea,
+    hash_version smallint DEFAULT 1 NOT NULL
 );
 
 
@@ -1783,6 +1787,20 @@ CREATE UNIQUE INDEX idx_geofence_breach_signal_site_unique ON public.signal_rule
 --
 
 CREATE INDEX idx_incidents_active_prosecution ON public.incidents USING btree (prosecution_phase) WHERE (prosecution_phase IS NOT NULL);
+
+
+--
+-- Name: idx_audit_events_chain_position_scoped; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_audit_events_chain_position_scoped ON public.audit_events USING btree (organization_id, chain_position) WHERE (organization_id IS NOT NULL);
+
+
+--
+-- Name: idx_audit_events_chain_position_unscoped; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_audit_events_chain_position_unscoped ON public.audit_events USING btree (chain_position) WHERE (organization_id IS NULL);
 
 
 --
@@ -3909,6 +3927,8 @@ ALTER TABLE ONLY public.signal_rule_matches
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260424220001'),
+('20260424220000'),
 ('20260424200000'),
 ('20260424180000'),
 ('20260415100001'),
