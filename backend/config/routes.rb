@@ -145,5 +145,10 @@ Rails.application.routes.draw do
     end
 
     get "planning", to: "planning#index"
+
+    namespace :admin do
+      # Chain-of-custody verifier for audit_events (ADR-010). Admin-only.
+      get "audit_chain", to: "audit_chain#index"
+    end
   end
 end
