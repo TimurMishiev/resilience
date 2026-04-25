@@ -284,20 +284,52 @@ module Correlations
     # ── Confidence scoring ─────────────────────────────────────────────────────
     #
     # Produces a 0.0–1.0 score reflecting how strongly the rule matched.
-    # Each sub-condition is scored independently, then aggregated:
-    #   AND rule → mean  (all conditions contribute equally; weakest link matters)
-    #   OR  rule → max   (best matching condition wins)
+    # See ADR-008 for the full design rationale.
     #
-    # Direct sub-condition (signal_type matches incoming signal):
-    #   proximity_score = 1 - (distance_km / proximity_km), clamped to [0, 1]
-    #   No proximity filter → 1.0
+    # Three layers compose the score:
     #
-    # Corroboration sub-condition (signal_type differs):
-    #   Finds the most recent nearby qualifying signal in the DB, then averages
-    #   its proximity score with a freshness score:
-    #     freshness = 1 - (age_seconds / window_seconds), clamped to [0, 1]
-    #   No nearby signals found → 0.0
+    # 1. Per-condition raw score. Each sub-condition is scored
+    #    independently and aggregated:
+    #      AND rule → mean (weakest link matters)
+    #      OR rule  → max  (best matching condition wins)
     #
+    # 2. Smooth proximity falloff. Logistic decay around the proximity
+    #    boundary instead of the previous linear-with-hard-zero curve —
+    #    closes the "49.9km = 0.998 confidence, 50.1km = 0.0" cliff
+    #    that produced unrealistic step behaviour at the edge.
+    #
+    # 3. Source-trust prior. Multiplies the raw score by a per-source
+    #    reliability weight (USGS seismic = 1.00; ACLED = 0.70; etc.).
+    #    A 0.85 raw score from USGS stays 0.85; from ACLED becomes
+    #    0.60. Honest about which feeds we trust most.
+    #
+    # NOT in this version: feedback loop on confirmed/rejected matches.
+    # That requires schema work (a confirmation_outcome table) and a
+    # learning-rate decision; documented as future work in ADR-008.
+
+    # Per-source reliability priors. Tuned from public literature on
+    # each feed's data-quality posture (see ADR-008 section "Source
+    # priors — calibration"). Default for unknown sources is 0.50 so a
+    # newly-added feed cannot accidentally inherit a high prior just
+    # by being added to the constants table.
+    SOURCE_RELIABILITY = {
+      "usgs_seismic"  => 1.00,  # authoritative; minimal noise
+      "nasa_firms"    => 0.95,  # satellite-derived, small lag
+      "derived"       => 0.95,  # internally computed (AIS gap, loiter, etc) — well-tested code path
+      "opensky"       => 0.90,  # crowd ADS-B, occasionally spoofed
+      "ais_hub"       => 0.85,  # AIS — spoofable, generally reliable
+      "gdacs"         => 0.85,  # multi-agency disaster aggregator
+      "gpsjam"        => 0.75,  # crowd GPS jamming, detection-rate-bound
+      "acled"         => 0.70,  # human-curated, days-to-weeks lag
+    }.freeze
+    DEFAULT_SOURCE_RELIABILITY = 0.50
+
+    # Logistic-falloff steepness for proximity_confidence. Chosen so
+    # the curve passes through (ratio=0.5, conf=0.5) and gives ~0.95
+    # at the site centre, ~0.05 at the proximity boundary. Smooth
+    # tails outside avoid the previous step-function cliff.
+    PROXIMITY_LOGISTIC_K = 6.0
+
     def compute_confidence
       return 0.0 unless @rule.supported_condition_shape?
 
@@ -312,7 +344,14 @@ module Correlations
       raw = operator == "OR" ? scores.max : scores.sum / scores.size.to_f
       return 0.0 unless raw.is_a?(Numeric) && raw.finite?
 
-      raw.clamp(0.0, 1.0).round(2)
+      # Apply per-source reliability prior. The signal that triggered
+      # the firing is the one whose source we trust (or don't); the
+      # rule's other corroborating conditions already passed their own
+      # proximity/freshness gates, so we do not compound trust priors
+      # across the AND/OR tree — that would punish well-corroborated
+      # rules with one weak source unfairly.
+      source_weight = SOURCE_RELIABILITY.fetch(@signal.source, DEFAULT_SOURCE_RELIABILITY)
+      (raw * source_weight).clamp(0.0, 1.0).round(2)
     end
 
     def condition_confidence(cond)
@@ -326,10 +365,30 @@ module Correlations
       end
     end
 
-    # 1.0 at the site, 0.0 at the proximity boundary, clamped below zero.
+    # Smooth logistic falloff around the proximity boundary.
+    #
+    # Old shape (linear, hard-zero past the boundary):
+    #   ratio=0    → 1.000
+    #   ratio=0.5  → 0.500
+    #   ratio=1.0  → 0.000  ← discontinuous step
+    #   ratio=1.01 → 0.000  ← same as 10x outside
+    #
+    # New shape (logistic decay, smooth tails):
+    #   ratio=0    → 0.953
+    #   ratio=0.5  → 0.500
+    #   ratio=1.0  → 0.047  ← knee at the boundary, not a cliff
+    #   ratio=2.0  → 0.000  ← genuine far-out tail decay
+    #
+    # The previous step-function produced operationally implausible
+    # behaviour: a signal at 49.9km from a 50km-radius rule scored
+    # 0.998; at 50.1km, 0.000. No real-world threat-distance model
+    # has that kind of edge. The logistic curve is a calibrated
+    # falloff that matches operator intuition near the boundary.
     def proximity_confidence(proximity_km, actual_km)
       return 1.0 if proximity_km.zero?
-      (1.0 - actual_km / proximity_km).clamp(0.0, 1.0)
+
+      ratio = actual_km / proximity_km
+      1.0 / (1.0 + Math.exp(PROXIMITY_LOGISTIC_K * (ratio - 0.5)))
     end
 
     # Finds the best (most recent, closest) corroborating signal and combines

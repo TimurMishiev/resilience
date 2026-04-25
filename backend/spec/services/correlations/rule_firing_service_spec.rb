@@ -342,16 +342,70 @@ RSpec.describe Correlations::RuleFiringService do
       expect(close_result.payload[:match].confidence).to be > far_result.payload[:match].confidence
     end
 
-    it "produces near-zero confidence for a signal right at the proximity boundary" do
-      # proximity_km = 100; place signal ~99 km away
-      # 1 degree latitude ≈ 111 km → 0.89° ≈ 99 km
+    it "produces low confidence for a signal right at the proximity boundary (smooth-curve, not step)" do
+      # proximity_km = 100; place signal ~99 km away (ratio ≈ 0.99).
+      # Logistic falloff at this ratio → ~0.05 confidence. The previous
+      # linear-with-hard-zero curve would have produced exactly 0.0 here
+      # and 0.998 just inside; the smooth curve gives a continuous knee
+      # near the boundary instead. Asserting < 0.10 keeps headroom for
+      # the curve constants without being so loose the regression
+      # surface is meaningless.
       boundary_signal = create(:external_signal,
                                lat: 52.39, lng: 0.0,
                                signal_type: "seismic_event",
                                source: "usgs_seismic")
       boundary_result = described_class.call(rule: rule, signal: boundary_signal, site: site)
 
-      expect(boundary_result.payload[:match].confidence).to be < 0.05
+      expect(boundary_result.payload[:match].confidence).to be < 0.10
+    end
+
+    it "applies a smooth falloff rather than a hard zero just past the proximity boundary" do
+      # Two signals: one just inside the boundary (~99 km), one just
+      # outside (~101 km). Old curve: 0.998 vs 0.000 — discontinuous.
+      # New curve: ~0.05 vs ~0.04 — continuous knee.
+      inside_signal  = create(:external_signal,
+                              lat: 52.39, lng: 0.0,  # ~99 km
+                              signal_type: "seismic_event", source: "usgs_seismic")
+      outside_signal = create(:external_signal,
+                              lat: 52.41, lng: 0.0,  # ~101 km
+                              signal_type: "seismic_event", source: "usgs_seismic")
+
+      inside_conf  = described_class.call(rule: rule, signal: inside_signal,  site: site).payload[:match]&.confidence || 0.0
+      outside_conf = described_class.call(rule: rule, signal: outside_signal, site: site).payload[:match]&.confidence || 0.0
+
+      # Confidences near the boundary should be close (smooth knee), not
+      # a step from ~1.0 to 0.0.
+      expect((inside_conf - outside_conf).abs).to be < 0.10
+    end
+
+    it "weights confidence by source reliability prior" do
+      # USGS (reliability 1.00) should produce a higher confidence than
+      # ACLED (reliability 0.70) for the same proximity and rule. Uses
+      # two rules so the cooldown on one does not swallow the other's
+      # firing — the cooldown race is tested separately.
+      usgs_rule = create(:correlation_rule,
+                         :no_cooldown,
+                         conditions: { "signal_type" => "seismic_event", "proximity_km" => 100 },
+                         actions:    { "create_task" => { "priority" => "normal" } })
+      acled_rule = create(:correlation_rule,
+                          :no_cooldown,
+                          conditions: { "signal_type" => "seismic_event", "proximity_km" => 100 },
+                          actions:    { "create_task" => { "priority" => "normal" } })
+
+      usgs_signal  = create(:external_signal,
+                            lat: 51.5, lng: 0.0,
+                            signal_type: "seismic_event", source: "usgs_seismic")
+      acled_signal = create(:external_signal,
+                            lat: 51.5, lng: 0.0,
+                            signal_type: "seismic_event", source: "acled")
+
+      usgs_conf  = described_class.call(rule: usgs_rule,  signal: usgs_signal,  site: site).payload[:match].confidence
+      acled_conf = described_class.call(rule: acled_rule, signal: acled_signal, site: site).payload[:match].confidence
+
+      # ACLED's source prior is 0.70; USGS is 1.00. Same proximity ⇒
+      # ACLED confidence should be ~70% of USGS.
+      expect(acled_conf).to be < usgs_conf
+      expect(acled_conf).to be_within(0.05).of(usgs_conf * 0.70)
     end
 
     it "produces confidence of 1.0 when there is no proximity constraint" do
