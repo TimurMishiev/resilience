@@ -43,6 +43,61 @@ RSpec.describe Metrics::Recorder, type: :service do
     end
   end
 
+  describe ".record_ai_usage" do
+    it "aggregates per-service token counts, cost, and status breakdown via snapshot!" do
+      described_class.record_ai_usage(
+        service: "task_filter", model: "claude-haiku-4-5",
+        duration_ms: 320.0, input_tokens: 100, output_tokens: 50,
+        total_tokens: 150, estimated_cost_usd: 0.00035, status: "success",
+      )
+      described_class.record_ai_usage(
+        service: "task_filter", model: "claude-haiku-4-5",
+        duration_ms: 0.0, input_tokens: 0, output_tokens: 0,
+        total_tokens: 0, estimated_cost_usd: 0.0, status: "timeout",
+      )
+      described_class.record_ai_usage(
+        service: "summary", model: "claude-sonnet-4-6",
+        duration_ms: 800.0, input_tokens: 4_000, output_tokens: 1_000,
+        total_tokens: 5_000, estimated_cost_usd: 0.027, status: "success",
+      )
+
+      described_class.snapshot!
+
+      status = OperationalStatus.find_by(category: "metrics", key: "ai_usage")
+      expect(status).to be_present
+
+      filter = status.payload["services"].find { |s| s["service"] == "task_filter" }
+      expect(filter["total_calls"]).to eq(2)
+      expect(filter["success_calls"]).to eq(1)
+      expect(filter["timeout_calls"]).to eq(1)
+      expect(filter["total_input_tokens"]).to eq(100)
+      expect(filter["total_output_tokens"]).to eq(50)
+      expect(filter["total_cost_usd"]).to be_within(1e-9).of(0.00035)
+      expect(filter["models"]).to eq("claude-haiku-4-5" => 2)
+
+      summary = status.payload["services"].find { |s| s["service"] == "summary" }
+      expect(summary["total_cost_usd"]).to be_within(1e-9).of(0.027)
+
+      expect(status.payload["total_cost_usd"]).to be_within(1e-9).of(0.02735)
+    end
+
+    it "skips ai_usage when no usage samples exist" do
+      described_class.snapshot!
+      expect(OperationalStatus.find_by(category: "metrics", key: "ai_usage")).to be_nil
+    end
+
+    it "clears usage samples after snapshot" do
+      described_class.record_ai_usage(
+        service: "task_filter", model: "claude-haiku-4-5",
+        duration_ms: 1.0, input_tokens: 1, output_tokens: 1,
+        total_tokens: 2, estimated_cost_usd: 0.0, status: "success",
+      )
+      described_class.snapshot!
+      described_class.snapshot!
+      expect(OperationalStatus.where(category: "metrics", key: "ai_usage").count).to eq(1)
+    end
+  end
+
   describe ".snapshot!" do
     let!(:user) { create(:user) }
 

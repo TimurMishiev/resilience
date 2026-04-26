@@ -3,12 +3,13 @@
 module Metrics
   # Collects and persists platform metrics to OperationalStatus (category: "metrics").
   #
-  # Tracks five metric families:
+  # Tracks six metric families:
   #   1. request_latency    — p50/p95/p99 latency per controller action (per-snapshot window)
   #   2. sse_connections     — current active SSE stream count (from SseStreamLease)
   #   3. feed_lag            — seconds since each feed's last successful poll
   #   4. ai_response_times   — per-snapshot p50/p95 for AI service calls
-  #   5. ai_circuit_breakers — open/closed status for each AI service breaker
+  #   5. ai_usage            — per-snapshot tokens + estimated cost + status breakdown for AI calls
+  #   6. ai_circuit_breakers — open/closed status for each AI service breaker
   #
   # Called periodically by Metrics::SnapshotJob (every 60s — config/recurring.yml)
   # and writes to OperationalStatus so the Operational Health page can render it.
@@ -44,18 +45,40 @@ module Metrics
         end
       end
 
+      # Per-call cost/token capture. Aggregated into the ai_usage
+      # snapshot so an operator can see model spend without hauling a
+      # durable per-call billing ledger. Cleared on snapshot, same as
+      # the latency arrays.
+      def record_ai_usage(service:, model:, duration_ms:, input_tokens:, output_tokens:, total_tokens:, estimated_cost_usd:, status:)
+        sample = {
+          model:              model,
+          duration_ms:        duration_ms,
+          input_tokens:       input_tokens.to_i,
+          output_tokens:      output_tokens.to_i,
+          total_tokens:       total_tokens.to_i,
+          estimated_cost_usd: estimated_cost_usd.to_f,
+          status:             status,
+        }
+        @ai_usage_mutex.synchronize do
+          (@ai_usage[service] ||= []).push(sample)
+          @ai_usage[service] = @ai_usage[service].last(MAX_SAMPLES)
+        end
+      end
+
       # Take a snapshot and persist to OperationalStatus.
       def snapshot!
         persist_request_latency!
         persist_sse_connections!
         persist_feed_lag!
         persist_ai_response_times!
+        persist_ai_usage!
         persist_circuit_breaker_status!
       end
 
       def reset!
         @request_samples_mutex.synchronize { @request_samples.clear }
         @ai_samples_mutex.synchronize { @ai_samples.clear }
+        @ai_usage_mutex.synchronize { @ai_usage.clear }
       end
 
       private
@@ -152,6 +175,42 @@ module Metrics
         )
       end
 
+      def persist_ai_usage!
+        samples = @ai_usage_mutex.synchronize do
+          snapshot = @ai_usage.dup
+          @ai_usage.clear
+          snapshot
+        end
+
+        return if samples.empty?
+
+        services = samples.map do |service, calls|
+          by_status = calls.group_by { |c| c[:status] }
+          {
+            service:             service,
+            total_calls:         calls.size,
+            success_calls:       by_status["success"]&.size || 0,
+            error_calls:         by_status["error"]&.size || 0,
+            timeout_calls:       by_status["timeout"]&.size || 0,
+            total_input_tokens:  calls.sum { |c| c[:input_tokens] },
+            total_output_tokens: calls.sum { |c| c[:output_tokens] },
+            total_tokens:        calls.sum { |c| c[:total_tokens] },
+            total_cost_usd:      calls.sum { |c| c[:estimated_cost_usd] }.round(6),
+            models:              calls.map { |c| c[:model] }.tally,
+          }
+        end
+
+        OperationalStatus.record!(
+          category: "metrics",
+          key: "ai_usage",
+          payload: {
+            services:       services,
+            total_cost_usd: services.sum { |s| s[:total_cost_usd] }.round(6),
+            recorded_at:    Time.current.iso8601,
+          }
+        )
+      end
+
       def persist_circuit_breaker_status!
         snapshot = Ai::CircuitBreaker.status_snapshot
         any_open = snapshot.values.any? { |s| s[:status] == "open" }
@@ -179,5 +238,7 @@ module Metrics
     @request_samples_mutex = Mutex.new
     @ai_samples = {}
     @ai_samples_mutex = Mutex.new
+    @ai_usage = {}
+    @ai_usage_mutex = Mutex.new
   end
 end

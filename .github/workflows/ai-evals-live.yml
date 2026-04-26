@@ -1,0 +1,95 @@
+name: AI Evals — Live
+
+# Live-model AI evaluation lane. Hits the real Anthropic API for each
+# model-call surface (task filter, signal filter, ontology query,
+# summary), captures latency / tokens / estimated cost, and posts a
+# job summary plus an artifact with the full per-call payload.
+#
+# Manual trigger via workflow_dispatch and a weekly scheduled run.
+# The job is gated on the ANTHROPIC_API_KEY secret being present;
+# without it the rake task short-circuits and the job exits cleanly.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Mondays 09:00 UTC — once per week is enough to detect SDK / contract
+    # drift without burning meaningful API credit.
+    - cron: '0 9 * * 1'
+
+concurrency:
+  group: ai-evals-live
+  cancel-in-progress: false
+
+jobs:
+  evals:
+    name: Anthropic live evals
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      postgres:
+        image: postgis/postgis:17-3.5
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: resilience_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      RAILS_ENV: development
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/resilience_test
+      JWT_SECRET: live_evals_jwt_secret
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      AI_EVALS_RESULTS_DIR: ${{ github.workspace }}/backend/tmp/ai_evals_live
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4.7'
+          bundler-cache: true
+          working-directory: backend
+
+      - name: Skip if ANTHROPIC_API_KEY is not configured
+        id: gate
+        run: |
+          if [ -z "${ANTHROPIC_API_KEY}" ]; then
+            echo "ANTHROPIC_API_KEY not set — skipping live evaluation."
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skipped=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up database
+        if: steps.gate.outputs.skipped == 'false'
+        run: bundle exec rails db:schema:load
+
+      - name: Seed database
+        if: steps.gate.outputs.skipped == 'false'
+        run: bundle exec rails db:seed
+
+      - name: Run live AI evaluations
+        if: steps.gate.outputs.skipped == 'false'
+        # The [run] argument is the rake task's explicit opt-in (see
+        # lib/tasks/ai_evals.rake). Without it the task skips — this
+        # is intentional so locally `bundle exec rake ai:live_evals`
+        # never burns API traffic by accident even when .env has a key.
+        run: bundle exec rake "ai:live_evals[run]"
+
+      - name: Upload results artifact
+        if: steps.gate.outputs.skipped == 'false' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-evals-live-results
+          path: backend/tmp/ai_evals_live/
+          retention-days: 30
+          if-no-files-found: warn

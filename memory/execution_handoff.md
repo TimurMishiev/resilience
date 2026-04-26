@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-25
+Last updated: 2026-04-26
 
 ## Current Phase
 
@@ -66,6 +66,111 @@ the cost-table constant.
 
 After Codex `/gate` clears, commit + push, then continue to
 **Tranche 6 (map/globe wow work).**
+
+### Tranche 5B implementation status (uncommitted, 2026-04-26)
+
+Implementation complete; ready for Codex `/gate`.
+
+**Code changes:**
+- New shared wrapper: [backend/app/services/ai/anthropic_client.rb](backend/app/services/ai/anthropic_client.rb).
+  Centralises `Anthropic::Client` construction (default 30s timeout,
+  2 retries) and instruments every `messages.create` call. Captures
+  `service`, `model`, `duration_ms`, `input_tokens`, `output_tokens`,
+  `total_tokens`, `estimated_cost_usd`, `status` (`success` / `error` /
+  `timeout`). Pricing constants are USD per million tokens, sourced
+  from `https://platform.claude.com/docs/en/about-claude/pricing`,
+  verified 2026-04-26 (Haiku 4.5 $1/$5; Sonnet 4.6 $3/$15; Opus 4.7
+  $5/$25). Module name is `Ai::AnthropicClient`, deliberately not
+  `Ai::Anthropic`, to avoid shadowing `::Anthropic` inside `module Ai`.
+- [backend/app/services/metrics/recorder.rb](backend/app/services/metrics/recorder.rb)
+  gains a sixth metric family `ai_usage` (per-snapshot tokens + cost +
+  status breakdown). New public `record_ai_usage` accumulator + new
+  private `persist_ai_usage!` snapshot writer. Existing
+  `record_ai_call` / `ai_response_times` family unchanged. The
+  snapshot job now persists both the latency and the usage payload.
+- All five Anthropic call sites wired through the wrapper: `filter_service`,
+  `signal_filter_service`, `summary_service`, `ontology_query_service`,
+  `recommendations/llm_enricher`. Each still constructs its own client
+  (preserves existing test mocks of `Anthropic::Client.new` and the
+  per-service `ANTHROPIC_TIMEOUT_SECONDS` / `ANTHROPIC_MAX_RETRIES`
+  constants) and passes it to `Ai::AnthropicClient.messages_create(...)`.
+  Per-site manual `Process.clock_gettime` timing + `record_ai_call`
+  lines removed; the wrapper now handles both. Exception types and
+  rescue contracts unchanged — wrapper records and re-raises so each
+  service's existing `rescue` blocks see the same exception they did
+  before.
+- New rake task: [backend/lib/tasks/ai_evals.rake](backend/lib/tasks/ai_evals.rake).
+  Default-safe: `bundle exec rake ai:live_evals` (no argument) skips
+  with a hint, `exit 0`. To execute live calls, the developer must
+  pass the explicit rake argument:
+  `bundle exec rake "ai:live_evals[run]"`. The rake-argument gate is
+  the contract because env vars are NOT a reliable opt-in for this
+  app — [config/boot.rb](backend/config/boot.rb) calls
+  `Dotenv.overwrite(...)`, which re-applies `.env` over any shell
+  export including `ANTHROPIC_API_KEY`. Rake task arguments are
+  immune to dotenv, so `[run]` is the only signal we trust here.
+  As a second-layer gate (for CI runs where the secret may be
+  unset), the task still skips when `ANTHROPIC_API_KEY` is empty
+  AFTER passing `[run]`. The runner itself lives at
+  [backend/lib/ai/evals_runner.rb](backend/lib/ai/evals_runner.rb)
+  (under `lib/`, not `app/`, because it is a CI/dev-only utility),
+  drives one live call per surface (task filter, signal filter,
+  ontology query, summary — recommendation LLM deferred per Codex),
+  captures contract checks, writes a JSON artifact to
+  `tmp/ai_evals_live/<timestamp>.json`, and emits a markdown table
+  to `GITHUB_STEP_SUMMARY` when set. Returns `1` if any surface
+  fails its contract check or raises.
+- New CI workflow: [.github/workflows/ai-evals-live.yml](.github/workflows/ai-evals-live.yml).
+  `workflow_dispatch` + `schedule: '0 9 * * 1'` (Mondays 09:00 UTC).
+  Spins up the same `postgis/postgis:17-3.5` service used in CI,
+  loads schema + seeds, runs `bundle exec rake "ai:live_evals[run]"`
+  (the explicit-opt-in form), uploads `backend/tmp/ai_evals_live/` as
+  artifact (30-day retention). Job is gated on the `ANTHROPIC_API_KEY`
+  secret — empty secret = clean skip with a step echo, no failure
+  noise on forks/PRs.
+
+**Spec coverage:**
+- New: [backend/spec/services/ai/anthropic_client_spec.rb](backend/spec/services/ai/anthropic_client_spec.rb)
+  — 13 examples covering client construction (default + override
+  timeout/retries, missing API key), `messages_create` happy path,
+  token/cost capture, dated-model normalisation, unknown-model zero
+  cost, timeout rescue path, error rescue path, response-without-`.usage`
+  tolerance (so existing test doubles don't break), `estimate_cost`,
+  `normalize_model`.
+- Extended: [backend/spec/services/metrics/recorder_spec.rb](backend/spec/services/metrics/recorder_spec.rb)
+  — 3 new examples covering `record_ai_usage` aggregation (multi-status,
+  multi-service totals, model tally), skip-when-empty, and snapshot
+  clearing semantics.
+- New: [backend/spec/lib/ai/evals_runner_spec.rb](backend/spec/lib/ai/evals_runner_spec.rb)
+  — 4 examples covering the live-eval runner with all four AI services
+  stubbed: all-success path (exit 0, well-formed artifact),
+  service-level failure path (exit 1, `contract_failure` row),
+  unexpected-exception path (exit 1, `exception` row, other surfaces
+  still recorded), and `GITHUB_STEP_SUMMARY` markdown emission.
+
+**Validation (uncommitted dirty tree):**
+- AI service + recorder + request specs: `160 examples, 0 failures`
+  (`spec/services/ai/`, `spec/services/recommendations/llm_enricher_spec.rb`,
+  `spec/requests/api/ai_spec.rb`, `spec/ai_evals/`,
+  `spec/services/metrics/recorder_spec.rb`).
+- Eval runner spec: `4 examples, 0 failures`
+  (`spec/lib/ai/evals_runner_spec.rb`).
+- Snapshot job: `7 examples, 0 failures` (`spec/jobs/metrics/snapshot_job_spec.rb`).
+- Full backend suite (post-rake-arg refactor rerun): **2462 examples,
+  0 failures** in 4m27s.
+- Default-safe rake skip path confirmed locally:
+  `bundle exec rake ai:live_evals` exits 0 with the skip message
+  and makes zero Anthropic calls (this is the bullet that round 1
+  of /gate flagged — it is now bulletproof against `Dotenv.overwrite`).
+- Live rake task `[run]` end-to-end: confirmed locally — wrapper
+  correctly reports `error_calls: 1` per surface when the API returns
+  400 (credit-balance-too-low in test environment); JSON artifact is
+  well-formed; `claude-haiku-4-5-20251001` recorded under `models:`.
+- Frontend: not touched in this tranche.
+
+**Out of scope confirmed not done:** UI/dashboard for `ai_usage`,
+prompt redesign, adversarial harness, agent-loop work, durable
+per-call billing ledger, recommendation LLM live golden.
 
 ---
 

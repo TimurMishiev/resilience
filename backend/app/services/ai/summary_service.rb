@@ -62,14 +62,14 @@ module Ai
         max_retries: ANTHROPIC_MAX_RETRIES,
       )
 
-      ai_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      response = client.messages.create(
+      response = Ai::AnthropicClient.messages_create(
+        service:    "summary",
         model:      summary_model,
+        client:     client,
         max_tokens: 1024,
         system:     build_system_prompt,
         messages:   [ { role: "user", content: build_user_content(events, signals, matches) } ]
       )
-      Metrics::Recorder.record_ai_call(service: "summary", duration_ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - ai_start) * 1000).round(1))
 
       raw    = response.content.first.text.gsub(/\A```(?:json)?\n?/, '').gsub(/\n?```\z/, '').strip
       parsed = JSON.parse(raw)
