@@ -22,28 +22,132 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**No active slice — paused awaiting user direction on Tranche 4B
-(access-pattern anomaly detection).**
+**Tranche 5A — load/runtime artifact.** Implementation complete
+(with **two rounds** of Codex fix-forwards applied in-place:
+round 1 P1 artifact reproducibility + P2 throughput-vs-
+concurrency conflation; round 2 P1 hidden Rack::Attack
+throttle pollution invalidating the read-scenario numbers);
+**dirty tree uncommitted** pending Codex third-pass re-gate.
 
-The 4A.1 deadlock-retry fix-forward shipped clean — Codex's
-re-gate verdict was COMMIT WITH NOTES, with only a P2 on this
-handoff doc itself (now closed). The full backend suite is
-green at 2,441 / 0 across default + two randomized orderings.
+User chose Tranche 5 over Tranche 4B (2026-04-25): "4B is
+underconstrained; Tranche 5 is the highest-leverage missing
+proof — evidence under pressure." Sequence locked as
+5A → 5B → Tranche 6, with 4B kept paused.
 
-Tranche 4B is the next planned slice but Claude paused it before
-the user stepped away — anomaly detection has real design
-choices (where to track reads — middleware vs per-controller;
-what counts as anomalous — velocity, geography, off-hours;
-threshold tuning) that warrant the user's read on the threat
-model before implementation. Resume from this point with one of:
+Changes in dirty tree:
+- [docs/load-test.md](docs/load-test.md) — the artifact.
+  Documents environment, dataset, 5 scenarios (login latency
+  baseline, login throttle behaviour, GET /api/sites at c=1
+  and c=20, GET /api/sites/:id at c=20, saturation at c=50),
+  the captured numbers (p50/p95/p99 + throughput), failure
+  point/ceiling table, and a "what changed because of these
+  results" section. Honest framing: dev-laptop numbers, not
+  production capacity — the *shape* of the curves (saturation
+  point, throttle behaviour, lock contention) translates;
+  absolute values do not.
+- [backend/perf/load-test/run.sh](backend/perf/load-test/run.sh)
+  — 130-line bash driver that hits an already-running Rails
+  server with `ab`. Captures a session cookie via login,
+  extracts a known site_id from the API itself, then runs the
+  5 scenarios with appropriate Rack::Attack throttle waits in
+  between. Writes raw output to `results/<date>/`. Honest
+  about what's NOT in scope (no write-path tests, no
+  open-loop traffic shape, no assertions on numbers).
+- [backend/perf/load-test/README.md](backend/perf/load-test/README.md)
+  — quick-start, env overrides, future migration to k6 noted.
+- [backend/perf/load-test/results/2026-04-25_baseline/](backend/perf/load-test/results/2026-04-25_baseline/)
+  — the raw `ab` output captured during this session, kept
+  alongside the doc for future drift comparison.
 
-  - Direct 4B implementation per a chosen design.
-  - Skip 4B and ship Tranche 5 (load test + AI eval lane) first.
-  - Pause Hardening-to-95 entirely and pivot to the wow-factor
-    map/globe work (Tranche 6) — defence-tech checkmarks are
-    already strong with chain-of-custody (ADR-010), MFA TOTP,
-    feed hostile-input guards, runtime budget enforcement, and
-    site honeytokens.
+**Empirical findings (full data in docs/load-test.md):**
+
+| Scenario | RPS | p50 | p95 | p99 |
+|---|---:|---:|---:|---:|
+| GET /api/sites c=1 | 94 | 9 ms | 17 ms | 26 ms |
+| GET /api/sites c=20 | 107 | 186 ms | 208 ms | 303 ms |
+| GET /api/sites/:id c=20 | 118 | 168 ms | 195 ms | 284 ms |
+| GET /api/sites c=50 (queue depth ~30) | 108 | 463 ms | 478 ms | 582 ms |
+| Login (5 sequential) | n/a | ~265 ms (BCrypt-bound) | — | — |
+
+Read-path throughput plateaus at ~107–118 RPS once concurrency
+matches the thread count. Beyond that, RPS stays flat and
+latency grows linearly with queue depth — canonical shape for
+a thread-bounded Rails app. No `ConnectionTimeoutError` even
+at c=50, validating ADR-011's `DB_POOL=25` budget (primary
+pool requires 22; 3 of slack).
+
+These numbers are from the corrected canonical baseline run
+(after the second Codex gate cycle uncovered a methodology
+bug in the first attempt — see "Codex /gate cycle" below).
+
+**What this confirmed:** ADR-011's runtime-budget contract
+(primary pool = puma_threads + LISTEN + headroom = 22
+required, with `DB_POOL = 25` default) was empirically
+correct. The c=50 saturation run did NOT trigger
+`ConnectionTimeoutError`, validating the 3-connection slack.
+The login-throttle math in ADR-009 item 4 (combined with TOTP
+MFA, brute-forcing requires ~290 days at 50% probability) is
+now backed by a measurement of the throttle's actual cutoff
+rather than just config inspection.
+
+**Code surface:** primarily doc + scripts + raw output, plus
+one dev-only measurement guard in
+`config/initializers/rack_attack.rb` (the `RACK_ATTACK_BYPASS=1`
+safelist landed in Round 2 of the gate cycle below). No specs
+added — the artifact is a measurement tool, not a regression
+gate. The test environment is unaffected because the bypass is
+scoped to `Rails.env.development`; the auth/sessions request
+suite continues to exercise real Rack::Attack throttles in
+test (19 specs, all green).
+
+**Codex /gate cycles (both closed in-place):**
+
+**Round 1** — P1 + P2:
+- **P1** (run.sh:4 + checked-in baseline): driver did not
+  produce `01-login-latency.txt`, wrote Scenario 4 under a
+  different filename than the baseline, and the
+  `02-login-throttle.txt` content was from an earlier hand-run
+  rather than the current driver path. Closed by adding
+  Scenario 1, renaming Scenario 4's output, and re-running
+  the driver end-to-end.
+- **P2** (load-test.md:235): "feels slow at ~20 RPS" mixed
+  concurrency with throughput. Closed by rewriting the ceiling
+  section with a per-resource table and an explicit clarifier
+  paragraph distinguishing in-flight concurrency from RPS.
+
+**Round 2** — P1 (the methodology bug Round 1 missed):
+- **P1** (rack_attack.rb#L101 + driver behaviour): user's
+  re-gate caught that the canonical run from Round 1 was
+  itself invalid — the read scenarios fired 500-request
+  bursts against an app with a global `api/ip/minute=300`
+  throttle, so 03b had 100/500 throttled, 04 and 05 were
+  500/500 throttled, and the artifact's "saturation" tables
+  were measuring 429 short-circuit speed instead of endpoint
+  behaviour (visible in the raw `Document Length` going from
+  3948 → 52 bytes and `Non-2xx responses: 500`). Closed by:
+  1. Adding a `RACK_ATTACK_BYPASS=1` env-gated safelist to
+     `config/initializers/rack_attack.rb` that's scoped to
+     `Rails.env.development` AND non-login `/api/*` paths
+     (so production cannot bypass even if the env var leaks,
+     and login throttles stay active for Scenarios 1+2).
+  2. Updating `run.sh` to issue a 350-request unauthenticated
+     probe at `/api/sites` on startup and abort if any 429
+     comes back — driver refuses to produce misleading data.
+  3. Re-running the canonical driver against a server started
+     with `RACK_ATTACK_BYPASS=1`. New baseline shows 0 failed
+     requests across all scenarios and the real saturation
+     story: read RPS plateaus at ~107–118 instead of the
+     spurious ~200+ that the throttled version reported.
+  4. Updating `docs/load-test.md` with corrected percentile
+     tables, a methodology-note callout explaining the
+     bypass, and a new fourth bullet in "What changed
+     because of these results" describing the bypass as a
+     deliverable in its own right.
+  5. Updating `backend/perf/load-test/README.md` to document
+     `RACK_ATTACK_BYPASS=1` as a hard requirement.
+
+After Codex re-gate clears, commit + push, then continue to
+**Tranche 5B (live-model AI eval lane + cost/token tracking).**
 
 ---
 
@@ -428,34 +532,34 @@ Why this order:
 
 ## Current Repo State
 
-- Latest committed tip: `77b7c54` — Tranche 3B (MFA TOTP).
-  Pushed to `origin/main`.
-- Prior commits in the Hardening-to-95 arc:
-  - `ace3916` — Tranche 3A (feed hostile-input guards)
-  - `afcfb9e` — Tranche 2B (SolidQueue/Puma light isolation)
-  - `f93ff56` — Tranche 2A (events SSE producer-side org filter)
-  - `832278e` — Tranche 1 (AI summary fail-closed + ApplicationJob
-    retry/discard baseline)
-- Prior commits in the chain-of-custody arc (closes ADR-009 item 1):
-  - `ffcf1c4` — Tranche D (ADR-010 docs + ADR-009 status flip)
-  - `97cba16` — Tranche C (verifier + admin endpoint + scheduled job)
-  - `86adeb8` — Tranche B (backfill + NOT NULL + DB-level immutability)
-  - `d422076` — Tranche A (schema + ChainHasher + EventWriter wiring)
-- Latest committed tip: `72cab55` — Tranche 4A.1 (Audit::EventWriter
-  deadlock retry — Codex P1 fix-forward on the post-commit gate
-  for 3d4aadb). Pushed to `origin/main`.
-- Prior commits in the Hardening-to-95 arc:
+- Latest committed tip: `55e5a84` — handoff rotation after the
+  Tranche 4A.1 ship (Codex P2 fix-forward).
+- Prior commits in the Hardening-to-95 arc (most-recent first):
+  - `72cab55` — Tranche 4A.1 (Audit::EventWriter deadlock retry —
+    Codex P1 fix-forward on the post-commit gate for 3d4aadb)
   - `3d4aadb` — Tranche 4A (site honeytokens)
   - `77b7c54` — Tranche 3B (MFA TOTP)
   - `ace3916` — Tranche 3A (feed hostile-input guards)
-  - `afcfb9e` — Tranche 2B (SolidQueue/Puma light isolation)
+  - `afcfb9e` — Tranche 2B (SolidQueue/Puma light isolation,
+    ADR-011)
   - `f93ff56` — Tranche 2A (events SSE producer-side org filter)
   - `832278e` — Tranche 1 (AI summary fail-closed +
     ApplicationJob retry/discard baseline)
-- Branch state: `main` pushed at `72cab55`
-- Working tree: clean
-- Test state at `72cab55`: 2,441 backend specs / 0 failures
-  across default + 2 randomized orderings.
+- Prior commits in the chain-of-custody arc (closes ADR-009 item 1,
+  shipped earlier in the engagement before Hardening-to-95):
+  - `ffcf1c4` — Tranche D (ADR-010 docs + ADR-009 status flip)
+  - `97cba16` — Tranche C (verifier + admin endpoint + job)
+  - `86adeb8` — Tranche B (backfill + NOT NULL + DB-level triggers)
+  - `d422076` — Tranche A (schema + ChainHasher + EventWriter)
+- Branch state: `main` pushed at `55e5a84`.
+- Working tree: **NOT clean — Tranche 5A dirty tree pending
+  Codex /gate.** Adds `docs/load-test.md` (artifact),
+  `backend/perf/load-test/run.sh` + `README.md` (driver), and
+  `backend/perf/load-test/results/2026-04-25_baseline/` (raw
+  `ab` output from the baseline run).
+- Test state with dirty tree: 2,441 backend specs / 0 failures
+  (no spec changes — the load-test artifact is doc + scripts +
+  raw output, not a code-path change).
 
 ## Phase 7 — Slice Plan
 

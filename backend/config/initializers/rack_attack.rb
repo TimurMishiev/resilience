@@ -4,6 +4,34 @@ class Rack::Attack
   # switch to a shared Redis or Memcached store.
   Rack::Attack.cache.store = ActiveSupport::Cache::MemoryStore.new
 
+  # Local-perf bypass — enabled ONLY when both:
+  #   1. Rails.env is "development" (production can never bypass,
+  #      even if the env var is somehow set in deploy config)
+  #   2. RACK_ATTACK_BYPASS=1 is in the environment
+  #
+  # Used by backend/perf/load-test/run.sh (Tranche 5A artifact).
+  # Without this, the load-test driver's read scenarios firing
+  # 500 requests in seconds blow through the global
+  # api/ip/minute = 300 budget and the artifact ends up
+  # measuring Rack::Attack's 429 short-circuit speed, not
+  # endpoint thread/DB saturation. Production load distributes
+  # across many IPs (each with its own per-IP budget) so the
+  # single-source-IP throttle is not the right ceiling for
+  # capacity planning.
+  if Rails.env.development? && ENV["RACK_ATTACK_BYPASS"] == "1"
+    # Bypass the broad api/ip/* throttles but KEEP login throttles
+    # intact — the load-test artifact's Scenarios 1 and 2 deliberately
+    # demonstrate the login throttle and would lose their meaning if
+    # bypassed. Only /api/* requests other than /api/auth/login are
+    # safelisted.
+    Rack::Attack.safelist("local-perf-test-bypass") do |req|
+      req.path.start_with?("/api") && req.path != "/api/auth/login"
+    end
+    Rails.logger.warn(
+      "[Rack::Attack] LOCAL PERF BYPASS ENABLED — non-login /api throttles disabled (RACK_ATTACK_BYPASS=1)"
+    )
+  end
+
   SSE_TOKEN_REQUESTS_PER_MINUTE = 30
   SSE_TOKEN_REQUESTS_PER_HOUR = 300
   SSE_STREAM_OPENS_PER_MINUTE = 30
