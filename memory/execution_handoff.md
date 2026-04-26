@@ -22,12 +22,73 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**Tranche 5A — load/runtime artifact.** Implementation complete
-(with **two rounds** of Codex fix-forwards applied in-place:
-round 1 P1 artifact reproducibility + P2 throughput-vs-
-concurrency conflation; round 2 P1 hidden Rack::Attack
-throttle pollution invalidating the read-scenario numbers);
-**dirty tree uncommitted** pending Codex third-pass re-gate.
+**Tranche 5B — live-model AI eval lane + cost/token tracking.**
+Active dirty slice; Codex direction received 2026-04-26.
+
+Sequenced approach (per Codex):
+
+1. **Centralize Anthropic instrumentation.** Thin shared
+   wrapper around all current Anthropic call sites
+   ([filter_service](backend/app/services/ai/filter_service.rb),
+   [signal_filter_service](backend/app/services/ai/signal_filter_service.rb),
+   [summary_service](backend/app/services/ai/summary_service.rb),
+   [ontology_query_service](backend/app/services/ai/ontology_query_service.rb),
+   [llm_enricher](backend/app/services/recommendations/llm_enricher.rb)).
+   Capture per call: service, model, duration_ms, input_tokens,
+   output_tokens, total_tokens, estimated_cost_usd, status.
+
+2. **Cost tracking via existing metrics, not a new ledger.**
+   Reuse [Metrics::Recorder](backend/app/services/metrics/recorder.rb)
+   — keep latency in `ai_response_times`; add new payload
+   `ai_usage` for token + cost. No new durable per-call billing
+   table; if a hard need surfaces later, that's a follow-up
+   tranche.
+
+3. **Live-model eval lane as a separate GitHub Actions
+   workflow** (NOT recurring.yml). `workflow_dispatch` +
+   weekly `schedule`, secret-gated on `ANTHROPIC_API_KEY`,
+   uploads raw eval artifacts + job-summary with pass/fail +
+   token totals + estimated cost.
+
+4. **One live golden per real model-call surface:** task
+   filter, signal filter, ontology query, summary. Defer
+   recommendation LLM live eval (would risk turning 5B into
+   prompt-churn work).
+
+5. **Out of scope for 5B:** UI/dashboard work (unless almost
+   free), prompt redesign, adversarial red-team harness,
+   agent loop work.
+
+**Pricing caveat:** Anthropic prices verified against current
+docs at implementation time (per Codex direction); not
+hardcoded from training-cutoff memory. Source URL recorded in
+the cost-table constant.
+
+After Codex `/gate` clears, commit + push, then continue to
+**Tranche 6 (map/globe wow work).**
+
+---
+
+**Tranche 5A — load/runtime artifact** ✅ shipped in `563385c`
+(three Codex rounds of fix-forwards: P1 driver/baseline
+mismatch + P2 throughput-vs-concurrency conflation in round 1;
+P1 hidden Rack::Attack throttle pollution in round 2;
+P3 stale "no code changes" handoff line in round 3). The
+artifact lives at [docs/load-test.md](docs/load-test.md) with
+the dev-only `RACK_ATTACK_BYPASS=1` safelist in
+[`config/initializers/rack_attack.rb`](backend/config/initializers/rack_attack.rb)
+and the runnable driver at
+[`backend/perf/load-test/run.sh`](backend/perf/load-test/run.sh).
+
+---
+
+**Historical Tranche 5A detail (kept for context):**
+
+Implementation complete (with **two rounds** of Codex
+fix-forwards applied in-place: round 1 P1 artifact
+reproducibility + P2 throughput-vs-concurrency conflation;
+round 2 P1 hidden Rack::Attack throttle pollution invalidating
+the read-scenario numbers).
 
 User chose Tranche 5 over Tranche 4B (2026-04-25): "4B is
 underconstrained; Tranche 5 is the highest-leverage missing
@@ -146,8 +207,10 @@ test (19 specs, all green).
   5. Updating `backend/perf/load-test/README.md` to document
      `RACK_ATTACK_BYPASS=1` as a hard requirement.
 
-After Codex re-gate clears, commit + push, then continue to
-**Tranche 5B (live-model AI eval lane + cost/token tracking).**
+(See "Tranche 5A shipped" entry above for the canonical
+deliverables. The duplicate "after Codex re-gate clears..."
+forward-looking note from the in-flight version of 5A is no
+longer relevant — it shipped at `563385c`.)
 
 ---
 
@@ -512,13 +575,18 @@ without verifying against current code.
    anomaly definition, threshold tuning).**
 
 **Tranche 5 — Proof layer**
-9. Live-model AI eval lane + cost/token tracking
-10. Load/runtime artifact + short written report (k6 or wrk against
-    the running app; published as a CHANGELOG-linked doc)
+9. Live-model AI eval lane + cost/token tracking — **5B active
+   (Codex direction received 2026-04-26; centralize Anthropic
+   instrumentation + reuse Metrics::Recorder + GitHub Actions
+   workflow for live evals).**
+10. ✅ shipped in `563385c` — Load/runtime artifact: empirical
+    baseline at [docs/load-test.md](docs/load-test.md) + driver
+    at [backend/perf/load-test/run.sh](backend/perf/load-test/run.sh)
+    + dev-only `RACK_ATTACK_BYPASS=1` safelist.
 
 **Tranche 6 — Wow work**
-11. Map/globe differentiation features (paused mid-October pending
-    this hardening tranche; resume after Tranche 5)
+11. Map/globe differentiation features (paused; resume after
+    Tranche 5 closes)
     - + `MapPage` decomposition if still justified by upcoming work
 
 Why this order:
@@ -532,9 +600,11 @@ Why this order:
 
 ## Current Repo State
 
-- Latest committed tip: `55e5a84` — handoff rotation after the
-  Tranche 4A.1 ship (Codex P2 fix-forward).
+- Latest committed tip: `563385c` — Tranche 5A (load/runtime
+  artifact + dev-only Rack::Attack perf bypass). Pushed to
+  `origin/main`.
 - Prior commits in the Hardening-to-95 arc (most-recent first):
+  - `55e5a84` — handoff rotation after the 4A.1 ship
   - `72cab55` — Tranche 4A.1 (Audit::EventWriter deadlock retry —
     Codex P1 fix-forward on the post-commit gate for 3d4aadb)
   - `3d4aadb` — Tranche 4A (site honeytokens)
@@ -551,15 +621,10 @@ Why this order:
   - `97cba16` — Tranche C (verifier + admin endpoint + job)
   - `86adeb8` — Tranche B (backfill + NOT NULL + DB-level triggers)
   - `d422076` — Tranche A (schema + ChainHasher + EventWriter)
-- Branch state: `main` pushed at `55e5a84`.
-- Working tree: **NOT clean — Tranche 5A dirty tree pending
-  Codex /gate.** Adds `docs/load-test.md` (artifact),
-  `backend/perf/load-test/run.sh` + `README.md` (driver), and
-  `backend/perf/load-test/results/2026-04-25_baseline/` (raw
-  `ab` output from the baseline run).
-- Test state with dirty tree: 2,441 backend specs / 0 failures
-  (no spec changes — the load-test artifact is doc + scripts +
-  raw output, not a code-path change).
+- Branch state: `main` pushed at `563385c`.
+- Working tree: clean as of the handoff rotation; Tranche 5B
+  work has not yet started in code.
+- Test state at `563385c`: 2,441 backend specs / 0 failures.
 
 ## Phase 7 — Slice Plan
 
