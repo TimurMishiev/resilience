@@ -6,14 +6,25 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-27 (DebriefPanel.test.tsx flake cleanup shipped in `bd63005`; 6-E debrief artifact is the active slice — recon-first, no plan locked yet)
+Last updated: 2026-04-27 (Hardening-to-95 substantially complete; Tranche 6-E deferred without citable spec; Item 8 / 4B is the only open item, gated on stakeholder direction)
 
 ## Current Phase
 
-**Hardening-to-95 initiative (active).** Eleven-item plan locked
-2026-04-25 in agreement between Claude Code and Codex. Sequenced
+**Hardening-to-95 initiative — substantially complete.** Eleven-item
+plan locked 2026-04-25 between Claude Code and Codex. Sequenced
 correctness → architecture → security → detection → proof → wow.
-Each tranche is independently reviewable; commit between tranches.
+Items 1–7, 9, 10, and 11 (closed at Tranche 6-D) shipped. **Item 8
+(4B — access-pattern anomaly detection) is the only remaining open
+item** and is gated on stakeholder direction on threat model + design
+(read-tracking shape, anomaly definition, threshold tuning). See the
+"Active Initiative — Hardening to 95+" section further down for
+per-item status.
+
+Item 11 closed at Tranche 6-D-globe (`5571532`). Tranche 6-E was
+scoped as a closing slice but **deferred without citable spec** —
+recon could not produce an upstream definition of "operator-debrief
+#2" anywhere in repo memory, ADRs, docs, or commit history.
+Disposition reasoning preserved in the deferred-block below.
 
 (Phase 4 / 5 / 6 / 7 closed. Audit-driven remediation closed. CTO P0–P3
 addressed; P4 deferred. Chain-of-custody on audit_events shipped
@@ -22,61 +33,14 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**Tranche 6-E — debrief artifact (cinematic-replay slice 5 of
-5).** Active slice. The closing slice of the 6-A → 6-E
-cinematic-replay arc. Recon-first; **no implementation plan
-locked yet** — the meaning of "one-click debrief artifact" needs
-to be pinned against the existing DebriefPanel surface before
-anything is scoped.
+**No active code slice.** Hardening-to-95 substantially complete;
+Item 8 (4B — access-pattern anomaly detection) is the only
+remaining open item and is **stakeholder-blocked**, not
+engineering-blocked. The next deliverable is a set of design
+questions to the user that unblock Item 8; nothing else should
+land in code before those answers come back.
 
-### Pre-build steps (lock before coding)
-
-1. **Recon the existing debrief surface end-to-end.** Read
-   [DebriefPanel.tsx](frontend/src/components/DebriefPanel.tsx),
-   [useDebriefTimeline.ts](frontend/src/hooks/useDebriefTimeline.ts),
-   [DebriefEventDiff.tsx](frontend/src/components/DebriefEventDiff.tsx)
-   and the audit-events API path. Phase 4 of the canonical roadmap
-   ([execution_context.md:168-191](memory/execution_context.md#L168-L191))
-   listed: debrief entry flow ✓, meaningful-event timeline ✓,
-   click-to-reconstruct ✓, temporal diff ✓. So the substrate is
-   in place — 6-E is additive, not foundational.
-2. **Pin what "one-click debrief artifact" means.** The phrase is
-   load-bearing but underspecified. Candidates: shareable URL
-   that captures range + selected event + reconstruction target;
-   exportable summary (markdown/PDF) of the timeline window; a
-   single-button "save this debrief view" that bookmarks state
-   for later replay. Recon should pick the one that matches the
-   defense-tech operator-grade framing in
-   [execution_context.md:25](memory/execution_context.md#L25)
-   (operational review, not cinematic UI).
-3. **Find "operator-debrief #2."** The handoff history references
-   it as the requirement 6-E folds in. Locate the source —
-   memory file, ADR, prior commit — and quote the actual ask.
-   Do NOT proceed if the requirement can't be cited; ambiguity
-   here is the highest-leverage place to stop and confirm.
-4. **Decide backend involvement.** If the artifact is purely a
-   frontend export of already-fetched data, no backend change.
-   If it's a server-rendered share link or a stored snapshot, a
-   new endpoint may be needed — and that re-opens the auth
-   surface contract Codex caught on 6-D-map round 1. Recon should
-   answer this before any API design.
-5. **Bench / scope sanity.** 6-E should be the smallest slice
-   that closes the cinematic-replay arc, not a feature dump.
-   Recon should pick the version that's clearly shippable in one
-   tranche.
-
-### Scope constraints (do not widen)
-
-- One concrete deliverable for "one-click debrief artifact" —
-  whichever recon picks.
-- No DebriefPanel feature work beyond what the artifact requires.
-- No new toggle proliferation; no new replay primitives.
-- If a backend endpoint is needed, scope strictly to the
-  artifact path with auth/policy parity to existing endpoints.
-- Don't widen into Phase 5 (Evidence Threading) work that's
-  already marked closed elsewhere.
-
-### Outstanding watch-items to handle alongside 6-E
+### Outstanding watch-items (carry-forward, not a slice)
 
 - **6-C.1 follow-up watch-item:** per-cursor `getAuditEvents`
   fetch volume during replay scrub. If hot, fix is fetch-once-
@@ -86,10 +50,65 @@ anything is scoped.
   current observed flake; latent risk only. Don't fix
   speculatively.
 
-After 6-E ships, the cinematic-replay arc (6-A → 6-E) is
-complete. Next item beyond 6-E depends on the Hardening-to-95
-plan's remaining sequence (correctness → architecture →
-security → detection → proof → wow); revisit then.
+### Hold posture
+
+Do **not** open a new "Tranche 6-F" / "Tranche 12" / etc. without
+a real, citable operator pain point. The eleven-item plan is
+substantially closed; further wow-track work needs an actual ask.
+
+---
+
+### Tranche 6-E — debrief artifact ⏸ deferred (2026-04-27)
+
+**Disposition: deferred without citable spec. The cinematic-replay
+narrative closes at Tranche 6-D-globe (`5571532`).**
+
+Tranche 6-E was scoped in the original plan as "one-click debrief
+artifact — folds in operator-debrief #2." Recon (2026-04-27)
+searched for an upstream spec across:
+- all `memory/*.md` files (`execution_context.md`,
+  `project_roadmap.md`, `cto_evaluation_roadmap.md`,
+  `project_resilience.md`, `project_open_findings.md`,
+  `project_production_readiness_plan.md`)
+- all `docs/adr-*.md` files
+- root `CLAUDE.md`, `README.md`, `PORTFOLIO.md`, `CHANGELOG.md`
+- prior commit messages (`git log -50` + grep)
+
+**No upstream definition of "operator-debrief #2" was found.** The
+phrase exists only in the handoff sequence as a forward reference.
+
+Recon's most-plausible interpretation (80% confidence) was a
+shareable URL encoding `range + asOf + selectedEventId` as query
+params on `/debrief`. Alternative readings: (B) PDF/markdown
+export, (C) stored-snapshot endpoint with new model + Pundit
+policy + schema migration.
+
+**CTO call (2026-04-27, peer-reviewer instance overruling no
+weaker than the implementing instance):** all three readings are
+rejected. Building any of them against an unsourced placeholder
+violates [execution_context.md:41](memory/execution_context.md)
+verbatim — *"Do not do speculative abstraction work."* The arc
+already has narrative closure: 6-A/6-B (what happened) → 6-C
+(audit-chain citations: who did it, citably) → 6-D-map/globe
+(what the system knew with what confidence). A copy-link button
+adds an affordance, not a chapter. The discipline signal of
+cutting unsourced scope reads stronger to the target audience
+(Palantir, Anduril, Shield AI) than the completion signal of
+shipping a polish slice.
+
+**Reversibility:** if a real operator-debrief spec emerges later
+— a citable stakeholder ask, an ADR, an actual user-story —
+6-E reopens. Deferring now does not preclude future work.
+
+**Renaming:** the framing label "cinematic-replay arc" is
+retired. The work shipped (event pulses synced to audit
+timestamps, audit-chain citations, confidence halos sourced from
+a tenant-scoped backend endpoint) is **operational replay-context
+surfacing for `/map` and `/globe`**, not cinematic. Historical
+shipped-block titles below preserve their original "cinematic"
+mentions for traceability of the engagement language; new
+public-facing labels (commit messages, README, ADR) should use
+the operational framing.
 
 ---
 
@@ -1077,33 +1096,53 @@ without verifying against current code.
    `Audit::EventWriter.write` to close Codex's post-commit P1
    on the MFA audit-event regression that surfaced under
    full-suite pressure.
-8. Access-pattern anomaly detection — **4B paused awaiting user
-   direction on threat model + design (read-tracking shape,
-   anomaly definition, threshold tuning).**
+8. Access-pattern anomaly detection — **4B paused, stakeholder-
+   blocked.** With Tranche 6 closed and 6-E deferred, this is now
+   the **only remaining open item in the eleven-item plan**.
+   Awaiting user direction on threat model + design (unit of
+   behavior, anomaly definition, detection target, threshold
+   tuning posture). See the "Active Initiative — Hardening to 95+"
+   header for context; design questions to unblock will be drafted
+   and sent to the user as the next deliverable after this
+   disposition commit lands.
 
 **Tranche 5 — Proof layer**
-9. Live-model AI eval lane + cost/token tracking — **5B active
-   (Codex direction received 2026-04-26; centralize Anthropic
-   instrumentation + reuse Metrics::Recorder + GitHub Actions
-   workflow for live evals).**
+9. ✅ shipped in `b48a1f6` — Live-model AI eval lane + cost/token
+   instrumentation (centralized Anthropic instrumentation,
+   `Metrics::Recorder` reuse, GitHub Actions workflow for live
+   evals). Section above this one was stale until the
+   2026-04-27 disposition commit corrected it.
 10. ✅ shipped in `563385c` — Load/runtime artifact: empirical
     baseline at [docs/load-test.md](docs/load-test.md) + driver
     at [backend/perf/load-test/run.sh](backend/perf/load-test/run.sh)
     + dev-only `RACK_ATTACK_BYPASS=1` safelist.
 
-**Tranche 6 — Wow work**
-11. Map/globe differentiation features (paused; resume after
-    Tranche 5 closes)
-    - + `MapPage` decomposition if still justified by upcoming work
+**Tranche 6 — Replay-context surfacing for `/map` and `/globe`**
+11. ✅ closed at Tranche 6-D-globe (`5571532`). Shipped via:
+    - `8947cd3` — 6-A: replay event-pulse layer on `/map`
+    - `2e0a0ca` — 6-A.1: Brakeman cleanup (chain_backfiller)
+    - `6c57d0f` — 6-B: same pulse layer on `/globe` (Cesium)
+    - `8d64d40` — 6-C: replay selection persistence + audit-chain
+      citations
+    - `6629454` — 6-D-map: confidence halos on `/map` (MapLibre)
+      + new unpaginated `active_site_confidence` backend endpoint
+    - `5571532` — 6-D-globe: confidence halos on `/globe` (Cesium)
+    - `bd63005` — DebriefPanel.test.tsx flake cleanup (gate
+      hygiene)
+    - **6-E deferred without citable spec** (see deferred-block
+      above for full disposition reasoning)
 
-Why this order:
+Why this order (preserved as locked 2026-04-25; status updated):
 - Tranches 1-2 are correctness/architecture cleanup that should land
-  before any security/feature work touches the same code.
+  before any security/feature work touches the same code. ✅ shipped.
 - Tranches 3-4 are defence-tech credibility extending the
-  chain-of-custody narrative shipped in ADR-010.
+  chain-of-custody narrative shipped in ADR-010. ✅ shipped except
+  4B (Item 8), which remains the one open item.
 - Tranche 5 is the "we can prove it" layer — AI evals + load test
   give us empirical defensibility, not just architectural.
+  ✅ shipped (5A: `563385c`, 5B: `b48a1f6`).
 - Tranche 6 is wow-factor work, gated on the rest landing.
+  ✅ closed at 6-D (`5571532`); 6-E deferred without citable spec.
 
 ## Current Repo State
 
