@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-27 (DebriefPanel.test.tsx flake cleanup implementation complete on dirty tree; 30/30 full-suite reruns green; awaiting Codex /gate before commit)
+Last updated: 2026-04-27 (DebriefPanel.test.tsx flake cleanup shipped in `bd63005`; 6-E debrief artifact is the active slice — recon-first, no plan locked yet)
 
 ## Current Phase
 
@@ -22,121 +22,120 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**DebriefPanel.test.tsx flake cleanup — non-feature gate-hygiene
-slice.** Active slice. Sits between cinematic-replay 6-D-globe
-(shipped in `5571532`) and 6-E (debrief artifact). Promoted to
-active because Codex observed the flake across **2 of the last
-4 `/gate` runs** (6-B and 6-C); leaving it in place would let a
-non-actionable red gate erode trust in the gate itself — same
-lesson 6-A.1 closed for Brakeman.
-
-Goal: identify the actual flake cause, fix narrowly, and prove
-the fix with a focused regression test. **Not** a feature slice;
-do not widen into DebriefPanel feature work.
+**Tranche 6-E — debrief artifact (cinematic-replay slice 5 of
+5).** Active slice. The closing slice of the 6-A → 6-E
+cinematic-replay arc. Recon-first; **no implementation plan
+locked yet** — the meaning of "one-click debrief artifact" needs
+to be pinned against the existing DebriefPanel surface before
+anything is scoped.
 
 ### Pre-build steps (lock before coding)
 
-1. **Reproduce.** Run `npx vitest run src/test/DebriefPanel.test.tsx`
-   in a tight loop (e.g. 20×) and confirm the flake pattern. Capture
-   which assertion fails, the failure mode (timeout / wrong DOM /
-   undefined ref / etc.), and whether it's deterministic-on-reorder
-   or genuinely random. If it cannot be reproduced locally, surface
-   that and pause — Codex's environment may have a setup we lack.
-2. **Triage the cause.** Read
-   [DebriefPanel.test.tsx](frontend/src/test/DebriefPanel.test.tsx)
-   and the component it covers end-to-end. Look for the usual
-   suspects: missing `afterEach` cleanup; hoisted state singletons
-   leaking across tests (`vi.hoisted` mocks not reset); fake-timer
-   races (`vi.useFakeTimers` without restore); promise resolution
-   ordering; react-query default `staleTime` causing unintended
-   refetches; portal/teardown ordering. Cite the exact line(s).
-3. **Pick the narrowest fix that addresses the root cause.** Do
-   not pre-optimize the test or rewrite around the flake. If the
-   issue is a missing reset, add one. If the issue is a real race,
-   fix the synchronization (`waitFor` / `act`), don't paper over
-   with arbitrary `setTimeout`.
-4. **Prove the fix.** Re-run the test in the same tight loop (20–
-   50×). It should be 100% green. Add a directly-asserting
-   regression test only if the fix surfaced a behavior worth
-   pinning beyond the original assertion.
+1. **Recon the existing debrief surface end-to-end.** Read
+   [DebriefPanel.tsx](frontend/src/components/DebriefPanel.tsx),
+   [useDebriefTimeline.ts](frontend/src/hooks/useDebriefTimeline.ts),
+   [DebriefEventDiff.tsx](frontend/src/components/DebriefEventDiff.tsx)
+   and the audit-events API path. Phase 4 of the canonical roadmap
+   ([execution_context.md:168-191](memory/execution_context.md#L168-L191))
+   listed: debrief entry flow ✓, meaningful-event timeline ✓,
+   click-to-reconstruct ✓, temporal diff ✓. So the substrate is
+   in place — 6-E is additive, not foundational.
+2. **Pin what "one-click debrief artifact" means.** The phrase is
+   load-bearing but underspecified. Candidates: shareable URL
+   that captures range + selected event + reconstruction target;
+   exportable summary (markdown/PDF) of the timeline window; a
+   single-button "save this debrief view" that bookmarks state
+   for later replay. Recon should pick the one that matches the
+   defense-tech operator-grade framing in
+   [execution_context.md:25](memory/execution_context.md#L25)
+   (operational review, not cinematic UI).
+3. **Find "operator-debrief #2."** The handoff history references
+   it as the requirement 6-E folds in. Locate the source —
+   memory file, ADR, prior commit — and quote the actual ask.
+   Do NOT proceed if the requirement can't be cited; ambiguity
+   here is the highest-leverage place to stop and confirm.
+4. **Decide backend involvement.** If the artifact is purely a
+   frontend export of already-fetched data, no backend change.
+   If it's a server-rendered share link or a stored snapshot, a
+   new endpoint may be needed — and that re-opens the auth
+   surface contract Codex caught on 6-D-map round 1. Recon should
+   answer this before any API design.
+5. **Bench / scope sanity.** 6-E should be the smallest slice
+   that closes the cinematic-replay arc, not a feature dump.
+   Recon should pick the version that's clearly shippable in one
+   tranche.
 
 ### Scope constraints (do not widen)
 
-- Test file + minimum component change to enable a clean test.
-- No DebriefPanel feature work (that's part of 6-E if anything).
-- No global test-config changes unless the fix genuinely requires
-  one and the change is local to this slice's blast radius.
-- No mass `vi.useFakeTimers` migration or test-shape refactor —
-  this is a flake fix, not a test-suite cleanup pass.
+- One concrete deliverable for "one-click debrief artifact" —
+  whichever recon picks.
+- No DebriefPanel feature work beyond what the artifact requires.
+- No new toggle proliferation; no new replay primitives.
+- If a backend endpoint is needed, scope strictly to the
+  artifact path with auth/policy parity to existing endpoints.
+- Don't widen into Phase 5 (Evidence Threading) work that's
+  already marked closed elsewhere.
 
-### Implementation status (dirty tree, pre-commit)
-
-**Reproduction:** single-file 20× runs all passed; full-suite 5×
-runs reproduced 1 failure (20% rate, matches Codex's 2-of-4
-observation across 6-B/6-C). Two distinct tests surfaced across
-runs: "enters replay and navigates directly for incident events"
-+ "resolves a task event into the site-scoped deep link" in one
-run; "resolves an asset event into the site asset drawer" in
-another.
-
-**Root cause:** real-timer race after `await user.click(...)`.
-The component's `handleReconstruct` is async
-([DebriefPanel.tsx:95-125](frontend/src/components/DebriefPanel.tsx#L95-L125)) —
-`await resolveReconstructionTarget(event)` → stale-token guard →
-`setAsOf(...)` → `navigate(target)`. `user.click` resolves once
-the click event dispatches, not when the async chain finishes.
-After the await, microtasks have typically advanced past
-`setAsOf` (so `expect(setAsOf).toHaveBeenCalledWith(...)` passes),
-but `navigate`'s React re-render of the `MemoryRouter`-backed
-`LocationProbe` can land one tick later. Single-file runs flush
-consistently; full-suite parallel-file scheduling pressure makes
-the boundary variable. The other location-after-click assertions
-in the same file already use `waitFor`
-([line 530-534](frontend/src/test/DebriefPanel.test.tsx#L530-L534))
-or assert no-navigation (no race) — only the three Incident /
-Task / Asset success-path tests had the bare `expect(location)`
-shape.
-
-**Fix:** wrap the three bare location assertions in
-`await waitFor(() => expect(...).toHaveTextContent(...))`. Three
-matched comments explain the rationale at the call sites.
-
-**Why not vi.resetAllMocks / mock-queue cleanup:** I considered
-queue leakage (`vi.clearAllMocks` doesn't drain
-`mockResolvedValueOnce` queues) but ruled it out — the `getTask`
-and `getAsset` assertions ALSO passed in failing runs, which
-means the async chain reached its API calls correctly. Only the
-post-navigate render landing was racing the synchronous assert.
-
-**Files shipped on the dirty tree:**
-- [DebriefPanel.test.tsx](frontend/src/test/DebriefPanel.test.tsx)
-  — three `expect(screen.getByTestId('location')).toHaveTextContent(...)`
-  bare assertions wrapped in `await waitFor(...)` (Incident, Task,
-  Asset tests). Three short rationale comments inline. No other
-  changes; no new tests; no component change.
-
-**Validation at implementation-complete (dirty tree, pre-commit):**
-- **Flake-fix proof: 30 consecutive full-suite reruns clean post-fix
-  (30/30, 766/766 each).** Pre-fix rate was 1/5 in this same
-  environment. By the rule of three, 30 clean runs put the post-fix
-  rate at < ~10% with 95% confidence — strong evidence the rate
-  dropped, but does not bound it tightly below that.
-- TypeScript clean; ESLint clean (touched file).
-- Brakeman 0 (preserves 6-A.1 baseline; 7th consecutive — backend
-  untouched in this slice).
-- Backend `2471/0` (untouched; baseline preserved).
-
-**Awaiting Codex `/gate` before commit per gate-hygiene rule.**
-
-### Outstanding watch-items to handle alongside this slice
+### Outstanding watch-items to handle alongside 6-E
 
 - **6-C.1 follow-up watch-item:** per-cursor `getAuditEvents`
   fetch volume during replay scrub. If hot, fix is fetch-once-
   and-client-filter, not bucket. Not pre-optimized.
+- The `MapPage`/`GlobePage` bare-`expect(location)` anti-pattern
+  flagged in the flake-cleanup gate review (~8 sites) is **not**
+  current observed flake; latent risk only. Don't fix
+  speculatively.
 
-After Codex `/gate` clears + commit + push, the next slice is
-**6-E** (one-click debrief artifact — folds in operator-debrief
-#2).
+After 6-E ships, the cinematic-replay arc (6-A → 6-E) is
+complete. Next item beyond 6-E depends on the Hardening-to-95
+plan's remaining sequence (correctness → architecture →
+security → detection → proof → wow); revisit then.
+
+---
+
+### DebriefPanel.test.tsx flake cleanup ✅ shipped in `bd63005` (2026-04-27)
+
+Non-feature gate-hygiene slice between 6-D-globe and 6-E. Closed
+the flake Codex observed across 2 of the last 4 `/gate` runs (6-B
+and 6-C). Pre-fix rate 1/5 in full-suite runs; post-fix 30/30 clean.
+
+**Root cause:** real-timer race after `await user.click(...)`. The
+component's `handleReconstruct`
+([DebriefPanel.tsx:95-125](frontend/src/components/DebriefPanel.tsx#L95-L125))
+is async — `await resolveReconstructionTarget` → token guard →
+`setAsOf` → `navigate`. `user.click` resolves on click dispatch,
+not on async-chain completion. After the await, microtasks
+typically advanced past `setAsOf` (so that assertion passed in
+failing runs), but `navigate`'s React re-render of the
+`MemoryRouter`-backed `LocationProbe` landed one tick later.
+Single-file runs flush consistently; full-suite parallel-file
+scheduling pressure made the boundary variable. Other location
+assertions in the file already used `waitFor` or asserted
+no-navigation; only three success-path tests had the bare
+`expect(location).toHaveTextContent(...)` shape.
+
+**Fix shipped:** wrapped the three bare assertions (Incident /
+Task / Asset success-path tests) in
+`await waitFor(() => expect(...).toHaveTextContent(...))`. One
+short rationale comment at each call site. No component change,
+no new tests, no global config change.
+
+**Files shipped:** modified
+[`DebriefPanel.test.tsx`](frontend/src/test/DebriefPanel.test.tsx)
+(+12/-4: three bare assertions wrapped in `waitFor`).
+
+**Self-gate (Codex was at limit):** reviewer-mode gate against the
+dirty tree before commit; verdict COMMIT WITH NOTES with one
+self-raised P3 on overclaim ("three orders of magnitude
+improvement") in the handoff. Closed in-place by softening to a
+rule-of-three bound. Also flagged ~8 latent-risk bare-expect
+sites in `MapPage.test.tsx` / `GlobePage.test.tsx` — different
+mechanism (`act()` wrappers / fake timers), no observed flake,
+explicitly not pre-fixed.
+
+**Validation at ship:** 30 consecutive full-suite reruns clean
+(766/766 each); tsc clean; eslint clean (touched file); Brakeman
+0 (7th consecutive, preserves 6-A.1 baseline).
 
 ---
 
