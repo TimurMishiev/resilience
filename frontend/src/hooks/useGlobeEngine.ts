@@ -43,6 +43,8 @@ import { useGlobeAssetEntities } from './globe/useGlobeAssetEntities'
 import { useGlobeSignalPrimitives } from './globe/useGlobeSignalPrimitives'
 import { useGlobeOverlays } from './globe/useGlobeOverlays'
 import { useGlobeTrackLayers } from './globe/useGlobeTrackLayers'
+import { useGlobeReplayPulseLayers } from './globe/useGlobeReplayPulseLayers'
+import type { Pulse } from '../lib/replayEventPulses'
 const ionToken = import.meta.env['VITE_CESIUM_ION_TOKEN'] as string | undefined
 
 // ---------------------------------------------------------------------------
@@ -108,6 +110,12 @@ export interface GlobeEngineInput {
   selectedAssetId:   string | null
   selectedSignalId:  string | null
 
+  // Replay event pulses (Tranche 6-B) — empty array in live mode.
+  // Globe parity for the map's replay-pulse layer; same Pulse[] data
+  // shape produced by useReplayEventPulses.
+  replayPulses:     readonly Pulse[]
+  showReplayPulses: boolean
+
   // Selection callbacks — hook fires, page owns state
   onSiteClick:   (siteId: string | null)   => void
   onAssetClick:  (assetId: string | null)  => void
@@ -167,6 +175,8 @@ export function useGlobeEngine({
   selectedSiteId,
   selectedAssetId,
   selectedSignalId,
+  replayPulses,
+  showReplayPulses,
   onSiteClick,
   onAssetClick,
   onSignalClick,
@@ -330,6 +340,17 @@ export function useGlobeEngine({
   const { getTrackEntity } = useGlobeTrackLayers({
     viewerRef, cesiumRef, viewerReady,
     vesselTracks, assetTrails, showTrails,
+  })
+
+  // Replay event pulses (Tranche 6-B). Mounts only when showReplayPulses
+  // is true; live mode + empty pulses pay zero per-frame cost. Owns its
+  // own PointPrimitiveCollection lifecycle separately from the signal
+  // collection (per scoping decision — keeps cleanup and future 6-D halo
+  // work isolated).
+  useGlobeReplayPulseLayers({
+    viewerRef, cesiumRef, viewerReady,
+    pulses: replayPulses,
+    showReplayPulses,
   })
 
   // ---------------------------------------------------------------------------

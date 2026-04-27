@@ -3531,6 +3531,17 @@ body {
   color: #e1e8ed;
 }
 
+.globe-signal-toggle-badge {
+  margin-left: 4px;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: rgba(72, 175, 240, 0.18);
+  color: #d6eaff;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
 /* Override shell-main padding for globe route */
 .shell-main:has(.globe-page) {
   padding: 0;

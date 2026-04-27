@@ -12,6 +12,7 @@ import { useActiveBreachSiteIds } from '../hooks/useSignalRuleMatches'
 import { useAllChokepoints } from '../hooks/useChokepoints'
 import { useReplayParams } from '../hooks/useReplayParams'
 import { useReferenceTimeMs } from '../hooks/useReferenceTimeMs'
+import { useReplayEventPulses } from '../hooks/useReplayEventPulses'
 import { useEvidenceLinkedIds } from '../hooks/useEvidenceLinkedIds'
 import { useRole } from '../hooks/useRole'
 import { useEntitySelectionSync } from '../hooks/useEntitySelectionSync'
@@ -91,6 +92,9 @@ export default function GlobePage() {
   const [showChokepoints,  setShowChokepoints]  = useState(true)
   const [showTrails,       setShowTrails]       = useState(true)
   const [trailWindowMinutes, setTrailWindowMinutes] = useState(30)
+  // Tranche 6-B: replay event pulses default ON. Effective only while
+  // isReplaying — live mode does not render the layer regardless.
+  const [showReplayPulses, setShowReplayPulses]  = useState(true)
 
   // ── Data queries ─────────────────────────────────────────────────────────────
   const sitesQuery  = useAllSites(asOfParam)
@@ -219,6 +223,11 @@ export default function GlobePage() {
   // primitives.
   const { evidenceSiteIds, evidenceSignalIds } = useEvidenceLinkedIds(selectedSiteId, selectedSignalId, asOf)
 
+  // Tranche 6-B: replay event pulses for the globe surface. Hook is
+  // internally disabled when `!isReplaying || !asOf`, so live mode and
+  // pre-cursor states return []. Same shared hook the map uses (6-A).
+  const replayPulses = useReplayEventPulses({ asOf, isReplaying, sites })
+
   // Role gating for triage actions — matches MapPage:61. The alerts section
   // inside GlobeInspectorPanel hides Ack/Escalate buttons when the user lacks
   // the commander/operator permission.
@@ -236,6 +245,8 @@ export default function GlobePage() {
     evidenceSignalIds,
     signalFocusCenter: selectedCenter,
     selectedSiteId, selectedAssetId, selectedSignalId,
+    replayPulses,
+    showReplayPulses: isReplaying && showReplayPulses,
     onSiteClick, onAssetClick, onSignalClick,
   })
 
@@ -371,6 +382,8 @@ export default function GlobePage() {
         showChokepoints={showChokepoints}
         showTrails={showTrails}
         trailWindowMinutes={trailWindowMinutes}
+        showReplayPulses={showReplayPulses}
+        pulseCount={replayPulses.length}
         isReplaying={isReplaying}
         isCloseView={isCloseView}
         signalError={signalError}
@@ -382,6 +395,7 @@ export default function GlobePage() {
         onToggleChokepoints={() => setShowChokepoints(v => !v)}
         onToggleTrails={() => setShowTrails(v => !v)}
         onTrailWindowChange={setTrailWindowMinutes}
+        onToggleReplayPulses={() => setShowReplayPulses(v => !v)}
         onTacticalMap={() => navigate(tacticalMapHref)}
       />
 

@@ -184,11 +184,28 @@ const globeEngineState = vi.hoisted(() => ({
     showChokepoints: boolean
     chokepoints: Array<{ id: string }>
     breachedSiteIds: Set<string>
+    showReplayPulses: boolean
+    replayPulses: ReadonlyArray<{ id: string }>
   },
+}))
+
+const replayPulsesState = vi.hoisted(() => ({
+  pulses: [] as Array<{
+    id: string
+    lat: number
+    lng: number
+    eventType: string
+    occurredAt: string
+    intensity: number
+  }>,
 }))
 
 const routerState = vi.hoisted(() => ({
   navigate: null as null | ((to: string) => void),
+}))
+
+vi.mock('../hooks/useReplayEventPulses', () => ({
+  useReplayEventPulses: () => replayPulsesState.pulses,
 }))
 
 vi.mock('../hooks/useGlobeEngine', () => ({
@@ -200,6 +217,8 @@ vi.mock('../hooks/useGlobeEngine', () => ({
     showChokepoints?: boolean
     chokepoints?: Array<{ id: string }>
     breachedSiteIds?: Set<string>
+    showReplayPulses?: boolean
+    replayPulses?: ReadonlyArray<{ id: string }>
   }) => {
     globeEngineState.onSiteClick = input.onSiteClick ?? null
     globeEngineState.onAssetClick = input.onAssetClick ?? null
@@ -209,6 +228,8 @@ vi.mock('../hooks/useGlobeEngine', () => ({
       showChokepoints: input.showChokepoints ?? false,
       chokepoints: input.chokepoints ?? [],
       breachedSiteIds: input.breachedSiteIds ?? new Set(),
+      showReplayPulses: input.showReplayPulses ?? false,
+      replayPulses: input.replayPulses ?? [],
     }
     return {
       viewerReady: true,
@@ -322,6 +343,7 @@ describe('GlobePage selection routing', () => {
     mockReplay.isReplaying = false
     mockReplay.asOfParam = {}
     mockReplay.signalQueryParams = {}
+    replayPulsesState.pulses = []
     vesselHookState.useVessels.mockReset()
     vesselHookState.useVesselTracks.mockReset()
     vesselHookState.useVessels.mockReturnValue({ data: { data: [] } })
@@ -670,5 +692,49 @@ describe('GlobePage selection routing', () => {
     })
 
     expect(window.__resilienceGlobeBench).toBeUndefined()
+  })
+
+  // Tranche 6-B: replay event pulses on /globe — toggle is replay-only,
+  // default ON. Mirrors the MapPage 6-A integration tests one-to-one.
+  it('hides the replay pulses toggle in live mode and passes empty pulses to the engine', () => {
+    mockReplay.isReplaying = false
+    replayPulsesState.pulses = [
+      { id: 'evt-1', lat: 10, lng: 20, eventType: 'site_flagged', occurredAt: '2026-03-24T11:55:00.000Z', intensity: 0.9 },
+    ]
+
+    renderGlobePage('/globe')
+
+    expect(screen.queryByTestId('globe-replay-pulses-toggle')).not.toBeInTheDocument()
+    expect(globeEngineState.latestInput?.showReplayPulses).toBe(false)
+  })
+
+  it('renders the replay pulses toggle during replay with the pulse count badge and forwards the layer toggle', async () => {
+    mockReplay.asOf = '2026-03-24T12:00:00.000Z'
+    mockReplay.isReplaying = true
+    mockReplay.asOfParam = { as_of: mockReplay.asOf }
+    mockReplay.signalQueryParams = { as_of: mockReplay.asOf }
+    replayPulsesState.pulses = [
+      { id: 'p1', lat: 10, lng: 20, eventType: 'site_flagged', occurredAt: '2026-03-24T11:59:00.000Z', intensity: 1 },
+      { id: 'p2', lat: 11, lng: 21, eventType: 'incident.opened', occurredAt: '2026-03-24T12:01:00.000Z', intensity: 0.7 },
+    ]
+
+    renderGlobePage('/globe')
+
+    const toggle = screen.getByTestId('globe-replay-pulses-toggle')
+    expect(toggle).toHaveTextContent('PULSES ON')
+    expect(toggle).toHaveTextContent('2')
+    expect(globeEngineState.latestInput?.showReplayPulses).toBe(true)
+    expect(globeEngineState.latestInput?.replayPulses).toHaveLength(2)
+
+    await act(async () => {
+      fireEvent.click(toggle)
+    })
+
+    expect(toggle).toHaveTextContent('PULSES OFF')
+    expect(globeEngineState.latestInput?.showReplayPulses).toBe(false)
+    // Pulses array stays populated even when the layer is hidden — page
+    // state controls visibility; the engine sub-hook gates rendering via
+    // showReplayPulses.
+    expect(globeEngineState.latestInput?.replayPulses).toHaveLength(2)
   })
 })

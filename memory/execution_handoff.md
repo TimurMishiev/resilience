@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-26 (Tranche 6-A.1 Brakeman-cleanup shipped, 6-B is the active slice)
+Last updated: 2026-04-26 (Tranche 6-B dirty tree — globe pulse parity, awaiting /gate)
 
 ## Current Phase
 
@@ -22,7 +22,8 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**Tranche 6-B — same pulse layer on `/globe` (Cesium).** Active slice.
+**Tranche 6-B — same pulse layer on `/globe` (Cesium).** Active slice,
+implementation complete in dirty tree, **awaiting Codex `/gate`**.
 
 Goal: visual + behavioural parity with 6-A on the globe surface.
 Scrub on `/globe` produces the same colored pulses near the cursor
@@ -30,93 +31,128 @@ that scrub on `/map` does. Same five high-signal event types, same
 ±5-min window, same toggle-default-ON-in-replay, same past-only
 correctness contract.
 
-### Sequenced approach
+### What landed in the dirty tree
 
-1. **Survey first.** Read `useGlobeEngine.ts` and the existing
-   Cesium-side overlay/primitives hooks
-   (`useGlobeOverlays`, `useGlobeSignalPrimitives`, etc.) to find
-   the right pattern for "pulsing point primitives." High volume
-   work goes through `PointPrimitiveCollection`; one-off entities
-   use the `Entity` API. Pick whichever the existing signal layer
-   uses for parity.
-2. **Decide on shared-hook hoist.** `useReplayEventPulses` from 6-A
-   is page-agnostic — it consumes `sites` and `asOf`, returns
-   `Pulse[]`. Both `/map` and `/globe` pass the same inputs.
-   Recommend hoisting to a shared location (e.g.
-   `frontend/src/hooks/useReplayEventPulses.ts` already qualifies —
-   no rename needed, just import from both pages). Globe-side gets
-   its own engine sub-hook (`useGlobeReplayPulseLayers`) and its
-   own Cesium-specific layer module
-   (`globeEngineReplayPulseLayers.ts` or similar) — those don't
-   share with map.
-3. **Animate the breath.** On Cesium, the cleanest path is a
-   shader-side time-varying attribute on the
-   `PointPrimitiveCollection`: each tick of the engine's clock
-   advances a `time` uniform, and the primitive's `pixelSize` and
-   `color.alpha` interpolate against it. No per-frame React work;
-   no per-pulse `setFeatureState` like MapLibre needs. If shader
-   work is heavier than the 6-A budget allowed, fall back to a
-   per-frame JavaScript update at ≤60Hz capped to MAX_PULSES.
-4. **Toggle parity.** Add `showReplayPulses` to `GlobeToolbar`
-   alongside the existing toggles, mirroring the `/map` layout
-   exactly. Replay-only by structure (rendered inside an
-   `isReplaying` block).
-5. **Tests.** Mirror 6-A's coverage: the hook is already tested,
-   so just add a globe-side sub-hook test (mount/unmount + clock
-   tick) and a GlobePage integration test (toggle hidden in live
-   mode, visible+badged in replay, click forwards to engine).
+**New (2):**
+- [`frontend/src/hooks/globe/useGlobeReplayPulseLayers.ts`](frontend/src/hooks/globe/useGlobeReplayPulseLayers.ts)
+  — Cesium sub-hook. Owns its own `PointPrimitiveCollection` end-to-end
+  (mounted on `viewerReady && showReplayPulses`, torn down on either
+  going false; cleanup is `viewer.isDestroyed()`-guarded). Two
+  primitives per pulse stored in `Map<string, {halo, core}>` for visual
+  parity with the map's halo+core aesthetic. `id: undefined` on every
+  primitive — relies on
+  [`pickIdString`](frontend/src/lib/globeEngineHelpers.ts#L339)
+  filtering non-string ids so pulses cannot steal click picks from
+  sites/signals/assets. A dedicated `viewer.scene.preRender` listener
+  walks the primitive map each frame and updates `pixelSize` +
+  `color.alpha` from a sine wave whose time math mirrors
+  [`breachPulseColorProperty`](frontend/src/lib/globeEngineHelpers.ts#L248)
+  — same 1260ms cycle so the breach pulse and the replay pulse share a
+  cadence on the globe surface. Listener registered only when
+  `showReplayPulses && pulses.length > 0`; idle frames cost nothing.
+- [`frontend/src/test/useGlobeReplayPulseLayers.test.ts`](frontend/src/test/useGlobeReplayPulseLayers.test.ts)
+  — 7 sub-hook tests with a tiny in-file Cesium fake (collection,
+  scene.primitives.add/remove, scene.preRender event, isDestroyed).
+  Covers viewer-not-ready no-op, toggle-off no-mount, toggle-on
+  mounts collection + halo+core per pulse, exactly-one preRender
+  listener while pulses present, no listener when pulses empty,
+  unmount cleanup (collection AND listener removed), and the
+  `id: undefined` non-pickable contract.
 
-### Scope constraints (do not widen)
+**Modified (6):**
+- [`frontend/src/hooks/useGlobeEngine.ts`](frontend/src/hooks/useGlobeEngine.ts)
+  — added `replayPulses: readonly Pulse[]` + `showReplayPulses: boolean`
+  to `GlobeEngineInput`, invokes `useGlobeReplayPulseLayers` after the
+  existing `useGlobeTrackLayers` call. Sub-hook is purely additive —
+  no reordering of existing layer hooks, no engine-level lifecycle
+  changes (the sub-hook owns its own collection, separate from
+  `signalCollectionRef`).
+- [`frontend/src/pages/GlobePage.tsx`](frontend/src/pages/GlobePage.tsx)
+  — `showReplayPulses` state (default `true`), call to
+  `useReplayEventPulses({asOf, isReplaying, sites})` (the 6-A hook,
+  reused as-is — already page-agnostic), pass
+  `replayPulses` + `showReplayPulses: isReplaying && showReplayPulses`
+  to engine, pass `pulseCount` + toggle handler to `GlobeToolbar`.
+- [`frontend/src/components/globe/GlobeToolbar.tsx`](frontend/src/components/globe/GlobeToolbar.tsx)
+  — new toggle rendered inside the existing `{isReplaying && (<>...</>)}`
+  block alongside trails. Hidden in live mode by structure (not by CSS).
+  `data-testid="globe-replay-pulses-toggle"` + count badge when
+  `pulseCount > 0`. Same div-role-button pattern as the other globe
+  toggles, including `onKeyDown` keyboard handler (note: globe layer
+  toggles use kbd handlers, unlike map layer toggles — staying
+  consistent within each surface's convention).
+- [`frontend/src/index.css`](frontend/src/index.css)
+  — `.globe-signal-toggle-badge` style for the count chip
+  (mirrors the map's `.map-coverage-toggle-badge` from 6-A).
+- [`frontend/src/test/GlobePage.test.tsx`](frontend/src/test/GlobePage.test.tsx)
+  — 2 new integration tests: toggle hidden in live mode + engine
+  receives `showReplayPulses: false`; toggle visible during replay
+  with count badge + click forwards through engine. Mocks
+  `useReplayEventPulses` via the standard `vi.hoisted` pattern that
+  6-A established. Existing 17-test surface unchanged.
+- [`frontend/src/test/useGlobeEngine.test.ts`](frontend/src/test/useGlobeEngine.test.ts)
+  — `defaultInput` extended with `replayPulses: []` + `showReplayPulses:
+  false` so existing engine tests automatically exercise the live-mode
+  no-op path through the new sub-hook.
 
-- `/globe` only — `/map` already shipped in 6-A
-- Replay-only; live mode visually unchanged
-- Same five event types, same ±5-min window, same MAX_PULSES = 50
-- No selection-persistence work — that's still 6-C
-- No audit-citation popover work — that's also 6-C
-- Acceptance bar (same as 6-A, parity on the globe surface):
-  pulses on scrub, none in live, toggle works, no obvious globe
-  jank, frontend/backend gates green, preview-browser verification
-  before `/gate`
+### Validation
 
-### Likely files
+- `npx vitest run` — **714 examples, 0 failures** (95 files; +9 from
+  705 baseline = 7 sub-hook + 2 GlobePage integration).
+- `npx tsc -p tsconfig.app.json --noEmit` — clean.
+- `npx eslint` on touched files — clean.
+- Backend (untouched): `bundle exec rspec` — **2462 examples, 0
+  failures** in 4m27s.
+- Brakeman (regression check after the 6-A.1 cleanup) — **0 security
+  warnings** confirmed unchanged. The clean-gate baseline is preserved.
+- Globe perf budgets: not touched. New layer is bounded at 50 pulses
+  × 2 primitives = 100 PointPrimitives; reconcile is a single Map
+  walk per pulse-data change. Well below
+  [globe-benchmark.spec.ts](frontend/e2e/globe-benchmark.spec.ts)'s
+  20ms p95 / 25ms single-sample budget. Bench re-anchor not needed.
 
-**New:**
-- `frontend/src/hooks/globe/useGlobeReplayPulseLayers.ts` (sub-hook,
-  parallels `useMapReplayPulseLayers.ts`)
-- `frontend/src/lib/globeEngineReplayPulseLayers.ts` (Cesium
-  primitives + breath driver)
-- `frontend/src/test/useGlobeReplayPulseLayers.test.ts`
+**Preview-browser smoke: deferred to user.** Same as 6-A — Rails
+wasn't running locally. The unit + sub-hook + GlobePage integration
+tests collectively prove (a) viewer-ready + toggle gating, (b)
+collection + listener mount/unmount lifecycle, (c) non-pickable
+contract for primitives, (d) toggle visibility + click-forwarding
+through the engine. Recommend a 30-second local check before
+`/gate`: `bin/dev` + `yarn dev`, log in, visit `/globe`, set asOf
+in the past, observe pulses + breath cadence + count badge.
 
-**Modified:**
-- `frontend/src/hooks/useGlobeEngine.ts` (additive inputs +
-  sub-hook call)
-- `frontend/src/pages/GlobePage.tsx` (state + hook + wiring)
-- `frontend/src/components/globe/GlobeToolbar.tsx` (toggle UI)
-- `frontend/src/test/GlobePage.test.tsx` (integration)
+### Design decisions locked in code
 
-### Locked / risky surfaces to watch
+- **Shared hook hoist:** none. `useReplayEventPulses` is already
+  page-agnostic; both `/map` and `/globe` import from the same path.
+- **Cesium animation:** `PointPrimitiveCollection` + dedicated
+  `scene.preRender` listener (Cesium auto-pauses idle frames; cheaper
+  than JS `requestAnimationFrame`). Sine wave time math mirrors
+  `breachPulseColorProperty` (1260ms full cycle) so map and globe
+  pulse cadence feel intentional.
+- **No separate globe layer module:** unlike map (which has
+  `lib/mapEngineReplayPulseLayers.ts`), globe sub-hook owns
+  primitive lifecycle directly. Justified by Cesium's
+  JS-object-managed primitive model vs MapLibre's source/layer
+  abstraction. Mirrors how `useGlobeSignalPrimitives` doesn't have a
+  separate layer-helpers module.
+- **Picking:** `id: undefined` on every pulse primitive. No new
+  resolver branch needed — `pickIdString` already filters
+  non-string ids.
+- **Collection isolation:** dedicated `PointPrimitiveCollection`
+  separate from `signalCollectionRef`. Per-user direction —
+  keeps cleanup, lifecycle, and future 6-D halo work isolated.
 
-- **Globe perf budgets** in
-  `frontend/e2e/globe-benchmark.spec.ts`. Same rule as map:
-  re-anchor only against real CI numbers; never widen budgets to
-  absorb regressions. The Phase 6 history below has the
-  load-bearing constraints (search for "6-1E.a" and the perf
-  baselines in this file's lower sections).
-- **Cesium clock**. The replay context already drives `asOf`; the
-  globe engine needs to advance Cesium's internal clock in lock-
-  step OR the breath shader needs to read from
-  `useReferenceTimeMs` directly. Decide before coding.
-- **`useGlobeEngine` stop-condition**. If the slice would touch
-  `useReplay`, `useChokepoints`, or `useReferenceTimeMs` shared
-  state in a way that crosses MapPage parity → high-blast-radius,
-  call out before proceeding.
+### What comes after 6-B
 
-After Codex `/gate` clears + commit + push, continue to **6-C**
-(audit-citation popover + selection-persists-across-asOf).
+After Codex `/gate` clears + commit + push:
+- **6-C** Audit-citation popover on entity selection during replay
+  (relax the asOf-clears-selection rule in `useEntitySelectionSync`).
+- **6-D** Confidence halos on active alerts during replay.
+- **6-E** One-click debrief artifact.
 
 ---
 
-### Tranche 6-A.1 — Brakeman cleanup (chain_backfiller) ✅ shipped in (this commit) (2026-04-26)
+### Tranche 6-A.1 — Brakeman cleanup (chain_backfiller) ✅ shipped in `2e0a0ca` (2026-04-26)
 
 Five consecutive post-push audits flagged a SQL-injection finding in
 [`backend/app/services/audit/chain_backfiller.rb:45`](backend/app/services/audit/chain_backfiller.rb#L45)

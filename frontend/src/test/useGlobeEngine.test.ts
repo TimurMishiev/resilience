@@ -491,6 +491,8 @@ function defaultInput(
     selectedSiteId:    null,
     selectedAssetId:   null,
     selectedSignalId:  null,
+    replayPulses:     [],
+    showReplayPulses: false,
     onSiteClick:   vi.fn(),
     onAssetClick:  vi.fn(),
     onSignalClick: vi.fn(),

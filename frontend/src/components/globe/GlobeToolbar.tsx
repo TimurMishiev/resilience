@@ -8,25 +8,29 @@ interface GlobeToolbarProps {
   showChokepoints:    boolean
   showTrails:         boolean
   trailWindowMinutes: number
+  showReplayPulses:   boolean
+  pulseCount:         number
   isReplaying:        boolean
   isCloseView:        boolean
   signalError:        Error | null
   tacticalMapHref:    string
-  onHome:              () => void
-  onToggleSignals:     () => void
-  onToggleHeatmap:     () => void
-  onToggleCoverage:    () => void
-  onToggleChokepoints: () => void
-  onToggleTrails:      () => void
-  onTrailWindowChange: (minutes: number) => void
-  onTacticalMap:       () => void
+  onHome:               () => void
+  onToggleSignals:      () => void
+  onToggleHeatmap:      () => void
+  onToggleCoverage:     () => void
+  onToggleChokepoints:  () => void
+  onToggleTrails:       () => void
+  onTrailWindowChange:  (minutes: number) => void
+  onToggleReplayPulses: () => void
+  onTacticalMap:        () => void
 }
 
 export function GlobeToolbar({
   showSignals, showHeatmap, showCoverage, showChokepoints, showTrails, trailWindowMinutes,
+  showReplayPulses, pulseCount,
   isReplaying, isCloseView, signalError,
   onHome, onToggleSignals, onToggleHeatmap, onToggleCoverage, onToggleChokepoints,
-  onToggleTrails, onTrailWindowChange, onTacticalMap,
+  onToggleTrails, onTrailWindowChange, onToggleReplayPulses, onTacticalMap,
 }: GlobeToolbarProps) {
   function toggleKeyDown(event: KeyboardEvent<HTMLDivElement>, toggle: () => void) {
     if (event.key !== 'Enter' && event.key !== ' ') return
@@ -112,6 +116,22 @@ export function GlobeToolbar({
               <option value={120}>120 min</option>
             </select>
           )}
+          <div
+            className={`globe-signal-toggle${showReplayPulses ? ' globe-signal-toggle--active' : ''}`}
+            onClick={onToggleReplayPulses}
+            role="button"
+            aria-label="Toggle replay event pulses"
+            data-testid="globe-replay-pulses-toggle"
+            title="Pulse events near the replay cursor: site flags, incidents, task transitions, prosecutions"
+            tabIndex={0}
+            aria-pressed={showReplayPulses}
+            onKeyDown={(event) => toggleKeyDown(event, onToggleReplayPulses)}
+          >
+            PULSES {showReplayPulses ? 'ON' : 'OFF'}
+            {showReplayPulses && pulseCount > 0 && (
+              <span className="globe-signal-toggle-badge">{pulseCount}</span>
+            )}
+          </div>
         </>
       )}
       <span className="globe-toolbar-hint bp6-text-muted">{hint}</span>
