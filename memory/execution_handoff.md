@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-26 (Tranche 6-B shipped, 6-C is the active slice)
+Last updated: 2026-04-27 (Tranche 6-C dirty tree — round-3 P2 live-mode-fetch fix applied)
 
 ## Current Phase
 
@@ -23,7 +23,8 @@ item 1, see ADR-010.)
 ## Current Slice
 
 **Tranche 6-C — audit-citation popover on entity selection during replay.**
-Active slice. Cinematic-replay slice 3 of 5 (6-A → 6-B → **6-C** → 6-D → 6-E).
+Active slice, **implementation complete in dirty tree, awaiting Codex `/gate`** (2026-04-27).
+Cinematic-replay slice 3 of 5 (6-A → 6-B → **6-C** → 6-D → 6-E).
 
 Goal: when an entity is selected during replay, the inspector panel
 shows the audit chain *as it was at that asOf*. Operator scrubs the
@@ -31,69 +32,380 @@ timeline, clicks a site, sees "what was true about this site at this
 moment, and how we know" — every state transition surfaced with its
 audit-event citation IDs visible.
 
+### Locked selection-persistence contract
+
+User direction (2026-04-26):
+
+- While `isReplaying`, persist the selected entity id across `asOf` changes.
+- Do **not** clear selection just because an entity is filtered, off-screen,
+  or temporarily not rendered.
+- Clear **only** on:
+  - explicit deselect (panel close, click empty space)
+  - route/entity switch (URL change, click different entity)
+  - **authoritative miss** in the `asOf` dataset — entity is absent from
+    the canonical sites/assets/signals query result at this `asOf`.
+    Soft-deleted/archived counts as a hard miss.
+- Live-mode behavior unchanged.
+
+### Locked scope text (verbatim — user direction 2026-04-26)
+
+> 6-C covers auditable entity selections only: Site and Asset. Signal
+> panels are deferred because `audit_events` does not support
+> `Signal`/`ExternalSignal` singular lookups and the repo has no signal
+> audit-event writes.
+
+> AuditChainAtTime derives `asOf` from `useReplayParams()` internally to
+> avoid widening panel prop contracts.
+
+### Recon findings (load-bearing surprises that simplify the slice)
+
+Recon completed against current HEAD; report compressed here so the
+implementation phase doesn't need to re-derive these:
+
+1. **`useEntitySelectionSync` already accepts `isReplaying` and `asOf`**
+   ([useEntitySelectionSync.ts:23,46](frontend/src/hooks/useEntitySelectionSync.ts#L23)) —
+   no signature change required.
+2. **The asOf-change clear is one effect at
+   [lines 128-137](frontend/src/hooks/useEntitySelectionSync.ts#L128)**,
+   guarded by a one-shot `replayResetReadyRef` ([line 53](frontend/src/hooks/useEntitySelectionSync.ts#L53)).
+   The effect AND the ref are both removed in this slice (see Step 1).
+3. **The stale-selection clear path at
+   [lines 174-216](frontend/src/hooks/useEntitySelectionSync.ts#L174)
+   is already replay-aware** (gates on `availability.signalsLoaded`)
+   and already implements the authoritative-miss contract. **No change
+   needed there** — it owns the "entity absent at new asOf" path.
+4. **`AuditTimeline` already exists** at
+   [frontend/src/components/AuditTimeline.tsx](frontend/src/components/AuditTimeline.tsx) —
+   entity-agnostic, replay-aware (consumes `as_of`). The pre-build
+   plan assumed `AuditChainAtTime` could delegate to it, but
+   AuditTimeline does **not** render `event.id` (Codex round-2 P1
+   caught this). 6-C therefore renders the chain inline inside
+   `AuditChainAtTime` (with citation handles per row), and
+   AuditTimeline stays untouched so the three other consumers
+   (EntityCard, SiteDetailPage, IncidentDetailPage) are unaffected.
+   The shared dependency reused as-is is the
+   [useAuditEvents](frontend/src/hooks/useAuditEvents.ts) hook —
+   inside `AuditChainAtTimeBody` only, so it never fires in live
+   mode (Codex round-3 P2 contract).
+5. **All four inspector panels already receive `isReplaying`** as a prop.
+   No prop-threading work in MapSitePanel / MapSignalPanel /
+   MapAssetPanel / GlobeInspectorPanel.
+6. **Other selection-clear call sites are safe.** The only imperative
+   clear outside the hook is MapPage's `clearSelection` callback fired
+   on panel close ([MapPage.tsx:402-407](frontend/src/pages/MapPage.tsx#L402)) —
+   that's "explicit deselect," allowed by the contract.
+7. **No existing test file** for `useEntitySelectionSync`. The 6-C test
+   surface is created from scratch and pins **product-level** behaviors
+   (not the old mechanism).
+8. **`getAuditEvents({entity_type, entity_id, as_of})` is past-only**
+   via the backend's `up_to(as_of)` clip ([audit_events_controller.rb:28](backend/app/controllers/api/audit_events_controller.rb#L28)) —
+   matches the cinematic narrative; same path 6-A confirmed.
+9. **Singular entity-lookup auth allowlist** at
+   [audit_events_controller.rb's `ENTITY_ACCESS_MODELS`](backend/app/controllers/api/audit_events_controller.rb#L5)
+   covers: AreaOfOperation, Asset, Chokepoint, CommanderIntent,
+   CorrelationRule, Incident, PacePlan, Recommendation, SaluteReport,
+   SignalRuleMatch, Site, Task. **`Signal`/`ExternalSignal` are NOT
+   in the allowlist**, and there are no audit-event writes for those
+   entity types anywhere in app/spec code. Signal panels would
+   produce empty audit chains for commanders and 404/auth failures
+   for scoped users — **out of scope for 6-C**. Signal provenance is a
+   future slice that will need a deliberate mapping (likely to
+   `SignalRuleMatch` evidence objects, not signal-id-as-audit-entity-id).
+
 ### Sequenced approach (lock before coding)
 
-1. **Selection-persistence ruling — execute now.** This is the
-   blocker the 6-A scoping deferred to 6-C. Today, selection clears
-   on every asOf change. The contract for cinematic replay is the
-   opposite: while `isReplaying`, persist the selected entity id
-   across asOf changes; only clear on explicit deselect, route/entity
-   switch, or hard lookup failure (entity wasn't created yet at the
-   new asOf). Touch
-   [`useEntitySelectionSync.ts`](frontend/src/hooks/useEntitySelectionSync.ts).
-2. **Survey the inspector panels.** All three panels need to gain
-   the new "Audit chain at this moment" section:
-   [`MapSitePanel.tsx`](frontend/src/components/map/MapSitePanel.tsx),
-   [`MapSignalPanel.tsx`](frontend/src/components/map/MapSignalPanel.tsx),
-   [`MapAssetPanel.tsx`](frontend/src/components/map/MapAssetPanel.tsx),
-   plus the globe equivalent in
-   [`GlobeInspectorPanel.tsx`](frontend/src/components/GlobeInspectorPanel.tsx).
-   Identify the right insertion seam in each.
-3. **Build the shared audit-chain component.** New component
-   `AuditChainAtTime.tsx` consuming `getAuditEvents({entity_type,
-   entity_id, as_of})` — backend already supports this. Render the
-   chronological list with citation IDs visible (UUIDs or short-hash
-   form). Replay-only by structure; live mode does not render this
-   section.
-4. **Tests.** Component-level test on `AuditChainAtTime` (mock
-   `getAuditEvents`, assert rendering of audit events with citation
-   IDs); selection-persistence regression test on
-   `useEntitySelectionSync`; one integration test per panel
-   asserting the new section appears during replay and disappears
-   on exit-replay.
-5. **Out of scope.** Confidence halos (6-D), debrief artifact
-   (6-E), any new audit-events API surface (the existing endpoint
-   already supports `entity_type + entity_id + as_of`).
+#### Step 1 — Remove the replay-reset effect from useEntitySelectionSync
+
+**Not a guard. A deletion.** A `!isReplaying` guard would still clear on
+replay exit (`asOf` flips back to `null`), which the contract explicitly
+forbids. The other three clear paths (explicit deselect, route/entity
+switch, authoritative miss via stale-selection detection) already own
+the contract. The replay-reset effect is now the wrong abstraction.
+
+**Change** [useEntitySelectionSync.ts](frontend/src/hooks/useEntitySelectionSync.ts):
+- Delete the effect at lines 128-137.
+- Delete the `replayResetReadyRef` declaration at line 53 (only consumer
+  was the deleted effect; verified by grep).
+
+No other lines move. Hook signature, return shape, and other effects unchanged.
+
+#### Step 2 — New test file: `useEntitySelectionSync.test.ts`
+
+**Product-level cases only, not mechanism cases.** Pins what the operator
+should observe, not how the hook achieves it. Five tests:
+
+1. Selected entity persists when entering replay if it still exists in the asOf dataset.
+2. Selected entity persists while scrubbing replay (asOf changes mid-replay).
+3. Selected entity persists when exiting replay if it still exists in live data.
+4. Selected entity clears on authoritative miss at the new `asOf`
+   (entity absent from the dataset at that timestamp — covers
+   soft-deleted/archived).
+5. Explicit clear (`onSiteClick(null)` etc.) clears in any mode.
+
+**Not tested** (deliberately): "live-mode + asOf change clears" — that
+case is testing the deleted mechanism, not a real product contract.
+Live mode doesn't change asOf.
+
+#### Step 3 — New `AuditChainAtTime.tsx` (outer/inner split, citation-aware)
+
+**Outer/inner split** (Codex round-3 fix-forward): the outer
+component takes `isReplaying` as a prop and returns `null` BEFORE
+rendering anything OR calling any hooks. The inner
+`AuditChainAtTimeBody` holds the `useReplayParams()` and
+`useAuditEvents()` calls and only mounts when replaying. This is the
+mechanism that enforces "live mode unchanged" — selecting a Site or
+Asset in live mode issues zero audit-events fetches because the body
+is never mounted.
+
+**Renders the chain inline** (does NOT delegate to `AuditTimeline`).
+Each event row shows time + actor + event tag + changed keys + a
+**visible citation handle**: first 8 chars of the audit-event UUID
+in a `<code>` element with the full UUID on the `title` attribute
+for hover-disclosure and copy. Citation visibility is the load-bearing
+6-C deliverable.
+
+Test handles: `data-testid="audit-chain-at-time"` on the section,
+`data-testid="audit-chain-citation"` on each citation chip,
+`data-testid="audit-chain-row"` on each event row.
+
+```
+interface Props {
+  entityType: string
+  entityId: string
+  isReplaying: boolean
+}
+```
+
+Why not delegate to AuditTimeline: AuditTimeline never renders
+`event.id`, and modifying it would change three other surfaces
+(EntityCard, SiteDetailPage, IncidentDetailPage) outside locked
+6-C scope. Mild render-logic duplication is the deliberate trade.
+
+Test count: **7 cases** in `AuditChainAtTime.test.tsx` —
+(1) live-mode no-op + zero hook calls (round-3 P2 contract test),
+(2) asOf + entity-prop pass-through to `useAuditEvents`,
+(3) empty-state inside the section shell,
+(4) **visible citation IDs per row with full UUID in `title`**
+(round-2 P1 contract test),
+(5) event label + changed-keys rendering,
+(6) loading-spinner state,
+(7) error-callout state.
+
+**Empty-state UX (locked):** always render the section while replaying,
+even when zero audit events exist for the entity at this `asOf`.
+The empty-state message ("No audit events recorded up to the replay
+timestamp.") matches the cinematic narrative. Stable layout > section
+appearing/disappearing as the cursor moves.
+
+#### Step 4 — Insert into 3 inspector panels (4 insertion points)
+
+Insertion points (locked from recon — Site and Asset only; signal
+panels deferred per scope text above):
+
+- **[MapSitePanel.tsx](frontend/src/components/MapSitePanel.tsx)** —
+  after the task-list divider (line 132), before `MapSiteAlertsSection`
+  (line 134). Pass `entityType="Site"`, `entityId={site.id}`.
+- **[MapAssetPanel.tsx](frontend/src/components/MapAssetPanel.tsx)** —
+  after the telemetry block (line 112), before divider line 115.
+  Pass `entityType="Asset"`, `entityId={asset.id}`.
+- **[GlobeInspectorPanel.tsx](frontend/src/components/GlobeInspectorPanel.tsx)** —
+  two branches: site branch after `MapSiteAlertsSection` (line 147),
+  before divider (line 149); asset branch before divider (line 300).
+  Signal branch is **deferred** (no `Signal`/`ExternalSignal` in the
+  audit-events auth allowlist).
+
+Each insertion: 3 lines (`<AuditChainAtTime entityType={...}
+entityId={...} isReplaying={isReplaying} />`). No `asOf` prop —
+the wrapper reads it internally from `useReplayParams()`.
+
+**Panel integration tests:** extend the three panel test files. Each
+test asserts `getByTestId('audit-chain-at-time')` is present during
+replay and absent in live mode. MapSitePanel + MapAssetPanel = 2 cases
+each; GlobeInspectorPanel covers site + asset branches = 4 cases.
+**Total ~8 panel cases.**
+
+#### Step 5 — Audit-events fetch frequency: keep exact `as_of` (no bucketing)
+
+**User direction (2026-04-26):** evidence/trust surfaces must show the
+state at the exact cursor, not at a bucketed approximation.
+**Do not** apply 6-A's bucketed-cursor pattern to the entity-scoped
+audit-events query in 6-C. Per-cursor fetches are correct here.
+
+If query volume proves hot in production, the right follow-up is a
+**6-C.1** that fetches the entity's full audit history once and
+client-filters by `asOf` — not a bucket. Recorded as a watch-item in
+"Risks" below.
 
 ### Risks and stop-conditions
 
-- **`useEntitySelectionSync` is shared map+globe state.** Any
-  behaviour change ripples to both pages. Treat as
-  high-blast-radius — confirm the new contract with regression
-  tests before committing.
-- **Backend audit-events query under load.** Each selection during
-  replay issues one `getAuditEvents({entity_id, as_of})` request.
-  Expected per-entity volume is small (typically <50 audit events
-  per entity over its lifetime), so this is unlike the 6-A
-  refetch-storm shape. But if 6-D adds confidence-halo audit
-  consumption, watch for compound load.
-- **Don't widen into 6-D or 6-E.** Halos and debrief artifacts
-  are separate slices.
+- **`useEntitySelectionSync` is shared map+globe state.** Any behaviour
+  change ripples to both pages. The product-level test surface (Step 2)
+  is the contract guarantee — non-negotiable before commit.
+- **6-C.1 watch-item: per-cursor `getAuditEvents` fetch volume.** Each
+  selection during replay issues one fetch per cursor tick keyed on
+  `(entity_type, entity_id, as_of)` — the same shape 6-A originally had
+  before the bucketed-cursor fix. **The 6-A bucketing pattern is wrong
+  for 6-C** (would show stale audit chains at a bucketed asOf, not the
+  exact cursor). If volume becomes a problem, the right fix is a 6-C.1
+  that fetches the entity's full audit history once and client-filters
+  by asOf. Watch for hot signals; do not pre-optimize.
+- **`DebriefPanel.test.tsx` flake — escalating watch-item.** Codex
+  observed it on 6-B's gate AND on 6-C round-3's gate. Did not
+  reproduce on this developer's environment in either run (passed
+  734/734 across multiple full-suite runs). Now appearing on
+  2-of-4 recent Codex gates → graduating from "watch" to **"open a
+  cleanup slice when the next 6-X ships."** Test passes in isolation
+  in both environments, suggesting test-ordering/state-leakage rather
+  than a real product regression. Same signal-to-noise lesson
+  6-A.1 closed for Brakeman: red gates with non-actionable signal
+  erode trust in the gate itself.
+- **Don't widen into 6-D or 6-E.** Halos and debrief artifacts are
+  separate slices.
+- **Brakeman baseline:** three consecutive clean post-push audits since
+  6-A.1. Discipline holds.
 
-### Likely files (TBD until survey)
+### Files plan (locked)
 
 **New:**
-- `frontend/src/components/AuditChainAtTime.tsx` (shared component)
-- `frontend/src/test/AuditChainAtTime.test.tsx`
+- [`frontend/src/components/AuditChainAtTime.tsx`](frontend/src/components/AuditChainAtTime.tsx) (~30 lines)
+- [`frontend/src/test/AuditChainAtTime.test.tsx`](frontend/src/test/AuditChainAtTime.test.tsx) (3 cases)
+- [`frontend/src/test/useEntitySelectionSync.test.ts`](frontend/src/test/useEntitySelectionSync.test.ts) (5 cases)
 
 **Modified:**
-- `frontend/src/hooks/useEntitySelectionSync.ts` (relax asOf-clears-selection)
-- `frontend/src/test/useEntitySelectionSync.test.ts` (selection-persistence regression)
-- 4 inspector panels (Map: Site/Signal/Asset; Globe: GlobeInspectorPanel) + their tests
-- `memory/execution_handoff.md`
+- [`frontend/src/hooks/useEntitySelectionSync.ts`](frontend/src/hooks/useEntitySelectionSync.ts) — delete replay-reset effect + `replayResetReadyRef` (net negative LOC)
+- [`frontend/src/components/MapSitePanel.tsx`](frontend/src/components/MapSitePanel.tsx) — insert `<AuditChainAtTime>`
+- [`frontend/src/components/MapAssetPanel.tsx`](frontend/src/components/MapAssetPanel.tsx) — insert `<AuditChainAtTime>`
+- [`frontend/src/components/GlobeInspectorPanel.tsx`](frontend/src/components/GlobeInspectorPanel.tsx) — insert `<AuditChainAtTime>` in site + asset branches (signal branch deferred)
+- The three panel test files (MapSitePanel, MapAssetPanel,
+  GlobeInspectorPanel) — +2 cases for the simple panels, +4 for the
+  Globe panel covering both branches; ~8 total
+- `memory/execution_handoff.md` — slice rotation after ship
+
+**Untouched (deliberately):**
+- `AuditTimeline.tsx` — existing component, existing tests, existing behavior
+- `useAuditEvents.ts` — existing hook, existing query shape
+- `getAuditEvents` API client — backend support already in place
+- `MapSignalPanel.tsx` and `GlobeInspectorPanel`'s signal branch —
+  deferred (no `Signal`/`ExternalSignal` in audit-events allowlist)
+- All 6-A and 6-B replay-pulse code — orthogonal slice
+
+### Acceptance bar
+
+- Replay: select site → scrub asOf → selection persists, panel stays
+  open, audit-chain section updates with new asOf
+- Replay: scrub past site creation → site absent from dataset →
+  selection clears (authoritative-miss path, existing code)
+- Replay: panel close → selection clears (explicit deselect, existing path)
+- Live → replay → live: selection survives the round-trip if entity
+  exists in both datasets
+- Live mode: behavior unchanged (regression-tested)
+- Frontend gates green; **Brakeman stays at 0** (fourth consecutive)
+- Backend untouched
+- Preview-browser smoke deferred to user
 
 After Codex `/gate` clears + commit + push, continue to **6-D**
 (confidence halos on active alerts during replay).
+
+### What landed in the dirty tree (2026-04-27)
+
+**Step 1 — useEntitySelectionSync.ts:** Deleted the replay-reset
+`useEffect` (lines 128-137 in the prior file) and `replayResetReadyRef`
+(line 53). Replaced the deleted block with a comment explaining why the
+three remaining clear paths fully cover the contract. The destructure
+no longer pulls `asOf` from options (it's still on the input type to
+preserve call-site contract — minimum-touch per locked scope).
+
+**Step 2 — AuditChainAtTime.tsx (new):** Replay-only audit-chain
+section using an **outer/inner split**. The outer component takes
+`isReplaying` as a prop and returns `null` BEFORE any hook calls or
+shell rendering, so live-mode inspector layout is byte-identical to
+pre-6-C AND issues zero audit-events fetches. The inner
+`AuditChainAtTimeBody` holds the `useReplayParams()` +
+`useAuditEvents()` calls and only mounts when replaying — React
+unmounts it when `isReplaying` flips false, so its hooks tear down
+cleanly. The body renders the chain inline (does NOT delegate to
+`AuditTimeline`) so each event row can carry a **visible citation
+handle** — first 8 chars of the audit-event UUID rendered as a
+`<code class="audit-chain-citation" title={fullUuid}>` so the
+operator sees a short cite token inline AND the full UUID is
+hover-disclosed/copyable. This is the load-bearing 6-C deliverable
+("see what was true and how we know"). `data-testid="audit-chain-at-time"`
+on the section + `data-testid="audit-chain-citation"` per row for
+panel/wrapper integration tests.
+
+**Two Codex /gate fix-forwards baked in:**
+- Round-2 P1: citation IDs were not surfaced (AuditTimeline doesn't
+  render `event.id`) — fixed by rebuilding the renderer inline.
+- Round-3 P2: hooks were called above the early return, so
+  `useAuditEvents` fired in live mode and issued hidden fetches —
+  fixed by the outer/inner split. The inner body's hooks only run
+  when the body is mounted.
+
+**Why not delegate to AuditTimeline:** AuditTimeline renders
+time/actor/action/changed-keys but never displays `event.id`.
+Modifying it would change three other surfaces (EntityCard,
+SiteDetailPage, IncidentDetailPage) outside 6-C scope.
+
+**Step 3 — 4 panel insertions:**
+- [`MapSitePanel.tsx`](frontend/src/components/MapSitePanel.tsx) —
+  `<AuditChainAtTime entityType="Site" entityId={site.id} isReplaying={isReplaying} />`
+  after the task-list divider, before `MapSiteAlertsSection`.
+- [`MapAssetPanel.tsx`](frontend/src/components/MapAssetPanel.tsx) —
+  same pattern with `entityType="Asset"`, after the telemetry block.
+- [`GlobeInspectorPanel.tsx`](frontend/src/components/GlobeInspectorPanel.tsx) —
+  inserted in the site branch (after `MapSiteAlertsSection`, before
+  the next divider) AND the asset branch (after telemetry, before
+  the actions divider). Signal branch deliberately untouched.
+
+**Step 4 — Tests (new + extended, 16 cases):**
+- [`useEntitySelectionSync.test.tsx`](frontend/src/test/useEntitySelectionSync.test.tsx) — new file, 5
+  product-level cases pinning the persistence contract (entry/scrub/
+  exit replay, authoritative miss, explicit clear). Uses `MemoryRouter`
+  + `renderHook` + `rerender`. **No live+asOf-change synthetic test**
+  (deliberately — that's testing the deleted mechanism, not a real
+  product contract).
+- [`AuditChainAtTime.test.tsx`](frontend/src/test/AuditChainAtTime.test.tsx) — new file, 7 cases.
+  Mocks `useReplayParams` and `useAuditEvents` directly. Covers
+  (a) **live-mode no-op + zero hook calls** (Codex round-3 P2 contract
+  test — outer/inner split means `useAuditEvents` is never called when
+  `!isReplaying`), (b) asOf + entity-prop pass-through to
+  `useAuditEvents` during replay, (c) empty-state message inside the
+  shell, (d) **visible citation IDs per row with full UUID in `title`**
+  (Codex round-2 P1 contract test), (e) event label + changed-keys
+  rendering, (f) loading-spinner state, (g) error-callout state.
+- [`MapSitePanel.test.tsx`](frontend/src/test/MapSitePanel.test.tsx) — new file, 2 cases (live
+  hides the wrapper but it's still invoked with `isReplaying=false`;
+  replay renders with the right entity props).
+- [`MapAssetPanel.test.tsx`](frontend/src/test/MapAssetPanel.test.tsx) — new file, 2 cases.
+- [`GlobeInspectorPanel.test.tsx`](frontend/src/test/GlobeInspectorPanel.test.tsx) — extended with
+  4 new cases (site live, site replay, asset live, asset replay) and a
+  new `vi.mock` of `AuditChainAtTime` at file scope.
+- [`MapPanels.test.tsx`](frontend/src/test/MapPanels.test.tsx) — added `vi.mock` of
+  `AuditChainAtTime` so existing panel-render tests don't need to
+  mount `ReplayProvider` for the new `useReplayParams()` call inside
+  the wrapper. **Existing 4 cases unchanged.**
+
+### Validation (post-round-3, 2026-04-27)
+
+- Frontend: **734 examples, 0 failures** (99 files; +20 from 714 baseline =
+  5 selection-sync + 7 wrapper + 2 MapSitePanel + 2 MapAssetPanel + 4
+  GlobeInspectorPanel). Round-2 added the 4 wrapper cases for
+  citation + empty + loading + error; round-3 strengthened case (a) to
+  also assert zero hook calls in live mode (the new contract).
+- TypeScript: clean.
+- ESLint: clean on touched files.
+- Brakeman: **0 security warnings** (fourth consecutive clean post-push baseline).
+- Backend: untouched; full RSpec re-run **2462 examples, 0 failures** confirmed.
+
+**Preview-browser smoke: deferred to user.** The selection-sync hook
+behavior is covered by 5 product-level unit tests; the wrapper is
+covered by 3 component tests; panel integration is covered by 8
+cases. Recommend a 30-second local check before `/gate`:
+`bin/dev` + `yarn dev`, log in, visit `/map` or `/globe`, set asOf
+in the past via the existing `ReplaySelector`, click a site → audit
+chain section appears below tasks/alerts; scrub forward → selection
+persists, audit chain re-renders with new asOf; click empty space
+or close panel → selection clears.
 
 ---
 

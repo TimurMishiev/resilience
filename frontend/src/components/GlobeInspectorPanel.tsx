@@ -17,6 +17,7 @@ import {
 // rename to SiteAlertsSection is a mechanical refactor, deliberately
 // deferred to keep this slice narrow.
 import { MapSiteAlertsSection } from './MapSiteAlertsSection'
+import AuditChainAtTime from './AuditChainAtTime'
 
 function assetTypeIcon(type: Asset['asset_type']): string {
   switch (type) {
@@ -145,6 +146,8 @@ export function GlobeInspectorPanel({
             canTriage={canTriage}
             onSelectSignal={onSelectSignal}
           />
+
+          <AuditChainAtTime entityType="Site" entityId={selectedSite.id} isReplaying={isReplaying} />
 
           <Divider />
           <div className="globe-telemetry-readings">
@@ -296,6 +299,8 @@ export function GlobeInspectorPanel({
               {isReplaying ? 'No telemetry snapshot available for this replay time.' : 'Awaiting telemetry data...'}
             </p>
           )}
+
+          <AuditChainAtTime entityType="Asset" entityId={selectedAsset.id} isReplaying={isReplaying} />
 
           <Divider />
           <div className="globe-panel-actions">

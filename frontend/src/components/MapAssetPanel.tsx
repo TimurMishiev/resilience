@@ -5,6 +5,7 @@ import { humanize } from '../utils/humanize'
 import { assetStatusIntent, batteryIntent } from '../lib/taskIntents'
 import { headingLabel, formatTimestampTime } from '../lib/formatters'
 import { MapSiteAlertsSection } from './MapSiteAlertsSection'
+import AuditChainAtTime from './AuditChainAtTime'
 
 function assetTypeIcon(type: Asset['asset_type']): string {
   switch (type) {
@@ -110,6 +111,8 @@ export function MapAssetPanel({
           {isReplaying ? 'No telemetry snapshot available for this replay time.' : 'Awaiting telemetry data…'}
         </p>
       )}
+
+      <AuditChainAtTime entityType="Asset" entityId={asset.id} isReplaying={isReplaying} />
 
       {asset.home_site_id && (
         <>

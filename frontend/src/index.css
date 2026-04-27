@@ -309,6 +309,77 @@ body {
   font-size: 13px;
 }
 
+/* ── Audit chain at time (Tranche 6-C) ─────────────────────── */
+/* Replay-only audit-event chain in inspector panels. Layout
+   parallels .timeline but adds an inline citation column. */
+
+.audit-chain-at-time {
+  margin: 8px 0 12px;
+}
+
+.audit-chain-at-time-title {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8a9ba8;
+}
+
+.audit-chain-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.audit-chain-item {
+  padding: 6px 0;
+  border-bottom: 1px solid #2f363f;
+}
+
+.audit-chain-item:last-child {
+  border-bottom: none;
+}
+
+.audit-chain-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 3px;
+  font-size: 11px;
+}
+
+.audit-chain-citation {
+  margin-left: auto;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: rgba(72, 175, 240, 0.12);
+  color: #48aff0;
+  font-family: monospace;
+  font-size: 10px;
+  cursor: help;
+}
+
+.audit-chain-body {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.audit-chain-label {
+  text-transform: capitalize;
+}
+
+.audit-chain-changed {
+  font-size: 11px;
+  font-family: monospace;
+}
+
+.audit-chain-empty {
+  margin: 0;
+  font-size: 12px;
+}
+
 .debrief-timeline-button {
   width: 100%;
   padding: 0;

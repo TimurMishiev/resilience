@@ -33,6 +33,16 @@ vi.mock('../components/MapSignalAlertsSection', () => ({
   ),
 }))
 
+// Tranche 6-C: panels render <AuditChainAtTime> which calls
+// useReplayParams() → useReplay() unconditionally. Mocking the wrapper
+// keeps these existing panel tests free of ReplayProvider scaffolding;
+// the wrapper's own contract is covered by AuditChainAtTime.test.tsx,
+// and panel-level integration is covered by MapSitePanel.test.tsx /
+// MapAssetPanel.test.tsx.
+vi.mock('../components/AuditChainAtTime', () => ({
+  default: () => null,
+}))
+
 const baseSite: Site = {
   id: 'site-1',
   name: 'Site Alpha',

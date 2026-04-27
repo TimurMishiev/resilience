@@ -43,14 +43,18 @@ export function useEntitySelectionSync(options: EntitySelectionSyncOptions): Ent
   const {
     source, signals, signalsConnected, signalError,
     sites, assets, sitesLoaded, assetsLoaded,
-    isReplaying, asOf,
+    isReplaying,
+    // `asOf` is still part of the input contract (callers pass it
+    // alongside isReplaying) but no longer needed inside the hook
+    // after Tranche 6-C deleted the replay-reset effect. Kept on the
+    // options type to preserve the call-site contract; intentionally
+    // not destructured here to avoid an unused binding.
   } = options
 
   const location = useLocation()
   const navigate = useNavigate()
 
   const urlSelectionAppliedRef      = useRef(false)
-  const replayResetReadyRef         = useRef(false)
   const nextRouteWriteTokenRef      = useRef(0)
   const pendingRouteWriteTokensRef  = useRef<Set<number>>(new Set())
 
@@ -125,17 +129,15 @@ export function useEntitySelectionSync(options: EntitySelectionSyncOptions): Ent
   const updateSelectionRouteRef = useRef(updateSelectionRoute)
   useEffect(() => { updateSelectionRouteRef.current = updateSelectionRoute }, [updateSelectionRoute])
 
-  // ── Replay reset ────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!replayResetReadyRef.current) { replayResetReadyRef.current = true; return }
-    /* eslint-disable react-hooks/set-state-in-effect -- Replay timestamp changes must synchronously clear selection */
-    setSelectedSiteId(null)
-    setSelectedAssetId(null)
-    setSelectedSignalId(null)
-    /* eslint-enable react-hooks/set-state-in-effect */
-    updateSelectionRouteRef.current({ siteId: null, assetId: null, signalId: null })
-  }, [asOf])
-
+  // Replay-reset effect deleted in Tranche 6-C. The cinematic-replay
+  // contract requires selection to persist across asOf changes while
+  // replaying (and across replay-exit when the entity exists in live
+  // data). The three remaining clear paths fully cover the contract:
+  //   1. Explicit deselect — onSiteClick(null) / panel close.
+  //   2. Route/entity switch — URL change re-runs the deep-link effect.
+  //   3. Authoritative miss — the stale-selection effect below clears
+  //      when the selected id is absent from the canonical asOf dataset
+  //      (covers soft-deleted/archived as a hard miss).
   useEffect(() => { urlSelectionAppliedRef.current = false }, [location.search])
 
   // ── Selection callbacks ─────────────────────────────────────────────────────

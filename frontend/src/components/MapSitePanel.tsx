@@ -3,6 +3,7 @@ import type { Site, Task, RiskLevel, SiteRiskScore } from '../api/types'
 import type { UserRole } from '../hooks/useRole'
 import { TaskRow } from './TaskRow'
 import { MapSiteAlertsSection } from './MapSiteAlertsSection'
+import AuditChainAtTime from './AuditChainAtTime'
 
 const RISK_COLOR: Record<RiskLevel, string> = {
   low:      '#23a26d',
@@ -131,6 +132,7 @@ export function MapSitePanel({
       )}
 
       <Divider />
+      <AuditChainAtTime entityType="Site" entityId={site.id} isReplaying={isReplaying} />
       <MapSiteAlertsSection
         siteId={site.id}
         referenceTimeMs={referenceTimeMs}

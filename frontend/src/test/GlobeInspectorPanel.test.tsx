@@ -34,6 +34,17 @@ vi.mock('../components/MapSiteAlertsSection', () => ({
   ),
 }))
 
+// Tranche 6-C: mock AuditChainAtTime so the panel-integration tests
+// stay narrow on "is the wrapper plumbed in correctly?" without
+// dragging in useAuditEvents / useReplayParams. The wrapper's own
+// contract is covered by AuditChainAtTime.test.tsx.
+vi.mock('../components/AuditChainAtTime', () => ({
+  default: (props: { entityType: string; entityId: string; isReplaying: boolean }) =>
+    props.isReplaying
+      ? <div data-testid={`audit-chain-at-time-${props.entityType.toLowerCase()}`} data-entity-id={props.entityId} />
+      : null,
+}))
+
 import { GlobeInspectorPanel } from '../components/GlobeInspectorPanel'
 
 const baseProps = {
@@ -282,6 +293,56 @@ describe('GlobeInspectorPanel', () => {
     )
 
     expect(screen.queryByTestId('mock-map-site-alerts')).toBeNull()
+  })
+
+  // Tranche 6-C: AuditChainAtTime appears in the site and asset
+  // branches during replay; structurally hidden in live.
+  it('does not render AuditChainAtTime on the site branch in live mode', () => {
+    render(
+      <GlobeInspectorPanel
+        {...baseProps}
+        selectedSite={site}
+        isReplaying={false}
+      />,
+    )
+    expect(screen.queryByTestId('audit-chain-at-time-site')).not.toBeInTheDocument()
+  })
+
+  it('renders AuditChainAtTime on the site branch during replay with entityType=Site', () => {
+    render(
+      <GlobeInspectorPanel
+        {...baseProps}
+        selectedSite={site}
+        isReplaying={true}
+      />,
+    )
+    const node = screen.getByTestId('audit-chain-at-time-site')
+    expect(node.getAttribute('data-entity-id')).toBe('site-1')
+  })
+
+  it('does not render AuditChainAtTime on the asset branch in live mode', () => {
+    render(
+      <GlobeInspectorPanel
+        {...baseProps}
+        selectedAsset={asset}
+        selectedLiveReading={reading}
+        isReplaying={false}
+      />,
+    )
+    expect(screen.queryByTestId('audit-chain-at-time-asset')).not.toBeInTheDocument()
+  })
+
+  it('renders AuditChainAtTime on the asset branch during replay with entityType=Asset', () => {
+    render(
+      <GlobeInspectorPanel
+        {...baseProps}
+        selectedAsset={asset}
+        selectedLiveReading={reading}
+        isReplaying={true}
+      />,
+    )
+    const node = screen.getByTestId('audit-chain-at-time-asset')
+    expect(node.getAttribute('data-entity-id')).toBe('asset-1')
   })
 
   it('shows replay vessel context notice for vessel-position signals', () => {
