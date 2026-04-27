@@ -221,6 +221,7 @@ function defaultInput(
     evidenceSiteIds: [],
     replayPulses: [],
     showReplayPulses: false,
+    confidenceHaloSummaries: [],
     onSiteClick: vi.fn(),
     onAssetClick: vi.fn(),
     onSignalClick: vi.fn(),
