@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-26 (Tranche 6-A shipped, 6-B is the active slice)
+Last updated: 2026-04-26 (Tranche 6-A.1 Brakeman-cleanup shipped, 6-B is the active slice)
 
 ## Current Phase
 
@@ -113,6 +113,48 @@ correctness contract.
 
 After Codex `/gate` clears + commit + push, continue to **6-C**
 (audit-citation popover + selection-persists-across-asOf).
+
+---
+
+### Tranche 6-A.1 — Brakeman cleanup (chain_backfiller) ✅ shipped in (this commit) (2026-04-26)
+
+Five consecutive post-push audits flagged a SQL-injection finding in
+[`backend/app/services/audit/chain_backfiller.rb:45`](backend/app/services/audit/chain_backfiller.rb#L45)
+(introduced in `86adeb8` on 2026-04-25). The user's call: refactor,
+not suppress, before any 6-B work begins. Slice scope was deliberately
+tiny — gate hygiene, not feature work.
+
+**What changed (1 file, +12/−14):**
+- Removed the `where:` string kwarg from `Audit::ChainBackfiller.run!`.
+  It was unused in production and in specs; every caller passed the
+  default. The kwarg was the surface Brakeman flagged because the SQL
+  body interpolated it directly: `WHERE #{where}`.
+- Replaced the raw `connection.select_values` discovery query with
+  `AuditEvent.unscoped.where(row_hash: nil).distinct.order(:organization_id).pluck(:organization_id)`.
+  The COALESCE/`__null__`-marker dance is gone — `pluck` returns
+  Ruby `nil` for null org_ids directly, so the loop body simplifies.
+- Updated the docstring to explain why the kwarg was removed and to
+  set the contract for any future narrowing (must take a relation
+  or structured filter, never a SQL fragment).
+- The chain-walk loop body is unchanged — same ordering, same
+  `AuditEvent.unscoped.where(id:).update_all(...)` write path, same
+  idempotency check on `row.row_hash.present?`.
+
+**Validation:**
+- `bundle exec brakeman --no-pager --exit-on-warn` — **0 security
+  warnings** (down from 1). Gate is green.
+- `spec/services/audit/chain_backfiller_spec.rb` — **6 examples, 0
+  failures** (no spec changes needed; existing coverage exercises the
+  default path which is now the only path).
+- Full backend RSpec — **2462 examples, 0 failures** in 4m14s.
+- Frontend: untouched, no rerun needed.
+
+**Why refactor over suppress:** the `where:` kwarg added an attack
+surface for zero benefit (no caller ever used it). A fingerprinted
+suppression would have closed the gate but left the foot-gun in
+place. The refactor closes the gate AND removes the foot-gun. If a
+narrowing kwarg is ever genuinely needed, the doc now says how to
+add it safely (relation/Hash, not SQL string).
 
 ---
 

@@ -29,25 +29,32 @@ module Audit
     # Returns a small report:
     #   { chains_processed: N, rows_hashed: M, rows_skipped: K }
     #
-    # The optional :where parameter lets callers narrow the backfill
-    # scope (e.g. for tests that seed a known org). Default is "every
-    # row missing a row_hash" — production-correct.
-    def run!(where: "row_hash IS NULL")
-      connection = AuditEvent.connection
+    # No public knobs by design. The backfill always covers "every row
+    # missing a row_hash" — that's the production contract and what the
+    # 20260424220002 migration calls. A previous version of this method
+    # exposed a string `where:` kwarg for narrowing; it was unused in
+    # both production and specs, and Brakeman correctly flagged the
+    # `WHERE #{where}` interpolation as a SQL-injection surface even
+    # though every caller passed the default. Removed in favour of the
+    # AR query below. If a future caller genuinely needs to narrow the
+    # backfill, add a kwarg that takes a relation or a structured
+    # filter (Hash/Arel) — never a SQL fragment.
+    def run!
       chains_processed = 0
       rows_hashed      = 0
       rows_skipped     = 0
 
       # Discover every chain that has at least one un-hashed row.
-      org_groups = connection.select_values(<<~SQL)
-        SELECT DISTINCT COALESCE(organization_id::text, '__null__')
-        FROM audit_events
-        WHERE #{where}
-        ORDER BY 1
-      SQL
+      # `unscoped` is defensive in case AuditEvent ever grows a
+      # default_scope; the backfill must see every row.
+      org_ids = AuditEvent
+        .unscoped
+        .where(row_hash: nil)
+        .distinct
+        .order(:organization_id)
+        .pluck(:organization_id)
 
-      org_groups.each do |org_marker|
-        organization_id = (org_marker == "__null__" ? nil : org_marker)
+      org_ids.each do |organization_id|
         chains_processed += 1
 
         # Within a chain, two rows can share the same prev_hash slot only
