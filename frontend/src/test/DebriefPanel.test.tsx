@@ -278,7 +278,11 @@ describe('DebriefPanel', () => {
     await user.click(await screen.findByRole('button', { name: /Enter replay from Incident event/i }))
 
     expect(replayState.setAsOf).toHaveBeenCalledWith('2026-04-17T12:00:00Z')
-    expect(screen.getByTestId('location')).toHaveTextContent('/incidents/i1')
+    // navigate() inside the async click handler triggers a re-render that lands
+    // one or more microtasks after `await user.click` resolves. waitFor flushes
+    // until the LocationProbe reflects the post-navigate path; bare assertion
+    // here flaked under full-suite scheduling pressure.
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/incidents/i1'))
   })
 
   it('resolves a task event into the site-scoped deep link at the replay timestamp', async () => {
@@ -311,7 +315,8 @@ describe('DebriefPanel', () => {
 
     expect(getTask).toHaveBeenCalledWith('t1', { as_of: '2026-04-17T11:30:00Z' })
     expect(replayState.setAsOf).toHaveBeenCalledWith('2026-04-17T11:30:00Z')
-    expect(screen.getByTestId('location')).toHaveTextContent('/sites/site-task?task=t1')
+    // See the Incident event test for the rationale on waitFor here.
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/sites/site-task?task=t1'))
   })
 
   it('resolves an asset event into the site asset drawer deep link at the replay timestamp', async () => {
@@ -344,7 +349,8 @@ describe('DebriefPanel', () => {
 
     expect(getAsset).toHaveBeenCalledWith('a1', { as_of: '2026-04-17T10:45:00Z' })
     expect(replayState.setAsOf).toHaveBeenCalledWith('2026-04-17T10:45:00Z')
-    expect(screen.getByTestId('location')).toHaveTextContent('/sites/site-asset?asset=a1')
+    // See the Incident event test for the rationale on waitFor here.
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/sites/site-asset?asset=a1'))
   })
 
   it('surfaces a danger toast when the reconstruction lookup fails', async () => {

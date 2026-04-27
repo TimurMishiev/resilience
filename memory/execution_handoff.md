@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-27 (Tranche 6-D-globe shipped in `5571532`; DebriefPanel.test.tsx cleanup is the active slice before 6-E)
+Last updated: 2026-04-27 (DebriefPanel.test.tsx flake cleanup implementation complete on dirty tree; 30/30 full-suite reruns green; awaiting Codex /gate before commit)
 
 ## Current Phase
 
@@ -68,6 +68,65 @@ do not widen into DebriefPanel feature work.
   one and the change is local to this slice's blast radius.
 - No mass `vi.useFakeTimers` migration or test-shape refactor —
   this is a flake fix, not a test-suite cleanup pass.
+
+### Implementation status (dirty tree, pre-commit)
+
+**Reproduction:** single-file 20× runs all passed; full-suite 5×
+runs reproduced 1 failure (20% rate, matches Codex's 2-of-4
+observation across 6-B/6-C). Two distinct tests surfaced across
+runs: "enters replay and navigates directly for incident events"
++ "resolves a task event into the site-scoped deep link" in one
+run; "resolves an asset event into the site asset drawer" in
+another.
+
+**Root cause:** real-timer race after `await user.click(...)`.
+The component's `handleReconstruct` is async
+([DebriefPanel.tsx:95-125](frontend/src/components/DebriefPanel.tsx#L95-L125)) —
+`await resolveReconstructionTarget(event)` → stale-token guard →
+`setAsOf(...)` → `navigate(target)`. `user.click` resolves once
+the click event dispatches, not when the async chain finishes.
+After the await, microtasks have typically advanced past
+`setAsOf` (so `expect(setAsOf).toHaveBeenCalledWith(...)` passes),
+but `navigate`'s React re-render of the `MemoryRouter`-backed
+`LocationProbe` can land one tick later. Single-file runs flush
+consistently; full-suite parallel-file scheduling pressure makes
+the boundary variable. The other location-after-click assertions
+in the same file already use `waitFor`
+([line 530-534](frontend/src/test/DebriefPanel.test.tsx#L530-L534))
+or assert no-navigation (no race) — only the three Incident /
+Task / Asset success-path tests had the bare `expect(location)`
+shape.
+
+**Fix:** wrap the three bare location assertions in
+`await waitFor(() => expect(...).toHaveTextContent(...))`. Three
+matched comments explain the rationale at the call sites.
+
+**Why not vi.resetAllMocks / mock-queue cleanup:** I considered
+queue leakage (`vi.clearAllMocks` doesn't drain
+`mockResolvedValueOnce` queues) but ruled it out — the `getTask`
+and `getAsset` assertions ALSO passed in failing runs, which
+means the async chain reached its API calls correctly. Only the
+post-navigate render landing was racing the synchronous assert.
+
+**Files shipped on the dirty tree:**
+- [DebriefPanel.test.tsx](frontend/src/test/DebriefPanel.test.tsx)
+  — three `expect(screen.getByTestId('location')).toHaveTextContent(...)`
+  bare assertions wrapped in `await waitFor(...)` (Incident, Task,
+  Asset tests). Three short rationale comments inline. No other
+  changes; no new tests; no component change.
+
+**Validation at implementation-complete (dirty tree, pre-commit):**
+- **Flake-fix proof: 30 consecutive full-suite reruns clean post-fix
+  (30/30, 766/766 each).** Pre-fix rate was 1/5 in this same
+  environment. By the rule of three, 30 clean runs put the post-fix
+  rate at < ~10% with 95% confidence — strong evidence the rate
+  dropped, but does not bound it tightly below that.
+- TypeScript clean; ESLint clean (touched file).
+- Brakeman 0 (preserves 6-A.1 baseline; 7th consecutive — backend
+  untouched in this slice).
+- Backend `2471/0` (untouched; baseline preserved).
+
+**Awaiting Codex `/gate` before commit per gate-hygiene rule.**
 
 ### Outstanding watch-items to handle alongside this slice
 
