@@ -87,7 +87,7 @@ policy + schema migration.
 weaker than the implementing instance):** all three readings are
 rejected. Building any of them against an unsourced placeholder
 violates [execution_context.md:41](memory/execution_context.md)
-verbatim — *"Do not do speculative abstraction work."* The arc
+verbatim — *"Do not build speculative abstractions."* The arc
 already has narrative closure: 6-A/6-B (what happened) → 6-C
 (audit-chain citations: who did it, citably) → 6-D-map/globe
 (what the system knew with what confidence). A copy-link button
@@ -1146,11 +1146,29 @@ Why this order (preserved as locked 2026-04-25; status updated):
 
 ## Current Repo State
 
-- Latest committed tip: `563385c` — Tranche 5A (load/runtime
-  artifact + dev-only Rack::Attack perf bypass). Pushed to
-  `origin/main`.
-- Prior commits in the Hardening-to-95 arc (most-recent first):
-  - `55e5a84` — handoff rotation after the 4A.1 ship
+- Latest committed tip: `79b3829` — audit-trail disposition (no
+  code; defers Tranche 6-E and reconciles the eleven-item plan to
+  current repo truth). Last code-bearing commit: `563385c` —
+  Tranche 5A (load/runtime artifact + dev-only Rack::Attack perf
+  bypass). Note: `79b3829` is a meta-commit on this takeover file,
+  not a tranche; it is intentionally not listed in the
+  Hardening-to-95 arc enumeration below.
+- Prior commits in the Hardening-to-95 arc (most-recent first;
+  code-bearing tranches and their rotations):
+  - `bd63005` — DebriefPanel.test.tsx flake cleanup (gate hygiene
+    between 6-D-globe and the deferred 6-E)
+  - `5571532` — Tranche 6-D-globe (Cesium confidence halos)
+  - `6629454` — Tranche 6-D-map (MapLibre confidence halos +
+    unpaginated `active_site_confidence` backend endpoint)
+  - `8d64d40` — Tranche 6-C (replay selection persistence +
+    audit-chain citations)
+  - `6c57d0f` — Tranche 6-B (replay event-pulse layer on `/globe`)
+  - `2e0a0ca` — Tranche 6-A.1 (Brakeman cleanup, chain_backfiller)
+  - `8947cd3` — Tranche 6-A (replay event-pulse layer on `/map`)
+  - `b48a1f6` — Tranche 5B (live-model AI eval lane + cost/token
+    instrumentation)
+  - `563385c` — Tranche 5A (load/runtime artifact + dev-only
+    Rack::Attack perf bypass)
   - `72cab55` — Tranche 4A.1 (Audit::EventWriter deadlock retry —
     Codex P1 fix-forward on the post-commit gate for 3d4aadb)
   - `3d4aadb` — Tranche 4A (site honeytokens)
@@ -1167,10 +1185,17 @@ Why this order (preserved as locked 2026-04-25; status updated):
   - `97cba16` — Tranche C (verifier + admin endpoint + job)
   - `86adeb8` — Tranche B (backfill + NOT NULL + DB-level triggers)
   - `d422076` — Tranche A (schema + ChainHasher + EventWriter)
-- Branch state: `main` pushed at `563385c`.
-- Working tree: clean as of the handoff rotation; Tranche 5B
-  work has not yet started in code.
-- Test state at `563385c`: 2,441 backend specs / 0 failures.
+- Branch state: local `main` is ahead of `origin/main` by the
+  Hardening-to-95 Tranche 6 commits + the 2026-04-27 disposition
+  + this cleanup rotation. Push is deferred pending stakeholder
+  direction on Item 8 — no rush to push a tip while the only
+  open item is stakeholder-blocked.
+- Working tree: clean as of this rotation. No active code slice;
+  Hardening-to-95 substantially complete (see "Current Phase").
+- Test state at `bd63005` (last code-bearing commit before this
+  cleanup): frontend `766/766` (102 files); backend `2471/0`;
+  tsc clean; eslint clean (touched files); Brakeman 0 (7th
+  consecutive clean baseline since 6-A.1).
 
 ## Phase 7 — Slice Plan
 
