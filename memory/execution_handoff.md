@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-27 (6-D-globe: Codex /gate round-1 COMMIT WITH NOTES; round-1 P3 closed in-place; ready to commit)
+Last updated: 2026-04-27 (Tranche 6-D-globe shipped in `5571532`; DebriefPanel.test.tsx cleanup is the active slice before 6-E)
 
 ## Current Phase
 
@@ -22,255 +22,136 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**Tranche 6-D-globe — confidence halos on active alerts during
-replay (Cesium surface).** Active slice. Cinematic-replay slice
-4b of 5 (6-A → 6-B → 6-C → 6-D-map → **6-D-globe** → 6-E).
-**Codex `/gate` round-1 verdict: COMMIT WITH NOTES; single P3
-(stale top current-slice block) closed in-place by this same
-edit. Ready to commit.** See "Implementation status" further
-down for the dirty-tree file list and validation.
+**DebriefPanel.test.tsx flake cleanup — non-feature gate-hygiene
+slice.** Active slice. Sits between cinematic-replay 6-D-globe
+(shipped in `5571532`) and 6-E (debrief artifact). Promoted to
+active because Codex observed the flake across **2 of the last
+4 `/gate` runs** (6-B and 6-C); leaving it in place would let a
+non-actionable red gate erode trust in the gate itself — same
+lesson 6-A.1 closed for Brakeman.
 
-Goal: render the same per-site confidence halos on `/globe` that
-6-D-map landed on `/map`, using the **same raw data feed** so the
-two surfaces stay in lockstep across the cinematic-replay scrub.
+Goal: identify the actual flake cause, fix narrowly, and prove
+the fix with a focused regression test. **Not** a feature slice;
+do not widen into DebriefPanel feature work.
 
-### Cross-surface contract (locked by 6-D-map — must honor)
+### Pre-build steps (lock before coding)
 
-These are the load-bearing rules. 6-D-globe must reuse them even
-though the render path differs.
-
-- **Halo target:** site.
-- **Active alert set:** `SignalRuleMatch` rows where
-  `workflow_status != 'closed'`.
-- **Multiple matches per site:** one halo per site, using the
-  **max confidence** among active matches on that site.
-- **Data source:**
-  [useActiveSiteConfidence](frontend/src/hooks/useActiveSiteConfidence.ts) —
-  raw backend feed, no surface-specific filtering. NOT
-  `useSignalRuleMatches` (paginated, completeness risk).
-- **Replay scrub bucketing:** reuse `bucketReplayAsOf` exported
-  from the same module. 5s bucket; query key and wire request
-  both use the bucketed value. Globe must NOT introduce a second
-  bucket size — the two surfaces share cache via the same key.
-- **Replay-only visibility:** live mode visually unchanged. Gate
-  the data hook on `isReplaying` at the page call site
-  (`enabled: isReplaying`, `refetchInterval: false`) — same
-  pattern as [MapPage.tsx](frontend/src/pages/MapPage.tsx).
-- **Visual contract:** confidence-driven opacity, fixed geometry,
-  single amber family (#f59f00). Globe should match the map's
-  perceived intensity at parity confidence values; do not invent a
-  new color or vary radius with confidence.
-
-### Render contract (locked 2026-04-27 after recon + pressure-test)
-
-**Primitive: `PointPrimitive` on a dedicated `PointPrimitiveCollection`.**
-Recon's first answer was `EllipseGraphics` (mirrors breach rings); it
-was the wrong precedent. Breach rings use `EllipseGraphics` because
-the ring IS the geofence (real-world geometry). The confidence halo
-is an **affordance**, not world geometry. Map uses a screen-space
-14px circle; globe parity demands the same screen-space class. 6-B's
-[useGlobeReplayPulseLayers.ts](frontend/src/hooks/globe/useGlobeReplayPulseLayers.ts)
-is the truer precedent.
-
-1. **Primitive shape.**
-   - Dedicated `PointPrimitiveCollection` registered on
-     `viewer.scene.primitives`.
-   - One halo primitive per site summary. **Do NOT mirror 6-B's
-     dual halo+core shape** — 6-D is not a pulse, single primitive
-     per site.
-   - `id: undefined` so [pickIdString](frontend/src/lib/globeEngineHelpers.ts#L339-L352)
-     filters it out and clicks pass through to sites/signals.
-2. **Visual semantics.**
-   - **`pixelSize: 22`** (screen-space). Map parity is perceptual,
-     not absolute: map's halo is 14px around a 9px site circle
-     (site + ~5px). Globe site primitives are 16px
-     ([useGlobeSiteEntities.ts:109](frontend/src/hooks/globe/useGlobeSiteEntities.ts#L109)),
-     so the same site-relative halo relationship lands at
-     ~21–22px. A 14px halo would sit under the 16px site point
-     and largely disappear.
-   - Single amber family (`#f59f00`); alpha = `0.25 + 0.55 ×
-     confidence` (mirrors map opacity ramp).
-   - **No `CallbackProperty`** — confidence is static per render,
-     no per-frame computation. Set `color`/`outlineColor` directly
-     on the primitive; reconcile on summary changes only.
-   - **No `distanceDisplayCondition`.** Verified: globe site
-     primitives at
-     [useGlobeSiteEntities.ts:104-116](frontend/src/hooks/globe/useGlobeSiteEntities.ts#L104-L116)
-     don't use one (only `scaleByDistance`). Parity-first; halo
-     follows site convention, doesn't invent a new visibility rule.
-3. **Update model.**
-   - Reconcile/add/update/prune like
-     [useGlobeSignalPrimitives.ts](frontend/src/hooks/globe/useGlobeSignalPrimitives.ts) —
-     `Map<site_id, PointPrimitive>` ref, set/update `position`,
-     `pixelSize`, `color`, `outlineColor` only when summaries
-     change. Zero per-frame cost after reconcile.
-4. **Data contract.**
-   - Reuse [useActiveSiteConfidence](frontend/src/hooks/useActiveSiteConfidence.ts)
-     raw feed + `bucketReplayAsOf` byte-for-byte.
-   - Same site-level reduction semantics established by 6-D-map
-     (server-side `site_id -> max(active confidence)`, replay
-     closed-collapse, nil-site drop).
-   - Replay-only query gating at the `GlobePage` call site:
-     `enabled: isReplaying`, `refetchInterval: false`.
-   - Layer-side missing-site drop in the new sub-hook (parity
-     with map).
-
-### File-level plan
-
-1. **New sub-hook**
-   `frontend/src/hooks/globe/useGlobeConfidenceHaloPrimitives.ts`.
-   - Inputs: `viewerRef`, `cesiumRef`, `viewerReady`, `sites`,
-     `summaries`, `isReplaying`.
-   - Owns its own `PointPrimitiveCollection` registered on
-     `viewer.scene.primitives` once `viewerReady && isReplaying`.
-   - Maintains `Map<site_id, PointPrimitive>` ref. Reconcile on
-     prop change: prune entries whose `site_id` is no longer in
-     summaries; update existing primitives' `color` /
-     `outlineColor` (alpha from confidence) and `position`; add
-     new ones with `id: undefined`. Drop summary rows whose site
-     is absent from the current `sites` dataset (surface-specific,
-     mirrors map).
-   - Cleanup: on `!isReplaying` or unmount, remove the collection
-     via `viewer.scene.primitives.remove(collection)` guarded by
-     `viewer.isDestroyed()`. Clear the primitive map.
-2. **Engine wiring**
-   [useGlobeEngine.ts](frontend/src/hooks/useGlobeEngine.ts) —
-   accept `confidenceHaloSummaries` (already a contract on the
-   map side; rename if convenient or keep parity). Call
-   `useGlobeConfidenceHaloPrimitives` alongside
-   `useGlobeReplayPulseLayers`.
-3. **Page wiring**
-   [GlobePage.tsx](frontend/src/pages/GlobePage.tsx) —
-   call `useActiveSiteConfidence(asOfParam, { enabled: isReplaying,
-   refetchInterval: false })` next to the existing data hooks
-   (insertion point at the `useAllSites` block, ~line 100).
-   Memoize `.summaries`. Thread into the engine input.
-4. **Tests**
-   `frontend/src/test/useGlobeConfidenceHaloPrimitives.test.ts` —
-   shape matches
-   [useGlobeReplayPulseLayers.test.ts](frontend/src/test/useGlobeReplayPulseLayers.test.ts)
-   but with **reconcile/update/prune** assertions instead of
-   animation assertions:
-   - `viewerReady=false` or `isReplaying=false` → no collection
-     created.
-   - First reconcile with N summaries → N primitives added with
-     `id: undefined`, expected pixel size, color/alpha keyed on
-     confidence, position from site coords.
-   - Subsequent reconcile with one site removed → that primitive
-     pruned; others untouched.
-   - Subsequent reconcile with one confidence changed → that
-     primitive's `color`/`outlineColor` updated, no add/remove.
-   - Summary referencing absent site → primitive not added.
-   - Exiting replay → collection removed (cleanup invoked).
-5. **Page-level test**
-   Optional: extend
-   [GlobePage.test.tsx](frontend/src/test/GlobePage.test.tsx) (or
-   equivalent) for live-mode `enabled: false` parity with the
-   `MapPage.test.tsx` assertions. Add only if the existing test
-   shape supports it cleanly; otherwise keep coverage at the
-   sub-hook level.
-6. **Bench**
-   Re-run [globe-benchmark.spec.ts](frontend/e2e/globe-benchmark.spec.ts)
-   if reachable in this environment (mean 10ms / p95 20ms / single
-   25ms). No budget widening. Reconcile cost is bounded — ~5–20
-   primitives, no per-frame work after reconcile.
+1. **Reproduce.** Run `npx vitest run src/test/DebriefPanel.test.tsx`
+   in a tight loop (e.g. 20×) and confirm the flake pattern. Capture
+   which assertion fails, the failure mode (timeout / wrong DOM /
+   undefined ref / etc.), and whether it's deterministic-on-reorder
+   or genuinely random. If it cannot be reproduced locally, surface
+   that and pause — Codex's environment may have a setup we lack.
+2. **Triage the cause.** Read
+   [DebriefPanel.test.tsx](frontend/src/test/DebriefPanel.test.tsx)
+   and the component it covers end-to-end. Look for the usual
+   suspects: missing `afterEach` cleanup; hoisted state singletons
+   leaking across tests (`vi.hoisted` mocks not reset); fake-timer
+   races (`vi.useFakeTimers` without restore); promise resolution
+   ordering; react-query default `staleTime` causing unintended
+   refetches; portal/teardown ordering. Cite the exact line(s).
+3. **Pick the narrowest fix that addresses the root cause.** Do
+   not pre-optimize the test or rewrite around the flake. If the
+   issue is a missing reset, add one. If the issue is a real race,
+   fix the synchronization (`waitFor` / `act`), don't paper over
+   with arbitrary `setTimeout`.
+4. **Prove the fix.** Re-run the test in the same tight loop (20–
+   50×). It should be 100% green. Add a directly-asserting
+   regression test only if the fix surfaced a behavior worth
+   pinning beyond the original assertion.
 
 ### Scope constraints (do not widen)
 
-- Cesium only; map shipped in `6629454`, do not retouch it.
-- Replay-only; live mode visually unchanged.
-- Halos at the site, not the signal.
-- **Single primitive per site** (no halo+core dual shape).
-- No `CallbackProperty`, no per-frame listener, no
-  `distanceDisplayCondition`.
-- No backend changes — the summary endpoint is already deployed
-  and the data hook already exists.
-- Don't widen into the DebriefPanel cleanup slice (separate
-  workstream) or into 6-E.
+- Test file + minimum component change to enable a clean test.
+- No DebriefPanel feature work (that's part of 6-E if anything).
+- No global test-config changes unless the fix genuinely requires
+  one and the change is local to this slice's blast radius.
+- No mass `vi.useFakeTimers` migration or test-shape refactor —
+  this is a flake fix, not a test-suite cleanup pass.
 
-### Sign-off
+### Outstanding watch-items to handle alongside this slice
 
-Plan signed off 2026-04-27. A and B accepted as-is; C revised to
-**22px** (perceptual parity with map's site-relative halo, not
-absolute pixel parity). Implementation proceeds: sub-hook →
-engine wire → page wire → tests → benchmark.
-
-### Implementation status (dirty tree, pre-commit)
-
-**Files shipped on the dirty tree:**
-
-Frontend (1 new sub-hook, 1 new test, 2 modified):
-- [useGlobeConfidenceHaloPrimitives.ts](frontend/src/hooks/globe/useGlobeConfidenceHaloPrimitives.ts)
-  — new sub-hook. Dedicated `PointPrimitiveCollection` mounted
-  only when `viewerReady && isReplaying`; teardown on replay exit
-  guarded by `viewer.isDestroyed()`. `Map<site_id,
-  PointPrimitive>` ref drives reconcile/update/prune. One halo
-  per active site (single primitive, no halo+core dual). `id:
-  undefined` → click-pick exclusion via `pickIdString`.
-  `pixelSize: 22`, `color: #f59f00` with alpha
-  `0.25 + 0.55 × confidence`, outline alpha
-  `0.40 + 0.55 × confidence`. Confidence clamped to [0, 1] before
-  emit. Drops summary rows whose `site_id` is absent from the
-  current `sites` dataset.
-- [useGlobeConfidenceHaloPrimitives.test.ts](frontend/src/test/useGlobeConfidenceHaloPrimitives.test.ts)
-  — 11 sub-hook tests: viewer-not-ready no-op, live-mode no-op,
-  N summaries → N primitives (single per site, not dual),
-  pixelSize/alpha math, missing-site drop, confidence clamp,
-  in-place update on confidence change, prune on site removal,
-  replay-exit cleanup, unmount cleanup, no double-remove when
-  viewer destroyed.
-- [useGlobeEngine.ts](frontend/src/hooks/useGlobeEngine.ts) —
-  accepts `confidenceHaloSummaries: readonly
-  ActiveSiteConfidence[]` on `GlobeEngineInput`; calls the new
-  sub-hook alongside `useGlobeReplayPulseLayers`. `isReplaying`
-  was already on the input.
-- [GlobePage.tsx](frontend/src/pages/GlobePage.tsx) — calls
-  `useActiveSiteConfidence(asOfParam, { enabled: isReplaying,
-  refetchInterval: false })` next to the existing
-  `useActiveBreachSiteIds` block. Memoizes `.summaries` and
-  threads `confidenceHaloSummaries` into the engine. Mirrors
-  `MapPage`'s replay-only contract exactly.
-
-Backend: **no changes.** The summary endpoint, policy hook, and
-route shipped in `6629454` (6-D-map). Globe consumes the same
-unpaginated feed via the same data hook + bucket helper.
-
-**Validation at implementation-complete (dirty tree, pre-commit):**
-- Frontend `766/766` (102 files; +11 from 755 baseline = 11 new
-  sub-hook tests).
-- Backend `2471/0` (untouched; baseline preserved).
-- TypeScript clean; ESLint clean (touched files); Brakeman 0
-  (6th consecutive, preserves 6-A.1 baseline).
-- Globe-benchmark not re-run in this environment (Playwright
-  setup blockers noted in 6-D-map gate). Reconcile cost is
-  bounded — ~5–20 primitives, single primitive per site, no
-  per-frame work after reconcile, no `CallbackProperty`, no
-  `preRender` listener. Strictly cheaper than the 6-B pulse
-  layer that already lives within budget.
-
-**Codex `/gate` round-1 verdict: COMMIT WITH NOTES.** No P0/P1/P2.
-Single P3 was a stale top current-slice header contradicting the
-implementation block; closed in-place by this same edit. Codex's
-two false-positive notes (local RSpec blocked by `psql` rejecting
-`transaction_timeout`; globe-benchmark not independently
-re-confirmed in this gate) are environment drift, not slice
-regressions. **Ready to commit.**
-
-### Outstanding watch-items to handle alongside 6-D-globe
-
-- **DebriefPanel.test.tsx flake** (escalating: 2-of-4 Codex gates
-  observed it across 6-B/6-C). Carry-forward: open the cleanup
-  slice **before 6-E at the latest**. Don't let it drift past
-  6-D-globe without an explicit decision. Same gate-hygiene rule
-  6-A.1 closed for Brakeman: red gates with non-actionable signal
-  erode trust in the gate itself.
 - **6-C.1 follow-up watch-item:** per-cursor `getAuditEvents`
   fetch volume during replay scrub. If hot, fix is fetch-once-
   and-client-filter, not bucket. Not pre-optimized.
 
-After Codex `/gate` clears + commit + push for 6-D-globe, the next
-non-feature slice is the DebriefPanel cleanup, then **6-E**
-(one-click debrief artifact — folds in operator-debrief #2).
+After Codex `/gate` clears + commit + push, the next slice is
+**6-E** (one-click debrief artifact — folds in operator-debrief
+#2).
+
+---
+
+### Tranche 6-D-globe — confidence halos on `/globe` (Cesium) ✅ shipped in `5571532` (2026-04-27)
+
+Cinematic-replay slice 4b: globe parity for the 6-D-map confidence
+halos. Same raw data feed (`useActiveSiteConfidence` +
+`bucketReplayAsOf`), same site-level reduction
+(`site_id -> max(active confidence)` server-side), same
+replay-only contract — the visible difference is just the render
+path. Cardinality in production is ~5–20 halos.
+
+**Why a new sub-hook instead of EllipseGraphics in the existing
+breach-rings overlay:** breach rings use `EllipseGraphics`
+([useGlobeOverlays.ts:80-229](frontend/src/hooks/globe/useGlobeOverlays.ts#L80-L229))
+because the ring IS the geofence (real-world geometry). The
+confidence halo is an **affordance**, not world geometry — map
+uses a screen-space 14px circle, so globe parity demands the
+same screen-space class.
+[useGlobeReplayPulseLayers.ts](frontend/src/hooks/globe/useGlobeReplayPulseLayers.ts)
+(6-B) is the truer precedent: dedicated
+`PointPrimitiveCollection`, `id: undefined` for click-pick
+exclusion via
+[pickIdString](frontend/src/lib/globeEngineHelpers.ts#L339-L352).
+
+One Codex `/gate` round before commit. Round 1 (COMMIT WITH NOTES)
+found a single P3 — stale top current-slice header in the handoff
+contradicting the implementation block further down. Closed
+in-place by rotating the header to the round-1 dirty-tree state.
+
+**Key contract decisions locked in code + tests:**
+- **Primitive:** `PointPrimitive` on a dedicated
+  `PointPrimitiveCollection`. Single primitive per site (NOT
+  halo+core dual — affordance, not pulse). `id: undefined` so
+  `pickIdString` filters out click picks.
+- **Visual:** `pixelSize: 22` (perceptual parity: map halo is
+  site + ~5px, globe site primitives are 16px at
+  [useGlobeSiteEntities.ts:109](frontend/src/hooks/globe/useGlobeSiteEntities.ts#L109),
+  so 16+5+~1 = 22). Single amber `#f59f00` with alpha
+  `0.25 + 0.55 × confidence`; outline alpha
+  `0.40 + 0.55 × confidence`.
+- **Lifecycle:** mounted only when `viewerReady && isReplaying`;
+  teardown on replay exit guarded by `viewer.isDestroyed()`.
+  Reconcile/update/prune via `Map<site_id, PointPrimitive>` ref.
+  Confidence clamped to [0, 1] before emit.
+- **No `CallbackProperty`, no `preRender` listener, no
+  `distanceDisplayCondition`** — confidence is static per
+  render; verified globe site primitives at
+  [useGlobeSiteEntities.ts:104-116](frontend/src/hooks/globe/useGlobeSiteEntities.ts#L104-L116)
+  don't use a `distanceDisplayCondition` either (parity-first).
+- **Data path:** raw `useActiveSiteConfidence` feed + 5s
+  `bucketReplayAsOf` reused byte-for-byte from 6-D-map.
+  Replay-only gate at the page call site
+  (`enabled: isReplaying`, `refetchInterval: false`). Missing-
+  site drop in the layer hook (surface-specific).
+
+**Files shipped:** new
+[`useGlobeConfidenceHaloPrimitives.ts`](frontend/src/hooks/globe/useGlobeConfidenceHaloPrimitives.ts),
+[`useGlobeConfidenceHaloPrimitives.test.ts`](frontend/src/test/useGlobeConfidenceHaloPrimitives.test.ts) (11);
+modified
+[`useGlobeEngine.ts`](frontend/src/hooks/useGlobeEngine.ts)
+(`confidenceHaloSummaries` input + sub-hook call),
+[`GlobePage.tsx`](frontend/src/pages/GlobePage.tsx)
+(`useActiveSiteConfidence` fetch + thread to engine).
+
+**Validation at ship:** frontend `766/766` (102 files; +11 from
+755 baseline = 11 new sub-hook tests); backend `2471/0`
+(untouched; baseline preserved); tsc clean; eslint clean;
+**Brakeman 0** (6th consecutive, preserves 6-A.1 baseline).
+
+**Out of scope confirmed not done:** DebriefPanel.test.tsx flake
+(now active slice); 6-E debrief artifact. Globe-benchmark not
+re-run in this environment (Playwright setup blocker noted in
+6-D-map gate); per-frame cost is zero by construction.
 
 ---
 
