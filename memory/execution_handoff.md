@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-26
+Last updated: 2026-04-26 (Tranche 6-A dirty tree)
 
 ## Current Phase
 
@@ -22,29 +22,181 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**Tranche 6 — map/globe "wow" work.** Active slice on paper, but
-the scope is intentionally not yet narrowed. Before any code,
-the next pickup must:
+**Tranche 6-A — replay event-pulse layer on `/map` (uncommitted dirty tree, 2026-04-26).**
 
-1. Get explicit user direction on what "wow" means concretely
-   (animated chokepoint flux? live-replay scrub on the globe?
-   Cesium-side trust shading? operator hand-off cinematics?
-   something else entirely?). The handoff history shows several
-   candidate directions; pick **one** narrow visible slice with
-   clear acceptance.
-2. Re-read the locked-files list and the prior map/globe perf
-   work in [Phase 6 sections](#phase-6--closed-slice-plan-historical-context)
-   below — particularly the 6-1E.a budgets in
-   [`map_scale_bench.spec.ts`] (don't widen budgets to absorb
-   regressions; re-anchor only against real CI numbers).
-3. Confirm whether scope crosses MapPage/GlobePage shared state,
-   `useReplay`, `useChokepoints`, or `useReferenceTimeMs` — if
-   yes, treat as high-blast-radius and call that out.
+Cinematic-replay narrative for Tranche 6 locked: scrub the timeline,
+the map pulses where things happened. Five-slice sequence confirmed
+6-A → 6-B → 6-C → 6-D → 6-E. Selection-persists-across-asOf ruling
+deferred to **6-C** (do not widen here).
 
-This slice is **not autonomous-loop-eligible** until scoped —
-map/globe surfaces touch shared frontend state, replay
-semantics, and operator-trust rendering, which the current
-loop's stop conditions explicitly call out.
+Slice 6-A scope (per user, do not widen):
+
+- `/map` only — globe pulse layer is 6-B
+- replay-only behaviour; live mode visually unchanged
+- high-signal audit event types only:
+  `site_flagged`, `incident.opened`, `incident_transitioned`,
+  `task.transitioned`, `prosecution_started`
+- ±5min window around the cursor (`PULSE_WINDOW_MS`)
+- bounded pulse count (`MAX_PULSES = 50`, sorted by intensity)
+- toggle default ON in replay, hidden entirely in live
+- no premature shared abstraction — extract only when 6-B makes
+  duplication real
+
+### What landed in the dirty tree
+
+**New files:**
+- [`frontend/src/lib/replayEventPulses.ts`](frontend/src/lib/replayEventPulses.ts)
+  — pure helpers: `HIGH_SIGNAL_PULSE_EVENT_TYPES`, `PULSE_WINDOW_MS`,
+  `MAX_PULSES`, `Pulse` type, `buildSitesById`, `resolvePulseLocation`
+  (entity_id → site coords via after/before snapshot.site_id),
+  `buildPulses` (filters + caps + intensity falloff), `PULSE_COLORS`,
+  `PULSE_LABELS`. Lat/lng coercion handles Rails decimal-as-string.
+- [`frontend/src/hooks/useReplayEventPulses.ts`](frontend/src/hooks/useReplayEventPulses.ts)
+  — react-query hook. Disabled when `!isReplaying || !asOf`. Fetches
+  `getAuditEvents({event_types, from, to, limit: 500})` keyed on
+  the **bucketed cursor** (`Math.floor(asOfMs / CURSOR_BUCKET_MS)
+  * CURSOR_BUCKET_MS`, where `CURSOR_BUCKET_MS = PULSE_WINDOW_MS / 2
+  = 2.5 min`). Window is **past-only**: `[bucketStart - PULSE_WINDOW_MS,
+  bucketStart]`. No `as_of` server param — past-only is enforced
+  client-side in `buildPulses` (`occurredMs > asOfMs` drops future
+  events). Past-only fetch shape avoids density-driven starvation of
+  the visible cursor window: the server orders `occurred_at desc` and
+  caps at limit, so a forward-extending fetch could let a dense burst
+  near the upper bound consume the row budget. `placeholderData:
+  keepPreviousData` smooths the brief refetch on bucket crossings.
+  60s `staleTime`. Returns memoised `Pulse[]`.
+- [`frontend/src/lib/mapEngineReplayPulseLayers.ts`](frontend/src/lib/mapEngineReplayPulseLayers.ts)
+  — MapLibre source/layer wiring. Two stacked `circle` layers
+  (`replay-pulse-halo` + `replay-pulse-core`) on a single GeoJSON
+  source. Halo radius interpolates with intensity AND a `breath`
+  feature-state attribute (sinusoidal, driven by the engine sub-hook
+  via rAF). Color match expression keyed on `eventType` matches the
+  legend in MapOverlayControls; both consume `PULSE_COLORS`.
+  Exports `ensureReplayPulseLayers`, `updateReplayPulseSources`,
+  `applyReplayPulseBreath`, `removeReplayPulseLayers`.
+- [`frontend/src/hooks/map/useMapReplayPulseLayers.ts`](frontend/src/hooks/map/useMapReplayPulseLayers.ts)
+  — engine sub-hook following the same pattern as
+  `useMapSignalLayers`. Mounts/unmounts layers on `showReplayPulses`,
+  updates source data on pulse changes, runs an rAF breath loop only
+  while mounted AND with pulses present. Live mode + empty windows
+  pay zero per-frame cost.
+
+**Modified files:**
+- [`frontend/src/hooks/useMapLibreEngine.ts`](frontend/src/hooks/useMapLibreEngine.ts)
+  — added `replayPulses` + `showReplayPulses` to `MapEngineInput`
+  and a `useMapReplayPulseLayers(...)` invocation after the existing
+  measurement layer. No re-ordering of other layers.
+- [`frontend/src/pages/MapPage.tsx`](frontend/src/pages/MapPage.tsx)
+  — `showReplayPulses` state (default `true`), call to
+  `useReplayEventPulses({ asOf, isReplaying, sites })`, pass
+  `replayPulses` + `showReplayPulses: isReplaying && showReplayPulses`
+  to the engine, pass to `MapOverlayControls` as `pulseCount` +
+  toggle handler.
+- [`frontend/src/components/map/MapOverlayControls.tsx`](frontend/src/components/map/MapOverlayControls.tsx)
+  — new toggle rendered inside the existing `{isReplaying && (<>...</>)}`
+  block alongside trails. Hidden in live mode by structure (not by CSS).
+  `data-testid="map-replay-pulses-toggle"` for the integration test.
+  Count badge appears only when pulses > 0.
+- [`frontend/src/index.css`](frontend/src/index.css)
+  — `.map-coverage-toggle-badge` style for the count chip.
+
+**Test coverage:**
+- New: [`frontend/src/test/replayEventPulses.test.ts`](frontend/src/test/replayEventPulses.test.ts)
+  — 13 unit tests on `buildSitesById`, `resolvePulseLocation` (Site
+  entity, Incident via after_snapshot, Task via before_snapshot
+  fallback, no site_id, cross-org), `buildPulses` (filters,
+  window bounds, intensity 1.0 at cursor / 0.0 at edge, MAX_PULSES
+  cap with proximity sort, cross-org filter), and the
+  HIGH_SIGNAL_PULSE_EVENT_TYPES contract lock.
+- New: [`frontend/src/test/useReplayEventPulses.test.tsx`](frontend/src/test/useReplayEventPulses.test.tsx)
+  — 4 hook tests: live-mode no-fetch, replay-with-null-asOf
+  no-fetch, fetch with high-signal event_types and resolved pulse
+  payload, cross-org event filtering.
+- New: [`frontend/src/test/useMapReplayPulseLayers.test.ts`](frontend/src/test/useMapReplayPulseLayers.test.ts)
+  — 5 sub-hook tests: no-op when map unloaded, remove-on-toggle-off,
+  mount + update on toggle-on, no rAF when zero pulses, rAF + breath
+  + cleanup on unmount.
+- Extended: [`frontend/src/test/MapPage.test.tsx`](frontend/src/test/MapPage.test.tsx)
+  — 2 new integration tests: toggle hidden in live mode, toggle
+  visible during replay with count badge + click forwards to engine.
+  Existing 36-test surface unchanged (mocks `useReplayEventPulses`
+  via the standard `vi.hoisted` pattern).
+
+**Validation (uncommitted, post-round-4 self-gate fixes):**
+- `npx vitest run` — **705 examples, 0 failures** (+27 from baseline 678).
+- `npx tsc -p tsconfig.app.json --noEmit` — clean.
+- `npx eslint` on all touched files — clean.
+- Backend: not touched in this slice; full RSpec re-run **2462 / 0 failures**.
+- Map perf budgets: not touched. The new layer adds at most 50
+  bounded GeoJSON features per replay tick + a constant-time
+  rAF breath loop; well below the 1k-tier 25ms p95 budget in
+  `e2e/map-scale-benchmark.spec.ts`. Bench re-anchor not needed.
+
+**Self-gate fixes applied in-place (no commit yet):**
+- **P2 refetch-storm fixed (round 3) → P2 dense-window starvation
+  fixed (round 4).** `useReplayEventPulses` now buckets `asOf` into
+  2.5-minute cursor buckets (`CURSOR_BUCKET_MS = PULSE_WINDOW_MS / 2`)
+  in the queryKey (`['replay_event_pulses', bucketCursorMs]`) and
+  fetches a **past-only** window `[bucketStart - PULSE_WINDOW_MS,
+  bucketStart]`. Round-3 widened the fetch to a forward-extending
+  60-min epoch — Codex round-4 caught a real correctness regression
+  in that shape: the audit-events controller orders `occurred_at desc`
+  and caps at `limit: 500`, so a dense burst in the forward portion
+  of the window could consume the budget and starve the visible
+  past, leaving the cursor with zero pulses. The past-only fetch
+  shape sidesteps that — the descending-order budget always
+  prioritises the most-recent past events, exactly what the cursor
+  wants. Trade: events occurring inside the current bucket aren't
+  cached until the cursor crosses to the next bucket (≤ 2.5 min of
+  replay-time = ≤ 2.5 s of real time at 1× playback). React-query
+  serves the cache for every cursor tick within a bucket;
+  `placeholderData: keepPreviousData` smooths the bucket-boundary
+  refetch.
+- **Cinematic past-only narrative formalised on the client.**
+  `buildPulses` drops events with `occurredAt > asOf` even when
+  within ±PULSE_WINDOW_MS, matching the round-1/round-2 conclusion
+  that future-relative-to-cursor events should not pulse. With the
+  round-4 past-only fetch shape, this filter is also a defence-in-
+  depth against any future server change that returns ahead-of-cursor
+  rows (it would no longer be reachable, but the contract is locked).
+  Server's `as_of` clip is no longer sent — scope is enforced via
+  org and event_type filters in the controller.
+- **`HIGH_SIGNAL_PULSE_EVENT_TYPES` spread hoisted** to module
+  scope (`EVENT_TYPES_QUERY`) so the per-render array allocation
+  is gone.
+- New tests:
+  - "drops events ahead of the cursor regardless of distance" —
+    locks past-only on the client.
+  - "does not refetch when the cursor advances within the same
+    bucket" — exercises the bucketed queryKey across three rerenders
+    in the same bucket, asserts exactly one fetch; then crosses the
+    bucket boundary and asserts a second fetch fires.
+  - "never asks the server for events newer than the cursor (past-only
+    fetch shape)" — round-4 contract: `to:` ≤ bucketed cursor,
+    guarding against the dense-window starvation Codex caught.
+
+**Preview-browser smoke: deferred to user.** Rails was not running
+locally during the slice; the unit + sub-hook + MapPage integration
+tests collectively prove (a) hook behavior on/off replay,
+(b) sub-hook mount/unmount + rAF lifecycle, and (c) toggle
+visibility + click-forwarding through the engine. Recommend a
+30-second local check before /gate: `bin/dev` + `yarn dev`, log in,
+visit `/map`, click an asOf in the past via the existing
+`ReplaySelector`, scrub to a moment with seeded incidents/task
+transitions, observe pulses + breathing halo + count badge.
+
+### What comes after 6-A
+
+After Codex `/gate` clears + commit + push:
+- **6-B** Same pulse layer on `/globe` (Cesium PointPrimitiveCollection
+  with shader-side breath attribute). Likely candidate for the first
+  shared abstraction — if `useReplayEventPulses` is reusable across
+  both pages, hoist it to a shared hook; otherwise keep duplication
+  small.
+- **6-C** Audit-citation popover on entity selection during replay
+  (relax the asOf-clears-selection rule in `useEntitySelectionSync`).
+- **6-D** Confidence halos on active alerts during replay.
+- **6-E** One-click debrief artifact (folds in operator-debrief #2).
 
 ---
 

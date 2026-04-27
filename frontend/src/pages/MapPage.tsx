@@ -55,6 +55,7 @@ import {
 import { MapOverlayControls } from '../components/map/MapOverlayControls'
 import { MapSelectionPanels } from '../components/map/MapSelectionPanels'
 import { MapInlineDebriefPanel } from '../components/map/MapInlineDebriefPanel'
+import { useReplayEventPulses } from '../hooks/useReplayEventPulses'
 
 export default function MapPage() {
   const location    = useLocation()
@@ -73,6 +74,9 @@ export default function MapPage() {
   const [showHeatmap,     setShowHeatmap]     = useState(false)
   const [showChokepoints, setShowChokepoints] = useState(true)
   const [showTrails,      setShowTrails]      = useState(true)
+  // Tranche 6-A: replay event pulses default ON. Effective only while
+  // isReplaying — live mode does not render the layer regardless.
+  const [showReplayPulses, setShowReplayPulses] = useState(true)
   const [trailWindowMinutes, setTrailWindowMinutes] = useState(30)
   const [mapStyle,        setMapStyle]        = useState<MapStyleKey>('tactical')
   const [annotationMode, setAnnotationMode] = useState(false)
@@ -245,6 +249,10 @@ export default function MapPage() {
     assets, tasks: allTasks, sites, readings, allowHistoricalTelemetry: isReplaying,
   }), [assets, allTasks, isReplaying, sites, readings])
 
+  // Tranche 6-A: replay event pulses. Hook is internally disabled when
+  // !isReplaying || !asOf, so live mode and pre-cursor states return [].
+  const replayPulses = useReplayEventPulses({ asOf, isReplaying, sites })
+
   // ---------------------------------------------------------------------------
   // MapLibre engine
   // ---------------------------------------------------------------------------
@@ -293,6 +301,8 @@ export default function MapPage() {
     measurementPoints,
     evidenceSignalIds,
     evidenceSiteIds,
+    replayPulses,
+    showReplayPulses: isReplaying && showReplayPulses,
     onSiteClick,
     onAssetClick,
     onSignalClick,
@@ -738,6 +748,8 @@ export default function MapPage() {
         trailWindowMinutes={trailWindowMinutes}
         showSignals={showSignals}
         showHeatmap={showHeatmap}
+        showReplayPulses={showReplayPulses}
+        pulseCount={replayPulses.length}
         annotationMode={annotationMode}
         annotations={annotations}
         rangeRingMode={rangeRingMode}
@@ -770,6 +782,7 @@ export default function MapPage() {
         onTrailWindowChange={setTrailWindowMinutes}
         onToggleSignals={() => setShowSignals(v => !v)}
         onToggleHeatmap={() => setShowHeatmap(v => !v)}
+        onToggleReplayPulses={() => setShowReplayPulses(v => !v)}
         onToggleAnnotations={toggleAnnotations}
         onClearAnnotations={clearAnnotations}
         onUpdateAnnotationLabel={updateAnnotationLabel}

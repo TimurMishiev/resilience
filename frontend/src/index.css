@@ -1883,6 +1883,17 @@ body {
   background: currentColor;
 }
 
+.map-coverage-toggle-badge {
+  margin-left: 4px;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: rgba(61, 220, 132, 0.18);
+  color: #d9f7e8;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
 .map-coverage-legend {
   position: absolute;
   top: 132px;

@@ -219,6 +219,8 @@ function defaultInput(
     measurementPoints: [],
     evidenceSignalIds: [],
     evidenceSiteIds: [],
+    replayPulses: [],
+    showReplayPulses: false,
     onSiteClick: vi.fn(),
     onAssetClick: vi.fn(),
     onSignalClick: vi.fn(),

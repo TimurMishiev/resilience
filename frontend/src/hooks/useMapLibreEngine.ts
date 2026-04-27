@@ -43,6 +43,8 @@ import { useMapBearingLineLayers } from './map/useMapBearingLineLayers'
 import { useMapAnnotationLayers } from './map/useMapAnnotationLayers'
 import { useMapMeasurementLayers } from './map/useMapMeasurementLayers'
 import { useMapSignalLayers } from './map/useMapSignalLayers'
+import { useMapReplayPulseLayers } from './map/useMapReplayPulseLayers'
+import type { Pulse } from '../lib/replayEventPulses'
 import { expandMapSignalCluster } from '../lib/mapSignalClustering'
 import { MAP_STYLE_CONFIGS, type MapStyleKey } from '../lib/mapEngineStyles'
 export { MAP_STYLE_CONFIGS, type MapStyleKey }
@@ -115,6 +117,10 @@ export interface MapEngineInput {
   // Evidence-linked entity IDs (from signal rule matches)
   evidenceSignalIds: string[]
   evidenceSiteIds:   string[]
+
+  // Replay event pulses (Tranche 6-A) — empty array in live mode
+  replayPulses:     readonly Pulse[]
+  showReplayPulses: boolean
 
   // Selection callbacks — hook fires, page owns state
   onSiteClick:   (siteId: string | null) => void
@@ -191,6 +197,8 @@ export function useMapLibreEngine({
   measurementPoints,
   evidenceSignalIds,
   evidenceSiteIds,
+  replayPulses,
+  showReplayPulses,
   onSiteClick,
   onAssetClick,
   onSignalClick,
@@ -363,6 +371,15 @@ export function useMapLibreEngine({
     mapRef,
     mapLoaded,
     points: measurementPoints,
+  })
+
+  // Replay event pulses (Tranche 6-A). Mounts only when showReplayPulses is
+  // true; live mode + empty windows pay zero per-frame cost.
+  useMapReplayPulseLayers({
+    mapRef,
+    mapLoaded,
+    pulses: replayPulses,
+    showReplayPulses,
   })
 
   // ---------------------------------------------------------------------------

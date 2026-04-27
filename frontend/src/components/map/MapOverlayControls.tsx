@@ -25,6 +25,8 @@ interface MapOverlayControlsProps {
   trailWindowMinutes: number
   showSignals: boolean
   showHeatmap: boolean
+  showReplayPulses: boolean
+  pulseCount: number
   annotationMode: boolean
   annotations: MapAnnotation[]
   rangeRingMode: boolean
@@ -57,6 +59,7 @@ interface MapOverlayControlsProps {
   onTrailWindowChange: (minutes: number) => void
   onToggleSignals: () => void
   onToggleHeatmap: () => void
+  onToggleReplayPulses: () => void
   onToggleAnnotations: () => void
   onClearAnnotations: () => void
   onUpdateAnnotationLabel: (annotationId: string, label: string) => void
@@ -93,6 +96,8 @@ export function MapOverlayControls({
   trailWindowMinutes,
   showSignals,
   showHeatmap,
+  showReplayPulses,
+  pulseCount,
   annotationMode,
   annotations,
   rangeRingMode,
@@ -125,6 +130,7 @@ export function MapOverlayControls({
   onTrailWindowChange,
   onToggleSignals,
   onToggleHeatmap,
+  onToggleReplayPulses,
   onToggleAnnotations,
   onClearAnnotations,
   onUpdateAnnotationLabel,
@@ -314,6 +320,20 @@ export function MapOverlayControls({
               <option value={120}>120 min</option>
             </select>
           )}
+          <div
+            className={`map-coverage-toggle${showReplayPulses ? ' map-coverage-toggle--active' : ''}`}
+            onClick={onToggleReplayPulses}
+            role="button"
+            aria-label="Toggle replay event pulses"
+            data-testid="map-replay-pulses-toggle"
+            title="Pulse events near the replay cursor: site flags, incidents, task transitions, prosecutions"
+          >
+            <span className="map-coverage-toggle-dot" />
+            PULSES {showReplayPulses ? 'ON' : 'OFF'}
+            {showReplayPulses && pulseCount > 0 && (
+              <span className="map-coverage-toggle-badge">{pulseCount}</span>
+            )}
+          </div>
         </>
       )}
 
