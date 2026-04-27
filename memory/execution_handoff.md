@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-27 (Tranche 6-C shipped, 6-D is the active slice)
+Last updated: 2026-04-27 (6-D-map: Codex /gate round-2 COMMIT WITH NOTES; round-2 P3 closed in-place; ready to commit)
 
 ## Current Phase
 
@@ -22,65 +22,245 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**Tranche 6-D — confidence halos on active alerts during replay.**
-Active slice. Cinematic-replay slice 4 of 5 (6-A → 6-B → 6-C → **6-D** → 6-E).
-Awaiting recon + locked-plan handoff edit before code.
+**Tranche 6-D-map — confidence halos on active alerts during
+replay (MapLibre surface only).** Active slice. Cinematic-replay
+slice 4a of 5 (6-A → 6-B → 6-C → **6-D-map** → 6-D-globe → 6-E).
 
-Goal: during replay, render a visible confidence halo on alerts
-(`SignalRuleMatch` records) so an operator scrubbing the timeline
-can see "how confident the system was about this alert at this
-moment" without opening an inspector panel. Confidence is already
-on the model (`SignalRuleMatch.confidence`, 0.0–1.0); 6-D is the
-visual surface for it.
+### Why split
 
-### Pre-build steps (lock before coding)
+Recon (2026-04-27) confirmed the data semantics are shared but the
+render paths diverge materially:
 
-1. **Recon what already renders alert confidence.** Likely none —
-   the existing rule-fire visuals on map/globe key on alert
-   workflow_status, not confidence. Confirm by reading
-   `useMapSignalLayers`, `useGlobeSignalPrimitives`, and any
-   alert-related layer modules.
-2. **Locate the alert data flow at asOf.** Replay-aware queries for
-   `SignalRuleMatch` already exist (`useSignalRuleMatches`,
-   `useActiveBreachSiteIds`). Confirm they pass `as_of` and return
-   the records that should halo.
-3. **Decide on rendering surface(s).** Halo on the alert's signal
-   primitive? On the alert's site marker? Both? The 6-A pulse layer
-   is at the audit-event source (where it happened); 6-D halos
-   should be at the alert subject (the signal/site the rule fired
-   for). Likely shape: per-alert overlay layer that draws a
-   confidence-scaled ring around the matched signal primitive on
-   both `/map` and `/globe`.
-4. **Color/scale mapping.** Lock the visual: e.g. ring radius
-   ∝ confidence², color ramp red→amber→green for
-   low→medium→high confidence, replay-only.
-5. **Performance budget.** Halos render at most one per
-   `SignalRuleMatch`. Bench-budget check on the existing globe-
-   benchmark + map-scale-bench specs (don't widen budgets;
-   re-anchor only against real CI numbers).
+- **MapLibre** surface = GeoJSON source + `circle`/`fill` layer
+  with paint expressions keyed on `confidence`
+  ([useMapOverlays.ts:111-167](frontend/src/hooks/map/useMapOverlays.ts#L111-L167)).
+  Test surface: paint-expression assertions + source-feature shape.
+- **Cesium** surface = `EllipseGraphics` entity + `CallbackProperty`
+  for color/alpha, lifecycle managed via entity add/remove
+  ([useGlobeOverlays.ts:64-86](frontend/src/hooks/globe/useGlobeOverlays.ts#L64-L86),
+  [globeEngineHelpers.ts:170-182](frontend/src/lib/globeEngineHelpers.ts#L170-L182)).
+  Test surface: entity-graph assertions + callback-property math.
+
+Combining would mix two rendering mechanics, two test idioms, and
+two lifecycle stories in one diff. Splitting mirrors 6-A → 6-B,
+keeps each tranche reviewable, and lets 6-D-globe inherit the
+proven map shape.
+
+### Cross-surface contract (locked — 6-D-globe must honor)
+
+These rules are the canonical site-halo reduction. 6-D-map establishes
+them; 6-D-globe must reuse them even though the render path differs.
+
+- **Halo target:** site (matches existing breach-ring affordance,
+  not the signal evidence).
+- **Active alert set:** all `SignalRuleMatch` rows where
+  `workflow_status != 'closed'`.
+- **Multiple matches per site:** render **one halo per site**,
+  using the **max confidence** among active matches on that site.
+  Reduction key: `site_id -> max(active match confidence)`.
+- **Drop nil site_ids** from the summary.
+- **Data source:** **NEW unpaginated backend summary endpoint**,
+  parallel to `active_breach_sites`. NOT `useSignalRuleMatches`
+  (paginates both live and replay — see
+  [signal_rule_matches_controller.rb:34,44](backend/app/controllers/api/signal_rule_matches_controller.rb#L34-L44)
+  — page caps could silently omit active sites; same completeness
+  bug class `active_breach_sites` was carved out to avoid).
+- **Replay-aware:** `as_of` plumbing reuses the
+  `Replay::StateSerializer.match_states` pattern already in
+  `active_breach_sites`. No new replay machinery.
+- **Replay-only visibility:** live mode visually unchanged.
+
+### 6-D-map plan (active slice)
+
+1. **Backend summary endpoint** — add
+   `GET /api/signal_rule_matches/active_site_confidence` on
+   `Api::SignalRuleMatchesController`, parallel to
+   `active_breach_sites`. Unpaginated. Response shape:
+   `{ summaries: [{ site_id, confidence }, ...] }`.
+   - Live: `policy_scope(SignalRuleMatch).where.not(site_id: nil).where.not(workflow_status: :closed)`
+     grouped by `site_id`, `MAX(confidence)` per site.
+   - Replay (`as_of` present): clip to `fired_at <= as_of`,
+     run `Replay::StateSerializer.match_states`, exclude rows
+     whose replay-state `workflow_status == 'closed'`, then
+     reduce `site_id -> max(confidence)` and drop nil site_ids.
+   - **Auth surface (explicit):**
+     - Route: collection `get :active_site_confidence` in
+       [config/routes.rb](backend/config/routes.rb), parallel to
+       `active_breach_sites`.
+     - Controller: `authorize SignalRuleMatch, :active_site_confidence?`
+       and `verify_policy_scoped` (extend the existing `only:` list).
+     - Policy: add `active_site_confidence?` in
+       `SignalRuleMatchPolicy`, mirroring `active_breach_sites?`.
+     - Policy spec: extend
+       [signal_rule_match_policy_spec.rb](backend/spec/policies/signal_rule_match_policy_spec.rb).
+     - Request spec: extend
+       [signal_rule_matches_spec.rb](backend/spec/requests/api/signal_rule_matches_spec.rb)
+       (live group-by, replay closed-collapse, nil-site filter,
+       unpaginated response shape). NOT a new spec file.
+2. **Frontend data hook** — add
+   `frontend/src/hooks/useActiveSiteConfidence.ts` calling the new
+   endpoint with `as_of`. Returns the **raw backend shape**:
+   `Array<{ site_id: string; confidence: number }>`. Do NOT
+   filter missing sites here — that is surface-specific and
+   6-D-globe must reuse the same raw feed. Hook tests cover
+   query enable/replay-param plumbing only.
+3. **MapLibre layer** — new sibling
+   `frontend/src/hooks/map/useMapConfidenceHaloLayers.ts` (do not
+   bloat [useMapOverlays.ts](frontend/src/hooks/map/useMapOverlays.ts)).
+   - **Point source + `circle` layer** (NOT polygon/fill).
+   - One feature per summary row whose `site_id` exists in the
+     current replay site dataset; **drop absent-site rows in the
+     layer hook**, not in the data hook.
+   - Layer order: **enforced via MapLibre `beforeLayer` anchor**
+     (e.g. `beforeLayer: 'site-circles'`), not just by hook call
+     order. This keeps the halo visually subordinate regardless
+     of future hook ordering.
+   - **No new toggle** in 6-D-map. Replay-only and always on
+     (gate visibility on `isReplaying`).
+4. **Paint mapping** — fixed radius (~12–16px) + confidence-driven
+   opacity (e.g. `0.25 + 0.55 * confidence`); single amber family
+   (distinguishes from breach ring's red). **Do not vary both
+   radius and opacity.** Geometry stable.
+5. **Tests** — request spec extension (auth, live group-by,
+   replay closed-collapse, nil site filter, pagination-free
+   response shape); policy spec extension; Vitest on the data
+   hook (enable/replay-param plumbing); Vitest on the map layer
+   hook (features produced in replay, absent in live, dropped
+   when site missing from dataset, `beforeLayer` anchor used).
+6. **Helper module reconsidered** — backend returns the final
+   `{ site_id, confidence }` shape, so a frontend reduction helper
+   is **not** the load-bearing piece. Skip a dedicated `lib/`
+   module unless a small shared semantic (e.g. opacity ramp)
+   warrants one and 6-D-globe will reuse it byte-for-byte.
+7. **Bench-budget check** — re-anchor against current CI numbers
+   on map-scale-benchmark; don't widen budgets. Cardinality
+   ~5–20 halos in production; no focus filter needed.
 
 ### Scope constraints (do not widen)
 
-- Replay-only; live mode visually unchanged
-- Halos render on existing alert subjects (signals + sites the
-  alert references) — no new entity types
-- No new audit-events surface (this is alert-confidence visualization,
-  not audit-chain extension)
-- Don't widen into 6-E (debrief artifact)
+- MapLibre only; globe is a separate slice.
+- Replay-only; live mode visually unchanged.
+- Halos at the site, not the signal.
+- One backend endpoint addition (the summary seam) plus its tests
+  + route + policy. No other backend changes.
+- Don't widen into 6-E (debrief artifact).
 
-### Outstanding watch-items to handle alongside 6-D
+### Implementation status (dirty tree, pre-commit)
+
+User signed off on the locked plan after two pressure-test rounds:
+1. First sign-off caught the `useSignalRuleMatches` pagination
+   completeness bug — replaced frontend reduction with the
+   unpaginated backend summary endpoint.
+2. Second sign-off locked the auth surface, raw-feed contract for
+   the data hook, and explicit `beforeLayer` anchor.
+
+**Files shipped on the dirty tree:**
+
+Backend:
+- [signal_rule_match_policy.rb](backend/app/policies/signal_rule_match_policy.rb)
+  — added `active_site_confidence?` permission (mirrors
+  `active_breach_sites?`).
+- [signal_rule_matches_controller.rb](backend/app/controllers/api/signal_rule_matches_controller.rb)
+  — added `active_site_confidence` action; live branch uses
+  GROUP BY + MAX(confidence); replay branch reuses
+  `Replay::StateSerializer.match_states` to drop replay-closed
+  rows before reducing. Extended `verify_policy_scoped` only-list.
+- [config/routes.rb](backend/config/routes.rb) — collection
+  `get :active_site_confidence` next to `active_breach_sites`.
+- [signal_rule_match_policy_spec.rb](backend/spec/policies/signal_rule_match_policy_spec.rb)
+  — `be_active_site_confidence` for all three roles.
+- [signal_rule_matches_spec.rb](backend/spec/requests/api/signal_rule_matches_spec.rb)
+  — 6 new request specs: max-confidence per active site,
+  closed-collapse, nil-site drop, unpaginated envelope, 401, replay
+  closed-collapse via `Replay::StateSerializer`. Extended in place,
+  not new file.
+
+Frontend:
+- [signal_rule_matches.ts](frontend/src/api/signal_rule_matches.ts)
+  — `getActiveSiteConfidence` + `ActiveSiteConfidence` type.
+- [useActiveSiteConfidence.ts](frontend/src/hooks/useActiveSiteConfidence.ts)
+  — raw-feed data hook + exported `bucketReplayAsOf` helper.
+  Returns the backend summary shape unchanged so 6-D-globe reuses
+  it byte-for-byte. Replay scrub advances `as_of` every ~500ms;
+  the hook rounds `as_of` down to a 5s bucket and uses the
+  bucketed value in **both** the react-query key and the wire
+  request, so cache hits within a bucket genuinely skip the fetch
+  (~10× scrub-traffic reduction). Live mode (no `as_of`)
+  unaffected by the bucket.
+- [useActiveSiteConfidence.test.ts](frontend/src/test/useActiveSiteConfidence.test.ts)
+  — 9 unit tests covering: bucket floor, on-boundary preserve,
+  unparseable pass-through (3 helper tests); raw summaries
+  surfaced unchanged; bucketed `as_of` reaches the API client;
+  no refetch as cursor advances within a bucket; refetch on
+  bucket-boundary crossing; `enabled: false` issues no fetch;
+  custom `refetchInterval` honored.
+- [useMapConfidenceHaloLayers.ts](frontend/src/hooks/map/useMapConfidenceHaloLayers.ts)
+  — new sibling layer hook. Point source + `circle` layer, fixed
+  radius 14px, single amber (#f59f00), opacity ramp
+  `interpolate(linear, confidence, 0→0.25, 1→0.80)`. Layer order
+  enforced via `beforeLayer: 'site-circles'`. Drops missing-site
+  rows. Live mode renders empty FeatureCollection. Confidence is
+  clamped to [0, 1] before emit.
+- [useMapConfidenceHaloLayers.test.ts](frontend/src/test/useMapConfidenceHaloLayers.test.ts)
+  — 10 layer hook tests: mapLoaded gate, live empty source,
+  replay 1:1 features at site coords, missing-site drop, confidence
+  clamp, `beforeLayer` anchor, fallback when site-circles absent,
+  setData on rerender, exit-replay clear, paint-expression shape.
+- [useMapLibreEngine.ts](frontend/src/hooks/useMapLibreEngine.ts)
+  — accepts `confidenceHaloSummaries`, calls the new layer hook
+  alongside the other layer sub-hooks.
+- [MapPage.tsx](frontend/src/pages/MapPage.tsx) — calls
+  `useActiveSiteConfidence(asOfParam, { enabled: isReplaying,
+  refetchInterval: false })`. Replay-only contract enforced at
+  the query layer: live `/map` sessions issue zero requests for
+  the empty halo layer. Threads `confidenceHaloSummaries` into
+  the engine.
+- [MapPage.test.tsx](frontend/src/test/MapPage.test.tsx) — 2 new
+  tests: live mode → `enabled: false` on every call; replay →
+  `enabled: true` + bucketed `as_of` forwarded.
+
+**Provenance — Codex `/gate` round 1 found 2 P2, fix-forward
+closed both:**
+- P2 #1 (exact-cursor refetch every 500ms tick → ~2 req/sec on
+  the unpaginated endpoint) → bucket landed in
+  `useActiveSiteConfidence`.
+- P2 #2 (live-mode polling violated the replay-only contract) →
+  `enabled: isReplaying` landed in `MapPage`.
+
+**Validation at round-2 dirty tree (pre-commit):**
+- Frontend `755/755` (101 files; +21 from 734 baseline = 9 data
+  hook + 10 layer hook + 2 MapPage).
+- Backend `2471/0` (+9 from 2462 baseline; 1 policy + 6 request +
+  2 spec adjustments for default-confidence collisions in fixtures).
+- TypeScript clean; ESLint clean (touched files).
+- Brakeman 0 (preserves 6-A.1 baseline; 5th consecutive).
+- Bench-budget: file untouched. ~5–20 halos in production is far
+  below the 1k/10k tier thresholds; bucketing is a strict
+  reduction in backend pressure (≤1 req per 5s of scrub).
+
+**Codex `/gate` round 2 verdict: COMMIT WITH NOTES.** No P0/P1/P2.
+Single P3 was a stale handoff block contradicting the round-2 dirty
+tree; closed in-place by this same edit. Codex's two false-positive
+notes (local RSpec blocked by `psql` rejecting `transaction_timeout`
+in `db/structure.sql`; Playwright global setup stalls on `/login`)
+are environment drift, not slice regressions.
+
+**Ready to commit.**
+
+### Outstanding watch-items to handle alongside 6-D-map
 
 - **DebriefPanel.test.tsx flake** (escalating: 2-of-4 Codex gates).
-  Recommend opening a tiny cleanup slice (6-C.1 or 6-D.1) before
-  6-E to investigate test ordering / state leakage. Same lesson
-  6-A.1 closed for Brakeman: red gates with non-actionable signal
-  erode trust in the gate itself.
+  Carry-forward: after 6-D-map ships, treat as a real cleanup
+  slice before 6-D-globe (or before 6-E if globe absorbs it). Not
+  a watch-item to keep carrying. Same gate-hygiene rule as 6-A.1.
 - **6-C.1 follow-up watch-item:** per-cursor `getAuditEvents`
   fetch volume during replay scrub. If hot, fix is fetch-once-
   and-client-filter, not bucket. Not pre-optimized.
 
-After Codex `/gate` clears + commit + push, continue to **6-E**
-(one-click debrief artifact — folds in operator-debrief #2).
+After Codex `/gate` clears + commit + push for 6-D-map, continue
+to **6-D-globe** (Cesium parity using the same reduction helper),
+then **6-E** (one-click debrief artifact — folds in
+operator-debrief #2).
 
 ---
 

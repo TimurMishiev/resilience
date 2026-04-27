@@ -44,6 +44,8 @@ import { useMapAnnotationLayers } from './map/useMapAnnotationLayers'
 import { useMapMeasurementLayers } from './map/useMapMeasurementLayers'
 import { useMapSignalLayers } from './map/useMapSignalLayers'
 import { useMapReplayPulseLayers } from './map/useMapReplayPulseLayers'
+import { useMapConfidenceHaloLayers } from './map/useMapConfidenceHaloLayers'
+import type { ActiveSiteConfidence } from '../api/signal_rule_matches'
 import type { Pulse } from '../lib/replayEventPulses'
 import { expandMapSignalCluster } from '../lib/mapSignalClustering'
 import { MAP_STYLE_CONFIGS, type MapStyleKey } from '../lib/mapEngineStyles'
@@ -122,6 +124,11 @@ export interface MapEngineInput {
   replayPulses:     readonly Pulse[]
   showReplayPulses: boolean
 
+  // Tranche 6-D-map: replay-only confidence halos. Raw backend summaries
+  // (`{ site_id, confidence }`); the layer hook drops rows whose site is
+  // absent from the current dataset and keeps the layer empty in live mode.
+  confidenceHaloSummaries: readonly ActiveSiteConfidence[]
+
   // Selection callbacks — hook fires, page owns state
   onSiteClick:   (siteId: string | null) => void
   onAssetClick:  (assetId: string | null) => void
@@ -199,6 +206,7 @@ export function useMapLibreEngine({
   evidenceSiteIds,
   replayPulses,
   showReplayPulses,
+  confidenceHaloSummaries,
   onSiteClick,
   onAssetClick,
   onSignalClick,
@@ -380,6 +388,17 @@ export function useMapLibreEngine({
     mapLoaded,
     pulses: replayPulses,
     showReplayPulses,
+  })
+
+  // Tranche 6-D-map: confidence halos on active alerts during replay.
+  // Layer is anchored below `site-circles` via `beforeLayer` in the sub-hook;
+  // live mode renders an empty source so geometry stays parked but invisible.
+  useMapConfidenceHaloLayers({
+    mapRef,
+    mapLoaded,
+    sites,
+    summaries: confidenceHaloSummaries as ActiveSiteConfidence[],
+    isReplaying,
   })
 
   // ---------------------------------------------------------------------------

@@ -6,7 +6,8 @@ class SignalRuleMatchPolicy < ApplicationPolicy
   def transition?          = operator_or_above? && show?
   def allowed_transitions? = show?
   def bulk_transition?     = operator_or_above?
-  def active_breach_sites? = true
+  def active_breach_sites?      = true
+  def active_site_confidence?   = true
 
   class Scope < ApplicationPolicy::Scope
     def resolve

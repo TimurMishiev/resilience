@@ -92,6 +92,7 @@ Rails.application.routes.draw do
       collection do
         post :bulk_transition
         get  :active_breach_sites
+        get  :active_site_confidence
       end
       member do
         post :transition

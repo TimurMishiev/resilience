@@ -1,7 +1,7 @@
 module Api
   class SignalRuleMatchesController < BaseController
     after_action :verify_authorized
-    after_action :verify_policy_scoped, only: %i[index active_breach_sites]
+    after_action :verify_policy_scoped, only: %i[index active_breach_sites active_site_confidence]
 
     # GET /api/signal_rule_matches
     # Query params: rule_id, site_id, signal_id, workflow_status, geofence_breach, from, to, as_of, page, per_page
@@ -93,6 +93,53 @@ module Api
         end
 
       render json: { site_ids: site_ids }
+    end
+
+    # GET /api/signal_rule_matches/active_site_confidence
+    # Returns one summary row per site that currently has at least one
+    # active (non-closed) SignalRuleMatch, carrying the maximum confidence
+    # among that site's active matches. Unpaginated by design — used by the
+    # `/map` (and later `/globe`) confidence-halo layer, which cannot tolerate
+    # page caps silently omitting active sites. Same completeness pattern as
+    # `active_breach_sites`.
+    #
+    # Replay (`as_of` present): clip to fired_at <= as_of, run
+    # Replay::StateSerializer.match_states to reconstruct workflow_status at
+    # that moment, drop replay-closed rows, then reduce site_id -> max
+    # confidence. Drops nil site_ids.
+    def active_site_confidence
+      authorize SignalRuleMatch, :active_site_confidence?
+
+      base = policy_scope(SignalRuleMatch).where.not(site_id: nil)
+
+      summaries =
+        if as_of
+          replay_matches = base
+                             .select(:id, :site_id, :fired_at, :confidence)
+                             .where("fired_at <= ?", as_of)
+                             .order(fired_at: :desc)
+                             .to_a
+          replay_states = Replay::StateSerializer.match_states(replay_matches, as_of: as_of)
+
+          per_site_max = {}
+          replay_matches.each do |match|
+            next if replay_states.fetch(match.id)[:workflow_status] == "closed"
+
+            current = per_site_max[match.site_id]
+            confidence = match.confidence.to_f
+            per_site_max[match.site_id] = confidence if current.nil? || confidence > current
+          end
+
+          per_site_max.map { |site_id, confidence| { site_id: site_id, confidence: confidence } }
+        else
+          base
+            .where.not(workflow_status: :closed)
+            .group(:site_id)
+            .maximum(:confidence)
+            .map { |site_id, confidence| { site_id: site_id, confidence: confidence.to_f } }
+        end
+
+      render json: { summaries: summaries }
     end
 
     # POST /api/signal_rule_matches/bulk_transition

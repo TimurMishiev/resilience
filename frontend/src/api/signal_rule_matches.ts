@@ -43,3 +43,15 @@ export function bulkTransitionAlerts(body: BulkTransitionBody): Promise<BulkTran
 export function getActiveBreachSiteIds(params?: AsOfParam): Promise<{ site_ids: string[] }> {
   return api.get<{ site_ids: string[] }>('/api/signal_rule_matches/active_breach_sites', params as QueryParams | undefined)
 }
+
+export interface ActiveSiteConfidence {
+  site_id:    string
+  confidence: number
+}
+
+export function getActiveSiteConfidence(params?: AsOfParam): Promise<{ summaries: ActiveSiteConfidence[] }> {
+  return api.get<{ summaries: ActiveSiteConfidence[] }>(
+    '/api/signal_rule_matches/active_site_confidence',
+    params as QueryParams | undefined,
+  )
+}

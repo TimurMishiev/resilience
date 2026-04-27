@@ -17,6 +17,7 @@ RSpec.describe SignalRuleMatchPolicy do
       it { is_expected.to be_allowed_transitions }
       it { is_expected.to be_bulk_transition }
       it { is_expected.to be_active_breach_sites }
+      it { is_expected.to be_active_site_confidence }
     end
 
     context "as operator" do
@@ -28,6 +29,7 @@ RSpec.describe SignalRuleMatchPolicy do
       it { is_expected.to be_allowed_transitions }
       it { is_expected.to be_bulk_transition }
       it { is_expected.to be_active_breach_sites }
+      it { is_expected.to be_active_site_confidence }
     end
 
     context "as viewer" do
@@ -39,6 +41,7 @@ RSpec.describe SignalRuleMatchPolicy do
       it { is_expected.to be_allowed_transitions }
       it { is_expected.not_to be_bulk_transition }
       it { is_expected.to be_active_breach_sites }
+      it { is_expected.to be_active_site_confidence }
     end
   end
 

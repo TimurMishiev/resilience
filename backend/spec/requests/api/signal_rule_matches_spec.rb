@@ -239,6 +239,122 @@ RSpec.describe "Api::SignalRuleMatches", type: :request do
     end
   end
 
+  describe "GET /api/signal_rule_matches/active_site_confidence" do
+    let!(:site_c) { create(:site) }
+
+    let!(:active_low) do
+      create(:signal_rule_match,
+             site: site_a, correlation_rule: rule_a,
+             fired_at: 8.minutes.ago,
+             confidence: 0.40)
+    end
+    let!(:active_high) do
+      create(:signal_rule_match,
+             site: site_a, correlation_rule: rule_a,
+             fired_at: 4.minutes.ago,
+             confidence: 0.85)
+    end
+    let!(:active_other_site) do
+      # Above the default factory confidence (0.8) so we provably beat the
+      # file-wide `match2` on site_b without depending on factory internals.
+      create(:signal_rule_match,
+             site: site_b, correlation_rule: rule_b,
+             fired_at: 6.minutes.ago,
+             confidence: 0.92)
+    end
+    let!(:closed_higher) do
+      create(:signal_rule_match,
+             site: site_c, correlation_rule: rule_b,
+             fired_at: 7.minutes.ago,
+             workflow_status: "closed",
+             confidence: 0.95)
+    end
+    let!(:closed_low_with_active_match_on_same_site) do
+      create(:signal_rule_match,
+             site: site_b, correlation_rule: rule_b,
+             fired_at: 9.minutes.ago,
+             workflow_status: "closed",
+             confidence: 0.99)
+    end
+    let!(:nil_site_match) do
+      # Tasks-only match (no site, no incident) — site_id nil; must be dropped.
+      task = create(:task)
+      create(:signal_rule_match,
+             site: nil, incident: nil, task: task,
+             correlation_rule: rule_a,
+             fired_at: 5.minutes.ago,
+             confidence: 0.77)
+    end
+
+    it "returns one summary per active site with the max confidence" do
+      get "/api/signal_rule_matches/active_site_confidence", headers: auth_headers(user)
+
+      expect(response).to have_http_status(:ok)
+      body = JSON.parse(response.body)
+      expect(body.keys).to contain_exactly("summaries")
+      summaries = body["summaries"]
+
+      site_ids = summaries.map { |s| s["site_id"] }
+      expect(site_ids).to contain_exactly(site_a.id, site_b.id)
+
+      by_site = summaries.index_by { |s| s["site_id"] }
+      expect(by_site[site_a.id]["confidence"]).to be_within(1e-6).of(0.85)
+      # site_b's max active match is 0.92; its 0.99 closed match must not win.
+      expect(by_site[site_b.id]["confidence"]).to be_within(1e-6).of(0.92)
+    end
+
+    it "excludes sites whose only matches are closed" do
+      get "/api/signal_rule_matches/active_site_confidence", headers: auth_headers(user)
+      site_ids = JSON.parse(response.body)["summaries"].map { |s| s["site_id"] }
+      expect(site_ids).not_to include(site_c.id)
+    end
+
+    it "drops nil site_ids" do
+      get "/api/signal_rule_matches/active_site_confidence", headers: auth_headers(user)
+      summaries = JSON.parse(response.body)["summaries"]
+      expect(summaries.map { |s| s["site_id"] }).to all(be_present)
+    end
+
+    it "is unpaginated (no meta envelope, returns all active sites in one response)" do
+      get "/api/signal_rule_matches/active_site_confidence", headers: auth_headers(user)
+      body = JSON.parse(response.body)
+      expect(body).not_to have_key("meta")
+      expect(body).not_to have_key("data")
+    end
+
+    it "returns 401 for unauthenticated requests" do
+      get "/api/signal_rule_matches/active_site_confidence"
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "reconstructs active site confidence as_of (replay closed-collapse)" do
+      replay_match = create(
+        :signal_rule_match,
+        site: site_c, correlation_rule: rule_a,
+        fired_at: 40.minutes.ago,
+        confidence: 0.72
+      )
+
+      travel_to 20.minutes.ago do
+        Alerts::TransitionService.call(
+          match: replay_match,
+          to_status: "acknowledged",
+          actor: user,
+        )
+      end
+
+      get "/api/signal_rule_matches/active_site_confidence",
+          params: { as_of: 30.minutes.ago.iso8601 },
+          headers: auth_headers(user)
+
+      expect(response).to have_http_status(:ok)
+      summaries = JSON.parse(response.body)["summaries"]
+      site_c_row = summaries.find { |s| s["site_id"] == site_c.id }
+      expect(site_c_row).not_to be_nil
+      expect(site_c_row["confidence"]).to be_within(1e-6).of(0.72)
+    end
+  end
+
   describe "GET /api/signal_rule_matches/:id" do
     it "returns 200 with the match and associations" do
       get "/api/signal_rule_matches/#{match1.id}", headers: auth_headers(user)

@@ -218,6 +218,24 @@ vi.mock('../hooks/useSignalRuleMatches', () => ({
   useSignalRuleMatches: () => ({ data: null }),
 }))
 
+const activeSiteConfidenceState = vi.hoisted(() => ({
+  calls: [] as Array<{ enabled?: boolean; refetchInterval?: number | false; asOf?: string }>,
+}))
+
+vi.mock('../hooks/useActiveSiteConfidence', () => ({
+  useActiveSiteConfidence: (
+    params?: { as_of?: string },
+    options?: { enabled?: boolean; refetchInterval?: number | false },
+  ) => {
+    activeSiteConfidenceState.calls.push({
+      enabled:         options?.enabled,
+      refetchInterval: options?.refetchInterval,
+      asOf:            params?.as_of,
+    })
+    return { data: { summaries: [] } }
+  },
+}))
+
 vi.mock('../hooks/useReplayEventPulses', () => ({
   useReplayEventPulses: () => replayPulsesState.pulses,
 }))
@@ -447,6 +465,7 @@ describe('MapPage selection routing', () => {
     vesselHookState.useVessels.mockReturnValue({ data: { data: [] } })
     vesselHookState.useVesselTracks.mockReturnValue({ data: { data: [] } })
     evidenceLinkedIdsState.useEvidenceLinkedIds.mockReturnValue({ evidenceSignalIds: [], evidenceSiteIds: [] })
+    activeSiteConfidenceState.calls = []
     window.localStorage.clear()
   })
 
@@ -763,6 +782,32 @@ describe('MapPage selection routing', () => {
     // Pulses array stays populated even when the layer is hidden — state is
     // user-driven, the engine sub-hook gates rendering via showReplayPulses.
     expect(engineState.latestInput?.replayPulses).toHaveLength(2)
+  })
+
+  // Tranche 6-D-map: replay-only confidence halos.
+  it('disables the active-site confidence query in live mode (no hidden polling for an empty halo layer)', () => {
+    mockReplay.isReplaying = false
+
+    renderMapPage('/map')
+
+    expect(activeSiteConfidenceState.calls.length).toBeGreaterThan(0)
+    for (const call of activeSiteConfidenceState.calls) {
+      expect(call.enabled).toBe(false)
+      expect(call.refetchInterval).toBe(false)
+    }
+  })
+
+  it('enables the active-site confidence query during replay and forwards as_of', () => {
+    mockReplay.asOf = '2026-03-24T12:00:00.000Z'
+    mockReplay.isReplaying = true
+    mockReplay.asOfParam = { as_of: mockReplay.asOf }
+
+    renderMapPage('/map')
+
+    const lastCall = activeSiteConfidenceState.calls.at(-1)
+    expect(lastCall?.enabled).toBe(true)
+    expect(lastCall?.asOf).toBe('2026-03-24T12:00:00.000Z')
+    expect(lastCall?.refetchInterval).toBe(false)
   })
 
   it('passes replay as_of into evidence-linked highlighting queries', async () => {

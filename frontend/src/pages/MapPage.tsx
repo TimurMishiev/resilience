@@ -13,6 +13,7 @@ import { buildSyntheticBenchSignals, readBenchSignalCount } from '../lib/benchSy
 import { useVessels, useVesselTracks } from '../hooks/useVessels'
 import { useRiskScores } from '../hooks/useRiskScores'
 import { useActiveBreachSiteIds } from '../hooks/useSignalRuleMatches'
+import { useActiveSiteConfidence } from '../hooks/useActiveSiteConfidence'
 import { useAllChokepoints } from '../hooks/useChokepoints'
 import { useRole } from '../hooks/useRole'
 import { useReferenceTimeMs } from '../hooks/useReferenceTimeMs'
@@ -228,6 +229,19 @@ export default function MapPage() {
     [activeBreachRes?.site_ids],
   )
 
+  // Tranche 6-D-map: per-site max confidence among active alerts.
+  // Backed by an unpaginated backend summary endpoint so page caps cannot
+  // silently omit active sites. Replay-only — gated on `isReplaying` so
+  // live `/map` sessions issue no hidden requests for an empty halo layer.
+  const { data: confidenceSummaryRes } = useActiveSiteConfidence(asOfParam, {
+    enabled: isReplaying,
+    refetchInterval: false,
+  })
+  const confidenceHaloSummaries = useMemo(
+    () => confidenceSummaryRes?.summaries ?? [],
+    [confidenceSummaryRes?.summaries],
+  )
+
   const { readings, connected: telemetryConnected } = useTelemetry(true, isReplaying ? asOf : null)
 
   const tasksBySite = useMemo(() => {
@@ -303,6 +317,7 @@ export default function MapPage() {
     evidenceSiteIds,
     replayPulses,
     showReplayPulses: isReplaying && showReplayPulses,
+    confidenceHaloSummaries,
     onSiteClick,
     onAssetClick,
     onSignalClick,
