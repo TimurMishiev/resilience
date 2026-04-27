@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-26 (Tranche 6-B dirty tree — globe pulse parity, awaiting /gate)
+Last updated: 2026-04-26 (Tranche 6-B shipped, 6-C is the active slice)
 
 ## Current Phase
 
@@ -22,133 +22,131 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**Tranche 6-B — same pulse layer on `/globe` (Cesium).** Active slice,
-implementation complete in dirty tree, **awaiting Codex `/gate`**.
+**Tranche 6-C — audit-citation popover on entity selection during replay.**
+Active slice. Cinematic-replay slice 3 of 5 (6-A → 6-B → **6-C** → 6-D → 6-E).
 
-Goal: visual + behavioural parity with 6-A on the globe surface.
-Scrub on `/globe` produces the same colored pulses near the cursor
-that scrub on `/map` does. Same five high-signal event types, same
-±5-min window, same toggle-default-ON-in-replay, same past-only
-correctness contract.
+Goal: when an entity is selected during replay, the inspector panel
+shows the audit chain *as it was at that asOf*. Operator scrubs the
+timeline, clicks a site, sees "what was true about this site at this
+moment, and how we know" — every state transition surfaced with its
+audit-event citation IDs visible.
 
-### What landed in the dirty tree
+### Sequenced approach (lock before coding)
 
-**New (2):**
-- [`frontend/src/hooks/globe/useGlobeReplayPulseLayers.ts`](frontend/src/hooks/globe/useGlobeReplayPulseLayers.ts)
-  — Cesium sub-hook. Owns its own `PointPrimitiveCollection` end-to-end
-  (mounted on `viewerReady && showReplayPulses`, torn down on either
-  going false; cleanup is `viewer.isDestroyed()`-guarded). Two
-  primitives per pulse stored in `Map<string, {halo, core}>` for visual
-  parity with the map's halo+core aesthetic. `id: undefined` on every
-  primitive — relies on
+1. **Selection-persistence ruling — execute now.** This is the
+   blocker the 6-A scoping deferred to 6-C. Today, selection clears
+   on every asOf change. The contract for cinematic replay is the
+   opposite: while `isReplaying`, persist the selected entity id
+   across asOf changes; only clear on explicit deselect, route/entity
+   switch, or hard lookup failure (entity wasn't created yet at the
+   new asOf). Touch
+   [`useEntitySelectionSync.ts`](frontend/src/hooks/useEntitySelectionSync.ts).
+2. **Survey the inspector panels.** All three panels need to gain
+   the new "Audit chain at this moment" section:
+   [`MapSitePanel.tsx`](frontend/src/components/map/MapSitePanel.tsx),
+   [`MapSignalPanel.tsx`](frontend/src/components/map/MapSignalPanel.tsx),
+   [`MapAssetPanel.tsx`](frontend/src/components/map/MapAssetPanel.tsx),
+   plus the globe equivalent in
+   [`GlobeInspectorPanel.tsx`](frontend/src/components/GlobeInspectorPanel.tsx).
+   Identify the right insertion seam in each.
+3. **Build the shared audit-chain component.** New component
+   `AuditChainAtTime.tsx` consuming `getAuditEvents({entity_type,
+   entity_id, as_of})` — backend already supports this. Render the
+   chronological list with citation IDs visible (UUIDs or short-hash
+   form). Replay-only by structure; live mode does not render this
+   section.
+4. **Tests.** Component-level test on `AuditChainAtTime` (mock
+   `getAuditEvents`, assert rendering of audit events with citation
+   IDs); selection-persistence regression test on
+   `useEntitySelectionSync`; one integration test per panel
+   asserting the new section appears during replay and disappears
+   on exit-replay.
+5. **Out of scope.** Confidence halos (6-D), debrief artifact
+   (6-E), any new audit-events API surface (the existing endpoint
+   already supports `entity_type + entity_id + as_of`).
+
+### Risks and stop-conditions
+
+- **`useEntitySelectionSync` is shared map+globe state.** Any
+  behaviour change ripples to both pages. Treat as
+  high-blast-radius — confirm the new contract with regression
+  tests before committing.
+- **Backend audit-events query under load.** Each selection during
+  replay issues one `getAuditEvents({entity_id, as_of})` request.
+  Expected per-entity volume is small (typically <50 audit events
+  per entity over its lifetime), so this is unlike the 6-A
+  refetch-storm shape. But if 6-D adds confidence-halo audit
+  consumption, watch for compound load.
+- **Don't widen into 6-D or 6-E.** Halos and debrief artifacts
+  are separate slices.
+
+### Likely files (TBD until survey)
+
+**New:**
+- `frontend/src/components/AuditChainAtTime.tsx` (shared component)
+- `frontend/src/test/AuditChainAtTime.test.tsx`
+
+**Modified:**
+- `frontend/src/hooks/useEntitySelectionSync.ts` (relax asOf-clears-selection)
+- `frontend/src/test/useEntitySelectionSync.test.ts` (selection-persistence regression)
+- 4 inspector panels (Map: Site/Signal/Asset; Globe: GlobeInspectorPanel) + their tests
+- `memory/execution_handoff.md`
+
+After Codex `/gate` clears + commit + push, continue to **6-D**
+(confidence halos on active alerts during replay).
+
+---
+
+### Tranche 6-B — same pulse layer on `/globe` (Cesium) ✅ shipped in `6c57d0f` (2026-04-26)
+
+Cinematic-replay slice 2: scrub on `/globe`, the same colored pulses
+that 6-A renders on `/map` appear at the same sites near the cursor.
+Same five high-signal event types, same ±5min window, same
+default-on-in-replay toggle hidden in live, same past-only narrative.
+Cadence shared with `breachPulseColorProperty` (1260ms cycle) so map
++ globe + breach pulses share a heartbeat across the platform.
+
+One Codex `/gate` round; verdict READY TO COMMIT after closing one
+P3 (stale pre-build plan block in handoff that recommended the
+opposite design from what shipped — deleted in-place since the
+"What landed" + "Design decisions" sections already captured the
+real implementation). Codex observed an unrelated
+`DebriefPanel.test.tsx` flake in their full-suite run that did not
+reproduce on my environment (passed at 714/714 across two runs).
+
+**Key contract decisions locked in code + tests:**
+- `useReplayEventPulses` reused unchanged — already page-agnostic,
+  no hoist needed.
+- Globe sub-hook owns its own `PointPrimitiveCollection` end-to-end
+  (no separate layer module like the map has — Cesium's primitive
+  model is JS-object-managed, doesn't need the source/layer
+  abstraction). Mirrors `useGlobeSignalPrimitives`'s structure.
+- Two primitives per pulse (halo + core) stored in
+  `Map<string, {halo, core}>` for visual parity with the map.
+- `viewer.scene.preRender` listener (Cesium auto-pauses idle frames;
+  cheaper than JS rAF). Time math mirrors
+  `breachPulseColorProperty` — sine of `(t/630) * π`, 1260ms full
+  cycle. Listener registered only when
+  `showReplayPulses && pulses.length > 0`.
+- `id: undefined` on every pulse primitive — relies on
   [`pickIdString`](frontend/src/lib/globeEngineHelpers.ts#L339)
-  filtering non-string ids so pulses cannot steal click picks from
-  sites/signals/assets. A dedicated `viewer.scene.preRender` listener
-  walks the primitive map each frame and updates `pixelSize` +
-  `color.alpha` from a sine wave whose time math mirrors
-  [`breachPulseColorProperty`](frontend/src/lib/globeEngineHelpers.ts#L248)
-  — same 1260ms cycle so the breach pulse and the replay pulse share a
-  cadence on the globe surface. Listener registered only when
-  `showReplayPulses && pulses.length > 0`; idle frames cost nothing.
-- [`frontend/src/test/useGlobeReplayPulseLayers.test.ts`](frontend/src/test/useGlobeReplayPulseLayers.test.ts)
-  — 7 sub-hook tests with a tiny in-file Cesium fake (collection,
-  scene.primitives.add/remove, scene.preRender event, isDestroyed).
-  Covers viewer-not-ready no-op, toggle-off no-mount, toggle-on
-  mounts collection + halo+core per pulse, exactly-one preRender
-  listener while pulses present, no listener when pulses empty,
-  unmount cleanup (collection AND listener removed), and the
-  `id: undefined` non-pickable contract.
+  filtering non-string ids so pulses cannot steal clicks. No new
+  resolver branch.
 
-**Modified (6):**
-- [`frontend/src/hooks/useGlobeEngine.ts`](frontend/src/hooks/useGlobeEngine.ts)
-  — added `replayPulses: readonly Pulse[]` + `showReplayPulses: boolean`
-  to `GlobeEngineInput`, invokes `useGlobeReplayPulseLayers` after the
-  existing `useGlobeTrackLayers` call. Sub-hook is purely additive —
-  no reordering of existing layer hooks, no engine-level lifecycle
-  changes (the sub-hook owns its own collection, separate from
-  `signalCollectionRef`).
-- [`frontend/src/pages/GlobePage.tsx`](frontend/src/pages/GlobePage.tsx)
-  — `showReplayPulses` state (default `true`), call to
-  `useReplayEventPulses({asOf, isReplaying, sites})` (the 6-A hook,
-  reused as-is — already page-agnostic), pass
-  `replayPulses` + `showReplayPulses: isReplaying && showReplayPulses`
-  to engine, pass `pulseCount` + toggle handler to `GlobeToolbar`.
-- [`frontend/src/components/globe/GlobeToolbar.tsx`](frontend/src/components/globe/GlobeToolbar.tsx)
-  — new toggle rendered inside the existing `{isReplaying && (<>...</>)}`
-  block alongside trails. Hidden in live mode by structure (not by CSS).
-  `data-testid="globe-replay-pulses-toggle"` + count badge when
-  `pulseCount > 0`. Same div-role-button pattern as the other globe
-  toggles, including `onKeyDown` keyboard handler (note: globe layer
-  toggles use kbd handlers, unlike map layer toggles — staying
-  consistent within each surface's convention).
-- [`frontend/src/index.css`](frontend/src/index.css)
-  — `.globe-signal-toggle-badge` style for the count chip
-  (mirrors the map's `.map-coverage-toggle-badge` from 6-A).
-- [`frontend/src/test/GlobePage.test.tsx`](frontend/src/test/GlobePage.test.tsx)
-  — 2 new integration tests: toggle hidden in live mode + engine
-  receives `showReplayPulses: false`; toggle visible during replay
-  with count badge + click forwards through engine. Mocks
-  `useReplayEventPulses` via the standard `vi.hoisted` pattern that
-  6-A established. Existing 17-test surface unchanged.
-- [`frontend/src/test/useGlobeEngine.test.ts`](frontend/src/test/useGlobeEngine.test.ts)
-  — `defaultInput` extended with `replayPulses: []` + `showReplayPulses:
-  false` so existing engine tests automatically exercise the live-mode
-  no-op path through the new sub-hook.
+**Files shipped:** new `hooks/globe/useGlobeReplayPulseLayers.ts` +
+`test/useGlobeReplayPulseLayers.test.ts`; modified
+`useGlobeEngine.ts`, `GlobePage.tsx`, `GlobeToolbar.tsx`, `index.css`,
+`GlobePage.test.tsx`, `useGlobeEngine.test.ts`.
 
-### Validation
+**Validation at ship:** frontend `714/714` (95 files, +9 from 705
+baseline = 7 sub-hook + 2 GlobePage integration); backend `2462/0`
+(untouched); tsc clean; eslint clean; **Brakeman 0** (preserves the
+6-A.1 clean baseline).
 
-- `npx vitest run` — **714 examples, 0 failures** (95 files; +9 from
-  705 baseline = 7 sub-hook + 2 GlobePage integration).
-- `npx tsc -p tsconfig.app.json --noEmit` — clean.
-- `npx eslint` on touched files — clean.
-- Backend (untouched): `bundle exec rspec` — **2462 examples, 0
-  failures** in 4m27s.
-- Brakeman (regression check after the 6-A.1 cleanup) — **0 security
-  warnings** confirmed unchanged. The clean-gate baseline is preserved.
-- Globe perf budgets: not touched. New layer is bounded at 50 pulses
-  × 2 primitives = 100 PointPrimitives; reconcile is a single Map
-  walk per pulse-data change. Well below
-  [globe-benchmark.spec.ts](frontend/e2e/globe-benchmark.spec.ts)'s
-  20ms p95 / 25ms single-sample budget. Bench re-anchor not needed.
-
-**Preview-browser smoke: deferred to user.** Same as 6-A — Rails
-wasn't running locally. The unit + sub-hook + GlobePage integration
-tests collectively prove (a) viewer-ready + toggle gating, (b)
-collection + listener mount/unmount lifecycle, (c) non-pickable
-contract for primitives, (d) toggle visibility + click-forwarding
-through the engine. Recommend a 30-second local check before
-`/gate`: `bin/dev` + `yarn dev`, log in, visit `/globe`, set asOf
-in the past, observe pulses + breath cadence + count badge.
-
-### Design decisions locked in code
-
-- **Shared hook hoist:** none. `useReplayEventPulses` is already
-  page-agnostic; both `/map` and `/globe` import from the same path.
-- **Cesium animation:** `PointPrimitiveCollection` + dedicated
-  `scene.preRender` listener (Cesium auto-pauses idle frames; cheaper
-  than JS `requestAnimationFrame`). Sine wave time math mirrors
-  `breachPulseColorProperty` (1260ms full cycle) so map and globe
-  pulse cadence feel intentional.
-- **No separate globe layer module:** unlike map (which has
-  `lib/mapEngineReplayPulseLayers.ts`), globe sub-hook owns
-  primitive lifecycle directly. Justified by Cesium's
-  JS-object-managed primitive model vs MapLibre's source/layer
-  abstraction. Mirrors how `useGlobeSignalPrimitives` doesn't have a
-  separate layer-helpers module.
-- **Picking:** `id: undefined` on every pulse primitive. No new
-  resolver branch needed — `pickIdString` already filters
-  non-string ids.
-- **Collection isolation:** dedicated `PointPrimitiveCollection`
-  separate from `signalCollectionRef`. Per-user direction —
-  keeps cleanup, lifecycle, and future 6-D halo work isolated.
-
-### What comes after 6-B
-
-After Codex `/gate` clears + commit + push:
-- **6-C** Audit-citation popover on entity selection during replay
-  (relax the asOf-clears-selection rule in `useEntitySelectionSync`).
-- **6-D** Confidence halos on active alerts during replay.
-- **6-E** One-click debrief artifact.
+**Out of scope confirmed not done:** selection-persistence (now
+6-C's blocker, executed first), audit-citation popover (6-C),
+confidence halos (6-D), debrief artifact (6-E), preview-browser
+smoke (deferred to user).
 
 ---
 
