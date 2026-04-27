@@ -9,6 +9,7 @@ import { useSignalsLive } from '../hooks/useSignals'
 import { useAssetTrails } from '../hooks/useAssetTrails'
 import { useVessels, useVesselTracks } from '../hooks/useVessels'
 import { useActiveBreachSiteIds } from '../hooks/useSignalRuleMatches'
+import { useActiveSiteConfidence } from '../hooks/useActiveSiteConfidence'
 import { useAllChokepoints } from '../hooks/useChokepoints'
 import { useReplayParams } from '../hooks/useReplayParams'
 import { useReferenceTimeMs } from '../hooks/useReferenceTimeMs'
@@ -117,6 +118,20 @@ export default function GlobePage() {
   const breachedSiteIds = useMemo(
     () => new Set<string>(activeBreachRes?.site_ids ?? []),
     [activeBreachRes?.site_ids],
+  )
+
+  // Tranche 6-D-globe: per-site max confidence among active alerts.
+  // Backed by an unpaginated backend summary endpoint so page caps
+  // cannot silently omit active sites. Replay-only — gated on
+  // `isReplaying` so live `/globe` sessions issue no hidden requests
+  // for an empty halo layer (parity with MapPage).
+  const { data: confidenceSummaryRes } = useActiveSiteConfidence(asOfParam, {
+    enabled: isReplaying,
+    refetchInterval: false,
+  })
+  const confidenceHaloSummaries = useMemo(
+    () => confidenceSummaryRes?.summaries ?? [],
+    [confidenceSummaryRes?.summaries],
   )
 
   const { signals, connected: signalsConnected, error: signalError } = useSignalsLive({
@@ -247,6 +262,7 @@ export default function GlobePage() {
     selectedSiteId, selectedAssetId, selectedSignalId,
     replayPulses,
     showReplayPulses: isReplaying && showReplayPulses,
+    confidenceHaloSummaries,
     onSiteClick, onAssetClick, onSignalClick,
   })
 

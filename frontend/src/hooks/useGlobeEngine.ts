@@ -44,6 +44,8 @@ import { useGlobeSignalPrimitives } from './globe/useGlobeSignalPrimitives'
 import { useGlobeOverlays } from './globe/useGlobeOverlays'
 import { useGlobeTrackLayers } from './globe/useGlobeTrackLayers'
 import { useGlobeReplayPulseLayers } from './globe/useGlobeReplayPulseLayers'
+import { useGlobeConfidenceHaloPrimitives } from './globe/useGlobeConfidenceHaloPrimitives'
+import type { ActiveSiteConfidence } from '../api/signal_rule_matches'
 import type { Pulse } from '../lib/replayEventPulses'
 const ionToken = import.meta.env['VITE_CESIUM_ION_TOKEN'] as string | undefined
 
@@ -116,6 +118,13 @@ export interface GlobeEngineInput {
   replayPulses:     readonly Pulse[]
   showReplayPulses: boolean
 
+  // Tranche 6-D-globe: replay-only confidence halos. Same raw
+  // backend summaries (`{ site_id, confidence }`) the map consumes;
+  // surface-specific missing-site drop happens in the sub-hook.
+  // Empty array in live mode (gated at the page call site).
+  // `isReplaying` is already on the engine input above.
+  confidenceHaloSummaries: readonly ActiveSiteConfidence[]
+
   // Selection callbacks — hook fires, page owns state
   onSiteClick:   (siteId: string | null)   => void
   onAssetClick:  (assetId: string | null)  => void
@@ -177,6 +186,7 @@ export function useGlobeEngine({
   selectedSignalId,
   replayPulses,
   showReplayPulses,
+  confidenceHaloSummaries,
   onSiteClick,
   onAssetClick,
   onSignalClick,
@@ -351,6 +361,18 @@ export function useGlobeEngine({
     viewerRef, cesiumRef, viewerReady,
     pulses: replayPulses,
     showReplayPulses,
+  })
+
+  // Tranche 6-D-globe: replay-only confidence halos. Owns its own
+  // PointPrimitiveCollection lifecycle separately from the replay
+  // pulse and signal collections — clean teardown on replay exit.
+  // Live mode renders nothing because the page-level fetch is
+  // gated on `isReplaying`, so summaries is `[]`.
+  useGlobeConfidenceHaloPrimitives({
+    viewerRef, cesiumRef, viewerReady,
+    sites,
+    summaries: confidenceHaloSummaries,
+    isReplaying,
   })
 
   // ---------------------------------------------------------------------------
