@@ -38,7 +38,12 @@ module Api
       if access.entity_type.present? && access.entity_id.present?
         # Singular entity_type + entity_id take precedence over entity_types[].
         # The plural entity_types[] filter is only available in the broad (else) path.
-        authorize_audit_entity!(access.entity_type, access.entity_id) unless current_user.commander?
+        # Skip the entity-level cross-tenant check ONLY for admins — they have
+        # genuinely global access. Commanders are documented as tenant-scoped
+        # ("operational command authority for one tenant/workspace scope" —
+        # User#commander? doc); skipping the check for them silently leaked
+        # cross-tenant audit history when the caller knew the entity_id.
+        authorize_audit_entity!(access.entity_type, access.entity_id) unless current_user.admin?
         events = events.where(entity_type: access.entity_type, entity_id: access.entity_id)
       else
         events = events.where(entity_type: params[:entity_type]) if params[:entity_type].present?

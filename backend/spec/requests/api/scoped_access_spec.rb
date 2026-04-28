@@ -249,6 +249,36 @@ RSpec.describe "API scoped access", type: :request do
       expect(response).to have_http_status(:forbidden)
     end
 
+    # Regression for the commander cross-tenant audit-event leak:
+    # the controller's entity-scoped path skipped `authorize_audit_entity!`
+    # via `unless current_user.commander?`, letting a tenant-scoped
+    # commander in org_a read org_b's audit history if they had the
+    # entity_id. The role's documented semantic (User#commander? maps to
+    # "operational command authority for one tenant/workspace scope")
+    # does NOT permit cross-org access.
+    it "prevents a tenant-scoped commander from reading another tenant's entity-scoped audit history" do
+      get "/api/audit_events",
+          params: { entity_type: "Task", entity_id: task_a.id },
+          headers: auth_headers(scoped_commander)
+
+      expect(response).to have_http_status(:ok)
+      expect(json_body.fetch("data").map { |event| event.fetch("id") }).to eq([audit_task_a.id])
+
+      get "/api/audit_events",
+          params: { entity_type: "Task", entity_id: task_b.id },
+          headers: auth_headers(scoped_commander)
+
+      expect(response).to have_http_status(:not_found)
+
+      # Site-scoped path uses a different ENTITY_ACCESS_MODELS entry; verify
+      # both code paths through the dispatch table.
+      get "/api/audit_events",
+          params: { entity_type: "Site", entity_id: site_b.id },
+          headers: auth_headers(scoped_commander)
+
+      expect(response).to have_http_status(:not_found)
+    end
+
     it "scopes global audit view to the commander's org across all entity types" do
       chokepoint_a = create(:chokepoint, area_of_operation: ao_a)
       chokepoint_b = create(:chokepoint, area_of_operation: ao_b)
