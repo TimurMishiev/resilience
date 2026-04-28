@@ -102,6 +102,44 @@ RSpec.describe Audit::EventWriter do
 
       expect(event.occurred_at).to be_within(2.seconds).of(Time.current)
     end
+
+    # Regression for the CI seed-failure: db/seeds.rb backdates audit events
+    # across a 96-hour timeline (T96H → T4H) so /map and /globe replay have
+    # realistic history to scrub. The writer must accept caller-provided
+    # occurred_at, persist it as-is, and still produce a verifiable chain
+    # (occurred_at is part of ChainHasher.compute, so the row_hash reflects
+    # the caller's timestamp rather than the at-the-moment Time.current).
+    it "honors a caller-provided occurred_at and still produces a chain-verifiable row" do
+      backdated = 96.hours.ago
+
+      event = described_class.write(**base_attrs, occurred_at: backdated)
+
+      expect(event.occurred_at).to be_within(1.second).of(backdated)
+      expect(event.chain_position).to be_present
+      expect(event.row_hash).to be_present
+      # Recomputing the row hash from persisted attrs must match — proves
+      # occurred_at was the same value at hash-time and at persist-time.
+      recomputed = Audit::ChainHasher.compute(
+        id:               event.id,
+        schema_version:   event.schema_version,
+        actor:             event.actor,
+        entity_type:       event.entity_type,
+        entity_id:         event.entity_id,
+        event_type:        event.event_type,
+        action:            event.action,
+        before_snapshot:   event.before_snapshot,
+        after_snapshot:    event.after_snapshot,
+        metadata:          event.metadata,
+        correlation_id:    event.correlation_id,
+        occurred_at:       event.occurred_at,
+        organization_id:   event.organization_id,
+        sequence:          event.sequence,
+        chain_position:    event.chain_position,
+        prev_hash:         event.prev_hash,
+        hash_version:      event.hash_version,
+      )
+      expect(recomputed).to eq(event.row_hash)
+    end
   end
 
   describe "organization_id resolution" do

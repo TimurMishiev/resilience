@@ -21,8 +21,13 @@ T4H  = NOW - 4.hours    # 4h ago:      late-breaking tasks
 # ---------------------------------------------------------------------------
 
 def audit_event(entity_type:, entity_id:, event_type:, action:, before_snapshot:, after_snapshot:, occurred_at:)
-  AuditEvent.create!(
-    schema_version:  1,
+  # Routes through Audit::EventWriter so every seeded event participates in
+  # the chain-of-custody (ADR-010). Direct AuditEvent.create! bypasses chain
+  # bookkeeping (chain_position / prev_hash / row_hash), which the post-2026-04-24
+  # NOT NULL constraints reject. The writer accepts caller-provided
+  # occurred_at so the seed can preserve its multi-day timeline shape
+  # (T96H → T4H) while still producing a verifiable chain.
+  Audit::EventWriter.write(
     actor:           ACTOR,
     entity_type:     entity_type,
     entity_id:       entity_id,
@@ -31,7 +36,7 @@ def audit_event(entity_type:, entity_id:, event_type:, action:, before_snapshot:
     before_snapshot: before_snapshot,
     after_snapshot:  after_snapshot,
     correlation_id:  SecureRandom.uuid,
-    occurred_at:     occurred_at
+    occurred_at:     occurred_at,
   )
 end
 

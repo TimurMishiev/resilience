@@ -44,7 +44,8 @@ module Audit
       action: nil,
       before_snapshot: nil,
       metadata: nil,
-      organization_id: :resolve
+      organization_id: :resolve,
+      occurred_at: nil
     )
       resolved_org = if organization_id == :resolve
                        resolve_organization_id(entity_type, entity_id, before_snapshot: before_snapshot)
@@ -66,6 +67,7 @@ module Audit
           before_snapshot:  before_snapshot,
           metadata:         metadata,
           resolved_org:     resolved_org,
+          occurred_at:      occurred_at,
         )
       rescue ActiveRecord::Deadlocked => e
         raise if attempts >= MAX_DEADLOCK_RETRIES
@@ -81,7 +83,8 @@ module Audit
 
     def self.write_chained_event(
       actor:, entity_type:, entity_id:, event_type:, after_snapshot:,
-      correlation_id:, action:, before_snapshot:, metadata:, resolved_org:
+      correlation_id:, action:, before_snapshot:, metadata:, resolved_org:,
+      occurred_at: nil
     )
       AuditEvent.transaction(requires_new: false) do
         acquire_chain_lock!(resolved_org)
@@ -94,7 +97,15 @@ module Audit
         sequence    = AuditEvent.connection.select_value(
           "SELECT nextval('audit_events_sequence_seq')"
         ).to_i
-        occurred_at = Time.current
+        # Caller-provided occurred_at lets seeds and replay-fixture builders
+        # backdate audit history across a multi-day timeline. The chain still
+        # verifies because occurred_at is part of ChainHasher.compute(attrs)
+        # and is set BEFORE the row_hash is computed below; non-monotonic
+        # occurred_at within a chain is acceptable — chain ordering is
+        # established by chain_position + prev_hash, not by timestamp.
+        # Production write paths (controllers, services) leave this nil and
+        # get the at-the-moment Time.current default unchanged.
+        occurred_at ||= Time.current
 
         attrs = {
           id:               id,
