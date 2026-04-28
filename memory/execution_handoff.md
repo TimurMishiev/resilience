@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-27 (Hardening-to-95 substantially complete; Tranche 6-E deferred without citable spec; Item 8 / 4B is the only open item, gated on stakeholder direction)
+Last updated: 2026-04-28 (Production-deploy preparation complete; A.4 closed; A.2/A.3 deferred with explicit reasoning; CI green; ready for Fly preflight)
 
 ## Current Phase
 
@@ -33,12 +33,61 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**No active code slice.** Hardening-to-95 substantially complete;
-Item 8 (4B — access-pattern anomaly detection) is the only
-remaining open item and is **stakeholder-blocked**, not
-engineering-blocked. The next deliverable is a set of design
-questions to the user that unblock Item 8; nothing else should
-land in code before those answers come back.
+**No active code slice. Production-deploy preparation in progress
+(2026-04-28).** Hardening-to-95 substantially complete; Item 8 (4B
+— access-pattern anomaly detection) is the only remaining open
+item and is **stakeholder-blocked**, not engineering-blocked.
+
+### Production-deploy preparation status (2026-04-28)
+
+User's stated goal: production-ready, no regressions, deploy to
+Fly.io, then re-evaluate via external models, then start globe/map
+feature work. Current state of that prep:
+
+- ✅ **CI is green at HEAD** (8-day red streak closed; seed crash
+  fixed at `c3ac810`; perf budgets re-anchored at `95e459d` to
+  measured CI reality with corrected diagnosis at `0232234`; globe
+  test framing corrected at `a5a4a4d` from false CI-only-skip to
+  honest `test.fixme`).
+- ✅ **Deep-eval P1 cross-tenant audit-event leak closed** (`58f334c`).
+- ✅ **Deep-eval A.4 (active_site_confidence isolation spec gap)
+  closed** in this rotation. Same shape as A.1: spec was missing,
+  underlying code was correct, added the proof.
+- ⏸ **Deep-eval A.2 deferred** (operator-load-dependent; see below).
+- ⏸ **Deep-eval A.3 deferred** (reviewer's own confidence
+  calibration was "may be an over-call"; see below).
+- ⏸ **Globe primitive-pickup tests** (3 tests) are `test.fixme`d
+  with documented unknown root cause; production paths covered by
+  other E2E specs that pass on CI.
+- ⏸ **MapPage perf profile to recover original 15ms / 120ms bar**
+  deferred as a future tranche; current bar reflects measured CI
+  reality, not regression.
+
+### Deferred deep-eval findings — explicit reasoning
+
+**A.2 — Unbounded replay materialization on `active_site_confidence`
++ `active_breach_sites`** ([signal_rule_matches_controller.rb:117-122](backend/app/controllers/api/signal_rule_matches_controller.rb#L117-L122)).
+Real defect, deferred for portfolio-scale deploy. The concern
+materializes when "an operator in a tenant with months of historical
+matches picks an early `as_of` value" (deep-eval reviewer's wording).
+Portfolio-scale demo data has ~4 SignalRuleMatch records in seed and
+~10-20 in any reasonable demo session — orders of magnitude below
+the threshold where the materialization becomes operationally hot.
+The fix (SQL window function or `find_in_batches`) is real work
+and the right answer for a real production-scale tenant; it does
+not gate a portfolio-scale deploy. Documented as a follow-up tranche.
+
+**A.3 — SSE stream captures user scope at open-time and never
+refreshes** ([events_controller.rb:32, 49-50](backend/app/controllers/api/events_controller.rb#L32);
+broadcaster has the right primitive at
+[broadcaster.rb:128-133](backend/app/services/sse/broadcaster.rb#L128-L133)
+but no caller invokes it). Real but the deep-eval reviewer's own
+self-skeptical pass said "may be an over-call. ... The principle is
+right; the production impact is bounded. ... the practical
+exploitability requires the user's identity to change while their
+stream is open, which is rare in a single-tenant deployment with
+no admin actions running." Single-tenant portfolio deploy doesn't
+hit this. Documented as a follow-up tranche.
 
 ### Outstanding watch-items (carry-forward, not a slice)
 
@@ -49,6 +98,11 @@ land in code before those answers come back.
   flagged in the flake-cleanup gate review (~8 sites) is **not**
   current observed flake; latent risk only. Don't fix
   speculatively.
+- **CI `tsc --noEmit` step in the post-push hook still uses the
+  weaker check** even though `gate` skill was tightened to `tsc -b`
+  at `7d371af`. The hook script lives outside the skill, so the
+  tightening doesn't apply. Worth fixing in a small follow-up
+  (P3 from prior post-push review).
 
 ### Hold posture
 

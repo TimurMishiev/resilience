@@ -231,6 +231,20 @@ RSpec.describe "API scoped access", type: :request do
       expect(json_body.fetch("site_ids")).to eq([site_a.id])
     end
 
+    # A.4 closure (deep-eval finding): mirror the active_breach_sites
+    # isolation assertion for active_site_confidence. The endpoint at
+    # signal_rule_matches_controller.rb:active_site_confidence already
+    # uses policy_scope(SignalRuleMatch) so isolation is correct in
+    # code; this spec proves it explicitly so the same coverage gap
+    # that hid the A.1 commander-cross-tenant leak cannot hide here.
+    it "limits active site confidence summaries to scoped sites" do
+      get "/api/signal_rule_matches/active_site_confidence", headers: auth_headers(scoped_operator)
+      expect(response).to have_http_status(:ok)
+      site_ids = json_body.fetch("summaries").map { |row| row.fetch("site_id") }
+      expect(site_ids).to contain_exactly(site_a.id)
+      expect(site_ids).not_to include(site_b.id)
+    end
+
     it "allows entity-scoped audit access only for in-scope entities" do
       get "/api/audit_events",
           params: { entity_type: "Task", entity_id: task_a.id },
