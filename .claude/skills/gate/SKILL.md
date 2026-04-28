@@ -83,9 +83,18 @@ First, run the slice-specific validation commands listed in `memory/execution_ha
 Then always run these baseline checks:
 ```
 Bash: cd /Users/timurmishiev/Desktop/Code/resilience/backend && bundle exec rspec --format progress 2>&1 | tail -5
-Bash: cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx tsc --noEmit 2>&1 | tail -5
+Bash: cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx tsc -b 2>&1 | tail -5
 Bash: cd /Users/timurmishiev/Desktop/Code/resilience/frontend && npx vitest run --reporter=dot 2>&1 | tail -8
 ```
+
+Use `tsc -b` (project-references build), not `tsc --noEmit`. The root
+`frontend/tsconfig.json` is a solution file with `"files": []` plus
+project references; `tsc --noEmit` against it walks essentially zero
+files. The production build runs `tsc -b` (which traverses
+`tsconfig.app.json` + `tsconfig.node.json`), so the gate must too —
+otherwise build-only TS errors slip past pre-commit and surface only
+at deploy preflight (regression precedent: `0c2ecbd`, two test
+fixtures missing the `confidenceHaloSummaries` engine-input prop).
 
 After this phase, you should know:
 - the active slice and its intended boundary

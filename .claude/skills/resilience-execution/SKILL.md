@@ -205,6 +205,37 @@ It must reflect reality:
 The handoff file is for takeover continuity, not a diary.
 Keep it concise and factual.
 
+### Handoff hygiene — rotation invariant (do this every rotation)
+
+The handoff has multiple sections that drift independently — the
+active-slice block at the top, the "Active Initiative" status table,
+the "Current Repo State" tip, and the historical shipped-blocks. A
+rotation that updates only the active-slice section accumulates rot
+elsewhere; this has surfaced as P3 findings on multiple gates
+(disposition `79b3829`, cleanup `6b11bf4`).
+
+**Before staging any rotation commit, run this sweep:**
+
+```
+grep -n "active\|in progress\|paused\|<last-known-stale-tip>" memory/execution_handoff.md
+```
+
+Every match must be either (a) currently true at the post-rotation
+state, or (b) reconciled in the same rotation commit. Don't skip
+matches because they're "in a different section" — internal
+consistency across the whole file is the invariant.
+
+Common rot to look for:
+- "active" / "in progress" labels on items already shipped
+- "Latest committed tip: <SHA>" pointing at a stale commit
+- "Branch state: main pushed at <SHA>" when local is ahead of origin
+- "Working tree: clean as of <last rotation>" with stale conditions
+- Test-state numbers from a prior baseline
+- Forward-references to slices that have since shipped or been deferred
+
+If a finding requires more than the current rotation's scope to fix,
+flag it explicitly in the commit body rather than silently leaving it.
+
 ## Required Final Close-Out
 
 At the end, report:
