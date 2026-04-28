@@ -62,20 +62,42 @@ const DEFAULT_TIERS: Tier[] = [
   { label: '100k', count: 100_000 },
 ]
 
-// Budgets relaxed 2026-04-28 after observed CI regression. When the budgets
-// were originally locked at `aa07c91` (Phase 6 Slice 6-1E.b), local
-// validation recorded `1k mean 6.46ms` / `10k p95 59.8ms` — 2× headroom
-// under the original 15/120 caps. Eight days of Tranche 5B + Tranche 6
-// shipped on top of that (replay event-pulse layer, audit-chain
-// citations, confidence halos on /map and /globe), accumulating
-// per-render reconcile cost. Observed CI numbers post-regression:
-// `1k mean 24-33ms / p95 54-91ms` and `10k p95 265-310ms` — consistent
-// across four retries, not noise. New budgets gate against
-// catastrophic regression (~3-4× over current observed worst-case)
-// without absorbing further drift silently. The original strict bar is
-// the right long-term goal; getting there requires profiling MapPage.tsx
-// state-reconcile work (deep-eval reviewer flagged 875 LOC / 60
-// useState/useCallback as the structural cost driver).
+// Budgets relaxed 2026-04-28 to match measured CI reality.
+//
+// Honest framing (corrected from this file's prior comment, which is
+// preserved in commit `95e459d`'s git history with an incorrect cause
+// attribution): the original strict bar (1k mean 15 / p95 25 / max 30,
+// 10k p95 120 / max 150) was set at commit `aa07c91` (Phase 6 Slice
+// 6-1E.b) against **local-machine validation only** — that commit's
+// body explicitly says "Local validation: 1k mean 6.46ms / 10k p95
+// 59.8ms." The aa07c91 commit was never CI-validated (it does not
+// appear in CI run history). The strict budgets were therefore
+// aspirational, not measured-CI-baseline.
+//
+// CI was red continuously from 2026-04-19 through 2026-04-27 due to
+// an unrelated structural failure (db/seeds.rb bypassed
+// Audit::EventWriter post-chain-of-custody migration; closed at
+// `c3ac810`). The seed crash aborted app boot, so the perf benchmarks
+// themselves never executed on CI during that window. The numbers
+// observed at `c3ac810` (1k mean 24-33ms / p95 54-91ms, 10k p95
+// 265-310ms) are the **first measured CI baseline**, not a regression.
+//
+// Verification that this is not a Tranche 6 perf regression: the
+// benchmark measures `map.signal_reconcile` jsMs in
+// useMapSignalLayers, which has not been modified since `aa07c91`
+// (`git log aa07c91..HEAD -- frontend/src/hooks/map/useMapSignalLayers.ts
+//  frontend/src/lib/mapSignalRendering.ts` returns empty). Tranche 6
+// added new sub-hooks (useMapReplayPulseLayers, useMapConfidenceHaloLayers)
+// but those run outside the signal-reconcile hot path the benchmark
+// exercises.
+//
+// What the new budgets actually gate: catastrophic regression
+// (~3-4× over current measured CI baseline). They do NOT gate against
+// the gradual drift that may occur as the codebase grows; that's a
+// known trade. The deeper question — "what does the actual CI runner
+// achieve, and is that bar tight enough for the project's perf
+// claims?" — is the right follow-up. It needs measurement, not
+// assertion.
 const DEFAULT_BUDGETS: Record<string, TierBudget> = {
   '1k':   { maxJsMeanMs: 40,   maxJsP95Ms: 120,  maxJsMaxMs: 120  },
   '10k':  { maxJsMeanMs: null, maxJsP95Ms: 400,  maxJsMaxMs: 400  },
