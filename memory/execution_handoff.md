@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-29 (Production live at https://resilience-ops.fly.dev/ on version 37 / commit `890a8d5`, which closes the QA-sweep root-route inconsistency and attempts to suppress restricted `/health` calls for non-commanders. Current dirty tree is a narrow follow-up on two still-real production issues: harden SSE reconnect cadence so the three live stream hooks cannot self-trip the shared stream-open throttle bucket under reconnect storms, and add route-level `/health` gating so viewer/operator roles never mount the restricted page component at all. Validated locally in the dirty tree: targeted Vitest 38/38 across the three SSE hook suites plus OperationalHealthPage/OperationalHealthRoutePage, `npx tsc --noEmit`, eslint on touched frontend files, and `git diff --check`. Production AI remains an acknowledged operational-state issue (Anthropic credits/key state), separate from this code slice. Historical session arc below preserved for takeover continuity.)
+Last updated: 2026-04-29 (Production live at https://resilience-ops.fly.dev/ on version 38 / commit `3e81336`, which closes the two remaining production QA defects from the outreach hardening pass: SSE reconnect churn now respects a 5s failed-open retry floor across events/signals/telemetry, and `/health` is route-gated so viewer/operator roles never mount the restricted page component. Post-deploy smoke on version 38 re-confirmed both fixes on production: commander `/map` no longer showed stale-data / telemetry-offline symptoms in the browser pass, and viewer `/health` showed the lockout UI without any restricted `/api/feed_health` or `/api/operational_health` 403s. Validated for this tranche: targeted Vitest 38/38 across the three SSE hook suites plus OperationalHealthPage/OperationalHealthRoutePage, `npx tsc --noEmit`, eslint on touched frontend files, `git diff --check`, and post-push gate suite green (`RSpec`, TypeScript, ESLint, Brakeman, bundler-audit, frontend build). Production AI remains an acknowledged operational-state issue (Anthropic credits/key state), separate from this code slice. Historical session arc below preserved for takeover continuity.)
 
 ## Current Phase
 
@@ -33,27 +33,26 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**Post-deploy hardening pass — production mostly closed, with one
-active dirty-tree follow-up (2026-04-29).** Production now runs
-`890a8d5` (Fly version 37), which aligned `/` → `/sites` and added
-query-level `/health` gating. Fresh production QA then confirmed two
-remaining live issues worth fixing before outreach:
-- SSE reconnect / throttle interaction still drives repeated `429`
-  responses on `/api/events`, `/api/signals/stream`, and
-  `/api/telemetry/stream` under real browser reconnect churn
-- viewer `/health` still produces noisy `403` backend calls in
-  production, so query-level gating alone was not sufficient
+**Post-deploy hardening pass — closed in production (2026-04-29).**
+Production now runs `3e81336` (Fly version 38). The prior
+`890a8d5` follow-up aligned `/` → `/sites` and added query-level
+`/health` gating; `3e81336` finishes the remaining production
+hardening by:
+- adding a 5s failed-open retry floor in
+  `frontend/src/lib/sseBackoff.ts` and threading it through
+  `useEventSource.ts`, `useSignalStream.ts`, and
+  `useTelemetryStream.ts`, so reconnect storms cannot self-hammer
+  the shared SSE stream-open limiter
+- adding `frontend/src/pages/OperationalHealthRoutePage.tsx` and
+  swapping the `/health` route to it, so non-commander roles never
+  mount the restricted operational-health page component at all
 
-The current dirty tree addresses exactly those two items:
-- `frontend/src/lib/sseBackoff.ts` + `useEventSource.ts` +
-  `useSignalStream.ts` + `useTelemetryStream.ts`
-  introduce a 5s failed-open retry floor (still exponential,
-  still reset on successful connect) so reconnect storms cannot
-  self-hammer the shared stream-open limiter
-- `frontend/src/pages/OperationalHealthRoutePage.tsx` plus the
-  `App.tsx` route swap add route-level commander gating, so the
-  restricted operational-health page never mounts for viewer/operator
-  roles even if query-level guards regress
+Fresh production smoke after deploying version 38 confirmed both
+behavioral fixes:
+- commander `/map` loaded without the stale-data banner or
+  `TELEMETRY OFFLINE` warning
+- viewer `/health` showed the lockout UI and did not emit restricted
+  `/api/feed_health` or `/api/operational_health` 403s
 
 Remaining debt after this dirty tranche stays explicit:
 - `MapPage.tsx` architecture size/decomposition debt
@@ -218,29 +217,28 @@ Standard Playwright production replay smokes now pass under the normal
 harness: `E2E_BASE_URL=https://resilience-ops.fly.dev npx playwright
 test e2e/replay-map.spec.ts e2e/replay-globe.spec.ts` => 2/2 green.
 
-**Next action:** choose whether to burn down
-[`MapPage.tsx`](frontend/src/pages/MapPage.tsx) (905 lines) before
-outreach or treat it as documented non-blocking architecture debt.
-`EntityCard.tsx` closed at `830ceb3`;
-`MapOverlayControls.tsx` closed at `5148b8f` after the tests-first
-net at `fdcda0b`; globe primitive-pickup E2E proof closed at
-`6d0f100`; map/globe paginated-helper contract cleanup is now live at
-`ac626fb`. GPU-dependent map Playwright coverage remains intentionally
-local/manual rather than CI-gated until a reliable GPU lane exists.
-Roadmap item 8 (4B — access-pattern anomaly detection) remains
-stakeholder-blocked and separate from these hygiene items.
+**Next action:** restore Anthropic service availability for the live
+AI surfaces (`/briefing`, `/ontology`) by topping up credits and/or
+rotating `ANTHROPIC_API_KEY` in Fly secrets if needed, then rerun a
+production AI smoke. After that, the only remaining items are
+documented non-blockers: deferred
+[`MapPage.tsx`](frontend/src/pages/MapPage.tsx) decomposition,
+GPU-dependent map Playwright remaining local/manual, and stakeholder-
+blocked roadmap item 8 (4B — access-pattern anomaly detection).
 
 ### Production deploy state (2026-04-29 — TRUE state at close)
 
 **Live URL:** https://resilience-ops.fly.dev/
-**Live production commit:** `ac626fb`
-**Current Fly app version:** `36`
+**Live production commit:** `3e81336`
+**Current Fly app version:** `38`
 **Current Fly app-machine state:** 1 started, 2 auto-stopped
 (`min_machines_running = 1`), all healthy on `flyctl status`
 post-deploy.
-**Smoke verified:** `/up` 200, `/login` 200.
-**Live fix at this tip:** paginated E2E harness contract cleanup on
-map/globe plus all prior frontend resilience/decomposition closures.
+**Smoke verified:** `/up` 200, `/login` 200, commander `/map` live
+surface healthy, viewer `/health` lockout without restricted 403s.
+**Live fix at this tip:** SSE reconnect backoff hardening plus
+route-level `/health` gating, on top of the prior map/globe proof
+cleanup and frontend resilience/decomposition closures.
 
 **Fly secrets in production (verified via `flyctl secrets list`):**
 - `RAILS_MASTER_KEY` — pre-existing
