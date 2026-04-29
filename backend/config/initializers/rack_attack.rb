@@ -32,9 +32,16 @@ class Rack::Attack
     )
   end
 
-  SSE_TOKEN_REQUESTS_PER_MINUTE = 30
+  # Per-minute caps raised from 30 → 120 (QA P3, 2026-04-29) to give
+  # multi-tab demo sessions and brief reconnect storms enough headroom
+  # before the throttle kicks in. The 5s SSE retry-floor (3e81336)
+  # already prevents single-client churn from tripping these; this bump
+  # protects against legitimate bursty navigation across multiple tabs
+  # and against multi-user shared-NAT scenarios. The hourly caps are
+  # unchanged — they remain the binding constraint for sustained usage.
+  SSE_TOKEN_REQUESTS_PER_MINUTE = 120
   SSE_TOKEN_REQUESTS_PER_HOUR = 300
-  SSE_STREAM_OPENS_PER_MINUTE = 30
+  SSE_STREAM_OPENS_PER_MINUTE = 120
   SSE_STREAM_OPENS_PER_HOUR = 300
 
   ### Throttles ###
@@ -135,8 +142,17 @@ class Rack::Attack
 
   # Block IPs that have triggered 10+ throttle violations in the last 10 minutes.
   # This catches automated scanners that keep hitting rate limits.
+  #
+  # Bantime reduced from 3600s → 60s (QA P3, 2026-04-29). The 1-hour ban
+  # was a real demo-grade hazard: a reviewer who accidentally tripped 10
+  # throttles during exploratory navigation would be locked out of the
+  # entire app (including /login) for an hour. 60s self-heals before
+  # anyone notices. Real scanners producing sustained abuse will still
+  # be throttled continuously by the per-minute caps; the blocklist's
+  # only job is to short-circuit the 429 response loop, and 60s is more
+  # than enough to do that without bricking a legitimate session.
   blocklist("block-repeat-offenders") do |req|
-    Rack::Attack::Allow2Ban.filter(req.ip, maxretry: 10, findtime: 600, bantime: 3600) do
+    Rack::Attack::Allow2Ban.filter(req.ip, maxretry: 10, findtime: 600, bantime: 60) do
       req.env["rack.attack.match_type"] == :throttle
     end
   end
