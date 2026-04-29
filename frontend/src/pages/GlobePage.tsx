@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Callout, Spinner } from '@blueprintjs/core'
+import { Button, Callout, NonIdealState, Spinner } from '@blueprintjs/core'
 import { useAllSites } from '../hooks/useSites'
 import { useAllTasks } from '../hooks/useTasks'
 import { useAllAssets } from '../hooks/useAssets'
@@ -262,7 +262,7 @@ export default function GlobePage() {
   // the commander/operator permission.
   const { canTriageAlerts } = useRole()
 
-  const { viewerReady, isCloseView, focusPosition, flyToHome, projectPosition, projectRenderedPosition, inspectCanvasPosition, dispatchSyntheticPick, pickCanvasPosition } = useGlobeEngine({
+  const { viewerReady, engineError, retryEngine, isCloseView, focusPosition, flyToHome, projectPosition, projectRenderedPosition, inspectCanvasPosition, dispatchSyntheticPick, pickCanvasPosition } = useGlobeEngine({
     containerRef, creditsRef,
     sites, assets, signals, tasksBySite, areaOfOperations, breachedSiteIds,
     coverageCircles, chokepoints, vesselTracks, assetTrails, readings,
@@ -429,6 +429,35 @@ export default function GlobePage() {
       <div ref={creditsRef}   className="globe-credits" />
 
       {loading && <div className="globe-loading"><Spinner /></div>}
+
+      {/* Engine init failure overlay. Without this, a CDN failure on the
+          cesium dynamic import or a WebGL-context-unavailable browser
+          left the user staring at a blank canvas with no error state.
+          The hook's retryEngine clears the error and re-runs the init
+          effect; the overlay vanishes when init succeeds. */}
+      {engineError && (
+        <div className="globe-engine-error-overlay" role="alert">
+          <NonIdealState
+            icon="error"
+            title="Globe engine failed to load"
+            description={
+              <>
+                <p>{engineError.message}</p>
+                <p style={{ fontSize: 12, color: 'var(--bp5-text-color-muted)' }}>
+                  This usually means the Cesium runtime could not be downloaded
+                  (network blip, CDN outage) or the browser is missing WebGL
+                  support.
+                </p>
+              </>
+            }
+            action={
+              <Button intent="primary" icon="refresh" onClick={retryEngine}>
+                Retry
+              </Button>
+            }
+          />
+        </div>
+      )}
 
       <GlobeToolbar
         showSignals={showSignals}

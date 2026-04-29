@@ -3308,6 +3308,23 @@ body {
   z-index: 10;
 }
 
+/* Engine-init failure overlays for /map and /globe. Sits on top of the
+   canvas with a translucent backdrop so the user sees a clear error +
+   retry affordance instead of a silent blank canvas when the engine
+   runtime fails to load (CDN failure, WebGL unavailable, etc.). */
+.map-engine-error-overlay,
+.globe-engine-error-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 20, 30, 0.85);
+  backdrop-filter: blur(2px);
+  z-index: 20;
+  padding: 24px;
+}
+
 /* ── Globe toolbar ───────────────────────────────────────────── */
 
 .globe-toolbar {

@@ -134,6 +134,16 @@ export interface GlobeEngineInput {
 export interface GlobeEngineReturn {
   /** True when the Cesium viewer and primitive collections are initialized */
   viewerReady:   boolean
+  /**
+   * Set when the engine fails to initialize or surfaces a fatal runtime error.
+   * Caller renders a recovery UI when this is non-null and offers `retryEngine`.
+   * Kept null during normal operation; non-fatal Cesium tile/asset errors do
+   * NOT populate this — only init-time failures (preload, viewer constructor
+   * throw, fatal scene errors before viewerReady).
+   */
+  engineError: Error | null
+  /** Clears engineError and re-attempts engine initialization from scratch. */
+  retryEngine: () => void
   /** True when the camera is below SIGNAL_CLOSE_VIEW_HEIGHT_M */
   isCloseView:   boolean
   /** Fly to a lat/lng with a given altitude and optional pitch */
@@ -221,16 +231,38 @@ export function useGlobeEngine({
 
   const [viewerReady, setViewerReady] = useState(false)
   const [isCloseView, setIsCloseView] = useState(false)
+  // Engine-init failure handling. Pre-2026-04-29 the init promise had no
+  // .catch and the constructor wasn't wrapped, so a CDN failure on the
+  // cesium import or a WebGL-context-unavailable browser left the user
+  // with a blank canvas and no signal that anything was wrong. engineError
+  // now surfaces those fatal cases; retryEngine clears the state and
+  // re-runs the init effect via the retryToken dep below.
+  const [engineError, setEngineError] = useState<Error | null>(null)
+  const [retryToken, setRetryToken] = useState(0)
+  const retryEngine = useCallback(() => {
+    setEngineError(null)
+    setViewerReady(false)
+    setRetryToken(token => token + 1)
+  }, [])
 
   // ---------------------------------------------------------------------------
-  // Viewer init — runs once
+  // Viewer init — runs on mount AND on retry
   // ---------------------------------------------------------------------------
+  // Failure paths now surface as engineError instead of unhandled promise
+  // rejections + silent blank canvases:
+  //   - preloadGlobeRuntime() rejects (CDN failure, dynamic import error)
+  //   - new Cesium.Viewer(...) throws (WebGL unavailable, container missing,
+  //     terrain/imagery provider construction error)
+  //   - All synchronous setup code inside the .then is wrapped so Cesium
+  //     constructor invariants surface as engineError, not unhandled
+  //     rejections.
   useEffect(() => {
     if (!containerRef.current || viewerRef.current) return
     let cancelled = false
 
-    void preloadGlobeRuntime().then(Cesium => {
+    preloadGlobeRuntime().then(Cesium => {
       if (cancelled || !containerRef.current || viewerRef.current) return
+      try {
       cesiumRef.current = Cesium
       if (ionToken) Cesium.Ion.defaultAccessToken = ionToken
 
@@ -293,6 +325,15 @@ export function useGlobeEngine({
 
       viewerRef.current = viewer
       setViewerReady(true)
+      } catch (err) {
+        if (cancelled) return
+        setEngineError(err instanceof Error ? err : new Error(String(err)))
+      }
+    }).catch(err => {
+      if (cancelled) return
+      // preloadGlobeRuntime() rejected. Most common cause: dynamic import
+      // failed (network blip, CDN outage, asset 404 after deploy).
+      setEngineError(err instanceof Error ? err : new Error(String(err)))
     })
 
     return () => {
@@ -303,8 +344,8 @@ export function useGlobeEngine({
       cesiumRef.current = null
       signalCollectionRef.current = null
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- containerRef and creditsRef are stable; run once
-  }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- containerRef and creditsRef are stable; re-run only on retry
+  }, [retryToken])
 
   // ---------------------------------------------------------------------------
   // Cross-entity spatial linking
@@ -526,6 +567,8 @@ export function useGlobeEngine({
 
   return {
     viewerReady,
+    engineError,
+    retryEngine,
     isCloseView,
     focusPosition,
     flyToHome,

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { Button, NonIdealState } from '@blueprintjs/core'
 import { useQueryClient } from '@tanstack/react-query'
 import { isPerfEnabled } from '../lib/perfInstrumentation'
 import { useMapBenchmarkBridge } from '../hooks/useMapBenchmarkBridge'
@@ -270,7 +271,7 @@ export default function MapPage() {
   // ---------------------------------------------------------------------------
   // MapLibre engine
   // ---------------------------------------------------------------------------
-  const { mapLoaded, flyTo, getZoom, projectPosition, inspectCanvasPosition, resize } = useMapLibreEngine({
+  const { mapLoaded, engineError, retryEngine, flyTo, getZoom, projectPosition, inspectCanvasPosition, resize } = useMapLibreEngine({
     containerRef: mapContainerRef,
     sites,
     assets,
@@ -749,6 +750,35 @@ export default function MapPage() {
     <div className={`map-page${contextPanelOpen ? ' map-page--panel-open' : ''}`}>
       <div className="map-viewport">
         <div ref={mapContainerRef} className="map-container" />
+
+        {/* Engine init failure overlay. Without this, a CDN failure on
+            the maplibre-gl dynamic import or a WebGL-context-unavailable
+            browser left the user staring at a blank canvas with no error
+            state. The hook's retryEngine clears the error and re-runs
+            the init effect; the overlay vanishes when init succeeds. */}
+        {engineError && (
+          <div className="map-engine-error-overlay" role="alert">
+            <NonIdealState
+              icon="error"
+              title="Map engine failed to load"
+              description={
+                <>
+                  <p>{engineError.message}</p>
+                  <p style={{ fontSize: 12, color: 'var(--bp5-text-color-muted)' }}>
+                    This usually means the map runtime could not be downloaded
+                    (network blip, CDN outage) or the browser is missing WebGL
+                    support.
+                  </p>
+                </>
+              }
+              action={
+                <Button intent="primary" icon="refresh" onClick={retryEngine}>
+                  Retry
+                </Button>
+              }
+            />
+          </div>
+        )}
 
         <MapOverlayControls
         loading={loading}

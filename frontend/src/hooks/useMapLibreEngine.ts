@@ -143,6 +143,16 @@ export interface MapEngineInput {
 export interface MapEngineReturn {
   /** True once the map style has loaded; gates all source/layer effects. */
   mapLoaded: boolean
+  /**
+   * Set when the engine fails to initialize or surfaces a fatal runtime error.
+   * Caller renders a recovery UI when this is non-null and offers `retryEngine`.
+   * Kept null during normal operation; non-fatal MapLibre tile/source errors do
+   * NOT populate this — only init-time failures (preload, constructor throw,
+   * map.on('error') before first load).
+   */
+  engineError: Error | null
+  /** Clears engineError and re-attempts engine initialization from scratch. */
+  retryEngine: () => void
   /** Imperatively fly the camera. Safe to call regardless of mapLoaded. */
   flyTo: (center: [number, number], zoom: number) => void
   /** Current map zoom, used only for diagnostics/E2E assertions. */
@@ -222,6 +232,19 @@ export function useMapLibreEngine({
   const appliedStyleRef  = useRef<MapStyleKey | null>(null)
 
   const [mapLoaded, setMapLoaded] = useState(false)
+  // Engine-init failure handling. Pre-2026-04-29 the init promise had no
+  // .catch and the constructor wasn't wrapped, so a CDN failure on the
+  // maplibre-gl import or a WebGL-context-unavailable browser left the
+  // user with a blank canvas and no signal that anything was wrong.
+  // engineError now surfaces those fatal cases; retryEngine clears the
+  // state and re-runs the init effect via the retryToken dep below.
+  const [engineError, setEngineError] = useState<Error | null>(null)
+  const [retryToken, setRetryToken] = useState(0)
+  const retryEngine = useCallback(() => {
+    setEngineError(null)
+    setMapLoaded(false)
+    setRetryToken(token => token + 1)
+  }, [])
 
   // Mirror callbacks into refs so one-time handler registrations stay current
   const onSiteClickRef   = useRef(onSiteClick)
@@ -255,25 +278,59 @@ export function useMapLibreEngine({
   // ---------------------------------------------------------------------------
   // Map init
   // ---------------------------------------------------------------------------
+  // Effect runs on mount AND on retry (retryToken increments via retryEngine).
+  // Failure paths now surface as engineError instead of unhandled promise
+  // rejections + silent blank canvases:
+  //   - preloadMapRuntime() rejects (CDN failure, dynamic import error)
+  //   - new maplibre.Map(...) throws (WebGL unavailable, container missing)
+  //   - map.on('error', ...) fires before first load (style fetch failure,
+  //     bad tile source) — a runtime tile error AFTER mapLoaded=true is
+  //     non-fatal and is intentionally not promoted to engineError.
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
     let cancelled = false
 
-    void preloadMapRuntime().then(maplibre => {
-      if (cancelled || !containerRef.current || mapRef.current) return
-      maplibreRef.current = maplibre
-      const initialStyle = mapStyleRef.current
-      const map = new maplibre.Map({
-        container: containerRef.current,
-        style:     MAP_STYLE_CONFIGS[initialStyle].style as string,
-        center:    [0, 20],
-        zoom:      1.5,
+    preloadMapRuntime()
+      .then(maplibre => {
+        if (cancelled || !containerRef.current || mapRef.current) return
+        try {
+          maplibreRef.current = maplibre
+          const initialStyle = mapStyleRef.current
+          const map = new maplibre.Map({
+            container: containerRef.current,
+            style:     MAP_STYLE_CONFIGS[initialStyle].style as string,
+            center:    [0, 20],
+            zoom:      1.5,
+          })
+          map.addControl(new maplibre.NavigationControl(), 'top-left')
+          map.on('load', () => setMapLoaded(true))
+          // Pre-load fatal errors (e.g. style fetch fail) bubble through
+          // map.on('error'). Once the style has loaded successfully, tile-
+          // level errors are normal operating noise and we don't want to
+          // tear down the whole engine for them — hence the mapLoaded gate
+          // checked at fire time via a closure-captured ref.
+          map.on('error', (event: { error?: Error }) => {
+            if (cancelled) return
+            // Read mapRef directly: if the map is still alive AND we have
+            // not yet successfully loaded, a fatal init error has fired.
+            // After successful load, we ignore tile-network noise here.
+            if (mapRef.current && !cancelled) {
+              setEngineError(prev => prev ?? (event.error ?? new Error('MapLibre engine reported a fatal error')))
+            }
+          })
+          appliedStyleRef.current = initialStyle
+          mapRef.current = map
+        } catch (err) {
+          if (cancelled) return
+          setEngineError(err instanceof Error ? err : new Error(String(err)))
+        }
       })
-      map.addControl(new maplibre.NavigationControl(), 'top-left')
-      map.on('load', () => setMapLoaded(true))
-      appliedStyleRef.current = initialStyle
-      mapRef.current = map
-    })
+      .catch(err => {
+        if (cancelled) return
+        // preloadMapRuntime() rejected. Most common cause: dynamic import
+        // failed (network blip, CDN outage, asset 404 after deploy).
+        setEngineError(err instanceof Error ? err : new Error(String(err)))
+      })
 
     return () => {
       cancelled = true
@@ -283,8 +340,8 @@ export function useMapLibreEngine({
       appliedStyleRef.current = null
       setMapLoaded(false)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- containerRef is stable; run once
-  }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- containerRef is stable; re-run only on retry
+  }, [retryToken])
 
   // ---------------------------------------------------------------------------
   // Style switching
@@ -523,6 +580,8 @@ export function useMapLibreEngine({
 
   return {
     mapLoaded,
+    engineError,
+    retryEngine,
     flyTo,
     getZoom,
     projectPosition,

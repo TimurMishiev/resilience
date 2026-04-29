@@ -1793,4 +1793,104 @@ describe('useMapLibreEngine adapter', () => {
       }
     })
   })
+
+  // Engine init failure handling — pre-2026-04-29 the init promise had
+  // no .catch and the constructor wasn't wrapped, so a CDN failure on
+  // the maplibre-gl import or a WebGL-context-unavailable browser left
+  // the user staring at a blank canvas with no signal that anything
+  // was wrong. These specs prove the failure paths now surface as
+  // engineError and that retryEngine recovers cleanly.
+  describe('engine-init failure handling', () => {
+    it('surfaces engineError when preloadMapRuntime rejects', async () => {
+      const containerRef = makeContainerRef()
+      vi.mocked(preloadMapRuntime).mockRejectedValueOnce(
+        new Error('CDN download failed'),
+      )
+
+      const hook = renderHook(() =>
+        useMapLibreEngine(defaultInput(containerRef)),
+      )
+
+      // Flush the rejection through the microtask queue.
+      await act(async () => {
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      expect(hook.result.current.engineError).toBeInstanceOf(Error)
+      expect(hook.result.current.engineError?.message).toBe('CDN download failed')
+      expect(hook.result.current.mapLoaded).toBe(false)
+    })
+
+    it('surfaces engineError when the Map constructor throws synchronously', async () => {
+      const containerRef = makeContainerRef()
+      vi.mocked(preloadMapRuntime).mockResolvedValueOnce({
+        Map: vi.fn(() => {
+          throw new Error('WebGL context unavailable')
+        }),
+        NavigationControl: vi.fn(),
+        Popup: vi.fn(),
+      } as unknown as Awaited<ReturnType<typeof preloadMapRuntime>>)
+
+      const hook = renderHook(() =>
+        useMapLibreEngine(defaultInput(containerRef)),
+      )
+
+      await act(async () => {
+        await Promise.resolve()
+      })
+
+      expect(hook.result.current.engineError).toBeInstanceOf(Error)
+      expect(hook.result.current.engineError?.message).toBe('WebGL context unavailable')
+    })
+
+    it('retryEngine clears engineError and re-runs init', async () => {
+      const containerRef = makeContainerRef()
+      // First attempt fails.
+      vi.mocked(preloadMapRuntime).mockRejectedValueOnce(
+        new Error('first attempt failed'),
+      )
+
+      const hook = renderHook(() =>
+        useMapLibreEngine(defaultInput(containerRef)),
+      )
+
+      await act(async () => {
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      expect(hook.result.current.engineError).toBeInstanceOf(Error)
+
+      // Arm the second attempt to succeed via the standard facade.
+      vi.mocked(preloadMapRuntime).mockResolvedValueOnce({
+        Map: vi.fn().mockImplementation(() => facade),
+        NavigationControl: vi.fn(),
+        Popup: vi.fn().mockImplementation(() => ({
+          setLngLat: vi.fn().mockReturnThis(),
+          setDOMContent: vi.fn().mockReturnThis(),
+          addTo: vi.fn().mockReturnThis(),
+          remove: vi.fn(),
+        })),
+      } as unknown as Awaited<ReturnType<typeof preloadMapRuntime>>)
+
+      // Trigger retry. engineError clears immediately; init effect re-runs.
+      await act(async () => {
+        hook.result.current.retryEngine()
+      })
+
+      expect(hook.result.current.engineError).toBeNull()
+
+      // Flush the second preload + fire 'load'.
+      await act(async () => {
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      await act(async () => {
+        facade.fire('load')
+      })
+
+      expect(hook.result.current.mapLoaded).toBe(true)
+    })
+  })
 })

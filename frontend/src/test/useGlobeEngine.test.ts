@@ -1623,4 +1623,95 @@ describe('useGlobeEngine adapter', () => {
       expect(getPrimitiveOutlineCss('sig-3')).not.toBe('#f5a623')
     })
   })
+
+  // Engine init failure handling — pre-2026-04-29 the init promise had
+  // no .catch and the Cesium.Viewer construction wasn't wrapped, so a
+  // CDN failure on the cesium dynamic import or a WebGL-context-
+  // unavailable browser left the user with a blank canvas and no error
+  // state. These specs prove the failure paths surface as engineError
+  // and that retryEngine recovers cleanly.
+  describe('engine-init failure handling', () => {
+    it('surfaces engineError when preloadGlobeRuntime rejects', async () => {
+      const refs = makeContainerRef()
+      vi.mocked(preloadGlobeRuntime).mockRejectedValueOnce(
+        new Error('CDN download failed'),
+      )
+
+      const hook = renderHook(() => useGlobeEngine(defaultInput(refs)))
+
+      // Flush the rejection through the microtask queue.
+      await act(async () => {
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      expect(hook.result.current.engineError).toBeInstanceOf(Error)
+      expect(hook.result.current.engineError?.message).toBe('CDN download failed')
+      expect(hook.result.current.viewerReady).toBe(false)
+    })
+
+    it('surfaces engineError when the Viewer constructor throws synchronously', async () => {
+      const refs = makeContainerRef()
+      // Build a Cesium facade that throws on Viewer construction. We do
+      // this by wrapping the standard facade and overriding only Viewer.
+      const standardFacade = buildCesiumFacade()
+      const throwingModule = {
+        ...standardFacade.CesiumModule,
+        Viewer: vi.fn(() => {
+          throw new Error('WebGL context unavailable')
+        }),
+      }
+      vi.mocked(preloadGlobeRuntime).mockResolvedValueOnce(
+        throwingModule as unknown as Awaited<ReturnType<typeof preloadGlobeRuntime>>,
+      )
+
+      const hook = renderHook(() => useGlobeEngine(defaultInput(refs)))
+
+      await act(async () => {
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      expect(hook.result.current.engineError).toBeInstanceOf(Error)
+      expect(hook.result.current.engineError?.message).toBe('WebGL context unavailable')
+      expect(hook.result.current.viewerReady).toBe(false)
+    })
+
+    it('retryEngine clears engineError and re-runs init', async () => {
+      const refs = makeContainerRef()
+      // First attempt fails.
+      vi.mocked(preloadGlobeRuntime).mockRejectedValueOnce(
+        new Error('first attempt failed'),
+      )
+
+      const hook = renderHook(() => useGlobeEngine(defaultInput(refs)))
+
+      await act(async () => {
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      expect(hook.result.current.engineError).toBeInstanceOf(Error)
+
+      // Arm the second attempt to succeed via the standard facade.
+      vi.mocked(preloadGlobeRuntime).mockResolvedValueOnce(
+        cesium.CesiumModule as unknown as Awaited<ReturnType<typeof preloadGlobeRuntime>>,
+      )
+
+      // Trigger retry. engineError clears immediately; init effect re-runs.
+      await act(async () => {
+        hook.result.current.retryEngine()
+      })
+
+      expect(hook.result.current.engineError).toBeNull()
+
+      // Flush the second preload + viewer construction.
+      await act(async () => {
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      expect(hook.result.current.viewerReady).toBe(true)
+    })
+  })
 })
