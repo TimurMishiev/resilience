@@ -29,6 +29,13 @@ const CONNECTED_SSE_RESPONSE = {
   body: 'event: connected\ndata: {}\n\n',
 }
 
+function emptyPaginatedResponse() {
+  return {
+    data: [],
+    meta: { page: 1, total_pages: 1, per_page: 0, total: 0 },
+  }
+}
+
 test.use({ serviceWorkers: 'block' })
 
 async function stubGlobePageRoutes(page: Page, sites: SiteFixture[]) {
@@ -53,21 +60,21 @@ async function stubGlobePageRoutes(page: Page, sites: SiteFixture[]) {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ data: [] }),
+      body: JSON.stringify(emptyPaginatedResponse()),
     })
   })
   await page.route('**/api/assets**', async route => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ data: [] }),
+      body: JSON.stringify(emptyPaginatedResponse()),
     })
   })
   await page.route('**/api/areas_of_operation**', async route => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ data: [] }),
+      body: JSON.stringify(emptyPaginatedResponse()),
     })
   })
   await page.route('**/api/signal_rule_matches/active_breach_sites**', async route => {
@@ -92,8 +99,6 @@ async function stubGlobePageRoutes(page: Page, sites: SiteFixture[]) {
   // Without these stubs the page issued real-network requests in the
   // E2E sandbox and could either hang waiting for unbacked SSE
   // responses or surface fetch errors that delayed bridge readiness.
-  // The 3 globe primitive-pickup tests below are still `test.fixme`d;
-  // see their inline comments for the residual non-harness root cause.
   await page.route('**/api/signal_rule_matches/active_site_confidence**', async route => {
     await route.fulfill({
       status: 200,
@@ -105,7 +110,7 @@ async function stubGlobePageRoutes(page: Page, sites: SiteFixture[]) {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ data: [] }),
+      body: JSON.stringify(emptyPaginatedResponse()),
     })
   })
   await page.route('**/api/signals**', async route => {

@@ -50,6 +50,13 @@ const CONNECTED_SSE_RESPONSE = {
   body: 'event: connected\ndata: {}\n\n',
 }
 
+function emptyPaginatedResponse() {
+  return {
+    data: [],
+    meta: { page: 1, total_pages: 1, per_page: 0, total: 0 },
+  }
+}
+
 test.use({ serviceWorkers: 'block' })
 
 async function stubGlobePageRoutes(
@@ -83,21 +90,21 @@ async function stubGlobePageRoutes(
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ data: [] }),
+      body: JSON.stringify(emptyPaginatedResponse()),
     })
   })
   await page.route('**/api/assets**', async route => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ data: [] }),
+      body: JSON.stringify(emptyPaginatedResponse()),
     })
   })
   await page.route('**/api/areas_of_operation**', async route => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ data: [] }),
+      body: JSON.stringify(emptyPaginatedResponse()),
     })
   })
   await page.route('**/api/signal_rule_matches/active_breach_sites**', async route => {
@@ -124,7 +131,7 @@ async function stubGlobePageRoutes(
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ data: [] }),
+      body: JSON.stringify(emptyPaginatedResponse()),
     })
   })
   await page.route('**/api/signals**', async route => {

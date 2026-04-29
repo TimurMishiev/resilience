@@ -52,6 +52,13 @@ const CONNECTED_SSE_RESPONSE = {
   body: 'event: connected\ndata: {}\n\n',
 }
 
+function emptyPaginatedResponse() {
+  return {
+    data: [],
+    meta: { page: 1, total_pages: 1, per_page: 0, total: 0 },
+  }
+}
+
 test.use({ serviceWorkers: 'block' })
 
 async function mockStableSignalStream(page: Page) {
@@ -177,28 +184,31 @@ async function stubMapPageRoutes(
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ data: sites }),
+      body: JSON.stringify({
+        data: sites,
+        meta: { page: 1, total_pages: 1, per_page: sites.length, total: sites.length },
+      }),
     })
   })
   await page.route('**/api/tasks**', async route => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ data: [] }),
+      body: JSON.stringify(emptyPaginatedResponse()),
     })
   })
   await page.route('**/api/assets**', async route => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ data: [] }),
+      body: JSON.stringify(emptyPaginatedResponse()),
     })
   })
   await page.route('**/api/areas_of_operation**', async route => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ data: [] }),
+      body: JSON.stringify(emptyPaginatedResponse()),
     })
   })
   await page.route('**/api/risk_scores**', async route => {

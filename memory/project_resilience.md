@@ -403,9 +403,15 @@ Current active sequencing lives in:
 - Cross-process live streams and basic ops health visibility are now closed.
 - External error tracking is now integrated through env-gated Sentry on backend and frontend.
 - SSE/thread scaling safeguards are now closed for the current deployment target through active-stream admission caps plus reconnect throttling.
-- Three globe primitive-pickup E2E tests remain `test.fixme`; commit `a57f5c6` narrowed the harness contamination by stubbing the missing mount-time request surface, but no interactive rerun has yet proven whether the residual failure is gone or is a real Cesium/viewer timing issue.
+- Globe primitive-pickup E2E proof debt is closed at `6d0f100`.
+  The 3 previously-`fixme`d tests now pass interactively. A narrow
+  follow-up in the current dirty tree finishes the paginated-helper
+  cleanup across both globe helpers and `map-site-selection.spec.ts`
+  by returning full paginated `meta` envelopes for every mounted
+  `useAll*` stub, ensuring these Playwright specs no longer pass while
+  background `fetchAllPaginated` queries fail.
 - Map / globe engine init failure handling is closed at `7d662bf`: both `useMapLibreEngine` and `useGlobeEngine` now expose `engineError` + `retryEngine`, and `MapPage` / `GlobePage` render a Blueprint `NonIdealState` overlay with a Retry button when preload reject, constructor throw, or runtime error-before-load fires. Coverage: 6 new regression specs (3 per hook).
-- Frontend architecture debt remains concentrated in large orchestration components ([MapPage.tsx](/Users/timurmishiev/Desktop/Code/resilience/frontend/src/pages/MapPage.tsx), [MapOverlayControls.tsx](/Users/timurmishiev/Desktop/Code/resilience/frontend/src/components/map/MapOverlayControls.tsx), [EntityCard.tsx](/Users/timurmishiev/Desktop/Code/resilience/frontend/src/components/EntityCard.tsx)); this is not a blocker to the current deployment, but it is still real debt.
+- Frontend architecture debt is now concentrated in [MapPage.tsx](/Users/timurmishiev/Desktop/Code/resilience/frontend/src/pages/MapPage.tsx) only. [MapOverlayControls.tsx](/Users/timurmishiev/Desktop/Code/resilience/frontend/src/components/map/MapOverlayControls.tsx) closed at `5148b8f` after a tests-first net at `fdcda0b`, and [EntityCard.tsx](/Users/timurmishiev/Desktop/Code/resilience/frontend/src/components/EntityCard.tsx) closed at `830ceb3`. The remaining MapPage monolith is not a blocker to the current deployment, but it is still real debt.
 - The remaining architectural ceiling is still thread-per-connection SSE itself; replacing that transport is a future scale project, not an agreed near-term blocker.
 
 ---
