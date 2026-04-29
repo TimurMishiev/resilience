@@ -374,6 +374,105 @@ RSpec.describe "Api::Telemetry", type: :request do
         # empty scope and the payload is filtered out.
         expect(response.body).not_to include(%("ts":2))
       end
+
+      # ── A.3 sibling: USER reassignment (vs. ASSET reassignment above) ─────
+      # The pre-existing refresh above caught ASSET reassignment because it
+      # re-queries the Asset table each tick. But it passed the in-memory
+      # `current_user` (cached at stream open) into AssetPolicy::Scope, so
+      # USER reassignment (admin moves user from org A to org B) was
+      # invisible to the scope refresh — policy_scope kept resolving against
+      # the user's stream-open org. The fix reloads the User from the DB
+      # uncached and feeds the FRESH user into the policy.
+      it "re-resolves policy_scope against a freshly-reloaded User so user reassignment takes effect mid-stream" do
+        stub_const("Api::TelemetryController::ALLOWED_ASSETS_REFRESH_SECONDS", 0)
+
+        org_a    = create(:organization)
+        org_b    = create(:organization)
+        site_a   = create(:site, organization: org_a)
+        site_b   = create(:site, organization: org_b)
+        asset_a  = create(:asset, name: "Asset in org A", home_site: site_a)
+        asset_b  = create(:asset, name: "Asset in org B", home_site: site_b)
+        viewer   = create(:user, :commander, organization: org_a)
+
+        payloads = [
+          { asset_id: asset_a.id, name: asset_a.name, lat: 1.0, lng: 2.0, heading: 0, speed: 0, battery: 100, ts: 1 }.to_json,
+          { asset_id: asset_a.id, name: asset_a.name, lat: 1.1, lng: 2.1, heading: 0, speed: 0, battery: 100, ts: 2 }.to_json,
+        ]
+        # Reassign the USER (not the asset) between pops. After reassignment,
+        # asset_a (org A) should no longer be visible to viewer (now org B).
+        mid_stream_queue = Class.new do
+          def initialize(payloads, viewer, new_org)
+            @payloads = payloads.dup
+            @viewer = viewer
+            @new_org = new_org
+            @pop_count = 0
+          end
+          def pop
+            @pop_count += 1
+            @viewer.update!(organization: @new_org) if @pop_count == 2
+            @payloads.shift
+          end
+          def close; end
+        end.new(payloads, viewer, org_b)
+        allow(Telemetry::Broadcaster).to receive(:instance).and_return(
+          instance_double(Telemetry::Broadcaster, subscribe: mid_stream_queue, unsubscribe: nil, update_subscription: nil)
+        )
+
+        open_stream_as(viewer)
+
+        expect(response).to have_http_status(:ok)
+        # First payload: viewer still in org A → asset_a visible → delivered.
+        expect(response.body).to include(%("ts":1))
+        # Second payload popped after user reassigned to org B. Without the
+        # fix, the stale in-memory current_user.organization_id = org_a.id
+        # would let policy_scope keep returning asset_a; with the fix, the
+        # reloaded user has org_b, asset_a is filtered out.
+        expect(response.body).not_to include(%("ts":2))
+      end
+
+      it "closes the telemetry stream when the user record is deleted mid-stream" do
+        stub_const("Api::TelemetryController::ALLOWED_ASSETS_REFRESH_SECONDS", 0)
+
+        org_a   = create(:organization)
+        site_a  = create(:site, organization: org_a)
+        asset_a = create(:asset, name: "Scoped Asset", home_site: site_a)
+        viewer  = create(:user, :commander, organization: org_a)
+
+        payloads = [
+          { asset_id: asset_a.id, name: asset_a.name, lat: 1.0, lng: 2.0, heading: 0, speed: 0, battery: 100, ts: 1 }.to_json,
+          { asset_id: asset_a.id, name: asset_a.name, lat: 1.1, lng: 2.1, heading: 0, speed: 0, battery: 100, ts: 2 }.to_json,
+        ]
+        delete_aware_queue = Class.new do
+          def initialize(payloads, viewer)
+            @payloads = payloads.dup
+            @viewer = viewer
+            @pop_count = 0
+          end
+          def pop
+            @pop_count += 1
+            @viewer.destroy! if @pop_count == 2
+            @payloads.shift
+          end
+          def close; end
+        end.new(payloads, viewer)
+
+        broadcaster_double = instance_double(
+          Telemetry::Broadcaster,
+          subscribe: delete_aware_queue,
+          unsubscribe: nil,
+          update_subscription: nil,
+        )
+        allow(Telemetry::Broadcaster).to receive(:instance).and_return(broadcaster_double)
+
+        open_stream_as(viewer)
+
+        expect(response).to have_http_status(:ok)
+        # First event delivered before the deletion took effect.
+        expect(response.body).to include(%("ts":1))
+        # Second pop's refresh tick detects the gone user and breaks.
+        expect(response.body).not_to include(%("ts":2))
+        expect(broadcaster_double).to have_received(:unsubscribe).with(delete_aware_queue)
+      end
     end
 
     it "returns 429 when the remote IP is already at live stream capacity" do

@@ -148,6 +148,25 @@ module Api
         break unless refresh_sse_stream_lease(lease, stream_name: "telemetry")
 
         if Time.current - allowed_asset_ids_refreshed_at >= ALLOWED_ASSETS_REFRESH_SECONDS
+          # Reload the User from the DB so AssetPolicy::Scope sees fresh
+          # organization_id / area_of_operation_id values. Without this,
+          # the previous code passed the stream-open `current_user`
+          # (in-memory ActiveRecord instance with cached attributes) to
+          # the policy, which meant a USER reassignment (admin moves
+          # user from org A to org B) was invisible to the scope refresh
+          # — only ASSET reassignment (asset moved between sites/orgs)
+          # was caught. Pairs with the equivalent A.3 fix in
+          # EventsController; closes the symmetric gap on the telemetry
+          # SSE stream.
+          fresh_user = ActiveRecord::Base.connection_pool.with_connection do
+            ActiveRecord::Base.uncached do
+              User.find_by(id: current_user.id)
+            end
+          end
+          # User row deleted — close the stream rather than continuing
+          # to deliver telemetry for a gone account.
+          break if fresh_user.nil?
+
           # Rebuild the scope from scratch (bypassing Pundit's per-request
           # policy_scope memoisation) and disable AR's query cache so we
           # actually re-read the tenant state instead of the cached
@@ -156,13 +175,17 @@ module Api
           # not holding a DB connection while it blocks on queue.pop.
           allowed_asset_ids = ActiveRecord::Base.connection_pool.with_connection do
             ActiveRecord::Base.uncached do
-              AssetPolicy::Scope.new(current_user, Asset.all).resolve.pluck(:id).to_set
+              AssetPolicy::Scope.new(fresh_user, Asset.all).resolve.pluck(:id).to_set
             end
           end
           # Push the refreshed set to the broadcaster too — without this,
           # the broadcaster's filter would stay anchored to whatever was
           # registered at stream open, defeating the point of refreshing.
-          broadcaster.update_subscription(queue, asset_ids: unrestricted_viewer? ? :all : allowed_asset_ids)
+          # Inline the unrestricted check against fresh_user so a viewer
+          # who lost their unrestricted-admin status mid-stream stops
+          # seeing every asset.
+          fresh_unrestricted = fresh_user.organization_id.blank? && fresh_user.area_of_operation_id.blank?
+          broadcaster.update_subscription(queue, asset_ids: fresh_unrestricted ? :all : allowed_asset_ids)
           allowed_asset_ids_refreshed_at = Time.current
         end
 
