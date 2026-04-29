@@ -117,4 +117,34 @@ RSpec.describe Feeds::OpenSkyIngestionService, type: :service do
       expect(result.payload[:ingested]).to eq(0)
     end
   end
+
+  # Audit P3 follow-up (2026-04-29, post-deploy log review): production
+  # logs after the `c44754c` deploy showed every OpenSky poll failing
+  # with `NoMethodError: undefined method 'ssl_http' for an instance
+  # of Feeds::OpenSkyIngestionService`. Root cause: the service called
+  # `ssl_http` (defined in `Feeds::SslHelper`) without including the
+  # module — six other feed services (ACLED, AIS, FIRMS, GDACS,
+  # GPSJam, USGS) all `include SslHelper`. The error was caught by
+  # the rescue at the fetch call site, so the feed degraded silently
+  # rather than crashing the SolidQueue worker.
+  #
+  # This regression spec ensures the include is never lost again. A
+  # future refactor that drops the include would fail this assertion
+  # immediately rather than producing a silent degraded feed.
+  describe "SslHelper inclusion (Audit P3 follow-up)" do
+    it "responds to ssl_http (proves Feeds::SslHelper is included)" do
+      expect(service).to respond_to(:ssl_http)
+    end
+
+    it "ssl_http actually returns a configured Net::HTTP instance" do
+      http = service.ssl_http("opensky-network.org", 443, timeout: 15)
+      expect(http).to be_a(Net::HTTP)
+      expect(http.use_ssl?).to be true
+      expect(http.open_timeout).to eq(15)
+      expect(http.read_timeout).to eq(15)
+      # The CRL-tolerant verify_callback is what makes this helper
+      # load-bearing across all feed services.
+      expect(http.verify_callback).to be(Feeds::SslHelper::SSL_VERIFY_CALLBACK)
+    end
+  end
 end

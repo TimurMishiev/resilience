@@ -19,6 +19,18 @@ module Feeds
   # Either way we poll 4 bounding boxes every 900s (15 min) with 12s gaps
   # between boxes = 384 req/day — safely under both limits.
   class OpenSkyIngestionService < ApplicationService
+    # Audit P3 follow-up (2026-04-29, post-deploy log review): all six
+    # other feed services (ACLED, AIS, FIRMS, GDACS, GPSJam, USGS) include
+    # this helper to call `ssl_http`. OpenSkyIngestionService called the
+    # method without the include, raising
+    # `NoMethodError: undefined method 'ssl_http'` on every fetch and
+    # silently degrading the feed via the rescue at the call site
+    # (line ~145). Production logs confirmed the error after the
+    # `c44754c` deploy: every OpenSky poll failed with this exact
+    # message. Six feeds working + one broken indicates this was a
+    # missed include when the SslHelper extraction shipped.
+    include SslHelper
+
     BASE_URL      = "https://opensky-network.org/api/states/all"
     TIMEOUT       = 15  # seconds per HTTP request
 
