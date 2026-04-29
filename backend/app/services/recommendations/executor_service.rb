@@ -213,8 +213,15 @@ module Recommendations
       site = find_scoped(Site, site_id)
       return ServiceResult.failure(errors: ["Site #{site_id} not found"]) unless site
 
+      # Audit P3 (2026-04-29): preload associations Alerts::TransitionService
+      # touches per-match (site, correlation_rule, signal, task). Without
+      # the preload, each iteration triggered N+1 lazy loads — at 100
+      # unacknowledged alerts that's 100+ extra DB roundtrips. Bulk-
+      # triage was the slowest recommendation execution path; this
+      # eliminates the per-match query cliff.
       matches = SignalRuleMatch
         .unacknowledged
+        .includes(:site, :correlation_rule, :signal, :task)
         .where(site_id: site_id)
         .where("fired_at > ?", 24.hours.ago)
 

@@ -16,8 +16,7 @@ module Ai
     TOOL_NAME                 = "apply_task_filters"
     BREAKER_SERVICE           = "task_filter"
     DEFAULT_MODEL             = "claude-haiku-4-5-20251001"
-    ANTHROPIC_TIMEOUT_SECONDS = 30
-    ANTHROPIC_MAX_RETRIES     = 2
+    # Timeout/retries centralized in Ai::AnthropicClient (audit P3).
 
     def initialize(query:, user:)
       @query = query.to_s.strip
@@ -28,17 +27,13 @@ module Ai
       return ServiceResult.failure(errors: ["Query cannot be blank"]) if @query.blank?
       return ServiceResult.failure(errors: ["AI temporarily unavailable. Please retry shortly."]) if Ai::CircuitBreaker.open?(service: BREAKER_SERVICE)
 
-      sites  = site_catalog
-      client = Anthropic::Client.new(
-        api_key: ENV.fetch("ANTHROPIC_API_KEY"),
-        timeout: ANTHROPIC_TIMEOUT_SECONDS,
-        max_retries: ANTHROPIC_MAX_RETRIES,
-      )
-
+      sites = site_catalog
+      # Audit P3 (2026-04-29): redundant local client construction
+      # removed; messages_create uses Ai::AnthropicClient.client defaults.
+      # See SummaryService for full rationale.
       response = Ai::AnthropicClient.messages_create(
         service:     "task_filter",
         model:       filter_model,
-        client:      client,
         max_tokens:  256,
         system:      SYSTEM_PROMPT,
         tools:       [ build_tool(sites) ],
@@ -60,9 +55,11 @@ module Ai
       report_exception(e, message: "Task filter query timed out", failure: "timeout")
       ServiceResult.failure(errors: ["Task filter query timed out"])
     rescue Anthropic::Errors::Error => e
+      # Audit P3 (2026-04-29): see SummaryService for rationale.
+      # Server-side log captures full diagnostic; client sees generic.
       Ai::CircuitBreaker.record_failure(service: BREAKER_SERVICE)
       report_exception(e, message: "AI service error: #{e.message}", failure: "error")
-      ServiceResult.failure(errors: ["AI service error: #{e.message}"])
+      ServiceResult.failure(errors: ["AI service temporarily unavailable. Please retry shortly."])
     end
 
     private

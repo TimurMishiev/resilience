@@ -40,8 +40,8 @@ RSpec.describe Ai::SignalFilterService, type: :service do
       expect(Anthropic::Client).to receive(:new).with(
         hash_including(
           api_key: "test_key_for_specs",
-          timeout: described_class::ANTHROPIC_TIMEOUT_SECONDS,
-          max_retries: described_class::ANTHROPIC_MAX_RETRIES,
+          timeout: Ai::AnthropicClient::DEFAULT_TIMEOUT_SECONDS,
+          max_retries: Ai::AnthropicClient::DEFAULT_MAX_RETRIES,
         ),
       ).and_return(fake_client)
 
@@ -102,7 +102,7 @@ RSpec.describe Ai::SignalFilterService, type: :service do
       result = described_class.call(user: user, query: query)
 
       expect(result.success).to be(false)
-      expect(result.errors).to eq(["AI service error: planner exploded"])
+      expect(result.errors).to eq(["AI service temporarily unavailable. Please retry shortly."])
     end
 
     it "rebuilds the site catalog for new instances so fresh sites are visible immediately" do

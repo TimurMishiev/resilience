@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { api } from '../api/client'
+import { fetchSseToken } from '../lib/sseToken'
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected'
 
@@ -59,10 +59,10 @@ export function useEventSource({ onEvent, enabled = true }: Options = {}) {
         // Exchange the long-lived JWT for a short-lived (60s) SSE-only token.
         // The SSE token is scoped to the stream endpoint only — it cannot be
         // used to call any other API endpoint.
-        const { token } = await api.post<{ token: string; expires_in: number }>(
-          '/api/sse_token',
-          {}
-        )
+        // Audit P3 (2026-04-29): coalesce concurrent token requests
+        // across all stream hooks via shared in-flight promise — see
+        // src/lib/sseToken.ts.
+        const { token } = await fetchSseToken()
 
         if (cancelled) return
 

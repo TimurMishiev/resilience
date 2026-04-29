@@ -185,12 +185,26 @@ export default function GlobePage() {
   const selectedSignal      = selectedSignalId ? (signals.find(s => s.id === selectedSignalId) ?? null) : null
   const selectedLiveReading = getLiveTelemetryReading(selectedAssetId, readings, { allowHistorical: isReplaying })
 
+  // Audit P3 (2026-04-29): when signals are hidden, drop the local
+  // selection state so the inspector panel hides — but DO NOT clear
+  // the URL. Previously this effect rewrote the URL to drop signalId,
+  // losing the operator's prior selection on layer toggle. MapPage
+  // preserves URL selection across layer toggles; this brings Globe
+  // to parity.
+  //
+  // When signals are re-enabled, restore the previous selection from
+  // the URL if the user hadn't manually picked something else in the
+  // meantime. This makes layer-toggle behave as a UX visibility
+  // control, not a destructive deselect.
   useEffect(() => {
     if (!showSignals) {
       setSelectedSignalId(null)
-      updateSelectionRoute({ siteId: selectedSiteId, assetId: selectedAssetId, signalId: null })
+      return
     }
-  }, [selectedAssetId, selectedSiteId, setSelectedSignalId, showSignals, updateSelectionRoute])
+    if (selectedSignalId) return
+    const { signalId } = parseEntitySelectionRoute(location.search)
+    if (signalId) setSelectedSignalId(signalId)
+  }, [location.search, selectedSignalId, setSelectedSignalId, showSignals])
 
   // ── Vessel enrichment ─────────────────────────────────────────────────────────
   const selectedVesselMmsi = selectedSignal?.signal_type === 'vessel_position' ? selectedSignal.external_id : null
@@ -329,12 +343,37 @@ export default function GlobePage() {
   }, [assets, location.search, setSelectedAssetId, setSelectedSignalId, setSelectedSiteId, signals, sites, urlSelectionAppliedRef, viewerReady])
 
   // ── Focus camera on entity click ───────────────────────────────────────────
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- only fire on id change
-  useEffect(() => { if (selectedSite) focusPosition(Number(selectedSite.longitude), Number(selectedSite.latitude), 1_200_000, -70) }, [selectedSiteId])
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- only fire on id change
-  useEffect(() => { if (selectedAsset) { const coords = assetDisplayPosition(selectedAsset, sites, readings, { lat: 0, lng: 0 }, { allowHistorical: isReplaying }); focusPosition(coords.lng, coords.lat, 850_000) } }, [selectedAssetId, isReplaying])
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- only fire on id change
-  useEffect(() => { if (selectedSignal) focusPosition(Number(selectedSignal.lng), Number(selectedSignal.lat), 900_000) }, [selectedSignalId])
+  // Audit P3 (2026-04-29): these effects previously suppressed
+  // exhaustive-deps with "only fire on id change" — but the closure
+  // captured `sites`, `readings`, and `assetDisplayPosition`. For a
+  // moving asset whose readings update between selection and camera
+  // focus, the camera flew to ~60s-stale coords. Fix: use refs to
+  // read FRESH state inside the effect at fire time, then keep the
+  // dep array narrow (id-only) so the camera doesn't refire on every
+  // unrelated readings/sites tick. This gives both: fire-on-id-change
+  // semantics AND fresh-state reads.
+  const camFocusRefs = useRef({ sites, readings, isReplaying })
+  camFocusRefs.current = { sites, readings, isReplaying }
+
+  useEffect(() => {
+    if (!selectedSite) return
+    focusPosition(Number(selectedSite.longitude), Number(selectedSite.latitude), 1_200_000, -70)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally id-only; coords resolved from ref above
+  }, [selectedSiteId])
+
+  useEffect(() => {
+    if (!selectedAsset) return
+    const { sites: sf, readings: rf, isReplaying: ir } = camFocusRefs.current
+    const coords = assetDisplayPosition(selectedAsset, sf, rf, { lat: 0, lng: 0 }, { allowHistorical: ir })
+    focusPosition(coords.lng, coords.lat, 850_000)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally id-only; sites/readings/isReplaying read fresh from ref
+  }, [selectedAssetId])
+
+  useEffect(() => {
+    if (!selectedSignal) return
+    focusPosition(Number(selectedSignal.lng), Number(selectedSignal.lat), 900_000)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally id-only; signal coords are immutable per id
+  }, [selectedSignalId])
 
   // ── Inspector-panel derived values ─────────────────────────────────────────
   const readiness = computeReadiness(selectedTasks)

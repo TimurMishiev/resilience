@@ -20,6 +20,7 @@ module Ai
   #   - Recent SignalRuleMatches across all sites (top 10)
   class SummaryService < ApplicationService
     include ScopedRelations
+    include PromptSafety
 
     ALLOWED_SUMMARY_TYPES = %w[site_activity readiness_change leadership_briefing].freeze
     BREAKER_SERVICE = "summary"
@@ -29,9 +30,21 @@ module Ai
     MAX_RULE_FIRES    = 10
     SIGNAL_RADIUS_KM  = 200.0
     CONTEXT_WINDOW_HOURS = 72
+    # Audit P3 (2026-04-29): bound the per-site task-id materialization
+    # used to scope audit-event lookups. Previous .pluck without limit
+    # could materialize 10k+ task IDs for a high-volume site, producing
+    # a ~1MB allocation per briefing AND a SQL `IN (?)` clause that big
+    # is slow to plan. We only need MOST RECENT tasks for briefing
+    # context — older task events fall outside MAX_AUDIT_EVENTS=40
+    # anyway. 1000 is a generous ceiling that covers any realistic
+    # site's recent activity window.
+    MAX_TASK_IDS_FOR_BRIEFING = 1_000
     DEFAULT_MODEL             = "claude-haiku-4-5-20251001"
-    ANTHROPIC_TIMEOUT_SECONDS = 30
-    ANTHROPIC_MAX_RETRIES     = 2
+    # Timeout/retries removed in audit P3: now centralized via
+    # Ai::AnthropicClient::DEFAULT_TIMEOUT_SECONDS / DEFAULT_MAX_RETRIES
+    # (anthropic_client.rb:18-19). Override per-call by passing
+    # `client: Ai::AnthropicClient.client(timeout: X, max_retries: Y)`
+    # to messages_create if a different envelope is ever needed.
 
     def initialize(summary_type:, site_id: nil, from: nil, to: nil, user:)
       @summary_type = summary_type.to_s
@@ -56,16 +69,16 @@ module Ai
         return ServiceResult.failure(errors: ["No operational data found for the specified parameters"])
       end
 
-      client = Anthropic::Client.new(
-        api_key: ENV.fetch("ANTHROPIC_API_KEY"),
-        timeout: ANTHROPIC_TIMEOUT_SECONDS,
-        max_retries: ANTHROPIC_MAX_RETRIES,
-      )
-
+      # Audit P3 (2026-04-29): the local Anthropic::Client.new with
+      # ANTHROPIC_TIMEOUT_SECONDS=30 / ANTHROPIC_MAX_RETRIES=2 was
+      # redundant — Ai::AnthropicClient.messages_create falls back to
+      # `self.client(...)` which uses identical DEFAULT_TIMEOUT_SECONDS=30
+      # / DEFAULT_MAX_RETRIES=2 (anthropic_client.rb:18-19). The dual
+      # construction worked by coincidence (matching values) and was
+      # fragile against future config drift. Now centralized to one site.
       response = Ai::AnthropicClient.messages_create(
         service:    "summary",
         model:      summary_model,
-        client:     client,
         max_tokens: 1024,
         system:     build_system_prompt,
         messages:   [ { role: "user", content: build_user_content(events, signals, matches) } ]
@@ -102,9 +115,16 @@ module Ai
       report_exception(e, message: "Summary generation timed out", failure: "timeout")
       ServiceResult.failure(errors: ["Summary generation timed out"])
     rescue Anthropic::Errors::Error => e
+      # Audit P3 (2026-04-29): the Anthropic SDK error message can
+      # contain partial response body, request snippets, or token
+      # counts depending on the failure mode and SDK version. Exposing
+      # `e.message` to the frontend is a defense-in-depth fragility —
+      # current SDK versions are sanitized but a future update could
+      # leak prompt context. Server-side log captures full diagnostic
+      # via report_exception; the client gets a generic message.
       Ai::CircuitBreaker.record_failure(service: BREAKER_SERVICE)
       report_exception(e, message: "AI service error: #{e.message}", failure: "error")
-      ServiceResult.failure(errors: ["AI service error: #{e.message}"])
+      ServiceResult.failure(errors: ["AI service temporarily unavailable. Please retry shortly."])
     end
 
     private
@@ -115,7 +135,16 @@ module Ai
       scope = scoped_audit_events(AuditEvent.order(occurred_at: :desc)).limit(MAX_AUDIT_EVENTS)
 
       if @site.present?
-        task_ids = scoped_tasks(Task.where(site_id: @site.id)).pluck(:id)
+        # Audit P3 (2026-04-29): bound the materialization. Only the
+        # most-recently-updated tasks contribute audit events that
+        # reach MAX_AUDIT_EVENTS; tasks beyond MAX_TASK_IDS_FOR_BRIEFING
+        # are stale enough that their audit history isn't relevant for
+        # a briefing. Order by updated_at DESC so the limit selects the
+        # most-recent tasks deterministically.
+        task_ids = scoped_tasks(Task.where(site_id: @site.id))
+                     .order(updated_at: :desc)
+                     .limit(MAX_TASK_IDS_FOR_BRIEFING)
+                     .pluck(:id)
 
         # Include both Site-level events and Task-level events for this site.
         # This was previously missing Site events, making the briefing blind to
@@ -250,10 +279,18 @@ module Ai
       parts = []
 
       # ── Audit trail ──
+      # Audit P3 (2026-04-29): user-content fields inside before/after
+      # snapshots (titles, descriptions, note bodies) and the actor email
+      # are sanitized before interpolation. The system fields
+      # (event_type, entity_type) are server-controlled enums so no
+      # sanitization is required for them.
       if events.any?
         lines = events.map.with_index(1) do |e, i|
-          before = e[:before_snapshot] ? " | before: #{e[:before_snapshot].to_json}" : ""
-          "#{i}. [#{e[:id]}] #{e[:occurred_at]} #{e[:actor]} — #{e[:event_type]} #{e[:entity_type]}#{before} → #{e[:after_snapshot].to_json}"
+          before_snap = e[:before_snapshot] ? PromptSafety.sanitize_snapshot(e[:before_snapshot]) : nil
+          after_snap  = PromptSafety.sanitize_snapshot(e[:after_snapshot])
+          actor       = sanitize_for_prompt(e[:actor].to_s)
+          before = before_snap ? " | before: #{before_snap.to_json}" : ""
+          "#{i}. [#{e[:id]}] #{e[:occurred_at]} #{actor} — #{e[:event_type]} #{e[:entity_type]}#{before} → #{after_snap.to_json}"
         end.join("\n")
         parts << "AUDIT TRAIL (#{events.length} events):\n#{lines}"
       else
@@ -298,20 +335,29 @@ module Ai
       end
 
       # ── Rule fires ──
+      # Audit P3 (2026-04-29): rule_name and site_name are commander-
+      # supplied strings (rule.name is set in CorrelationRulesController,
+      # site.name in seed/admin tooling). Both flow into the prompt and
+      # must be sanitized to defend against intra-tenant prompt-injection
+      # framing. workflow_status is a system enum, no sanitization needed.
       if matches.any?
         lines = matches.map do |m|
           conf    = "#{(m[:confidence] * 100).round}% confidence"
           dist    = m[:distance_km] ? " | #{m[:distance_km].to_f.round(1)}km" : ""
           actions = m[:actions_taken].any? ? " | actions: #{m[:actions_taken].join(', ')}" : ""
-          site    = m[:site_name] && !@site ? " | site: #{m[:site_name]}" : ""
-          "  '#{m[:rule_name]}' fired #{m[:fired_at]} | #{conf}#{dist}#{actions} | status: #{m[:workflow_status]}#{site}"
+          site_name_safe = m[:site_name] ? sanitize_for_prompt(m[:site_name]) : nil
+          site    = site_name_safe.present? && !@site ? " | site: #{site_name_safe}" : ""
+          rule_name_safe = sanitize_for_prompt(m[:rule_name].to_s)
+          "  '#{rule_name_safe}' fired #{m[:fired_at]} | #{conf}#{dist}#{actions} | status: #{m[:workflow_status]}#{site}"
         end.join("\n")
         parts << "RULE FIRES (#{matches.length} in last #{CONTEXT_WINDOW_HOURS}h):\n#{lines}"
       else
         parts << "RULE FIRES: (none in last #{CONTEXT_WINDOW_HOURS}h)"
       end
 
-      scope_label = @site ? "for site #{@site.name}" : "across all sites"
+      # @site.name is user-set on the Site model; sanitize before it
+      # frames the briefing scope in the prompt header.
+      scope_label = @site ? "for site #{sanitize_for_prompt(@site.name)}" : "across all sites"
       "Generate a #{@summary_type.humanize.downcase} #{scope_label}:\n\n#{parts.join("\n\n")}"
     end
 
@@ -345,20 +391,11 @@ module Ai
       )
     end
 
-    # Strips control characters, collapses whitespace, and truncates external
-    # feed data before interpolation into the LLM prompt. Prevents prompt
-    # injection via adversarial payloads in ACLED notes, actor names, etc.
-    PROMPT_FIELD_MAX_LENGTH = 120
-
-    def sanitize_for_prompt(value)
-      return "" if value.blank?
-
-      value.to_s
-           .gsub(/[\x00-\x1f\x7f]/, " ")  # strip control chars (newlines, tabs, null bytes)
-           .gsub(/\s+/, " ")               # collapse runs of whitespace
-           .strip
-           .truncate(PROMPT_FIELD_MAX_LENGTH)
-    end
+    # sanitize_for_prompt is now provided by Ai::PromptSafety (included
+    # at the top of this class). Originally defined here for ACLED feed
+    # sanitization; extracted in audit P3 round so it can also be applied
+    # uniformly in OntologyQueryService and to user-content fields
+    # (rule names, site names, audit snapshots) that flow into prompts.
 
     def summary_model
       ENV.fetch("SUMMARY_MODEL", DEFAULT_MODEL)

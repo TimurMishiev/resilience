@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { api } from '../api/client'
+import { fetchSseToken } from '../lib/sseToken'
 import { isTelemetryFresh, type TelemetryMap, type TelemetryReading } from '../lib/telemetry'
 
 /**
@@ -41,10 +41,10 @@ export function useTelemetryStream(enabled = true) {
     async function connect() {
       try {
         // Exchange the long-lived JWT for a short-lived (60s) SSE-only token.
-        const { token } = await api.post<{ token: string; expires_in: number }>(
-          '/api/sse_token',
-          {}
-        )
+        // Audit P3 (2026-04-29): coalesce concurrent token requests
+        // across all stream hooks via shared in-flight promise — see
+        // src/lib/sseToken.ts for the rationale.
+        const { token } = await fetchSseToken()
 
         if (!mounted) return
 

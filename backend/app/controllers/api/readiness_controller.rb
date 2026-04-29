@@ -1,5 +1,12 @@
 module Api
   class ReadinessController < BaseController
+    # Audit P3 (2026-04-29): explicit Pundit guard so a future refactor
+    # that drops the `policy_scope(Site)` call below cannot silently
+    # ship without test failure. BaseController already enforces
+    # verify_authorized globally; verify_policy_scoped is the per-
+    # controller pair-guard for any action that returns a collection.
+    after_action :verify_policy_scoped, only: :index
+
     def index
       authorize :readiness, :index?
       sites = policy_scope(Site).includes(:tasks).order(:name)

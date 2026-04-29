@@ -51,11 +51,17 @@ RSpec.describe Ai::SummaryService, type: :service do
     end
 
     it "initializes the Anthropic client with a bounded timeout and no retries" do
+      # Audit P3 (2026-04-29): timeout/retries centralized in
+      # Ai::AnthropicClient::DEFAULT_TIMEOUT_SECONDS / DEFAULT_MAX_RETRIES.
+      # The service no longer constructs its own client; messages_create
+      # delegates to Ai::AnthropicClient.client which builds with
+      # the centralized defaults. Same numeric envelope (30/2), one
+      # construction site instead of four.
       expect(Anthropic::Client).to receive(:new).with(
         hash_including(
           api_key: "test_key_for_specs",
-          timeout: described_class::ANTHROPIC_TIMEOUT_SECONDS,
-          max_retries: described_class::ANTHROPIC_MAX_RETRIES,
+          timeout: Ai::AnthropicClient::DEFAULT_TIMEOUT_SECONDS,
+          max_retries: Ai::AnthropicClient::DEFAULT_MAX_RETRIES,
         ),
       ).and_return(fake_client)
 
@@ -116,7 +122,10 @@ RSpec.describe Ai::SummaryService, type: :service do
       result = described_class.call(user: user, summary_type: "site_activity", site_id: site.id)
 
       expect(result.success).to be(false)
-      expect(result.errors).to eq(["AI service error: summary exploded"])
+      # Audit P3 (2026-04-29): client-facing error messages no longer
+      # include raw Anthropic SDK error strings. Server-side log + Observability
+      # still capture the full diagnostic (assertions above).
+      expect(result.errors).to eq(["AI service temporarily unavailable. Please retry shortly."])
     end
 
     it "fails closed when the AI circuit breaker is open" do

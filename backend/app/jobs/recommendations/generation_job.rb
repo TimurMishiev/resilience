@@ -4,6 +4,17 @@ module Recommendations
     ADVISORY_LOCK_NAMESPACE = 84_602
     ADVISORY_LOCK_KEY = 1
 
+    # Audit P3 (2026-04-29): retry transient DB errors with polynomial
+    # backoff instead of letting them become permanent failures. The
+    # advisory lock at the top of #perform handles concurrent runs
+    # cleanly (next attempt's acquire_lock will return false and
+    # gracefully skip if a prior retry's run is still in flight). Three
+    # attempts is sufficient for the realistic transient cases (DB
+    # connection blip, lock contention, brief PG restart); persistent
+    # failures still surface to the dead-letter queue.
+    retry_on ActiveRecord::StatementInvalid, ActiveRecord::Deadlocked, PG::Error,
+             wait: :polynomially_longer, attempts: 3
+
     def perform
       unless acquire_lock
         Rails.logger.warn "[GenerationJob] skipped: another generation run is still active"

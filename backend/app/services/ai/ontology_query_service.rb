@@ -4,6 +4,7 @@ module Ai
   # against the existing data model.
   class OntologyQueryService < ApplicationService
     include ScopedRelations
+    include PromptSafety
 
     TOOL_NAME              = "plan_ontology_query"
     BREAKER_SERVICE        = "ontology_query"
@@ -13,8 +14,7 @@ module Ai
     DEFAULT_LIMIT          = 8
     MAX_LIMIT              = 12
     SIGNAL_RADIUS_KM       = 200.0
-    ANTHROPIC_TIMEOUT_SECONDS = 30
-    ANTHROPIC_MAX_RETRIES     = 2
+    # Timeout/retries centralized in Ai::AnthropicClient (audit P3).
 
     ROOT_TYPES = %w[site incident task asset area_of_operation].freeze
     RELATIONS_BY_ROOT = {
@@ -79,9 +79,10 @@ module Ai
       report_exception(e, message: "Ontology query timed out", failure: "timeout")
       ServiceResult.failure(errors: ["Ontology query timed out"])
     rescue Anthropic::Errors::Error => e
+      # Audit P3 (2026-04-29): see SummaryService for rationale.
       Ai::CircuitBreaker.record_failure(service: BREAKER_SERVICE)
       report_exception(e, message: "AI service error: #{e.message}", failure: "error")
-      ServiceResult.failure(errors: ["AI service error: #{e.message}"])
+      ServiceResult.failure(errors: ["AI service temporarily unavailable. Please retry shortly."])
     end
 
     private
@@ -101,16 +102,11 @@ module Ai
     PROMPT
 
     def plan_query
-      client = Anthropic::Client.new(
-        api_key: ENV.fetch("ANTHROPIC_API_KEY"),
-        timeout: ANTHROPIC_TIMEOUT_SECONDS,
-        max_retries: ANTHROPIC_MAX_RETRIES,
-      )
-
+      # Audit P3 (2026-04-29): redundant local client construction
+      # removed; messages_create uses Ai::AnthropicClient.client defaults.
       response = Ai::AnthropicClient.messages_create(
         service:     "ontology_query",
         model:       ontology_model,
-        client:      client,
         max_tokens:  384,
         system:      "#{SYSTEM_PROMPT}\n\n#{catalog_context}",
         tools:       [build_tool],
@@ -176,18 +172,25 @@ module Ai
     end
 
     def build_catalog_context
+      # Audit P3 (2026-04-29): catalog values (site names, AO names,
+      # incident titles, task titles, asset names) are user-controlled
+      # strings written via API by commanders. Without sanitization, a
+      # malicious title containing prompt-injection framing ("ignore
+      # previous instructions...") would be interpolated verbatim into
+      # the system prompt. PromptSafety.catalog_names applies
+      # sanitize_for_prompt to each value (strips control chars,
+      # collapses whitespace, truncates to 120 chars) and joins them
+      # with " | " — preserving the prior contract. Bounded by tenant
+      # scope (the catalog uses scoped_sites/scoped_tasks/etc.) so the
+      # threat is intra-tenant self-confusion, not cross-tenant leak.
       [
         "Known entities:",
-        "Sites: #{catalog_names(apply_replay_existence_scope(site_catalog_scope).order(:name).limit(50).pluck(:name))}",
-        "Areas of operation: #{catalog_names(apply_replay_existence_scope(scoped_areas).order(:name).limit(30).pluck(:name))}",
-        "Incidents: #{catalog_names(apply_replay_existence_scope(scoped_incidents(Incident.recent)).limit(40).pluck(:title))}",
-        "Tasks: #{catalog_names(apply_replay_existence_scope(scoped_tasks).order(created_at: :desc).limit(40).pluck(:title))}",
-        "Assets: #{catalog_names(apply_replay_existence_scope(scoped_assets).order(:name).limit(50).pluck(:name))}",
+        "Sites: #{PromptSafety.catalog_names(apply_replay_existence_scope(site_catalog_scope).order(:name).limit(50).pluck(:name))}",
+        "Areas of operation: #{PromptSafety.catalog_names(apply_replay_existence_scope(scoped_areas).order(:name).limit(30).pluck(:name))}",
+        "Incidents: #{PromptSafety.catalog_names(apply_replay_existence_scope(scoped_incidents(Incident.recent)).limit(40).pluck(:title))}",
+        "Tasks: #{PromptSafety.catalog_names(apply_replay_existence_scope(scoped_tasks).order(created_at: :desc).limit(40).pluck(:title))}",
+        "Assets: #{PromptSafety.catalog_names(apply_replay_existence_scope(scoped_assets).order(:name).limit(50).pluck(:name))}",
       ].join("\n")
-    end
-
-    def catalog_names(values)
-      values.presence&.join(" | ") || "(none)"
     end
 
     def normalize_time_window(value)

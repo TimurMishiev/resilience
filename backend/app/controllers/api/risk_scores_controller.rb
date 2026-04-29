@@ -13,6 +13,12 @@ module Api
   # recorded at or before the cutoff for each site (hourly snapshots from
   # Risk::SnapshotJob). This avoids recomputing historical signal/match counts.
   class RiskScoresController < BaseController
+    # Audit P3 (2026-04-29): see ReadinessController for rationale.
+    # policy_scope(Site) is called inside live_risk_scores /
+    # replay_risk_scores below; verify_policy_scoped guards against
+    # a future refactor that accidentally drops the scope call.
+    after_action :verify_policy_scoped, only: :index
+
     def index
       authorize :risk_score, :index?
 

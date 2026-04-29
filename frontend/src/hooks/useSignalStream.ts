@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api } from '../api/client'
+import { fetchSseToken } from '../lib/sseToken'
 import type { Signal, SignalType } from '../api/types'
 import {
   LIVE_SIGNAL_LIMITS,
@@ -55,10 +55,9 @@ export function useSignalStream(enabled = true, options?: UseSignalStreamOptions
 
     async function connect() {
       try {
-        const { token } = await api.post<{ token: string; expires_in: number }>(
-          '/api/sse_token',
-          {},
-        )
+        // Audit P3 (2026-04-29): coalesce concurrent token requests
+        // across all stream hooks via shared in-flight promise.
+        const { token } = await fetchSseToken()
 
         if (!mounted) return
 
