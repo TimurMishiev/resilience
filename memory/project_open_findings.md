@@ -25,13 +25,6 @@ _(No open P1 items.)_
 
 ## P2 / Important Platform Follow-Through
 
-- Globe E2E proof debt remains open.
-  - Three globe primitive-pickup tests are still `test.fixme`:
-    [globe-site-anchor.spec.ts](/Users/timurmishiev/Desktop/Code/resilience/frontend/e2e/globe-site-anchor.spec.ts) (2) and
-    [globe-overlay-clickthrough.spec.ts](/Users/timurmishiev/Desktop/Code/resilience/frontend/e2e/globe-overlay-clickthrough.spec.ts) (1).
-  - Commit `a57f5c6` narrowed harness contamination by stubbing the full statically-derived mount-time request surface (`/api/events`, `/api/chokepoints`, `/api/signal_rule_matches/active_site_confidence`) in both spec helpers.
-  - The tests were intentionally left `fixme` because no interactive Playwright rerun proved they now pass; the remaining unknown is therefore narrowed to real globe behavior or browser/runtime timing, not the old known stub drift.
-
 - Tenant/workspace isolation: production-readiness scope is **closed**.
   - Org/AO scoping is enforced in policies with request-level proof.
   - Multi-tenant admin UI and workspace management remain a future roadmap program, not an active defect.
@@ -65,6 +58,19 @@ _(No open P1 items.)_
 
 ## Closed Since Last Reconciliation
 
+- ~~Globe primitive-pickup E2E proof debt~~ — closed at `6d0f100`.
+  All 3 previously-`fixme`d tests
+  ([globe-overlay-clickthrough.spec.ts:167](/Users/timurmishiev/Desktop/Code/resilience/frontend/e2e/globe-overlay-clickthrough.spec.ts),
+  [globe-site-anchor.spec.ts:248](/Users/timurmishiev/Desktop/Code/resilience/frontend/e2e/globe-site-anchor.spec.ts),
+  [globe-site-anchor.spec.ts:311](/Users/timurmishiev/Desktop/Code/resilience/frontend/e2e/globe-site-anchor.spec.ts))
+  pass interactively. Root cause was the `/api/sites` stub
+  returning `{ data: sites }` without the `meta` field;
+  `fetchAllPaginated` reads `meta.total_pages` and threw on
+  every globe E2E run, leaving `sitesQuery.data` undefined and
+  the bridge `state.sites` array empty. Fix added the
+  `PaginatedResponse` `meta` envelope to both spec helpers.
+  ~60 lines of stale "Cesium primitive-pickup unknown" framing
+  comments removed.
 - ~~EntityCard.tsx 635-line monolith~~ — closed at `830ceb3`.
   Public surface is now `EntityCard.tsx` (92 lines); sub-components
   live in `components/entity-card/` (`internals.ts` 55,

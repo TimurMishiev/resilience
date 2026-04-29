@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-29 (Production live at https://resilience-ops.fly.dev/ at `95a3532`; `HEAD` on `main` is `830ceb3`, frontend-only resilience + decomp work ahead of production. Session arc: A.2/A.3/A.3-sibling/correlation-rule-conditions.site_id closed in earlier slices; Codex 5-finding backlog at `4b4b489` (#1/#2/#4/#5 fixed, #3 resolved-as-documented at `7e1e783`); manual deep-mode QA F1+F3 closed at `b7e4040`; full-system /audit at `b7e4040` produced 10 P3 findings, all closed at `f149dbf`; Codex /gate at `f149dbf` surfaced 3 P2 prompt-safety gaps in remaining AI interpolation surfaces, all closed at `c44754c` with wire-layer regression specs; `95a3532` deployed the OpenSky `ssl_http` fix and is live on production version 35; `946b41a` rotated the handoff + findings matrix to match live deploy truth; `a57f5c6` narrowed globe E2E harness contamination without un-fixme'ing the 3 primitive-pickup tests; `08bf593` drafts the next selection-grounded AI explainer slice; `7d662bf` ships engine-init failure handling on both `useMapLibreEngine` and `useGlobeEngine` with a Blueprint NonIdealState overlay + Retry on each page and 6 new regression specs; `bbce9d5` rotates docs for `7d662bf` closure; `830ceb3` decomposes EntityCard.tsx 635 → 92-line public surface with sub-modules in `components/entity-card/`.)
+Last updated: 2026-04-29 (Production live at https://resilience-ops.fly.dev/ at `95a3532`; `HEAD` on `main` is `6d0f100`, frontend-only resilience + decomp + globe E2E work ahead of production. Session arc: A.2/A.3/A.3-sibling/correlation-rule-conditions.site_id closed in earlier slices; Codex 5-finding backlog at `4b4b489` (#1/#2/#4/#5 fixed, #3 resolved-as-documented at `7e1e783`); manual deep-mode QA F1+F3 closed at `b7e4040`; full-system /audit at `b7e4040` produced 10 P3 findings, all closed at `f149dbf`; Codex /gate at `f149dbf` surfaced 3 P2 prompt-safety gaps in remaining AI interpolation surfaces, all closed at `c44754c` with wire-layer regression specs; `95a3532` deployed the OpenSky `ssl_http` fix and is live on production version 35; `946b41a` rotated the handoff + findings matrix to match live deploy truth; `a57f5c6` narrowed globe E2E harness contamination without un-fixme'ing the 3 primitive-pickup tests; `08bf593` drafts the next selection-grounded AI explainer slice; `7d662bf` ships engine-init failure handling on both `useMapLibreEngine` and `useGlobeEngine` with a Blueprint NonIdealState overlay + Retry on each page and 6 new regression specs; `bbce9d5` rotates docs for `7d662bf` closure; `830ceb3` decomposes EntityCard.tsx 635 → 92-line public surface with sub-modules in `components/entity-card/`; `6d0f100` un-`fixme`s all 3 globe primitive-pickup tests after fixing the missing `meta` envelope on the `/api/sites` stub that was breaking `fetchAllPaginated`.)
 
 ## Current Phase
 
@@ -43,6 +43,16 @@ frontend proof/resilience and architecture quality, not backend
 auth/correctness.
 
 Hardening rotation timeline this session (newest first):
+  - `6d0f100` — globe primitive-pickup E2E proof closure. All 3
+    previously-`fixme`d tests now pass. Root cause was a missing
+    `meta` envelope on the `/api/sites` stub; `fetchAllPaginated`
+    reads `meta.total_pages` and threw, leaving bridge `state.sites`
+    empty across every globe E2E run. Fix added the
+    PaginatedResponse `meta` envelope to both spec helpers and
+    removed ~60 lines of stale "Cesium-side unknown" framing
+    comments. Local rerun env: `E2E_BASE_URL=http://localhost:4178`
+    + the existing `commander.json` storage state (cookie domain
+    `localhost`).
   - `830ceb3` — EntityCard.tsx decomposition (635 → 92-line public
     surface). Sub-components moved verbatim to
     `components/entity-card/`: `internals.ts` (helpers + EntityType),
@@ -116,18 +126,26 @@ tsc -b --force exit 0; eslint on touched files exit 0; full
 vitest suite hit known local OOM (ERR_IPC_CHANNEL_CLOSED) —
 post-push gate harness is the authoritative full-sweep check.
 Backend unchanged from `95a3532` (2503/0).
+Validation at `6d0f100`: 3/3 globe primitive-pickup tests pass
+interactively under `E2E_BASE_URL=http://localhost:4178 npx
+playwright test e2e/globe-overlay-clickthrough.spec.ts
+e2e/globe-site-anchor.spec.ts` (~27s, chromium + swiftshader,
+single worker fan-out across 2 spec files); tsc -b exit 0;
+backend unchanged. Note: `globe-benchmark.spec.ts` (a separate,
+non-fixme spec) still requires a real Rails session because it
+calls `primeAuthenticatedSession` before any route stubs land —
+unrelated to the 3 fixme tests closed here.
 
 **Next action:** if continuing hardening before new feature work,
-the remaining real debt bands are:
-1. globe primitive-pickup E2E proof (3 `test.fixme` specs; local
-   verification blocked by needing the full backend stack for
-   global-setup auth)
-2. frontend decomposition debt — `EntityCard.tsx` closed at
-   `830ceb3` (635 → 92 + 4 sibling files); `MapPage.tsx` 905 and
-   `MapOverlayControls.tsx` 884 remain. Both are high-blast-radius
-   (primary operator surface) and have no direct unit tests, so a
-   safe decomp needs either direct unit tests first or interactive
-   browser verification — not safe inside an autonomous loop.
+the remaining real debt band is frontend decomposition debt.
+`EntityCard.tsx` closed at `830ceb3` (635 → 92 + 4 sibling
+files); globe primitive-pickup E2E proof closed at `6d0f100`
+(all 3 fixme tests now green; root cause was missing `meta` on
+the `/api/sites` stub). `MapPage.tsx` 905 and
+`MapOverlayControls.tsx` 884 remain. Both are high-blast-radius
+(primary operator surface) and have no direct unit tests, so a
+safe decomp needs either direct unit tests first or interactive
+browser verification — not safe inside an autonomous loop.
 Roadmap item 8 (4B — access-pattern anomaly detection) remains
 stakeholder-blocked and separate from these hygiene items.
 
@@ -252,17 +270,23 @@ item and is **stakeholder-blocked**, not engineering-blocked.
   `signals_controller`'s stream remains correctly unscoped
   (ExternalSignal is intentionally global per
   `external_signal_policy.rb:1-4`).
-- ⏸ **Globe primitive-pickup tests** (3 tests) are still
-  `test.fixme`d, but the known harness contamination is narrower now.
-  Commit `a57f5c6` added the three missing statically-derived
-  `/globe` mount-time stubs in both spec helpers:
-  `/api/events`, `/api/chokepoints`, and
-  `/api/signal_rule_matches/active_site_confidence`.
-  Production impact remains zero; other E2E paths still pass on CI.
-  The remaining unknown is now: either those tests pass when rerun in
-  a dependable Playwright env and can be un-fixme'd, or the residual
-  failure is a real Cesium/viewer-bridge timing or primitive-pickup
-  issue. No rerun proof exists yet, so the tests stay marked.
+- ✅ **Globe primitive-pickup tests** (3 tests) closed at
+  `6d0f100`. The residual failure was harness-caused after all,
+  not Cesium-side: both spec helpers stubbed `/api/sites` as
+  `{ data: sites }` without a `meta` envelope, and
+  `fetchAllPaginated` (called by `useAllSites`) reads
+  `meta.total_pages` and threw, leaving the bridge `state.sites`
+  array empty and every `getFirst*Target` accessor returning
+  null. Fix added `meta: { page, total_pages, per_page, total }`
+  to both stubs. All 3 tests now pass interactively under
+  `E2E_BASE_URL=http://localhost:4178 npx playwright test
+  e2e/globe-overlay-clickthrough.spec.ts e2e/globe-site-anchor.spec.ts`
+  in ~27s (chromium + swiftshader). The local-rerun env trick
+  is the existing `commander.json` storage state with cookie
+  domain `localhost` — global setup skips fresh login when
+  baseURL is `http://localhost:4178` and the cookie is still
+  valid. ~60 lines of stale "Cesium primitive-pickup unknown
+  cause" framing comments removed from both specs.
 - ✅ **Map / globe engine failure-state handling** closed at
   `7d662bf`. Both `useMapLibreEngine` and `useGlobeEngine` now
   expose `engineError` + `retryEngine`; `MapPage` and `GlobePage`
