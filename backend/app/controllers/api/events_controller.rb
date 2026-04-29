@@ -17,6 +17,22 @@ module Api
     # and keeps revocation-latency operator-visible.
     USER_SCOPE_REFRESH_SECONDS = 30
 
+    # Unique-identity sentinel pushed into the broadcaster queue by the
+    # heartbeat thread on each tick. Without this, the scope-refresh
+    # path was payload-gated: the loop only ran the refresh after
+    # `queue.pop` returned, so an org reassignment with no in-flight
+    # old-scope events left the broadcaster's stale producer-side
+    # filter dropping every new-scope event before it reached this
+    # queue — under-delivery indefinitely until reconnect (Codex P2
+    # finding on the prior payload-gated A.3 fix). Identity-comparison
+    # via `equal?` distinguishes the sentinel from any broadcaster
+    # JSON payload (which is always a String); see the loop body.
+    # Not marked `private_constant` so the regression spec can
+    # construct a starvation-scenario queue that pops this exact
+    # object identity — the constant carries no behavior, only
+    # identity, so exposure is harmless.
+    SCOPE_REFRESH_TICK = Object.new.freeze
+
     # GET /api/events
     # Opens a persistent SSE stream for the authenticated client.
     # The client receives a heartbeat every 25 seconds to keep the
@@ -42,10 +58,17 @@ module Api
       # Send an initial connection confirmation event
       return unless sse_write(response.stream, event: "connected", data: { message: "stream open" })
 
-      # Heartbeat thread — keeps the TCP connection alive
+      # Heartbeat thread — keeps the TCP connection alive AND wakes
+      # the consumer loop for the periodic scope refresh (A.3
+      # starvation fix). The sentinel push is non-blocking: if the
+      # queue is full (broadcaster is already evicting a slow
+      # consumer) or closed (stream tearing down), we silently
+      # skip — the heartbeat write below still proceeds so the
+      # browser keeps the EventSource open through proxies.
       heartbeat = start_sse_heartbeat(stream_name: "events") do
-        refresh_sse_stream_lease(lease, stream_name: "events") &&
-          sse_write(response.stream, event: "heartbeat", data: { ts: Time.current.to_i })
+        next false unless refresh_sse_stream_lease(lease, stream_name: "events")
+        push_scope_refresh_tick(queue)
+        sse_write(response.stream, event: "heartbeat", data: { ts: Time.current.to_i })
       end
 
       # Block here, draining the queue until the client disconnects.
@@ -74,6 +97,13 @@ module Api
         break if payload.nil?
         break unless refresh_sse_stream_lease(lease, stream_name: "events")
 
+        # Identify the heartbeat-pushed wakeup sentinel by object
+        # identity — broadcaster payloads are always JSON Strings,
+        # so this can never collide. On a sentinel pop we ALWAYS
+        # run the refresh (decoupling from payload arrival is the
+        # whole point) and skip event delivery.
+        is_refresh_tick = payload.equal?(SCOPE_REFRESH_TICK)
+
         # Periodic user-scope refresh (A.3 fix): without this, an admin-
         # initiated org/AO change (or full account revocation) does not
         # propagate to either the broadcaster's producer-side filter or
@@ -83,7 +113,12 @@ module Api
         # iteration's `event_visible_to_scope?` check, then push the
         # new org_id to the broadcaster so future cross-tenant events
         # are filtered out before they ever reach the queue.
-        if Time.current - scope_refreshed_at >= USER_SCOPE_REFRESH_SECONDS
+        #
+        # Trigger: the heartbeat sentinel (sentinel-driven, ~25s
+        # cadence regardless of event volume) OR the time window
+        # (payload-driven, bounds refresh frequency for high-volume
+        # streams so we don't re-query the User on every event).
+        if is_refresh_tick || Time.current - scope_refreshed_at >= USER_SCOPE_REFRESH_SECONDS
           fresh_scope = ActiveRecord::Base.connection_pool.with_connection do
             ActiveRecord::Base.uncached do
               User.where(id: user_id).pick(:organization_id, :area_of_operation_id)
@@ -104,6 +139,9 @@ module Api
           end
           scope_refreshed_at = Time.current
         end
+
+        # Sentinels are scope-refresh wakeups, not events to deliver.
+        next if is_refresh_tick
 
         parsed  = JSON.parse(payload)
 
@@ -138,6 +176,18 @@ module Api
       true
     rescue IOError, ActionController::Live::ClientDisconnected
       false
+    end
+
+    # Non-blocking sentinel push from the heartbeat thread. The
+    # broadcaster's slow-consumer eviction handles backpressure
+    # separately, so a full queue here just means the consumer is
+    # already on the way out — silently drop the sentinel.
+    def push_scope_refresh_tick(queue)
+      queue.push(SCOPE_REFRESH_TICK, true)
+    rescue ThreadError, ClosedQueueError
+      # ThreadError: queue full (slow consumer being evicted by
+      #   broadcaster — no need to wake it for scope refresh).
+      # ClosedQueueError: stream is tearing down — sentinel is moot.
     end
 
     def event_visible_to_scope?(parsed, user_org_id:, user_ao_id:, site_area_cache:)

@@ -430,6 +430,71 @@ RSpec.describe "Api::Telemetry", type: :request do
         expect(response.body).not_to include(%("ts":2))
       end
 
+      it "wakes the consumer loop for scope refresh via the heartbeat sentinel even when no telemetry payload arrives (Codex P2 starvation fix)" do
+        # Codex P2 (2026-04-28): the prior payload-gated A.3-sibling
+        # fix only ran the refresh after `queue.pop` returned. If a
+        # user was reassigned from org A to org B while no telemetry
+        # for org A was being pushed, the broadcaster's stale
+        # producer-side asset-id filter would drop every new-org-B
+        # reading before it reached this queue — under-delivery
+        # indefinitely until reconnect.
+        #
+        # Fix: heartbeat thread pushes a unique-identity sentinel
+        # into the queue on each tick; the loop always runs the
+        # refresh on sentinel arrival regardless of payload flow.
+        # This spec proves the sentinel-driven refresh path by
+        # giving the queue ONLY a sentinel (no telemetry payloads).
+        sentinel = Api::TelemetryController::SCOPE_REFRESH_TICK
+
+        org_a    = create(:organization)
+        org_b    = create(:organization)
+        site_a   = create(:site, organization: org_a)
+        _asset_a = create(:asset, name: "Asset in org A", home_site: site_a)
+        viewer   = create(:user, :commander, organization: org_a)
+
+        starvation_queue = Class.new do
+          def initialize(sentinel, viewer, new_org)
+            @items = [sentinel, nil]
+            @viewer = viewer
+            @new_org = new_org
+            @pop_count = 0
+          end
+          def pop
+            @pop_count += 1
+            # Starvation scenario: no telemetry payload ever arrives.
+            # The heartbeat sentinel is the only wake; reassign the
+            # user before it's popped so the refresh sees the new
+            # scope.
+            @viewer.update!(organization: @new_org) if @pop_count == 1
+            @items.shift
+          end
+          def close; end
+          def closed?; @items.empty?; end
+        end.new(sentinel, viewer, org_b)
+
+        update_subscription_calls = []
+        broadcaster_double = instance_double(
+          Telemetry::Broadcaster,
+          subscribe: starvation_queue,
+          unsubscribe: nil,
+        )
+        allow(broadcaster_double).to receive(:update_subscription) do |q, asset_ids:|
+          update_subscription_calls << { queue: q, asset_ids: asset_ids }
+        end
+        allow(Telemetry::Broadcaster).to receive(:instance).and_return(broadcaster_double)
+
+        open_stream_as(viewer)
+
+        expect(response).to have_http_status(:ok)
+        # Sentinel was a wakeup, not a payload — no telemetry frame
+        # was ever written to the stream.
+        expect(response.body).to include("event: connected")
+        expect(response.body).not_to include("event: telemetry")
+        # The refresh ran on sentinel arrival and pushed the new
+        # asset-id set (or :all sentinel) to the broadcaster.
+        expect(update_subscription_calls).not_to be_empty
+      end
+
       it "closes the telemetry stream when the user record is deleted mid-stream" do
         stub_const("Api::TelemetryController::ALLOWED_ASSETS_REFRESH_SECONDS", 0)
 

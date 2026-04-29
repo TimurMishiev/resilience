@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-29 (Production live at https://resilience-ops.fly.dev/; post-deploy hardening pass: deep-eval A.2 + A.3 closed in-rotation, plus newly-discovered A.3-sibling in telemetry SSE closed at `c2473bc`; A.4 + P1 cross-tenant leak closed earlier in pass; remaining work is /audit + /wtf-roadmap + globe shell-main investigation)
+Last updated: 2026-04-29 (Production live at https://resilience-ops.fly.dev/; post-deploy hardening pass: A.2 closed at `90ea836`; A.3 + A.3-sibling **payload-gated initial fixes were caught by Codex /gate** (P2 starvation finding) and superseded by sentinel-driven decoupling — see "Codex P2 starvation finding" block below; A.4 + P1 cross-tenant leak closed earlier in pass; remaining work is /audit + /wtf-roadmap + globe shell-main investigation)
 
 ## Current Phase
 
@@ -125,36 +125,41 @@ item and is **stakeholder-blocked**, not engineering-blocked.
   (associative/commutative). 2 regression specs prove the contract
   (max batch ≤ bound, multi-batch produced, output correctness
   preserved across batch boundaries).
-- ✅ **Deep-eval A.3 closed in-rotation** (`9e3fa8b`). Wired
-  periodic user-scope refresh into the events SSE loop:
-  `USER_SCOPE_REFRESH_SECONDS = 30` mirrors
-  `TelemetryController::ALLOWED_ASSETS_REFRESH_SECONDS = 30`.
-  On the loop iteration after the window elapses, reload
-  `User#organization_id` + `area_of_operation_id` uncached, update
-  the consumer-side cached scope FIRST (so any in-flight cross-
-  tenant payloads are dropped on this iteration's
-  `event_visible_to_scope?` check), then push the new `org_id` to
-  the broadcaster via `update_subscription` (so future cross-tenant
-  events are filtered before they ever reach the queue). User-row
-  deletion mid-stream now closes the stream instead of stranding
-  it. 2 regression specs prove (a) org reassignment behavior +
-  `update_subscription` call (b) stream closes on user delete.
-- ✅ **A.3-sibling closed in-rotation** (`c2473bc`) — newly
-  discovered while reviewing the A.3 fix. `TelemetryController`'s
-  pre-existing 30s refresh re-resolved `AssetPolicy::Scope` but
-  passed the stream-open in-memory `current_user` into it, so
-  USER reassignment (admin moves viewer from org A to org B) was
-  invisible to the refresh — only ASSET reassignment (asset moved
-  between sites) was caught. Fix: reload the User from DB uncached
-  via `User.find_by(id: current_user.id)` inside the refresh tick,
-  break the loop on nil (user deleted → close stream), and feed
-  the FRESH user into both `AssetPolicy::Scope` and the inline
-  unrestricted-viewer check that determines the broadcaster filter
-  shape. 2 regression specs (user reassignment, user deletion).
-  Audit-trail honesty: this gap was NOT in the original deep-eval
-  finding list — surfaced via my post-A.3 review of sibling SSE
-  controllers. `signals_controller`'s stream remains correctly
-  unscoped (ExternalSignal is intentionally global per
+- ✅ **A.3 (events SSE scope refresh) closed via two-stage fix.**
+  Initial commit at `9e3fa8b` wired a payload-gated 30s refresh:
+  reload `User#organization_id` + `area_of_operation_id` uncached
+  inside the consumer loop, update the consumer-side cached scope
+  FIRST, then `broadcaster.update_subscription`. Codex /gate flagged
+  this as P2 — the trigger was payload-gated (`queue.pop` had to
+  return before refresh could run), so an org reassignment with
+  no in-flight old-scope events left the broadcaster's stale
+  producer-side filter dropping every new-scope event indefinitely
+  until reconnect (starvation). Closing fix decouples the trigger:
+  the heartbeat thread now pushes a unique-identity sentinel
+  (`SCOPE_REFRESH_TICK = Object.new.freeze`) into the queue on
+  each ~25s tick; the loop pops it via `equal?`, always runs the
+  refresh, and skips event delivery for the sentinel. User-row
+  deletion mid-stream still tears down the stream. 3 regression
+  specs total: (a) payload-gated reassignment + `update_subscription`,
+  (b) sentinel-driven starvation case (queue NEVER returns a real
+  payload, refresh still runs), (c) user deletion closes stream.
+- ✅ **A.3-sibling (telemetry SSE) closed via the same two-stage
+  fix.** Initial commit at `c2473bc` reloaded the User uncached
+  inside the refresh tick and fed the fresh user into
+  `AssetPolicy::Scope` and the inline unrestricted-viewer check.
+  Same Codex P2 starvation finding applied — refresh was
+  payload-gated. Closing fix mirrors events_controller: same
+  heartbeat-pushed `SCOPE_REFRESH_TICK` sentinel; loop pops it
+  via `equal?` and runs refresh unconditionally on sentinel
+  arrival. 3 telemetry regression specs total: (a) USER
+  reassignment (vs prior asset-reassignment case), (b)
+  sentinel-driven starvation case, (c) user-deletion close.
+  Audit-trail honesty: A.3-sibling was NOT in the original
+  deep-eval finding list — I surfaced it during sibling-controller
+  review post-A.3. The starvation P2 was caught by Codex /gate,
+  not by me; fix shipped after Codex review pass.
+  `signals_controller`'s stream remains correctly unscoped
+  (ExternalSignal is intentionally global per
   `external_signal_policy.rb:1-4`).
 - ⏸ **Globe primitive-pickup tests** (3 tests) are `test.fixme`d
   with documented unknown root cause; production paths covered by

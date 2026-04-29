@@ -15,6 +15,22 @@ module Api
     # and keeps revocation-latency operator-visible.
     ALLOWED_ASSETS_REFRESH_SECONDS = 30
 
+    # Unique-identity sentinel pushed into the broadcaster queue by the
+    # heartbeat thread on each tick, so the consumer loop wakes for the
+    # periodic scope refresh even when no telemetry payload would
+    # otherwise arrive. Without this, an admin reassigning a user from
+    # org A to org B left the broadcaster's stale producer-side filter
+    # dropping every new-org-B reading before it reached this queue —
+    # under-delivery indefinitely until reconnect (Codex P2 finding on
+    # the prior payload-gated A.3-sibling fix). Identity-comparison via
+    # `equal?` distinguishes the sentinel from any broadcaster JSON
+    # string payload; see the loop body.
+    # Not marked `private_constant` so the regression spec can
+    # construct a starvation-scenario queue that pops this exact
+    # object identity — the constant carries no behavior, only
+    # identity, so exposure is harmless.
+    SCOPE_REFRESH_TICK = Object.new.freeze
+
     # GET /api/telemetry
     # Returns the latest telemetry reading per asset, optionally as of a replay
     # timestamp. This gives replay mode a deterministic snapshot instead of
@@ -135,10 +151,17 @@ module Api
       # query and release it immediately.
       ActiveRecord::Base.connection_pool.release_connection
 
-      # Heartbeat thread — keeps the connection alive through proxies / load balancers
+      # Heartbeat thread — keeps the connection alive through proxies /
+      # load balancers AND wakes the consumer loop for the periodic
+      # scope refresh (A.3-sibling starvation fix). Sentinel push is
+      # non-blocking: a full queue means the broadcaster is already
+      # evicting a slow consumer, so we silently skip; the heartbeat
+      # write below still proceeds so the browser keeps the EventSource
+      # open.
       heartbeat = start_sse_heartbeat(stream_name: "telemetry") do
-        refresh_sse_stream_lease(lease, stream_name: "telemetry") &&
-          sse_write(response.stream, event: "heartbeat", data: { ts: Time.current.to_i })
+        next false unless refresh_sse_stream_lease(lease, stream_name: "telemetry")
+        push_scope_refresh_tick(queue)
+        sse_write(response.stream, event: "heartbeat", data: { ts: Time.current.to_i })
       end
 
       # Main loop — pop telemetry payloads and forward to the client
@@ -147,7 +170,14 @@ module Api
         break if payload.nil?
         break unless refresh_sse_stream_lease(lease, stream_name: "telemetry")
 
-        if Time.current - allowed_asset_ids_refreshed_at >= ALLOWED_ASSETS_REFRESH_SECONDS
+        # Heartbeat-pushed wakeup sentinel — identified by object
+        # identity since broadcaster payloads are always JSON Strings.
+        # On a sentinel pop we ALWAYS run the refresh (decoupling the
+        # refresh trigger from payload arrival is the whole point)
+        # and skip downstream telemetry-payload handling.
+        is_refresh_tick = payload.equal?(SCOPE_REFRESH_TICK)
+
+        if is_refresh_tick || Time.current - allowed_asset_ids_refreshed_at >= ALLOWED_ASSETS_REFRESH_SECONDS
           # Reload the User from the DB so AssetPolicy::Scope sees fresh
           # organization_id / area_of_operation_id values. Without this,
           # the previous code passed the stream-open `current_user`
@@ -189,6 +219,10 @@ module Api
           allowed_asset_ids_refreshed_at = Time.current
         end
 
+        # Sentinels are scope-refresh wakeups, not telemetry payloads
+        # to deliver to the client.
+        next if is_refresh_tick
+
         next unless telemetry_payload_visible?(payload, allowed_asset_ids)
         response.stream.write("event: telemetry\ndata: #{payload}\n\n")
       rescue IOError, ActionController::Live::ClientDisconnected
@@ -224,6 +258,18 @@ module Api
       true
     rescue IOError, ActionController::Live::ClientDisconnected
       false
+    end
+
+    # Non-blocking sentinel push from the heartbeat thread. The
+    # broadcaster's slow-consumer eviction handles backpressure
+    # separately, so a full queue here just means the consumer is
+    # already on the way out — silently drop the sentinel.
+    def push_scope_refresh_tick(queue)
+      queue.push(SCOPE_REFRESH_TICK, true)
+    rescue ThreadError, ClosedQueueError
+      # ThreadError: queue full (slow consumer being evicted by
+      #   broadcaster — no need to wake it for scope refresh).
+      # ClosedQueueError: stream is tearing down — sentinel is moot.
     end
 
     # Drop payloads whose asset_id is outside the viewer's allowed set. A

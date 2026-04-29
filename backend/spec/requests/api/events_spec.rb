@@ -295,6 +295,74 @@ RSpec.describe "Api::Events", type: :request do
         )
       end
 
+      it "wakes the consumer loop for scope refresh via the heartbeat sentinel even when no event payload arrives (Codex P2 starvation fix)" do
+        # Codex P2 (2026-04-28): the prior payload-gated A.3 fix only
+        # ran the refresh after `queue.pop` returned, so an org
+        # reassignment with no in-flight old-scope events left the
+        # broadcaster's stale producer-side filter dropping every
+        # new-scope event before it reached this queue — under-
+        # delivery indefinitely until reconnect.
+        #
+        # The fix: heartbeat thread now pushes a unique-identity
+        # sentinel into the queue on each tick; the loop pops it,
+        # always runs the refresh, and skips event delivery for it.
+        # This spec proves the sentinel-driven path: the queue NEVER
+        # returns a real payload, only the sentinel, and we still
+        # see the broadcaster get the new org_id.
+        sentinel = Api::EventsController::SCOPE_REFRESH_TICK
+
+        starvation_queue = Class.new do
+          def initialize(sentinel, user, new_org)
+            @items = [sentinel, nil] # sentinel, then close — no payloads
+            @user = user
+            @new_org = new_org
+            @pop_count = 0
+          end
+          def pop
+            @pop_count += 1
+            # Reassign user *before* the sentinel is popped, so the
+            # refresh that runs on sentinel arrival picks up the
+            # post-reassignment scope. This is the starvation
+            # scenario: no old-scope payload ever arrives — the
+            # heartbeat sentinel is the only wakeup.
+            @user.update!(organization: @new_org) if @pop_count == 1
+            @items.shift
+          end
+          def close; end
+          def closed?; @items.empty?; end
+        end.new(sentinel, scoped_user, org_b)
+
+        update_subscription_calls = []
+        scope_aware_broadcaster = instance_double(
+          Sse::Broadcaster,
+          subscribe: starvation_queue,
+          unsubscribe: nil,
+        )
+        allow(scope_aware_broadcaster).to receive(:update_subscription) do |q, organization_id:|
+          update_subscription_calls << { queue: q, organization_id: organization_id }
+        end
+        allow(Sse::Broadcaster).to receive(:instance).and_return(scope_aware_broadcaster)
+
+        get "/api/events", params: { token: scoped_token }
+
+        expect(response).to have_http_status(:ok)
+        # The connected event is the only event the client receives
+        # — the sentinel must NOT have been written as an event,
+        # since it carries no payload (and identity-equality with
+        # SCOPE_REFRESH_TICK would not survive JSON.parse anyway).
+        expect(response.body).to include("event: connected")
+        # Critical: the sentinel was treated as a wakeup, not an
+        # event. No spurious event:* lines beyond connected.
+        expect(response.body.scan(/^event: (\w+)/).flatten - %w[connected])
+          .to be_empty
+        # Critical: the refresh ran on sentinel arrival even though
+        # no event payload was ever pushed by the broadcaster, and
+        # the new org_id reached the broadcaster.
+        expect(update_subscription_calls).to include(
+          a_hash_including(queue: starvation_queue, organization_id: org_b.id),
+        )
+      end
+
       it "closes the stream when the user record is deleted mid-stream" do
         stub_const("Api::EventsController::USER_SCOPE_REFRESH_SECONDS", 0)
 
