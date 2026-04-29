@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-29 (Production live at https://resilience-ops.fly.dev/ at `95a3532`; `HEAD` on `main` is `6d0f100`, frontend-only resilience + decomp + globe E2E work ahead of production. Session arc: A.2/A.3/A.3-sibling/correlation-rule-conditions.site_id closed in earlier slices; Codex 5-finding backlog at `4b4b489` (#1/#2/#4/#5 fixed, #3 resolved-as-documented at `7e1e783`); manual deep-mode QA F1+F3 closed at `b7e4040`; full-system /audit at `b7e4040` produced 10 P3 findings, all closed at `f149dbf`; Codex /gate at `f149dbf` surfaced 3 P2 prompt-safety gaps in remaining AI interpolation surfaces, all closed at `c44754c` with wire-layer regression specs; `95a3532` deployed the OpenSky `ssl_http` fix and is live on production version 35; `946b41a` rotated the handoff + findings matrix to match live deploy truth; `a57f5c6` narrowed globe E2E harness contamination without un-fixme'ing the 3 primitive-pickup tests; `08bf593` drafts the next selection-grounded AI explainer slice; `7d662bf` ships engine-init failure handling on both `useMapLibreEngine` and `useGlobeEngine` with a Blueprint NonIdealState overlay + Retry on each page and 6 new regression specs; `bbce9d5` rotates docs for `7d662bf` closure; `830ceb3` decomposes EntityCard.tsx 635 → 92-line public surface with sub-modules in `components/entity-card/`; `6d0f100` un-`fixme`s all 3 globe primitive-pickup tests after fixing the missing `meta` envelope on the `/api/sites` stub that was breaking `fetchAllPaginated`.)
+Last updated: 2026-04-29 (Production live at https://resilience-ops.fly.dev/ at `95a3532`; `HEAD` on `main` is `5148b8f`, frontend-only resilience + decomp + globe E2E work ahead of production. Session arc: A.2/A.3/A.3-sibling/correlation-rule-conditions.site_id closed in earlier slices; Codex 5-finding backlog at `4b4b489` (#1/#2/#4/#5 fixed, #3 resolved-as-documented at `7e1e783`); manual deep-mode QA F1+F3 closed at `b7e4040`; full-system /audit at `b7e4040` produced 10 P3 findings, all closed at `f149dbf`; Codex /gate at `f149dbf` surfaced 3 P2 prompt-safety gaps in remaining AI interpolation surfaces, all closed at `c44754c` with wire-layer regression specs; `95a3532` deployed the OpenSky `ssl_http` fix and is live on production version 35; `946b41a` rotated the handoff + findings matrix to match live deploy truth; `a57f5c6` narrowed globe E2E harness contamination without un-fixme'ing the 3 primitive-pickup tests; `08bf593` drafts the next selection-grounded AI explainer slice; `7d662bf` ships engine-init failure handling on both `useMapLibreEngine` and `useGlobeEngine`; `bbce9d5` rotates docs for `7d662bf`; `830ceb3` decomposes EntityCard.tsx 635 → 92-line public surface with sub-modules in `components/entity-card/`; `59d6e20` rotates docs for `830ceb3`; `6d0f100` un-`fixme`s all 3 globe primitive-pickup tests after fixing the missing `meta` envelope on the `/api/sites` stub; `117b16d` rotates docs for `6d0f100`; `fdcda0b` lands 35 direct unit tests on MapOverlayControls as the tests-first regression net; `5148b8f` decomposes MapOverlayControls.tsx 884 → 205-line orchestrator + 11 sub-components in `overlay-controls/` under that net.)
 
 ## Current Phase
 
@@ -43,6 +43,25 @@ frontend proof/resilience and architecture quality, not backend
 auth/correctness.
 
 Hardening rotation timeline this session (newest first):
+  - `5148b8f` — MapOverlayControls.tsx decomposition (884 → 205-
+    line orchestrator). 11 sub-components extracted to
+    `components/map/overlay-controls/`: derivations.ts,
+    StatusOverlays, TelemetryBadge, StyleSwitcher, LayerToggles,
+    ToolToggleStrip, AnnotatePanel, RangeRingPanel, SectorPanel,
+    BearingLinePanel, MeasurementPanel. Mechanical extraction
+    only; the 67-prop public interface is preserved verbatim.
+    Public callsite (`MapPage.tsx`) untouched.
+  - `fdcda0b` — tests-first regression net for MapOverlayControls.
+    35 direct unit tests covering loading/error overlays,
+    telemetry badge, replay-limitations + signal-error callouts,
+    style switcher, every layer toggle + legend, every tool
+    toggle (with aria-pressed + click-to-fire), and every panel
+    (annotate / range ring / sector / bearing line /
+    measurement) input + summary branch. Locked in baseline
+    behavior so the subsequent decomp at `5148b8f` could be
+    proven regression-safe.
+  - `117b16d` — doc rotation reflecting `6d0f100` globe E2E
+    closure (handoff + findings).
   - `6d0f100` — globe primitive-pickup E2E proof closure. All 3
     previously-`fixme`d tests now pass. Root cause was a missing
     `meta` envelope on the `/api/sites` stub; `fetchAllPaginated`
@@ -135,19 +154,27 @@ backend unchanged. Note: `globe-benchmark.spec.ts` (a separate,
 non-fixme spec) still requires a real Rails session because it
 calls `primeAuthenticatedSession` before any route stubs land —
 unrelated to the 3 fixme tests closed here.
+Validation at `fdcda0b`: vitest src/test/MapOverlayControls.test.tsx
+35/35 (new tests, all green against pre-decomp baseline);
+tsc -b exit 0; eslint clean.
+Validation at `5148b8f`: vitest src/test/MapOverlayControls.test.tsx
+35/35 (decomp passed under the regression net) + MapPage.test.tsx
+40/40 (no consumer regression) + replayEventPulses.test.ts
+14/14; tsc -b --force exit 0; eslint on
+MapOverlayControls.tsx + overlay-controls/ exit 0; backend
+unchanged.
 
-**Next action:** if continuing hardening before new feature work,
-the remaining real debt band is frontend decomposition debt.
-`EntityCard.tsx` closed at `830ceb3` (635 → 92 + 4 sibling
-files); globe primitive-pickup E2E proof closed at `6d0f100`
-(all 3 fixme tests now green; root cause was missing `meta` on
-the `/api/sites` stub). `MapPage.tsx` 905 and
-`MapOverlayControls.tsx` 884 remain. Both are high-blast-radius
-(primary operator surface) and have no direct unit tests, so a
-safe decomp needs either direct unit tests first or interactive
-browser verification — not safe inside an autonomous loop.
-Roadmap item 8 (4B — access-pattern anomaly detection) remains
-stakeholder-blocked and separate from these hygiene items.
+**Next action:** the only remaining frontend-decomposition debt
+is `MapPage.tsx` (905), which the user has explicitly deferred
+("defer for now: full MapPage decomposition unless
+MapOverlayControls decomp lands cleanly, and you still believe
+line-count architecture debt is worth the blast radius before
+sending Palantir materials"). `EntityCard.tsx` closed at
+`830ceb3`; `MapOverlayControls.tsx` closed at `5148b8f` after
+the tests-first net at `fdcda0b`; globe primitive-pickup E2E
+proof closed at `6d0f100`. Roadmap item 8 (4B — access-pattern
+anomaly detection) remains stakeholder-blocked and separate
+from these hygiene items.
 
 ### Production deploy state (2026-04-29 — TRUE state at close)
 
@@ -294,14 +321,15 @@ item and is **stakeholder-blocked**, not engineering-blocked.
   when init rejects (preload reject, constructor throw, or runtime
   error before load). Coverage: 6 new regression specs (3 per
   hook).
-- ⏸ **Frontend decomposition debt** remains open for the two
-  map-surface monoliths. `EntityCard.tsx` closed at `830ceb3`
-  (635 → 92-line public surface + `entity-card/` sub-modules).
-  `MapPage.tsx` (905) and `MapOverlayControls.tsx` (884) remain;
-  both are primary-operator-surface, high-blast-radius, and have
-  no direct unit tests, so a safe decomp needs either direct
-  unit tests first or interactive browser verification.
-  P3 hygiene, not a correctness or security gap.
+- ⏸ **Frontend decomposition debt** is mostly closed.
+  `EntityCard.tsx` closed at `830ceb3` (635 → 92-line public
+  surface + `entity-card/` sub-modules);
+  `MapOverlayControls.tsx` closed at `5148b8f` (884 → 205-line
+  orchestrator + 11 sub-components in `overlay-controls/`)
+  after the tests-first regression net at `fdcda0b` (35 direct
+  unit tests). Only `MapPage.tsx` (905) remains and is
+  explicitly deferred per user direction. P3 hygiene, not a
+  correctness or security gap.
 - ⏸ **MapPage perf profile to recover original 15ms / 120ms bar**
   deferred as a future tranche; current bar reflects measured CI
   reality, not regression.

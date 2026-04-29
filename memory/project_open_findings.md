@@ -35,20 +35,21 @@ _(No open P1 items.)_
 
 ## P3 / Ongoing Hygiene
 
-- Frontend decomposition remains open architecture debt for the
-  two map-surface monoliths.
-  - Current large files at reconciliation time:
-    - [MapPage.tsx](/Users/timurmishiev/Desktop/Code/resilience/frontend/src/pages/MapPage.tsx): 905 lines
-    - [MapOverlayControls.tsx](/Users/timurmishiev/Desktop/Code/resilience/frontend/src/components/map/MapOverlayControls.tsx): 884 lines
-  - Both are high-blast-radius (primary operator surface) and
-    have no direct unit tests — only integration-style coverage
-    via `MapPage.test.tsx`. Decomposing them safely needs either
-    direct unit tests first or interactive browser verification.
+- Frontend decomposition is mostly closed; only `MapPage.tsx`
+  remains as deferred decomp debt.
   - [EntityCard.tsx](/Users/timurmishiev/Desktop/Code/resilience/frontend/src/components/EntityCard.tsx)
-    closed at `830ceb3` (635 → 92-line public surface, sub-modules
-    in `entity-card/`).
-  - This is not a production blocker, but it is real code-quality
-    debt and should not be described as already closed.
+    closed at `830ceb3` (635 → 92-line public surface,
+    sub-modules in `entity-card/`).
+  - [MapOverlayControls.tsx](/Users/timurmishiev/Desktop/Code/resilience/frontend/src/components/map/MapOverlayControls.tsx)
+    closed at `5148b8f` (884 → 205-line orchestrator, 11
+    sibling files in `overlay-controls/`); 35 direct unit
+    tests landed first as the regression net at `fdcda0b`.
+  - [MapPage.tsx](/Users/timurmishiev/Desktop/Code/resilience/frontend/src/pages/MapPage.tsx)
+    (905 lines) is the only remaining large file. Per user
+    direction it stays deferred unless line-count architecture
+    debt is independently judged worth the blast radius before
+    Palantir review.
+  - This is not a production blocker.
 
 - Keep `backend/db/structure.sql` and the local test environment aligned with the supported PostGIS baseline.
 - Keep `memory/project_resilience.md`, `memory/execution_handoff.md`, and actual code aligned.
@@ -58,6 +59,17 @@ _(No open P1 items.)_
 
 ## Closed Since Last Reconciliation
 
+- ~~MapOverlayControls.tsx 884-line monolith~~ — closed at
+  `5148b8f`. Public surface is now `MapOverlayControls.tsx`
+  (205 lines, orchestrator); 11 sub-components live in
+  `components/map/overlay-controls/` (`derivations.ts`,
+  `StatusOverlays`, `TelemetryBadge`, `StyleSwitcher`,
+  `LayerToggles`, `ToolToggleStrip`, `AnnotatePanel`,
+  `RangeRingPanel`, `SectorPanel`, `BearingLinePanel`,
+  `MeasurementPanel`). Tests-first foundation landed at
+  `fdcda0b` (35 direct unit tests covering every major
+  rendering branch); decomp ran under that net. Public
+  imports unchanged (only callsite is `MapPage.tsx`).
 - ~~Globe primitive-pickup E2E proof debt~~ — closed at `6d0f100`.
   All 3 previously-`fixme`d tests
   ([globe-overlay-clickthrough.spec.ts:167](/Users/timurmishiev/Desktop/Code/resilience/frontend/e2e/globe-overlay-clickthrough.spec.ts),
