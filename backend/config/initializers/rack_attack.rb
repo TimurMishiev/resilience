@@ -39,10 +39,21 @@ class Rack::Attack
   # protects against legitimate bursty navigation across multiple tabs
   # and against multi-user shared-NAT scenarios. The hourly caps are
   # unchanged — they remain the binding constraint for sustained usage.
-  SSE_TOKEN_REQUESTS_PER_MINUTE = 120
-  SSE_TOKEN_REQUESTS_PER_HOUR = 300
-  SSE_STREAM_OPENS_PER_MINUTE = 120
-  SSE_STREAM_OPENS_PER_HOUR = 300
+  #
+  # Env-tunable (post-push self-review follow-up, 2026-04-29) so production
+  # can be re-tuned without a redeploy via flyctl secrets set.
+  SSE_TOKEN_REQUESTS_PER_MINUTE = ENV.fetch("SSE_TOKEN_REQUESTS_PER_MINUTE", 120).to_i
+  SSE_TOKEN_REQUESTS_PER_HOUR   = ENV.fetch("SSE_TOKEN_REQUESTS_PER_HOUR",   300).to_i
+  SSE_STREAM_OPENS_PER_MINUTE   = ENV.fetch("SSE_STREAM_OPENS_PER_MINUTE",   120).to_i
+  SSE_STREAM_OPENS_PER_HOUR     = ENV.fetch("SSE_STREAM_OPENS_PER_HOUR",     300).to_i
+
+  # Repeat-offender blocklist parameters. Reduced bantime from 3600s → 60s
+  # at f3d3e7b (QA P3, 2026-04-29). Extracted as named constants and made
+  # env-tunable in this follow-up so a future scanner-abuse incident can
+  # be hardened in production without a redeploy.
+  REPEAT_OFFENDER_MAX_RETRY        = ENV.fetch("REPEAT_OFFENDER_MAX_RETRY",        10).to_i
+  REPEAT_OFFENDER_FIND_TIME_SECS   = ENV.fetch("REPEAT_OFFENDER_FIND_TIME_SECS",   600).to_i
+  REPEAT_OFFENDER_BAN_TIME_SECS    = ENV.fetch("REPEAT_OFFENDER_BAN_TIME_SECS",    60).to_i
 
   ### Throttles ###
 
@@ -140,7 +151,8 @@ class Rack::Attack
 
   ### Blocklist ###
 
-  # Block IPs that have triggered 10+ throttle violations in the last 10 minutes.
+  # Block IPs that have triggered REPEAT_OFFENDER_MAX_RETRY (default 10)
+  # throttle violations within REPEAT_OFFENDER_FIND_TIME_SECS (default 600).
   # This catches automated scanners that keep hitting rate limits.
   #
   # Bantime reduced from 3600s → 60s (QA P3, 2026-04-29). The 1-hour ban
@@ -152,7 +164,12 @@ class Rack::Attack
   # only job is to short-circuit the 429 response loop, and 60s is more
   # than enough to do that without bricking a legitimate session.
   blocklist("block-repeat-offenders") do |req|
-    Rack::Attack::Allow2Ban.filter(req.ip, maxretry: 10, findtime: 600, bantime: 60) do
+    Rack::Attack::Allow2Ban.filter(
+      req.ip,
+      maxretry: REPEAT_OFFENDER_MAX_RETRY,
+      findtime: REPEAT_OFFENDER_FIND_TIME_SECS,
+      bantime:  REPEAT_OFFENDER_BAN_TIME_SECS,
+    ) do
       req.env["rack.attack.match_type"] == :throttle
     end
   end
