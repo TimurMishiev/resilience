@@ -4,6 +4,16 @@ class AreaOfOperation < ApplicationRecord
   THREAT_LEVELS = %w[green amber red black].freeze
   POSTURES      = %w[observe defensive weapons_free].freeze
 
+  # Organization nullability — intentional-with-trigger, mirroring Site.
+  # See site.rb for the full design rationale: portfolio deploy seeds
+  # zero Organizations, so the system runs effectively single-tenant
+  # and `optional: true` correctly models the present data shape. The
+  # NOT NULL hardening (Codex backlog #3) is real but premature; it
+  # becomes load-bearing when real Organizations are created in
+  # production. AreaOfOperation must be promoted in the same migration
+  # as Site so the cross-model invariant
+  # (Site#area_of_operation_matches_organization at site.rb:62) stays
+  # consistent.
   belongs_to :organization, optional: true
   belongs_to :created_by, class_name: "User"
   has_many :sites,             dependent: :nullify

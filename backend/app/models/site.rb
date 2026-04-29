@@ -1,6 +1,37 @@
 class Site < ApplicationRecord
   STATUSES = %w[active inactive].freeze
 
+  # Organization nullability — intentional-with-trigger, not legacy drift.
+  #
+  # The current production deploy (resilience-ops.fly.dev) seeds zero
+  # Organizations: the seed creates Sites/AOs/users without ever calling
+  # Organization.create, so the system runs effectively single-tenant
+  # (every site has nil organization_id; every user is unrestricted via
+  # ApplicationPolicy::Scope#site_scope's no-filter branch). The full
+  # multi-tenant infrastructure (policies, scopes, broadcaster filter,
+  # audit org-attribution) exists and is exercised by the request specs
+  # — it's just not turned on by the deployed data shape.
+  #
+  # `optional: true` is correct for this state. Adding NOT NULL today
+  # would force the seed to invent a synthetic "Default Organization"
+  # purely to satisfy the constraint — mechanism without meaning. The
+  # constraint becomes load-bearing the moment real Organizations exist
+  # in production; until then it's premature.
+  #
+  # Trigger condition for promotion to NOT NULL:
+  #   - first real Organization created in production beyond a single
+  #     demo org, OR
+  #   - any sites.organization_id IS NULL row blocks tenant-isolation
+  #     behavior in observed operator-visible flow.
+  # Promotion path:
+  #   1. Backfill nil-org sites/AOs to a real Organization (per-AO
+  #      assignment if multi-org, single-org assignment if portfolio).
+  #   2. Migration: ALTER TABLE sites ALTER COLUMN organization_id SET NOT NULL.
+  #   3. Drop `optional: true` from this belongs_to.
+  #   4. Update :site factory to associate :organization by default.
+  #
+  # Same architectural shape applies to AreaOfOperation#organization_id —
+  # see area_of_operation.rb for its mirror comment.
   belongs_to :organization,       optional: true
   belongs_to :area_of_operation, optional: true
 

@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-29 (Production live at https://resilience-ops.fly.dev/; post-deploy hardening pass + Codex 5-finding backlog closure: A.2/A.3/A.3-sibling/correlation-rule-conditions.site_id all closed earlier; this rotation closed Codex backlog items #1, #2, #4, #5 and deferred #3 with documented architecture question — see "Codex 5-finding backlog" block below)
+Last updated: 2026-04-29 (Production live at https://resilience-ops.fly.dev/; post-deploy hardening pass + Codex 5-finding backlog closure: A.2/A.3/A.3-sibling/correlation-rule-conditions.site_id all closed earlier; this rotation closed Codex backlog items #1, #2, #4, #5; #3 resolved-as-documented after investigation surfaced that production seeds zero Organizations and runs effectively single-tenant — NOT NULL hardening preserved as a triggered future migration with explicit trigger conditions captured in site.rb + area_of_operation.rb model comments)
 
 ## Current Phase
 
@@ -220,21 +220,28 @@ code (not just trusted) and either fixed or deferred with reasoning:
   cross-tenant action_payload entities and proving downstream
   services are NOT invoked.
 
-- ⏸ **#3 — `sites.organization_id` NOT NULL hardening**
-  (`structure.sql`, `site.rb`). Real but DEFERRED for
-  product-architecture reasons. The column is currently nullable;
-  `Site#belongs_to :organization, optional: true`. Making it NOT
-  NULL is hardening BUT requires a product decision: are nil-org
-  sites legitimate "admin-global" entities (visible only to
-  unrestricted users via `ApplicationPolicy::Scope#site_scope`'s
-  no-filter branch), or is that legacy drift from before the
-  multi-tenancy rollout? The migration would need to either
-  backfill nil-org rows to a real organization_id or block the
-  NOT-NULL transition until they're cleaned up. This is a schema
-  change with high blast radius (FK strength, optional →
-  required, model callbacks); per the autonomous-loop hold-rule
-  I will not decide it without explicit direction. Documented
-  here as the next pending architecture question.
+- 📝 **#3 — `sites.organization_id` NOT NULL hardening**
+  (`structure.sql`, `site.rb`). Real, but RESOLVED-AS-DOCUMENTED
+  rather than fixed. Investigation surfaced that production at
+  resilience-ops.fly.dev seeds zero Organizations: the seed
+  creates Sites/AOs/users without ever calling
+  `Organization.create`, so every Site has nil organization_id
+  and the system runs effectively single-tenant. The full
+  multi-tenant infrastructure (policies, scopes, broadcaster
+  filtering, audit org-attribution) exists and is exercised by
+  the request specs — it's just not turned on by the deployed
+  data shape. Adding NOT NULL today would force the seed to
+  invent a synthetic "Default Organization" purely to satisfy
+  the constraint — mechanism without meaning. Decision: leave
+  `optional: true` for now; document the trigger condition in
+  `site.rb` and `area_of_operation.rb` so the next reader knows
+  this is intentional-with-trigger, not legacy drift. The NOT
+  NULL promotion path (backfill → migration → drop optional →
+  factory update) is preserved in the model comment so a future
+  rotation can execute it cleanly when real Organizations exist
+  in production. **The hardening becomes load-bearing the moment
+  multi-tenancy is genuinely turned on; until then it's
+  premature.**
 
 - ✅ **#4 — Replay same-timestamp ordering**
   (`audit_snapshot_service.rb`). Real bug. `.order(:occurred_at)`
