@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-29 (Production deploy SHIPPED at HEAD `6b3b94a` → live at https://resilience-ops.fly.dev/; post-deploy hardening pass active per user direction)
+Last updated: 2026-04-29 (Production live at https://resilience-ops.fly.dev/; post-deploy hardening pass: deep-eval A.2 + A.3 closed in-rotation; A.4 + P1 cross-tenant leak closed earlier in pass; remaining work is /audit + /wtf-roadmap + globe shell-main investigation)
 
 ## Current Phase
 
@@ -116,9 +116,29 @@ item and is **stakeholder-blocked**, not engineering-blocked.
 - ✅ **Deep-eval A.4 (active_site_confidence isolation spec gap)
   closed** in this rotation. Same shape as A.1: spec was missing,
   underlying code was correct, added the proof.
-- ⏸ **Deep-eval A.2 deferred** (operator-load-dependent; see below).
-- ⏸ **Deep-eval A.3 deferred** (reviewer's own confidence
-  calibration was "may be an over-call"; see below).
+- ✅ **Deep-eval A.2 closed in-rotation** (`90ea836`). Replaced
+  `.to_a` materialization on `active_breach_sites` and
+  `active_site_confidence` replay branches with bounded
+  `find_in_batches(batch_size: REPLAY_BATCH_SIZE = 500)` + per-batch
+  `Replay::StateSerializer.match_states` calls. Cross-batch
+  reduction: `uniq` for breach sites; `max(confidence)` per site
+  (associative/commutative). 2 regression specs prove the contract
+  (max batch ≤ bound, multi-batch produced, output correctness
+  preserved across batch boundaries).
+- ✅ **Deep-eval A.3 closed in-rotation** (this rotation). Wired
+  periodic user-scope refresh into the events SSE loop:
+  `USER_SCOPE_REFRESH_SECONDS = 30` mirrors
+  `TelemetryController::ALLOWED_ASSETS_REFRESH_SECONDS = 30`.
+  On the loop iteration after the window elapses, reload
+  `User#organization_id` + `area_of_operation_id` uncached, update
+  the consumer-side cached scope FIRST (so any in-flight cross-
+  tenant payloads are dropped on this iteration's
+  `event_visible_to_scope?` check), then push the new `org_id` to
+  the broadcaster via `update_subscription` (so future cross-tenant
+  events are filtered before they ever reach the queue). User-row
+  deletion mid-stream now closes the stream instead of stranding
+  it. 2 regression specs prove (a) org reassignment behavior +
+  `update_subscription` call (b) stream closes on user delete.
 - ⏸ **Globe primitive-pickup tests** (3 tests) are `test.fixme`d
   with documented unknown root cause; production paths covered by
   other E2E specs that pass on CI.
@@ -126,31 +146,29 @@ item and is **stakeholder-blocked**, not engineering-blocked.
   deferred as a future tranche; current bar reflects measured CI
   reality, not regression.
 
-### Deferred deep-eval findings — explicit reasoning
+### Closed deep-eval findings — implementation summary
 
 **A.2 — Unbounded replay materialization on `active_site_confidence`
-+ `active_breach_sites`** ([signal_rule_matches_controller.rb:117-122](backend/app/controllers/api/signal_rule_matches_controller.rb#L117-L122)).
-Real defect, deferred for portfolio-scale deploy. The concern
-materializes when "an operator in a tenant with months of historical
-matches picks an early `as_of` value" (deep-eval reviewer's wording).
-Portfolio-scale demo data has ~4 SignalRuleMatch records in seed and
-~10-20 in any reasonable demo session — orders of magnitude below
-the threshold where the materialization becomes operationally hot.
-The fix (SQL window function or `find_in_batches`) is real work
-and the right answer for a real production-scale tenant; it does
-not gate a portfolio-scale deploy. Documented as a follow-up tranche.
++ `active_breach_sites`** — closed at `90ea836`. See
+[signal_rule_matches_controller.rb:6-18](backend/app/controllers/api/signal_rule_matches_controller.rb#L6-L18)
+for the `REPLAY_BATCH_SIZE` constant + sizing rationale, and
+[the two replay branches](backend/app/controllers/api/signal_rule_matches_controller.rb#L87-L160)
+for the `find_in_batches` shape. Regression specs at
+[signal_rule_matches_spec.rb](backend/spec/requests/api/signal_rule_matches_spec.rb)
+under `describe "A.2 — bounded-memory replay reduction"`.
 
 **A.3 — SSE stream captures user scope at open-time and never
-refreshes** ([events_controller.rb:32, 49-50](backend/app/controllers/api/events_controller.rb#L32);
-broadcaster has the right primitive at
-[broadcaster.rb:128-133](backend/app/services/sse/broadcaster.rb#L128-L133)
-but no caller invokes it). Real but the deep-eval reviewer's own
-self-skeptical pass said "may be an over-call. ... The principle is
-right; the production impact is bounded. ... the practical
-exploitability requires the user's identity to change while their
-stream is open, which is rare in a single-tenant deployment with
-no admin actions running." Single-tenant portfolio deploy doesn't
-hit this. Documented as a follow-up tranche.
+refreshes** — closed in this rotation. See
+[events_controller.rb:12-18](backend/app/controllers/api/events_controller.rb#L12-L18)
+for the `USER_SCOPE_REFRESH_SECONDS` constant + rationale, and
+[events_controller.rb:77-106](backend/app/controllers/api/events_controller.rb#L77-L106)
+for the per-loop refresh block (uncached DB read → consumer-side
+cache update → broadcaster `update_subscription`). Regression specs
+at [events_spec.rb](backend/spec/requests/api/events_spec.rb) under
+`context "A.3 — mid-stream user-scope refresh"`. Pattern mirrors
+`TelemetryController`'s pre-existing `ALLOWED_ASSETS_REFRESH_SECONDS`
+loop (so revocation-latency stays consistent across both SSE
+streams at ~30s worst case).
 
 ### Outstanding watch-items (carry-forward, not a slice)
 

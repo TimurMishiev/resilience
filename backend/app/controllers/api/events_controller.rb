@@ -9,6 +9,14 @@ module Api
       render json: { errors: ["Not authorized"] }, status: :forbidden
     end
 
+    # Interval between refreshes of the SSE stream's user-scope snapshot.
+    # Long-lived event streams (often hours) must not continue delivering
+    # events for an organization or area-of-operation the viewer lost
+    # visibility into mid-stream (admin-initiated org reassignment, AO
+    # revocation). 30s aligns with TelemetryController's refresh cadence
+    # and keeps revocation-latency operator-visible.
+    USER_SCOPE_REFRESH_SECONDS = 30
+
     # GET /api/events
     # Opens a persistent SSE stream for the authenticated client.
     # The client receives a heartbeat every 25 seconds to keep the
@@ -46,9 +54,11 @@ module Api
       # named-event listeners (e.g. addEventListener('task_created', ...)).
       # Raw JSON written directly would arrive as a 'message' event and silently
       # miss every named listener registered in useEventSource.ts.
-      user_org_id = current_user.organization_id
-      user_ao_id  = current_user.area_of_operation_id
-      site_area_cache = {}
+      user_id          = current_user.id
+      user_org_id      = current_user.organization_id
+      user_ao_id       = current_user.area_of_operation_id
+      site_area_cache  = {}
+      scope_refreshed_at = Time.current
 
       # Release the controller-action's checked-out DB connection before
       # entering the blocking loop. Without this, ActionController::Live
@@ -63,6 +73,38 @@ module Api
         payload = queue.pop          # blocks until a message arrives
         break if payload.nil?
         break unless refresh_sse_stream_lease(lease, stream_name: "events")
+
+        # Periodic user-scope refresh (A.3 fix): without this, an admin-
+        # initiated org/AO change (or full account revocation) does not
+        # propagate to either the broadcaster's producer-side filter or
+        # this controller's consumer-side check until the client
+        # reconnects. We update the local cached scope FIRST so any
+        # already-queued cross-tenant payloads are dropped on this
+        # iteration's `event_visible_to_scope?` check, then push the
+        # new org_id to the broadcaster so future cross-tenant events
+        # are filtered out before they ever reach the queue.
+        if Time.current - scope_refreshed_at >= USER_SCOPE_REFRESH_SECONDS
+          fresh_scope = ActiveRecord::Base.connection_pool.with_connection do
+            ActiveRecord::Base.uncached do
+              User.where(id: user_id).pick(:organization_id, :area_of_operation_id)
+            end
+          end
+          # User row deleted (or hard-revoked) — close the stream.
+          break if fresh_scope.nil?
+
+          new_org_id, new_ao_id = fresh_scope
+          user_ao_id = new_ao_id
+          if new_org_id != user_org_id
+            user_org_id = new_org_id
+            broadcaster.update_subscription(queue, organization_id: new_org_id)
+            # AO mappings (site → area_of_operation_id) are properties
+            # of the SITE not the user, so site_area_cache stays valid
+            # across user-scope changes — only the comparison value
+            # (user_ao_id) changes.
+          end
+          scope_refreshed_at = Time.current
+        end
+
         parsed  = JSON.parse(payload)
 
         next unless event_visible_to_scope?(parsed, user_org_id: user_org_id, user_ao_id: user_ao_id, site_area_cache: site_area_cache)

@@ -208,5 +208,133 @@ RSpec.describe "Api::Events", type: :request do
         end
       end
     end
+
+    # ── A.3: mid-stream user-scope refresh ──────────────────────────────────────
+    # Long-lived event streams (often hours) cached the subscribing user's
+    # organization_id and area_of_operation_id at stream open and never
+    # refreshed them. An admin-initiated org reassignment, AO revocation, or
+    # full account deletion would not propagate to either the broadcaster's
+    # producer-side filter or this controller's consumer-side filter until
+    # the client reconnected — leaving the stream delivering events for a
+    # scope the viewer no longer had.
+    #
+    # The fix: on every loop iteration, if USER_SCOPE_REFRESH_SECONDS has
+    # elapsed since the last refresh, reload the user's scope from the DB
+    # (uncached) and (a) update the consumer-side cached values that
+    # event_visible_to_scope? compares against, (b) push the new org_id
+    # into the broadcaster via update_subscription so future cross-tenant
+    # events are filtered at publish time, (c) close the stream entirely
+    # if the user row is gone.
+    context "A.3 — mid-stream user-scope refresh" do
+      let(:org_a) { create(:organization) }
+      let(:org_b) { create(:organization) }
+      let(:scoped_user) { create(:user, organization: org_a) }
+      let(:scoped_token) { JwtAuthenticatable.encode_sse(scoped_user.id) }
+
+      def enqueue_event(event:, organization_id: nil, data: { test: true })
+        { event: event, data: data, organization_id: organization_id }.to_json
+      end
+
+      it "drops org_a events on the iteration after the user is reassigned to org_b, and pushes the new org_id to the broadcaster" do
+        # Stub refresh window to 0 so the check fires on every iteration —
+        # a single-request spec can otherwise never elapse 30s of wall
+        # clock time. The behavioural contract is independent of the
+        # cadence; we only need to prove that when the window has elapsed,
+        # the right thing happens.
+        stub_const("Api::EventsController::USER_SCOPE_REFRESH_SECONDS", 0)
+
+        # Mid-stream queue: reassigns the user's organization between the
+        # first pop (still org_a → event delivered) and the second pop
+        # (now org_b → org_a event filtered out by the refreshed
+        # consumer-side check).
+        payloads = [
+          enqueue_event(event: "before_change", organization_id: org_a.id),
+          enqueue_event(event: "after_change",  organization_id: org_a.id),
+        ]
+        update_subscription_calls = []
+        mid_stream_queue = Class.new do
+          def initialize(payloads, user, new_org)
+            @payloads = payloads.dup
+            @user = user
+            @new_org = new_org
+            @pop_count = 0
+          end
+          def pop
+            @pop_count += 1
+            @user.update!(organization: @new_org) if @pop_count == 2
+            @payloads.shift
+          end
+          def close; end
+          def closed?; @payloads.empty?; end
+        end.new(payloads, scoped_user, org_b)
+
+        scope_aware_broadcaster = instance_double(
+          Sse::Broadcaster,
+          subscribe: mid_stream_queue,
+          unsubscribe: nil,
+        )
+        allow(scope_aware_broadcaster).to receive(:update_subscription) do |q, organization_id:|
+          update_subscription_calls << { queue: q, organization_id: organization_id }
+        end
+        allow(Sse::Broadcaster).to receive(:instance).and_return(scope_aware_broadcaster)
+
+        get "/api/events", params: { token: scoped_token }
+
+        expect(response).to have_http_status(:ok)
+        # First payload landed while the viewer was still in org_a — delivered.
+        expect(response.body).to include("event: before_change")
+        # Second payload popped after the reassignment; refresh picks up
+        # org_b and the event_visible_to_scope? check rejects it.
+        expect(response.body).not_to include("event: after_change")
+        # Producer-side filter must also be updated so future cross-tenant
+        # events never reach the queue. Without this assertion, a regression
+        # that only updated consumer-side state would silently restore the
+        # broadcaster's stale routing for the dominant filter axis.
+        expect(update_subscription_calls).to include(
+          a_hash_including(queue: mid_stream_queue, organization_id: org_b.id),
+        )
+      end
+
+      it "closes the stream when the user record is deleted mid-stream" do
+        stub_const("Api::EventsController::USER_SCOPE_REFRESH_SECONDS", 0)
+
+        payloads = [
+          enqueue_event(event: "before_delete", organization_id: org_a.id),
+          enqueue_event(event: "after_delete",  organization_id: org_a.id),
+        ]
+        delete_aware_queue = Class.new do
+          def initialize(payloads, user)
+            @payloads = payloads.dup
+            @user = user
+            @pop_count = 0
+          end
+          def pop
+            @pop_count += 1
+            @user.destroy! if @pop_count == 2
+            @payloads.shift
+          end
+          def close; end
+          def closed?; @payloads.empty?; end
+        end.new(payloads, scoped_user)
+
+        broadcaster_double = instance_double(
+          Sse::Broadcaster,
+          subscribe: delete_aware_queue,
+          unsubscribe: nil,
+          update_subscription: nil,
+        )
+        allow(Sse::Broadcaster).to receive(:instance).and_return(broadcaster_double)
+
+        get "/api/events", params: { token: scoped_token }
+
+        expect(response).to have_http_status(:ok)
+        # First event was delivered before the deletion took effect.
+        expect(response.body).to include("event: before_delete")
+        # The deletion is detected on the second iteration's refresh and
+        # the loop breaks before the second event is delivered.
+        expect(response.body).not_to include("event: after_delete")
+        expect(broadcaster_double).to have_received(:unsubscribe).with(delete_aware_queue)
+      end
+    end
   end
 end
