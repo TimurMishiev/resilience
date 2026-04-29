@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-28 (Production-deploy preparation complete; A.4 closed; A.2/A.3 deferred with explicit reasoning; CI green; ready for Fly preflight)
+Last updated: 2026-04-29 (Production deploy SHIPPED at HEAD `6b3b94a` → live at https://resilience-ops.fly.dev/; post-deploy hardening pass active per user direction)
 
 ## Current Phase
 
@@ -33,16 +33,79 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**No active code slice. Production-deploy preparation in progress
-(2026-04-28).** Hardening-to-95 substantially complete; Item 8 (4B
-— access-pattern anomaly detection) is the only remaining open
+**Post-deploy hardening pass (2026-04-29).** Production deploy
+shipped at HEAD `6b3b94a` to https://resilience-ops.fly.dev/.
+User direction: take 1-2 days to make state genuinely
+production-credible — close real findings, document deferrals
+honestly, run audits, coordinate with Codex (back online) for
+peer review. Ahead of running manual functional testing + external
+re-evaluation cycle.
+
+### Production deploy state (2026-04-29 — TRUE state at this rotation)
+
+**Live URL:** https://resilience-ops.fly.dev/
+**Deploy ID at last redeploy:** `01KQB9YVPMDKGF2YJ13PN2BJN3` (version 33)
+**Architecture:** 2-machine HA in iad region + 1-machine
+postgres-flex (resilience-db, machine `e8239d7c030e28`).
+**Smoke verified:** `/up` 200, `/login` 200, both app machines
+1/1 health checks passing post-redeploy, all SolidQueue
+processes started (Supervisor + Dispatcher + Worker + Scheduler
++ all recurring jobs registered).
+
+**Fly secrets in production (verified via `flyctl secrets list`):**
+- `RAILS_MASTER_KEY` — pre-existing
+- `SECRET_KEY_BASE` — pre-existing
+- `DATABASE_URL` — pre-existing
+- `ANTHROPIC_API_KEY` — pre-existing
+- `CORS_ORIGINS=https://resilience-ops.fly.dev` — **set during
+  deploy** (was missing in production; cors.rb initializer at
+  `9a498ed` raises `"CORS_ORIGINS must be set in production"`
+  if absent; first-deploy blocker for 40-day-stale infrastructure)
+- `DB_STATEMENT_TIMEOUT_MS=90000` — **set during deploy**
+  (initially bumped to 600000ms / 10min to push migrations
+  through, then tightened to 90000ms / 90s for steady-state
+  production traffic in the post-deploy hardening pass)
+
+**Fly secrets intentionally NOT set:**
+- `AISHUB_USERNAME` — optional AIS feed credential. Without it,
+  the AIS feed reports `disabled` at startup and no vessel data
+  flows from AISHub. The other 6 feeds (OpenSky, USGS, GPSJam,
+  FIRMS, GDACS, ACLED) work without per-tenant credentials.
+  Documented as intentionally unset for portfolio deploy; set
+  if real AIS data is wanted.
+
+**Migrations applied during deploy:** all 30+ pending migrations
+ran cleanly after the orphan invalid-index recovery (see Deploy
+incidents section below).
+
+### Deploy incidents (resolved during deploy session)
+
+Two real production-environment issues surfaced and were resolved
+in real time. Documented for audit-trail integrity:
+
+1. **Missing `CORS_ORIGINS` secret** — release_command failed on
+   first attempt with "CORS_ORIGINS must be set in production"
+   (cors.rb:2). The check shipped at `9a498ed` after the last
+   production deploy and the secret was never added. Fixed by
+   `flyctl secrets set CORS_ORIGINS=https://resilience-ops.fly.dev`.
+
+2. **Killed `CREATE INDEX CONCURRENTLY` left orphan invalid index** —
+   second deploy attempt hit `PG::QueryCanceled` on
+   `AddIngestedAtIdIndexToExternalSignals` migration due to 30s
+   `statement_timeout`. Killing CONCURRENTLY mid-creation leaves
+   an `indisvalid = false` index. Third deploy attempt failed
+   with `PG::DuplicateTable` because the orphan was still there.
+   Fixed by `flyctl ssh console --app resilience-ops` →
+   `psql $DATABASE_URL -c "DROP INDEX CONCURRENTLY IF EXISTS
+   index_external_signals_on_ingested_at_and_id;"`. Then bumped
+   `DB_STATEMENT_TIMEOUT_MS` to 600000 (10 min) and retried —
+   migration succeeded. Post-deploy tightened back to 90000 (90s).
+
+### Hardening-to-95 status
+
+Hardening-to-95 substantially complete; Item 8 (4B —
+access-pattern anomaly detection) is the only remaining open
 item and is **stakeholder-blocked**, not engineering-blocked.
-
-### Production-deploy preparation status (2026-04-28)
-
-User's stated goal: production-ready, no regressions, deploy to
-Fly.io, then re-evaluate via external models, then start globe/map
-feature work. Current state of that prep:
 
 - ✅ **CI is green at HEAD** (8-day red streak closed; seed crash
   fixed at `c3ac810`; perf budgets re-anchored at `95e459d` to
