@@ -104,6 +104,26 @@ async function stubGlobePageRoutes(
       body: JSON.stringify({ site_ids: [] }),
     })
   })
+  // Audit P3 follow-up (2026-04-29): see globe-overlay-clickthrough.spec.ts
+  // for the rationale. Three endpoints firing on /globe page mount were
+  // missing from the original stub set:
+  //   - /api/signal_rule_matches/active_site_confidence (useActiveSiteConfidence)
+  //   - /api/chokepoints                                 (useAllChokepoints)
+  //   - /api/events                                      (AppShell useSseEvents)
+  await page.route('**/api/signal_rule_matches/active_site_confidence**', async route => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ summaries: [] }),
+    })
+  })
+  await page.route('**/api/chokepoints**', async route => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: [] }),
+    })
+  })
   await page.route('**/api/signals**', async route => {
     const signalType = new URL(route.request().url()).searchParams.get('signal_type')
     const matchingSignals = signalType ? signals.filter(signal => signal.signal_type === signalType) : signals
@@ -122,6 +142,11 @@ async function stubGlobePageRoutes(
   })
   await page.route('**/api/telemetry/stream**', async route => {
     await route.fulfill(EMPTY_SSE_RESPONSE)
+  })
+  // AppShell-driven SSE stream — see globe-overlay-clickthrough.spec.ts
+  // for full rationale.
+  await page.route('**/api/events**', async route => {
+    await route.fulfill(CONNECTED_SSE_RESPONSE)
   })
 }
 
@@ -222,18 +247,29 @@ test.fixme('globe site remains pinned to its projected coordinates after drag ro
   // the stale stub at line 100 used `active_breach_site_ids` (the
   // function name on the frontend), but the actual endpoint is
   // `active_breach_sites`. Codex /gate flagged it; fix verified.
-  // Tests still fail with the same `.shell-main` waitFor timeout
-  // after the stub repair, so the stub was a contaminant of the
-  // diagnosis but not the root cause. Underlying issue: /globe
-  // does not render `.shell-main` within 10s under the current
-  // stub set + vite dev / Rails dev local stack. Possible causes
-  // not yet investigated: another unstubbed hook (Tranche 6 added
-  // useActiveSiteConfidence which is replay-gated and shouldn't
-  // fire here, but other hooks may), a JS error during the globe
-  // engine init that this stub set hides, or a fixture-shape
-  // mismatch in how the test seeds sites/signals. Investigation
-  // deferred to a dedicated test-harness slice; production paths
-  // covered by other E2E specs that pass on CI.
+  //
+  // UPDATE 2026-04-29 (audit P3 follow-up — harness cleanup tranche):
+  // A second harness contamination layer has been narrowed by static
+  // analysis. Three endpoints firing on /globe that the original stub
+  // set missed are now stubbed in `stubGlobePageRoutes` above:
+  //   - /api/events (AppShell useSseEvents — the strongest candidate
+  //     for the .shell-main render delay, since AppShell waits on
+  //     liveStatus before computing sourceHealth)
+  //   - /api/signal_rule_matches/active_site_confidence
+  //     (GlobePage useActiveSiteConfidence — defaults enabled=true,
+  //     fires even outside replay mode despite earlier comment)
+  //   - /api/chokepoints (GlobePage useAllChokepoints)
+  //
+  // The test stays `test.fixme` because we have not interactively
+  // re-run it and proven it now passes. If the harness fix closed
+  // the gap, an investigator running this locally will see green
+  // and can un-fixme. If the failure is genuinely Cesium-side
+  // (primitive-pickup behaviour, viewer-bridge timing, dispatchSyntheticPick
+  // semantics), the harness narrowing means the residual failure
+  // is now isolated from stub contamination — a clean diagnostic
+  // starting point.
+  //
+  // Production paths remain covered by other E2E specs that pass on CI.
   const siteFixture: SiteFixture = {
     id: 'site-anchor',
     name: 'Anchor Site',
