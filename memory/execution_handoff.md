@@ -158,7 +158,22 @@ item and is **stakeholder-blocked**, not engineering-blocked.
   `external_signal_policy.rb:1-4`).
 - ⏸ **Globe primitive-pickup tests** (3 tests) are `test.fixme`d
   with documented unknown root cause; production paths covered by
-  other E2E specs that pass on CI.
+  other E2E specs that pass on CI. Investigation candidate (not
+  yet verified): `stubGlobePageRoutes` covers `/api/sse_token`,
+  `/api/sites`, `/api/tasks`, `/api/assets`,
+  `/api/areas_of_operation`, `/api/signal_rule_matches/active_breach_sites`,
+  `/api/signals`, `/api/signals/stream`, `/api/telemetry/stream` —
+  but NOT `/api/events?token=...` (the AppShell-driven third SSE
+  stream from `useSseEvents` at AppShell.tsx:35). Hypothesis: an
+  unstubbed long-lived EventSource open against `/api/events`
+  delays React's commit-time render of `.shell-main`, since AppShell
+  reads `liveStatus` from that SSE before computing
+  `sourceHealth` for the navbar. Verification requires interactive
+  browser run with `page.on('request', ...)` to confirm which
+  request is actually pending when `.shell-main` waitFor times out;
+  a one-line stub fix may unblock all three, or may not (could be
+  a different unstubbed request or a JS error). Deferred to a
+  dedicated test-harness investigation slice.
 - ⏸ **MapPage perf profile to recover original 15ms / 120ms bar**
   deferred as a future tranche; current bar reflects measured CI
   reality, not regression.
