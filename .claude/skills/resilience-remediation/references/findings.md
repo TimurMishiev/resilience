@@ -7,6 +7,11 @@ This is the merged, confirmed findings matrix from:
 
 Use this file as the canonical remediation backlog.
 
+Current state at production `95a3532` on `2026-04-29`: all confirmed
+findings in this file have been fixed and shipped. The sections below
+are retained as a historical closure record; they are not an active
+executable backlog unless re-opened by new evidence.
+
 ## Confirmed Findings
 
 ### Band A — Fix Before New Roadmap Work
@@ -177,7 +182,7 @@ Use this file as the canonical remediation backlog.
 
 #### `O1` — Metrics Latency Window Claim Does Not Match Implementation
 - Severity: `P3`
-- Status: fixed in working tree on `2026-04-22`
+- Status: fixed and shipped in `e7eaccb` on `2026-04-22`
 - Why real:
   - [metrics/recorder.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/services/metrics/recorder.rb) declared `LATENCY_WINDOW = 5.minutes` and published it as `window_seconds` (line 81)
   - `persist_request_latency!` calls `@request_samples.clear` on every invocation (line 60), so the effective window equals the snapshot cadence
@@ -199,7 +204,7 @@ Use this file as the canonical remediation backlog.
 
 #### `J1` — No `RevokedJwt` Pruning Job
 - Severity: `P3`
-- Status: fixed in working tree on `2026-04-22`
+- Status: fixed and shipped in `8ecc2c0` on `2026-04-22`
 - Why real:
   - [revoked_jwt.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/app/models/revoked_jwt.rb) has `.active` scope (`expires_at > Time.current`) but retained every row forever
   - no pruning job existed in [backend/app/jobs](/Users/timurmishiev/Desktop/Code/resilience/backend/app/jobs); the table grew unboundedly as tokens churned
@@ -218,7 +223,7 @@ Use this file as the canonical remediation backlog.
 
 #### `M1` — Migration Safety Program
 - Severity: `P3`
-- Status: fixed in working tree on `2026-04-22`
+- Status: fixed and shipped in `42f5af0` on `2026-04-22`
 - Why real:
   - production-scale migrations on a live PostgreSQL deployment can hold long locks, backfill NOT NULL columns on large tables, or add non-concurrent indexes — each a known path to production stalls
   - the repo had no write-time guardrail catching these patterns before deploy

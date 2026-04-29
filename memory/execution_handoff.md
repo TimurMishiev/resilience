@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-29 (Production live at https://resilience-ops.fly.dev/ at `6b3b94a`; HEAD on `main` is `c44754c`, ~10 commits ahead — pending deploy. Rotation history this session: A.2/A.3/A.3-sibling/correlation-rule-conditions.site_id closed in earlier slices; Codex 5-finding backlog at `4b4b489` (#1/#2/#4/#5 fixed, #3 resolved-as-documented at `7e1e783`); manual deep-mode QA F1+F3 closed at `b7e4040`; full-system /audit at `b7e4040` produced 10 P3 findings, all closed at `f149dbf`; Codex /gate at `f149dbf` surfaced 3 P2 prompt-safety gaps in remaining AI interpolation surfaces, all closed at `c44754c` with wire-layer regression specs. Codex /gate at `c44754c` confirmed code-clean — no P0/P1/P2 findings; only continuity nit was this header (now rotated). Awaiting `flyctl deploy` + smoke-verify.)
+Last updated: 2026-04-29 (Production live at https://resilience-ops.fly.dev/ at `95a3532`; hardening rotation closed and deployed. Session arc: A.2/A.3/A.3-sibling/correlation-rule-conditions.site_id closed in earlier slices; Codex 5-finding backlog at `4b4b489` (#1/#2/#4/#5 fixed, #3 resolved-as-documented at `7e1e783`); manual deep-mode QA F1+F3 closed at `b7e4040`; full-system /audit at `b7e4040` produced 10 P3 findings, all closed at `f149dbf`; Codex /gate at `f149dbf` surfaced 3 P2 prompt-safety gaps in remaining AI interpolation surfaces, all closed at `c44754c` with wire-layer regression specs; `8a81e56` rotated this handoff; `95a3532` deployed the OpenSky `ssl_http` fix and is live on production version 35.)
 
 ## Current Phase
 
@@ -33,13 +33,21 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**Post-deploy hardening pass — code-complete, deploy-pending
-(2026-04-29).** Production currently at `6b3b94a`; HEAD on `main`
-is `c44754c`, ~10 commits ahead. User direction was: take 1-2
-days to make state genuinely production-credible before any
-external evaluator re-runs. That work is complete.
+**Post-deploy hardening pass — closed and deployed
+(2026-04-29).** Production and `main` now both sit at `95a3532`.
+User direction was: take 1-2 days to make state genuinely
+production-credible before any external evaluator re-runs. That
+work is complete and live.
 
 Hardening rotation timeline this session (newest first):
+  - `95a3532` — OpenSky production fix: `Feeds::OpenSkyIngestionService`
+    now includes `SslHelper`, restoring `ssl_http` with the
+    CRL-tolerant `verify_callback`. Two regression specs prove the
+    include is wired and the returned `Net::HTTP` instance carries
+    the configured callback. Deployed successfully; production app
+    machines are now on version 35.
+  - `8a81e56` — handoff rotation for the `c44754c` AI prompt-safety
+    closure before deploy.
   - `c44754c` — Codex /gate P2 closure: sanitize 3 remaining AI
     prompt interpolation surfaces (FilterService + SignalFilterService
     tool descriptions, SummaryService system-prompt header). Wire-
@@ -63,22 +71,25 @@ Hardening rotation timeline this session (newest first):
   - `cd9941d` — Codex P2 starvation: SSE refresh sentinel.
   - earlier: A.2/A.3/A.3-sibling closed.
 
-Validation at `c44754c`: backend rspec 2501/0; frontend vitest
+Validation at `95a3532`: backend rspec 2503/0; frontend vitest
 766/766; tsc -b exit 0; brakeman 0 warnings; bundler-audit clean.
 
-**Next action: `flyctl deploy` + smoke-verify** (the only step
-remaining before declaring this rotation closed).
+**Next action:** no active remediation slice inside this rotation.
+Roadmap item 8 (4B — access-pattern anomaly detection) remains
+stakeholder-blocked; otherwise the next engineering slice requires
+a fresh user ask.
 
-### Production deploy state (2026-04-29 — TRUE state at this rotation)
+### Production deploy state (2026-04-29 — TRUE state at close)
 
 **Live URL:** https://resilience-ops.fly.dev/
-**Deploy ID at last redeploy:** `01KQB9YVPMDKGF2YJ13PN2BJN3` (version 33)
-**Architecture:** 2-machine HA in iad region + 1-machine
-postgres-flex (resilience-db, machine `e8239d7c030e28`).
-**Smoke verified:** `/up` 200, `/login` 200, both app machines
-1/1 health checks passing post-redeploy, all SolidQueue
-processes started (Supervisor + Dispatcher + Worker + Scheduler
-+ all recurring jobs registered).
+**Live production commit:** `95a3532`
+**Current Fly app version:** `35`
+**Current Fly app-machine state:** 1 started, 2 auto-stopped
+(`min_machines_running = 1`), all healthy on `flyctl status`
+post-deploy.
+**Smoke verified:** `/up` 200, `/login` 200.
+**Live fix at this tip:** OpenSky `ssl_http` regression closed in
+production via `95a3532`.
 
 **Fly secrets in production (verified via `flyctl secrets list`):**
 - `RAILS_MASTER_KEY` — pre-existing
