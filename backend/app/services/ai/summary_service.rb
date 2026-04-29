@@ -121,10 +121,12 @@ module Ai
       # `e.message` to the frontend is a defense-in-depth fragility —
       # current SDK versions are sanitized but a future update could
       # leak prompt context. Server-side log captures full diagnostic
-      # via report_exception; the client gets a generic message.
+      # via report_exception; the client gets a classified message via
+      # Ai::ErrorClassifier so a commander can tell whether to retry
+      # (transient) or escalate to an admin (misconfigured / unavailable).
       Ai::CircuitBreaker.record_failure(service: BREAKER_SERVICE)
-      report_exception(e, message: "AI service error: #{e.message}", failure: "error")
-      ServiceResult.failure(errors: ["AI service temporarily unavailable. Please retry shortly."])
+      report_exception(e, message: "AI service error: #{e.message}", failure: Ai::ErrorClassifier.failure_tag(e))
+      ServiceResult.failure(errors: [Ai::ErrorClassifier.user_message(e)])
     end
 
     private

@@ -96,9 +96,9 @@ RSpec.describe Ai::OntologyQueryService, type: :service do
       expect(Observability).to receive(:capture_exception).with(
         error,
         hash_including(
-          tags: include(service: "ontology_query", failure: "error"),
+          tags: include(service: "ontology_query", failure: "transient"),
           extra: include(query_length: query.length, as_of_applied: false),
-          throttle_key: a_string_including("ontology_query:error"),
+          throttle_key: a_string_including("ontology_query:transient"),
         ),
       ) do |_exception, kwargs|
         expect(kwargs.fetch(:extra)).not_to have_key(:query)

@@ -93,9 +93,9 @@ RSpec.describe Ai::FilterService, type: :service do
       expect(Observability).to receive(:capture_exception).with(
         error,
         hash_including(
-          tags: include(service: "task_filter", failure: "error"),
+          tags: include(service: "task_filter", failure: "transient"),
           extra: include(query: query),
-          throttle_key: a_string_including("task_filter:error"),
+          throttle_key: a_string_including("task_filter:transient"),
         ),
       )
 

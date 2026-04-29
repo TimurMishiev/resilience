@@ -105,7 +105,7 @@ RSpec.describe Ai::SummaryService, type: :service do
       expect(result.errors).to eq(["Summary generation timed out"])
     end
 
-    it "logs and captures unexpected failures" do
+    it "logs and captures unexpected failures with the transient classification" do
       error = Anthropic::Errors::APIConnectionError.new(message: "summary exploded", url: URI("https://api.anthropic.com"))
       allow(fake_messages).to receive(:create).and_raise(error)
 
@@ -113,9 +113,9 @@ RSpec.describe Ai::SummaryService, type: :service do
       expect(Observability).to receive(:capture_exception).with(
         error,
         hash_including(
-          tags: include(service: "summary", failure: "error"),
+          tags: include(service: "summary", failure: "transient"),
           extra: include(summary_type: "site_activity", site_id: site.id),
-          throttle_key: a_string_including("summary:error"),
+          throttle_key: a_string_including("summary:transient"),
         ),
       )
 
@@ -125,7 +125,54 @@ RSpec.describe Ai::SummaryService, type: :service do
       # Audit P3 (2026-04-29): client-facing error messages no longer
       # include raw Anthropic SDK error strings. Server-side log + Observability
       # still capture the full diagnostic (assertions above).
-      expect(result.errors).to eq(["AI service temporarily unavailable. Please retry shortly."])
+      # QA P2 (2026-04-29): connection / network errors get the transient
+      # "retry shortly" framing — distinct from misconfigured / unavailable
+      # paths, which receive escalation framing.
+      expect(result.errors).to eq([Ai::ErrorClassifier::TRANSIENT_MESSAGE])
+    end
+
+    it "returns the misconfigured message when the API key is rejected" do
+      error = Anthropic::Errors::AuthenticationError.new(
+        url: URI("https://api.anthropic.com/v1/messages"),
+        status: 401,
+        headers: {},
+        body: { type: "error", error: { type: "authentication_error", message: "x-api-key header is required" } },
+        request: nil,
+        response: nil,
+      )
+      allow(fake_messages).to receive(:create).and_raise(error)
+
+      expect(Observability).to receive(:capture_exception).with(
+        error,
+        hash_including(tags: include(service: "summary", failure: "misconfigured")),
+      )
+
+      result = described_class.call(user: user, summary_type: "site_activity", site_id: site.id)
+
+      expect(result.success).to be(false)
+      expect(result.errors).to eq([Ai::ErrorClassifier::MISCONFIGURED_MESSAGE])
+    end
+
+    it "returns the unavailable message when Anthropic returns a BadRequest (e.g. credit-balance-too-low)" do
+      error = Anthropic::Errors::BadRequestError.new(
+        url: URI("https://api.anthropic.com/v1/messages"),
+        status: 400,
+        headers: {},
+        body: { type: "error", error: { type: "invalid_request_error", message: "Your credit balance is too low" } },
+        request: nil,
+        response: nil,
+      )
+      allow(fake_messages).to receive(:create).and_raise(error)
+
+      expect(Observability).to receive(:capture_exception).with(
+        error,
+        hash_including(tags: include(service: "summary", failure: "unavailable")),
+      )
+
+      result = described_class.call(user: user, summary_type: "site_activity", site_id: site.id)
+
+      expect(result.success).to be(false)
+      expect(result.errors).to eq([Ai::ErrorClassifier::UNAVAILABLE_MESSAGE])
     end
 
     it "fails closed when the AI circuit breaker is open" do

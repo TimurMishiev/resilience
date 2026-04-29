@@ -111,7 +111,7 @@ export function AppNavbar({
               {userRole}
             </Tag>
             <span className="shell-email bp6-text-muted">{userEmail}</span>
-            <Button minimal small icon="log-out" onClick={onLogout} title="Sign out" />
+            <Button minimal small icon="log-out" onClick={onLogout} aria-label="Sign out" title="Sign out" />
           </div>
         )}
       </NavbarGroup>

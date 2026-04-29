@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { SourceHealthState } from '../hooks/useSourceHealth'
 
@@ -55,5 +56,30 @@ describe('AppNavbar', () => {
     expect(screen.getByTestId('tooltip-content')).toHaveTextContent('Overall: No data available')
     expect(screen.getByTestId('tooltip-content')).toHaveTextContent('Event stream: Stale')
     expect(screen.getByTestId('tooltip-content')).toHaveTextContent('Data refresh: Unavailable')
+  })
+
+  it('exposes the Sign out control via accessible name (a11y) and fires onLogout when activated', async () => {
+    const onLogout = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <AppNavbar
+        sourceHealth={{ aggregate: 'fresh', sse: 'fresh', data: 'fresh' }}
+        missionPosture="observe"
+        hasMissionPosture={false}
+        isCommander={true}
+        userEmail="commander@resilience.test"
+        userRole="commander"
+        onSearchOpen={vi.fn()}
+        onLogout={onLogout}
+      />,
+    )
+
+    // Screen readers and assistive tech locate this control by accessible name —
+    // title="..." alone is only a hover tooltip. QA P3 (2026-04-29).
+    const signOut = screen.getByRole('button', { name: /sign out/i })
+    expect(signOut).toBeInTheDocument()
+
+    await user.click(signOut)
+    expect(onLogout).toHaveBeenCalledOnce()
   })
 })

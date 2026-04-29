@@ -56,10 +56,11 @@ module Ai
       ServiceResult.failure(errors: ["Task filter query timed out"])
     rescue Anthropic::Errors::Error => e
       # Audit P3 (2026-04-29): see SummaryService for rationale.
-      # Server-side log captures full diagnostic; client sees generic.
+      # Classified via Ai::ErrorClassifier so the user-facing message
+      # distinguishes misconfigured / unavailable / transient causes.
       Ai::CircuitBreaker.record_failure(service: BREAKER_SERVICE)
-      report_exception(e, message: "AI service error: #{e.message}", failure: "error")
-      ServiceResult.failure(errors: ["AI service temporarily unavailable. Please retry shortly."])
+      report_exception(e, message: "AI service error: #{e.message}", failure: Ai::ErrorClassifier.failure_tag(e))
+      ServiceResult.failure(errors: [Ai::ErrorClassifier.user_message(e)])
     end
 
     private
