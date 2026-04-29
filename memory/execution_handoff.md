@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-29 (Production live at https://resilience-ops.fly.dev/ at `95a3532`; hardening rotation closed and deployed. Session arc: A.2/A.3/A.3-sibling/correlation-rule-conditions.site_id closed in earlier slices; Codex 5-finding backlog at `4b4b489` (#1/#2/#4/#5 fixed, #3 resolved-as-documented at `7e1e783`); manual deep-mode QA F1+F3 closed at `b7e4040`; full-system /audit at `b7e4040` produced 10 P3 findings, all closed at `f149dbf`; Codex /gate at `f149dbf` surfaced 3 P2 prompt-safety gaps in remaining AI interpolation surfaces, all closed at `c44754c` with wire-layer regression specs; `8a81e56` rotated this handoff; `95a3532` deployed the OpenSky `ssl_http` fix and is live on production version 35.)
+Last updated: 2026-04-29 (Production live at https://resilience-ops.fly.dev/ at `95a3532`; `HEAD` on `main` is `7d662bf`, frontend-only resilience work ahead of production. Session arc: A.2/A.3/A.3-sibling/correlation-rule-conditions.site_id closed in earlier slices; Codex 5-finding backlog at `4b4b489` (#1/#2/#4/#5 fixed, #3 resolved-as-documented at `7e1e783`); manual deep-mode QA F1+F3 closed at `b7e4040`; full-system /audit at `b7e4040` produced 10 P3 findings, all closed at `f149dbf`; Codex /gate at `f149dbf` surfaced 3 P2 prompt-safety gaps in remaining AI interpolation surfaces, all closed at `c44754c` with wire-layer regression specs; `95a3532` deployed the OpenSky `ssl_http` fix and is live on production version 35; `946b41a` rotated the handoff + findings matrix to match live deploy truth; `a57f5c6` narrowed globe E2E harness contamination without un-fixme'ing the 3 primitive-pickup tests; `08bf593` drafts the next selection-grounded AI explainer slice; `7d662bf` ships engine-init failure handling on both `useMapLibreEngine` and `useGlobeEngine` with a Blueprint NonIdealState overlay + Retry on each page and 6 new regression specs.)
 
 ## Current Phase
 
@@ -33,13 +33,33 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**Post-deploy hardening pass — closed and deployed
-(2026-04-29).** Production and `main` now both sit at `95a3532`.
-User direction was: take 1-2 days to make state genuinely
-production-credible before any external evaluator re-runs. That
-work is complete and live.
+**Post-deploy hardening pass — closed in production; residual
+frontend debt still open (2026-04-29).** Production sits at
+`95a3532`; `main` is ahead at `08bf593` with doc/test-only
+follow-through. User direction was: make state genuinely
+production-credible before external evaluator re-runs. That core
+hardening work is complete and live. Remaining debt is now
+frontend proof/resilience and architecture quality, not backend
+auth/correctness.
 
 Hardening rotation timeline this session (newest first):
+  - `7d662bf` — engine-init failure handling on `useMapLibreEngine`
+    + `useGlobeEngine`. Both hooks now catch preload reject,
+    constructor throw, and runtime error-before-load, then surface
+    `engineError` + `retryEngine`. `MapPage` and `GlobePage` render
+    a Blueprint `NonIdealState` overlay with a Retry button when
+    init fails. 6 new regression specs (3 per hook). Closes the
+    "Map / globe engine failure-state handling" deferred entry.
+  - `08bf593` — doc-only slice plan for the next selection-grounded
+    AI explainer feature (`memory/slice_plan_explainer.md`); no code,
+    no deploy.
+  - `a57f5c6` — globe E2E harness cleanup: statically derived missing
+    `/globe` mount-time routes (`/api/events`,
+    `/api/chokepoints`, `/api/signal_rule_matches/active_site_confidence`)
+    are now stubbed in both globe spec helpers. Tests intentionally
+    remain `test.fixme`; no interactive rerun proved they pass.
+  - `946b41a` — rotate handoff + findings matrix to live deployed
+    state at `95a3532`.
   - `95a3532` — OpenSky production fix: `Feeds::OpenSkyIngestionService`
     now includes `SslHelper`, restoring `ssl_http` with the
     CRL-tolerant `verify_callback`. Two regression specs prove the
@@ -73,11 +93,21 @@ Hardening rotation timeline this session (newest first):
 
 Validation at `95a3532`: backend rspec 2503/0; frontend vitest
 766/766; tsc -b exit 0; brakeman 0 warnings; bundler-audit clean.
+Validation at `08bf593`: doc-only commit; production unchanged.
+Validation at `7d662bf`: focused vitest on `useMapLibreEngine`
+58/58 (was 55), `useGlobeEngine` 49/49 (was 46), `MapPage` 40/40;
+tsc -b exit 0; backend unchanged from `95a3532` (2503/0). Full
+vitest suite confirmed green via post-push gate harness.
 
-**Next action:** no active remediation slice inside this rotation.
+**Next action:** if continuing hardening before new feature work,
+the remaining real debt bands are:
+1. globe primitive-pickup E2E proof (3 `test.fixme` specs; local
+   verification blocked by needing the full backend stack for
+   global-setup auth)
+2. frontend decomposition debt (`MapPage.tsx` 905,
+   `MapOverlayControls.tsx` 884, `EntityCard.tsx` 635)
 Roadmap item 8 (4B — access-pattern anomaly detection) remains
-stakeholder-blocked; otherwise the next engineering slice requires
-a fresh user ask.
+stakeholder-blocked and separate from these hygiene items.
 
 ### Production deploy state (2026-04-29 — TRUE state at close)
 
@@ -200,24 +230,29 @@ item and is **stakeholder-blocked**, not engineering-blocked.
   `signals_controller`'s stream remains correctly unscoped
   (ExternalSignal is intentionally global per
   `external_signal_policy.rb:1-4`).
-- ⏸ **Globe primitive-pickup tests** (3 tests) are `test.fixme`d
-  with documented unknown root cause; production paths covered by
-  other E2E specs that pass on CI. Investigation candidate (not
-  yet verified): `stubGlobePageRoutes` covers `/api/sse_token`,
-  `/api/sites`, `/api/tasks`, `/api/assets`,
-  `/api/areas_of_operation`, `/api/signal_rule_matches/active_breach_sites`,
-  `/api/signals`, `/api/signals/stream`, `/api/telemetry/stream` —
-  but NOT `/api/events?token=...` (the AppShell-driven third SSE
-  stream from `useSseEvents` at AppShell.tsx:35). Hypothesis: an
-  unstubbed long-lived EventSource open against `/api/events`
-  delays React's commit-time render of `.shell-main`, since AppShell
-  reads `liveStatus` from that SSE before computing
-  `sourceHealth` for the navbar. Verification requires interactive
-  browser run with `page.on('request', ...)` to confirm which
-  request is actually pending when `.shell-main` waitFor times out;
-  a one-line stub fix may unblock all three, or may not (could be
-  a different unstubbed request or a JS error). Deferred to a
-  dedicated test-harness investigation slice.
+- ⏸ **Globe primitive-pickup tests** (3 tests) are still
+  `test.fixme`d, but the known harness contamination is narrower now.
+  Commit `a57f5c6` added the three missing statically-derived
+  `/globe` mount-time stubs in both spec helpers:
+  `/api/events`, `/api/chokepoints`, and
+  `/api/signal_rule_matches/active_site_confidence`.
+  Production impact remains zero; other E2E paths still pass on CI.
+  The remaining unknown is now: either those tests pass when rerun in
+  a dependable Playwright env and can be un-fixme'd, or the residual
+  failure is a real Cesium/viewer-bridge timing or primitive-pickup
+  issue. No rerun proof exists yet, so the tests stay marked.
+- ✅ **Map / globe engine failure-state handling** closed at
+  `7d662bf`. Both `useMapLibreEngine` and `useGlobeEngine` now
+  expose `engineError` + `retryEngine`; `MapPage` and `GlobePage`
+  render a Blueprint `NonIdealState` overlay with a Retry button
+  when init rejects (preload reject, constructor throw, or runtime
+  error before load). Coverage: 6 new regression specs (3 per
+  hook).
+- ⏸ **Frontend decomposition debt** remains open.
+  `MapPage.tsx` (905), `MapOverlayControls.tsx` (884), and
+  `EntityCard.tsx` (635) are large enough to make code review and
+  state-coupling audits harder. P3 hygiene, not a correctness or
+  security gap.
 - ⏸ **MapPage perf profile to recover original 15ms / 120ms bar**
   deferred as a future tranche; current bar reflects measured CI
   reality, not regression.

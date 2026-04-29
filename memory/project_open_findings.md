@@ -6,54 +6,63 @@ type: findings
 
 # Resilience — Open Findings
 
-Last reconciled with code: 2026-04-22
+Last reconciled with code: 2026-04-29
 
 The production-readiness program (`memory/project_production_readiness_plan.md`) is complete.
 Execution-context Phases 1–7 are complete.
 
-Active open work is the audit remediation backlog, which lives in:
-- `.claude/skills/resilience-remediation/references/findings.md` (the merged findings matrix, the authoritative backlog)
-- `memory/execution_handoff.md` (active handoff state)
+The audit-remediation backlog is **closed**. The merged findings matrix in:
+- `.claude/skills/resilience-remediation/references/findings.md`
+- `.codex/skills/resilience-remediation/references/findings.md`
+
+is now a historical closure record, not an active defect queue.
 
 This file is kept as a historical summary of closed production-readiness debt plus any remaining P2/P3 hygiene items that do not fit cleanly into the remediation bands.
 
 ## P1 / High-Leverage Programs
 
-_(No open P1 items in this file. Active P1-equivalent findings are managed in the audit remediation backlog at `.claude/skills/resilience-remediation/references/findings.md`. Band A (I1, G1, API1, D1) and Band B (I2, R1) shipped in `27831e1` on 2026-04-22. Band C (MT1, MT2, MT3) is latent for single-org deployments and gated on multi-tenant alignment. Band D (F1, O1, J1, M1) is lower-priority hardening.)_
+_(No open P1 items.)_
 
 ## P2 / Important Platform Follow-Through
 
+- Globe E2E proof debt remains open.
+  - Three globe primitive-pickup tests are still `test.fixme`:
+    [globe-site-anchor.spec.ts](/Users/timurmishiev/Desktop/Code/resilience/frontend/e2e/globe-site-anchor.spec.ts) (2) and
+    [globe-overlay-clickthrough.spec.ts](/Users/timurmishiev/Desktop/Code/resilience/frontend/e2e/globe-overlay-clickthrough.spec.ts) (1).
+  - Commit `a57f5c6` narrowed harness contamination by stubbing the full statically-derived mount-time request surface (`/api/events`, `/api/chokepoints`, `/api/signal_rule_matches/active_site_confidence`) in both spec helpers.
+  - The tests were intentionally left `fixme` because no interactive Playwright rerun proved they now pass; the remaining unknown is therefore narrowed to real globe behavior or browser/runtime timing, not the old known stub drift.
+
 - Tenant/workspace isolation: production-readiness scope is **closed**.
   - Org/AO scoping is enforced in policies with request-level proof.
-  - Tenant model is explicit in code: org-owned operational/doctrine data, shared global intelligence domains (`ExternalSignal`, `Vessel`), org-null global AOs on the AO surface, hidden/immutable cross-org doctrine.
-  - Full multi-tenant admin UI and workspace management remain a future roadmap program.
+  - Multi-tenant admin UI and workspace management remain a future roadmap program, not an active defect.
 
-- Frontend decomposition: production-readiness scope is **closed**.
-  - Engine hooks (`useGlobeEngine`, `useMapLibreEngine`) decomposed into focused sub-hooks.
-  - Core pages decomposed: `MapPage.tsx` (318 lines), `DashboardPage.tsx` (275 lines), `GlobePage.tsx` (403 lines), `CorrelationRulesPage.tsx` (343 lines), `PlanningPage.tsx` (462 lines).
-  - Remaining large pages (`AlertTriagePage` 570, `GraphPage` 519, `SignalFeedPage` 505) are future candidates if velocity demands it.
-
-- SSE transport ceiling: production-readiness scope is **closed**.
-  - Admission control is hardened (lease-based, per-user + per-IP caps, advisory locks).
-  - Constraint chain is explicitly documented in `puma.rb`.
-  - Thread-per-connection model is accepted for single-machine Fly.io target scale.
-  - Replacing the transport is a future scale project if multi-machine deployment is needed.
-
-- ~~Risk score replay is not yet supported.~~ — DONE: `RiskScoresController#replay_risk_scores` with `as_of` + 3 specs.
-
-- ~~Feed ingestion runs in boot-time threads, not Solid Queue.~~ — DONE: `Feeds::PollJob` + `config/recurring.yml` entries for all 7 feeds.
-
-- ~~Adversarial test coverage is sparse for the correlation engine and recommendation pipeline.~~ — DONE: 12 adversarial specs in `spec/services/adversarial/correlation_edge_cases_spec.rb`.
+- SSE transport ceiling remains a future scale project, not a current blocker.
+  - Admission control, reconnect throttling, and scope refresh hardening are closed for the current Fly deployment target.
+  - Replacing thread-per-connection SSE is still future scale work if multi-machine or materially higher concurrency becomes a real target.
 
 ## P3 / Ongoing Hygiene
 
+- Frontend decomposition remains open architecture debt.
+  - Current large files at reconciliation time:
+    - [MapPage.tsx](/Users/timurmishiev/Desktop/Code/resilience/frontend/src/pages/MapPage.tsx): 875 lines
+    - [MapOverlayControls.tsx](/Users/timurmishiev/Desktop/Code/resilience/frontend/src/components/map/MapOverlayControls.tsx): 884 lines
+    - [EntityCard.tsx](/Users/timurmishiev/Desktop/Code/resilience/frontend/src/components/EntityCard.tsx): 635 lines
+  - This is not a production blocker, but it is real code-quality debt and should not be described as already closed.
+
 - Keep `backend/db/structure.sql` and the local test environment aligned with the supported PostGIS baseline.
-- Keep `memory/project_resilience.md`, roadmap file, and actual code aligned.
-- ~~Fix pre-existing ESLint violations (3 errors: `RuleFormDrawer.tsx` setState-in-effect, `PlanningChokepointsSection.tsx` unused var, `PlanningPage.tsx` unused import).~~ — DONE: `eslint src` exits clean (0 errors).
-- ~~Fix pre-existing TypeScript build errors (19 errors across 8 files — `PlanningPage.tsx` type mismatches, `useMapLibreEngine.ts` missing types, test files with null assignability).~~ — DONE: `tsc --noEmit` exits clean (0 errors).
+- Keep `memory/project_resilience.md`, `memory/execution_handoff.md`, and actual code aligned.
+
+- Hardening-to-95 item 8 (`4B` — access-pattern anomaly detection) remains stakeholder-blocked.
+  - This is an open initiative, not a latent production defect.
 
 ## Closed Since Last Reconciliation
 
+- ~~Map / globe engine-init failure handling~~ — closed at `7d662bf`.
+  Both `useMapLibreEngine` and `useGlobeEngine` now expose
+  `engineError` + `retryEngine`; `MapPage` and `GlobePage` render a
+  Blueprint `NonIdealState` overlay with a Retry button when init
+  rejects. Coverage: 6 new regression specs (3 per hook) for
+  preload-reject, constructor-throw, and retry-recovers paths.
 - ~~Replay parity on RecommendationsPage, OntologyQueryPanel, IncidentDetailPage, AlertTriagePage~~ — all four now pass `as_of` and gate mutations during replay.
 - ~~Replay parity on EntityCard / AreasPage / CorrelationRulesPage / SiteDetailPage / DashboardPage / MapPage / GlobePage~~ — historical read-only state now renders across the main operational surfaces, including AO overlays, chokepoints, breach overlays, and replay-safe AIS vessel context on map/globe.
 - ~~Replay messaging drift on BriefingPage / OntologyQueryPage / AppShell~~ — fixed: page copy and shell mission posture now match the replay-capable backend and panel behavior.
