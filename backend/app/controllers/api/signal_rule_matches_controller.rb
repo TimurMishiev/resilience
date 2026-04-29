@@ -3,6 +3,18 @@ module Api
     after_action :verify_authorized
     after_action :verify_policy_scoped, only: %i[index active_breach_sites active_site_confidence]
 
+    # Bounded batch size for replay reductions on active_breach_sites and
+    # active_site_confidence. Each iteration of the find_in_batches loop
+    # holds one batch of SignalRuleMatch rows + the audit_events for those
+    # IDs (~500 matches × ~5 events avg = ~2,500 objects per batch peak),
+    # well within Puma worker heap budget. Replaces the prior pattern of
+    # `.to_a` on the full historical set, which scaled linearly with tenant
+    # alert history (A.2 fix). Set high enough that seed/demo data never
+    # paginates (4 records → 1 batch); set low enough that real-tenant
+    # history (10k+ matches) iterates in a bounded loop instead of
+    # materializing the full set in one allocation.
+    REPLAY_BATCH_SIZE = 500
+
     # GET /api/signal_rule_matches
     # Query params: rule_id, site_id, signal_id, workflow_status, geofence_breach, from, to, as_of, page, per_page
     # as_of: ISO8601 timestamp — limits fired_at to matches that existed at that point in time
@@ -75,16 +87,28 @@ module Api
                          .where.not(site_id: nil)
       site_ids =
         if as_of
-          replay_matches = breach_matches
-                             .select(:id, :site_id, :fired_at)
-                             .where("fired_at <= ?", as_of)
-                             .order(fired_at: :desc)
-                             .to_a
-          replay_states = Replay::StateSerializer.match_states(replay_matches, as_of: as_of)
-
-          replay_matches.filter_map do |match|
-            match.site_id if replay_states.fetch(match.id)[:workflow_status] == "unacknowledged"
-          end.uniq
+          # Bounded-memory replay reduction: A.2 fix. Replaces a prior
+          # `.to_a + StateSerializer.match_states(full_set)` pattern that
+          # held both N matches AND M audit events in Ruby simultaneously
+          # (e.g. 10k matches × ~5 events each = ~50k objects on the
+          # heap mid-request at production-tenant scale). With batching,
+          # peak heap is bounded to one batch's matches + their audit
+          # events, regardless of historical alert volume.
+          # Order is by primary key (find_in_batches default); the prior
+          # `fired_at: :desc` ordering was not load-bearing for this
+          # endpoint (final output is `uniq`'d site IDs — order
+          # invariant under set semantics).
+          collected = []
+          breach_matches
+            .select(:id, :site_id, :fired_at)
+            .where("fired_at <= ?", as_of)
+            .find_in_batches(batch_size: REPLAY_BATCH_SIZE) do |batch|
+              batch_states = Replay::StateSerializer.match_states(batch, as_of: as_of)
+              batch.each do |match|
+                collected << match.site_id if batch_states.fetch(match.id)[:workflow_status] == "unacknowledged"
+              end
+            end
+          collected.uniq
         else
           breach_matches
             .where(workflow_status: :unacknowledged)
@@ -114,21 +138,26 @@ module Api
 
       summaries =
         if as_of
-          replay_matches = base
-                             .select(:id, :site_id, :fired_at, :confidence)
-                             .where("fired_at <= ?", as_of)
-                             .order(fired_at: :desc)
-                             .to_a
-          replay_states = Replay::StateSerializer.match_states(replay_matches, as_of: as_of)
-
+          # Bounded-memory replay reduction: A.2 fix. Same shape as
+          # active_breach_sites above — see that method's comment for
+          # the full rationale. Per-site max(confidence) is associative
+          # and commutative, so the cross-batch merge (`max(existing,
+          # new)`) preserves identical end semantics to the prior
+          # full-materialization reduction.
           per_site_max = {}
-          replay_matches.each do |match|
-            next if replay_states.fetch(match.id)[:workflow_status] == "closed"
+          base
+            .select(:id, :site_id, :fired_at, :confidence)
+            .where("fired_at <= ?", as_of)
+            .find_in_batches(batch_size: REPLAY_BATCH_SIZE) do |batch|
+              batch_states = Replay::StateSerializer.match_states(batch, as_of: as_of)
+              batch.each do |match|
+                next if batch_states.fetch(match.id)[:workflow_status] == "closed"
 
-            current = per_site_max[match.site_id]
-            confidence = match.confidence.to_f
-            per_site_max[match.site_id] = confidence if current.nil? || confidence > current
-          end
+                confidence = match.confidence.to_f
+                current = per_site_max[match.site_id]
+                per_site_max[match.site_id] = confidence if current.nil? || confidence > current
+              end
+            end
 
           per_site_max.map { |site_id, confidence| { site_id: site_id, confidence: confidence } }
         else

@@ -355,6 +355,119 @@ RSpec.describe "Api::SignalRuleMatches", type: :request do
     end
   end
 
+  # ── A.2 fix: bounded-memory replay reduction ────────────────────────────────
+  # The replay branches of active_breach_sites and active_site_confidence
+  # previously called `.to_a` on the full historical match set up to `as_of`
+  # and then ran `Replay::StateSerializer.match_states(full_set, ...)` over
+  # the entire materialization. At production-tenant scale (months of history,
+  # 10k+ matches), that path peaked memory at O(matches + audit_events)
+  # simultaneously held in Ruby. The fix replaces the `.to_a` with
+  # `find_in_batches(batch_size: REPLAY_BATCH_SIZE)`, calling the serializer
+  # once per batch and aggregating cross-batch in O(unique sites) memory.
+  #
+  # These specs prove the contract: StateSerializer is never invoked with
+  # more than REPLAY_BATCH_SIZE matches at a time, regardless of how many
+  # historical matches exist. We stub the constant down to a small value
+  # so we can create a representative test fixture without the cost of
+  # creating 500+ records, then assert the batching behavior holds.
+  describe "A.2 — bounded-memory replay reduction" do
+    let(:test_batch_size) { 2 }
+    let(:replay_user)     { user }
+    let(:as_of)           { 5.minutes.ago }
+
+    before do
+      stub_const("Api::SignalRuleMatchesController::REPLAY_BATCH_SIZE", test_batch_size)
+    end
+
+    it "calls StateSerializer.match_states in bounded batches for active_site_confidence" do
+      # 5 matches across 3 sites, all fired_at within the replay window.
+      # File-level let!(:match1/2/3) also contribute (they have site_id
+      # set and fall within the as_of window), bringing the total to 8.
+      # With batch_size = 2, we expect ceil(8/2) = 4 calls and the max
+      # per-call size never exceeds the batch bound.
+      sites = Array.new(3) { create(:site) }
+      create(:signal_rule_match, site: sites[0], correlation_rule: rule_a,
+                                 fired_at: 30.minutes.ago, confidence: 0.40)
+      create(:signal_rule_match, site: sites[0], correlation_rule: rule_a,
+                                 fired_at: 25.minutes.ago, confidence: 0.85)
+      create(:signal_rule_match, site: sites[1], correlation_rule: rule_b,
+                                 fired_at: 20.minutes.ago, confidence: 0.55)
+      create(:signal_rule_match, site: sites[2], correlation_rule: rule_b,
+                                 fired_at: 15.minutes.ago, confidence: 0.70)
+      create(:signal_rule_match, site: sites[2], correlation_rule: rule_a,
+                                 fired_at: 10.minutes.ago, confidence: 0.95)
+
+      observed_batch_sizes = []
+      original_match_states = Replay::StateSerializer.method(:match_states)
+      allow(Replay::StateSerializer).to receive(:match_states) do |batch, **kwargs|
+        observed_batch_sizes << batch.size
+        original_match_states.call(batch, **kwargs)
+      end
+
+      get "/api/signal_rule_matches/active_site_confidence",
+          params: { as_of: as_of.iso8601 },
+          headers: auth_headers(replay_user)
+
+      expect(response).to have_http_status(:ok)
+      # The load-bearing assertion: NO single batch ever exceeds the bound.
+      # Match count + batch count are derived; the bound is the contract.
+      expect(observed_batch_sizes.max).to be <= test_batch_size
+      # Multiple batches must be produced — proves we're actually batching
+      # rather than accidentally falling back to one big call.
+      expect(observed_batch_sizes.size).to be > 1
+      # Total matches across batches must equal the controller-visible
+      # input set (5 created here + 3 file-level fixtures = 8).
+      expect(observed_batch_sizes.sum).to eq(8)
+
+      # Output correctness: max(confidence) per active site, preserved
+      # across batch boundaries. Sites 0/1/2 should each appear with the
+      # correct max from the matches we created (file-level matches use
+      # site_a/site_b, separate from sites[0..2]).
+      summaries = JSON.parse(response.body)["summaries"]
+      by_site = summaries.index_by { |row| row["site_id"] }
+      expect(by_site[sites[0].id]["confidence"]).to be_within(1e-6).of(0.85)
+      expect(by_site[sites[1].id]["confidence"]).to be_within(1e-6).of(0.55)
+      expect(by_site[sites[2].id]["confidence"]).to be_within(1e-6).of(0.95)
+    end
+
+    it "calls StateSerializer.match_states in bounded batches for active_breach_sites" do
+      site_x = create(:site)
+      site_y = create(:site)
+      # 4 unacknowledged geofence breach matches; with batch_size = 2
+      # we expect 2 calls of 2 each.
+      4.times do |i|
+        create(:signal_rule_match,
+               site: i.even? ? site_x : site_y,
+               correlation_rule: nil,
+               fired_at: (20 - i).minutes.ago,
+               metadata: { geofence_breach: true, distance_km: 5.0 + i,
+                           signal_type: "vessel_position", signal_source: "ais" })
+      end
+
+      observed_batch_sizes = []
+      original_match_states = Replay::StateSerializer.method(:match_states)
+      allow(Replay::StateSerializer).to receive(:match_states) do |batch, **kwargs|
+        observed_batch_sizes << batch.size
+        original_match_states.call(batch, **kwargs)
+      end
+
+      get "/api/signal_rule_matches/active_breach_sites",
+          params: { as_of: as_of.iso8601 },
+          headers: auth_headers(replay_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(observed_batch_sizes.size).to eq(2)
+      expect(observed_batch_sizes.max).to be <= test_batch_size
+      expect(observed_batch_sizes.sum).to eq(4)
+
+      # Output correctness: site_x and site_y both have unacknowledged
+      # breaches, so both should appear once (uniq'd) regardless of
+      # batch boundary.
+      site_ids = JSON.parse(response.body)["site_ids"]
+      expect(site_ids).to contain_exactly(site_x.id, site_y.id)
+    end
+  end
+
   describe "GET /api/signal_rule_matches/:id" do
     it "returns 200 with the match and associations" do
       get "/api/signal_rule_matches/#{match1.id}", headers: auth_headers(user)
