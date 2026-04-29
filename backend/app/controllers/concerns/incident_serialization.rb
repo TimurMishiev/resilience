@@ -10,6 +10,7 @@ module IncidentSerialization
     incident,
     detailed: false,
     replay_state: nil,
+    as_of: nil,
     alert_count: nil,
     task_count: nil,
     site_snapshot: nil,
@@ -45,7 +46,14 @@ module IncidentSerialization
         email: incident.prosecuted_by.email,
       } : nil),
       created_at:  incident.created_at,
-      updated_at:  incident.updated_at,
+      # QA F3 (2026-04-28): clamp updated_at to as_of during replay so an
+      # incident that was modified after the replay cutoff doesn't show a
+      # future "last updated" timestamp. Matches the precedent already in
+      # tasks_controller.rb#176 and correlation_rules_controller.rb#370.
+      # Without this clamp, an operator scrubbing replay would see
+      # `updated_at` move forward in time independent of as_of, giving the
+      # false impression that the incident was just touched.
+      updated_at:  as_of.present? ? [incident.updated_at, as_of].min : incident.updated_at,
     }
 
     return base unless detailed

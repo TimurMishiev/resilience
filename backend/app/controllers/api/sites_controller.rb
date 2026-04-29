@@ -17,7 +17,7 @@ module Api
         sites = sites.where("created_at <= ?", as_of)
         records, meta = paginate(sites)
         snapshots = latest_audit_snapshots(entity_type: "Site", entity_ids: records.map(&:id), as_of: as_of)
-        render json: { data: records.map { |site| serialize_site(site, snapshot: snapshots[site.id]) }, meta: meta }
+        render json: { data: records.map { |site| serialize_site(site, snapshot: snapshots[site.id], as_of: as_of) }, meta: meta }
         return
       end
 
@@ -50,7 +50,7 @@ module Api
         return render json: { errors: ["Site not found"] }, status: :not_found if site.created_at > as_of
 
         snapshot = latest_audit_snapshots(entity_type: "Site", entity_ids: [site.id], as_of: as_of)[site.id]
-        render json: serialize_site(site, snapshot: snapshot)
+        render json: serialize_site(site, snapshot: snapshot, as_of: as_of)
       else
         render json: serialize_site(site)
       end
@@ -192,7 +192,7 @@ module Api
       }
     end
 
-    def serialize_site(site, snapshot: nil)
+    def serialize_site(site, snapshot: nil, as_of: nil)
       {
         id: site.id,
         name: snapshot_or_current(snapshot, "name", site.name),
@@ -204,7 +204,11 @@ module Api
         flag_reason: snapshot_or_current(snapshot, "flag_reason", site.flag_reason),
         geofence_radius_km: snapshot_or_current(snapshot, "geofence_radius_km", site.geofence_radius_km),
         created_at: site.created_at,
-        updated_at: site.updated_at,
+        # QA F3 (2026-04-28): clamp updated_at to as_of during replay so
+        # a site touched after the replay cutoff doesn't show a future
+        # last-updated timestamp. Matches tasks_controller.rb#176 +
+        # correlation_rules_controller.rb#370 precedent.
+        updated_at: as_of.present? ? [site.updated_at, as_of].min : site.updated_at,
       }
     end
   end

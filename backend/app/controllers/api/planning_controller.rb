@@ -168,7 +168,7 @@ module Api
       )
       chokepoint_snapshots = latest_audit_snapshots(entity_type: "Chokepoint", entity_ids: raw_chokepoints.map(&:id), as_of: cutoff)
       replay_chokepoints = raw_chokepoints.filter_map do |chokepoint|
-        serialize_replay_chokepoint(chokepoint, snapshot: chokepoint_snapshots[chokepoint.id], replay_areas: replay_area_by_id)
+        serialize_replay_chokepoint(chokepoint, snapshot: chokepoint_snapshots[chokepoint.id], replay_areas: replay_area_by_id, as_of: cutoff)
       end
 
       raw_intents, intents_truncated = limited_records(
@@ -177,7 +177,7 @@ module Api
       )
       intent_snapshots = latest_audit_snapshots(entity_type: "CommanderIntent", entity_ids: raw_intents.map(&:id), as_of: cutoff)
       replay_intents = raw_intents.filter_map do |intent|
-        serialize_replay_commander_intent(intent, snapshot: intent_snapshots[intent.id], replay_areas: replay_area_by_id)
+        serialize_replay_commander_intent(intent, snapshot: intent_snapshots[intent.id], replay_areas: replay_area_by_id, as_of: cutoff)
       end
 
       raw_pace_plans, pace_plans_truncated = limited_records(
@@ -186,7 +186,7 @@ module Api
       )
       pace_plan_snapshots = latest_audit_snapshots(entity_type: "PacePlan", entity_ids: raw_pace_plans.map(&:id), as_of: cutoff)
       replay_pace_plans = raw_pace_plans.filter_map do |plan|
-        serialize_replay_pace_plan(plan, snapshot: pace_plan_snapshots[plan.id], replay_areas: replay_area_by_id)
+        serialize_replay_pace_plan(plan, snapshot: pace_plan_snapshots[plan.id], replay_areas: replay_area_by_id, as_of: cutoff)
       end
 
       salute_reports_truncated = false
@@ -368,7 +368,7 @@ module Api
       }
     end
 
-    def serialize_replay_commander_intent(intent, snapshot:, replay_areas:)
+    def serialize_replay_commander_intent(intent, snapshot:, replay_areas:, as_of: nil)
       area_id = snapshot_or_current(snapshot, "area_of_operation_id", intent.area_of_operation_id)
       return nil unless replay_areas.key?(area_id)
 
@@ -382,11 +382,12 @@ module Api
         created_by_id: intent.created_by_id,
         updated_by_id: intent.updated_by_id,
         created_at: intent.created_at,
-        updated_at: intent.updated_at,
+        # QA F3 (2026-04-28): clamp updated_at to as_of during replay.
+        updated_at: as_of.present? ? [intent.updated_at, as_of].min : intent.updated_at,
       }
     end
 
-    def serialize_replay_pace_plan(plan, snapshot:, replay_areas:)
+    def serialize_replay_pace_plan(plan, snapshot:, replay_areas:, as_of: nil)
       area_id = snapshot_or_current(snapshot, "area_of_operation_id", plan.area_of_operation_id)
       return nil unless replay_areas.key?(area_id)
 
@@ -401,11 +402,12 @@ module Api
         created_by_id: plan.created_by_id,
         updated_by_id: plan.updated_by_id,
         created_at: plan.created_at,
-        updated_at: plan.updated_at,
+        # QA F3 (2026-04-28): clamp updated_at to as_of during replay.
+        updated_at: as_of.present? ? [plan.updated_at, as_of].min : plan.updated_at,
       }
     end
 
-    def serialize_replay_chokepoint(chokepoint, snapshot:, replay_areas:)
+    def serialize_replay_chokepoint(chokepoint, snapshot:, replay_areas:, as_of: nil)
       return nil if ActiveModel::Type::Boolean.new.cast(snapshot_value(snapshot, "deleted", fallback: nil))
 
       area_id = snapshot_or_current(snapshot, "area_of_operation_id", chokepoint.area_of_operation_id)
@@ -426,7 +428,8 @@ module Api
         created_by_id: chokepoint.created_by_id,
         updated_by_id: chokepoint.updated_by_id,
         created_at: chokepoint.created_at,
-        updated_at: chokepoint.updated_at,
+        # QA F3 (2026-04-28): clamp updated_at to as_of during replay.
+        updated_at: as_of.present? ? [chokepoint.updated_at, as_of].min : chokepoint.updated_at,
       }
     end
 

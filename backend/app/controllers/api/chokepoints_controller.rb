@@ -19,7 +19,8 @@ module Api
             serialize_replay_chokepoint(
               chokepoint,
               snapshot: chokepoint_snapshots[chokepoint.id],
-              replay_areas: replay_areas
+              replay_areas: replay_areas,
+              as_of: as_of,
             )
           end
         end
@@ -41,7 +42,7 @@ module Api
 
         snapshot = latest_audit_snapshots(entity_type: "Chokepoint", entity_ids: [chokepoint.id], as_of: as_of)[chokepoint.id]
         replay_areas = build_replay_area_index_for_chokepoints([chokepoint], { chokepoint.id => snapshot }, as_of: as_of)
-        serialized = serialize_replay_chokepoint(chokepoint, snapshot: snapshot, replay_areas: replay_areas)
+        serialized = serialize_replay_chokepoint(chokepoint, snapshot: snapshot, replay_areas: replay_areas, as_of: as_of)
         return render json: { errors: ["Chokepoint not found"] }, status: :not_found if serialized.nil?
 
         render json: serialized
@@ -221,7 +222,7 @@ module Api
       end
     end
 
-    def serialize_replay_chokepoint(chokepoint, snapshot:, replay_areas:)
+    def serialize_replay_chokepoint(chokepoint, snapshot:, replay_areas:, as_of: nil)
       return nil if ActiveModel::Type::Boolean.new.cast(snapshot_value(snapshot, "deleted", fallback: nil))
 
       area_id = snapshot_or_current(snapshot, "area_of_operation_id", chokepoint.area_of_operation_id)
@@ -242,7 +243,9 @@ module Api
         created_by_id: chokepoint.created_by_id,
         updated_by_id: chokepoint.updated_by_id,
         created_at: chokepoint.created_at,
-        updated_at: chokepoint.updated_at,
+        # QA F3 (2026-04-28): clamp updated_at to as_of during replay.
+        # See sites_controller.rb#serialize_site for the rationale.
+        updated_at: as_of.present? ? [chokepoint.updated_at, as_of].min : chokepoint.updated_at,
       }
     end
 

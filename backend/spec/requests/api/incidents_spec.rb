@@ -81,6 +81,41 @@ RSpec.describe "Api::Incidents", type: :request do
       expect(row.fetch("assigned_to")).to be_nil
     end
 
+    # QA F3 (2026-04-28): the prior serializer always returned the live
+    # `updated_at`, even in replay. An operator scrubbing replay would
+    # see a future "last updated" timestamp on an incident whose actual
+    # state was correctly snapshotted to the historical cutoff —
+    # cosmetic but misleading. Fix clamps `updated_at` to as_of when
+    # the live timestamp is past the cutoff. Matches the precedent at
+    # tasks_controller.rb#176 and correlation_rules_controller.rb#370.
+    it "clamps updated_at to as_of during replay (QA F3)" do
+      # The let-block creates incident at base_time = 1.hour.ago.
+      # We mutate it AFTER as_of so the live updated_at is in the
+      # operator's "future" relative to the replay window.
+      travel_to 10.minutes.ago do
+        Incidents::TransitionService.call(incident: incident, to_status: "acknowledged", actor: commander)
+      end
+
+      as_of_iso = 45.minutes.ago.iso8601
+      as_of_ts  = Time.iso8601(as_of_iso)
+
+      get "/api/incidents",
+          params: { as_of: as_of_iso },
+          headers: auth_headers(operator)
+
+      expect(response).to have_http_status(:ok)
+      row = JSON.parse(response.body).fetch("data").first
+      returned_updated_at = Time.iso8601(row.fetch("updated_at"))
+
+      # Critical assertion: updated_at must NOT be in the operator's
+      # "future" relative to as_of. Pre-fix it would be ~10 minutes
+      # ago (the live mutation time), which is past as_of (45m ago).
+      expect(returned_updated_at).to be <= as_of_ts
+      # And the actual replay state must still be the historical
+      # value, proving the clamp didn't break the snapshot logic.
+      expect(row.fetch("status")).to eq("open")
+    end
+
     it "preserves untouched fields when future partial audit events exist" do
       create(:audit_event,
         actor: "system",

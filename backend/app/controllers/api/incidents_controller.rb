@@ -366,6 +366,7 @@ module Api
           record,
           detailed: detailed,
           replay_state: replay_states.fetch(record.id),
+          as_of: as_of,
           alert_count: matches.size,
           task_count: task_ids.size,
           site_snapshot: site_snapshots[record.site_id],

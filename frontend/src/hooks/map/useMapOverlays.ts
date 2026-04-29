@@ -142,13 +142,32 @@ export function useMapOverlays({
         window.cancelAnimationFrame(breachPulseRef.current)
         breachPulseRef.current = null
       }
-      try { mapRef.current?.setPaintProperty('geofence-breach-stroke', 'line-opacity', 0.7) } catch { /* layer may not exist yet */ }
+      // QA F1 (2026-04-28): MapLibre's setPaintProperty raises AND emits
+      // its own console.error when the target layer doesn't exist —
+      // try/catch suppresses the throw but not the log, leaving repeated
+      // "Cannot style non-existing layer" noise in the dev console during
+      // /map navigation. Guarding with getLayer() prevents the call from
+      // being attempted at all, eliminating the noise. The try/catch
+      // stays as defence-in-depth in case getLayer returns truthy but
+      // the layer is in a bad state during a style change.
+      const m = mapRef.current
+      if (m && m.getLayer('geofence-breach-stroke')) {
+        try { m.setPaintProperty('geofence-breach-stroke', 'line-opacity', 0.7) } catch { /* layer may not exist yet */ }
+      }
       return
     }
 
     const animate = (timestamp: number) => {
       const map = mapRef.current
       if (!map) return
+      // Same guard as above (QA F1) — only attempt setPaintProperty on
+      // an animation tick if the layer is actually live. Without this,
+      // every requestAnimationFrame fire produces a console.error until
+      // the layer is added.
+      if (!map.getLayer('geofence-breach-stroke')) {
+        breachPulseRef.current = window.requestAnimationFrame(animate)
+        return
+      }
       try {
         const opacity = 0.5 + 0.35 * Math.sin((timestamp / 630) * Math.PI)
         map.setPaintProperty('geofence-breach-stroke', 'line-opacity', opacity)
