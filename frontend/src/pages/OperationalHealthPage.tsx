@@ -45,8 +45,8 @@ export default function OperationalHealthPage() {
   const canViewOperationalHealth = role.canViewOperationalHealth ?? role.isCommander
   const { isReplaying } = useReplay()
   const referenceTimeMs = useReferenceTimeMs()
-  const { data: feedData, isPending: feedPending, error: feedError, dataUpdatedAt: feedDataUpdatedAt } = useFeedHealth()
-  const { data: opsData, isPending: opsPending, error: opsError, dataUpdatedAt: opsDataUpdatedAt } = useOperationalHealth()
+  const { data: feedData, isPending: feedPending, error: feedError, dataUpdatedAt: feedDataUpdatedAt } = useFeedHealth(canViewOperationalHealth)
+  const { data: opsData, isPending: opsPending, error: opsError, dataUpdatedAt: opsDataUpdatedAt } = useOperationalHealth(canViewOperationalHealth)
 
   if (!canViewOperationalHealth) {
     return (

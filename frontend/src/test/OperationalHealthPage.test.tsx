@@ -44,19 +44,28 @@ vi.mock('../hooks/useRole', () => ({
   useRole: () => mockRole,
 }))
 
+const useFeedHealthSpy = vi.hoisted(() => vi.fn())
+const useOperationalHealthSpy = vi.hoisted(() => vi.fn())
+
 vi.mock('../hooks/useOperationalHealth', () => ({
-  useFeedHealth: () => ({
-    data: { data: mockState.feeds },
-    isPending: mockState.feedPending,
-    error: mockState.feedError,
-    dataUpdatedAt: mockState.feedDataUpdatedAt,
-  }),
-  useOperationalHealth: () => ({
-    data: { data: mockState.opsEntries },
-    isPending: mockState.opsPending,
-    error: mockState.opsError,
-    dataUpdatedAt: mockState.opsDataUpdatedAt,
-  }),
+  useFeedHealth: (enabled?: boolean) => {
+    useFeedHealthSpy(enabled)
+    return {
+      data: { data: mockState.feeds },
+      isPending: mockState.feedPending,
+      error: mockState.feedError,
+      dataUpdatedAt: mockState.feedDataUpdatedAt,
+    }
+  },
+  useOperationalHealth: (enabled?: boolean) => {
+    useOperationalHealthSpy(enabled)
+    return {
+      data: { data: mockState.opsEntries },
+      isPending: mockState.opsPending,
+      error: mockState.opsError,
+      dataUpdatedAt: mockState.opsDataUpdatedAt,
+    }
+  },
 }))
 
 vi.mock('../hooks/useReferenceTimeMs', () => ({
@@ -93,6 +102,8 @@ describe('OperationalHealthPage', () => {
     mockState.opsPending = false
     mockState.opsError = null
     mockState.opsDataUpdatedAt = mockState.now
+    useFeedHealthSpy.mockClear()
+    useOperationalHealthSpy.mockClear()
   })
 
   it('shows commander-access-required callout for non-commander users', async () => {
@@ -108,6 +119,28 @@ describe('OperationalHealthPage', () => {
 
     expect(screen.getByText(/commander access required/i)).toBeInTheDocument()
     expect(screen.queryByText('Operational Health')).not.toBeInTheDocument()
+  })
+
+  it('disables operational-health queries for non-commander roles so no restricted requests fire', async () => {
+    Object.assign(mockRole, {
+      role: 'viewer',
+      isAdmin: false,
+      isCommander: false,
+      isOperator: false,
+      isViewer: true,
+    })
+
+    await renderPage()
+
+    expect(useFeedHealthSpy).toHaveBeenCalledWith(false)
+    expect(useOperationalHealthSpy).toHaveBeenCalledWith(false)
+  })
+
+  it('enables operational-health queries for commander', async () => {
+    await renderPage()
+
+    expect(useFeedHealthSpy).toHaveBeenCalledWith(true)
+    expect(useOperationalHealthSpy).toHaveBeenCalledWith(true)
   })
 
   it('renders empty state when no data is recorded', async () => {

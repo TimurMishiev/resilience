@@ -47,7 +47,7 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route element={<ProtectedRoute />}>
             <Route path="/" element={<AppShell />}>
-              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route index element={<Navigate to="/sites" replace />} />
               <Route path="dashboard" element={<PageErrorBoundary pageName="Dashboard"><DashboardPage /></PageErrorBoundary>} />
               <Route path="sites" element={<PageErrorBoundary pageName="Sites"><SitesPage /></PageErrorBoundary>} />
               <Route path="sites/:id" element={<PageErrorBoundary pageName="Site Detail"><SiteDetailPage /></PageErrorBoundary>} />
