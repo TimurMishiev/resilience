@@ -97,7 +97,7 @@ async function stubGlobePageRoutes(
       body: JSON.stringify({ data: [] }),
     })
   })
-  await page.route('**/api/signal_rule_matches/active_breach_site_ids**', async route => {
+  await page.route('**/api/signal_rule_matches/active_breach_sites**', async route => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -218,10 +218,22 @@ async function readProjectedPositions(
 }
 
 test.fixme('globe site remains pinned to its projected coordinates after drag rotation', async ({ page }) => {
-  // CORRECTED 2026-04-28: see globe-overlay-clickthrough.spec.ts for the
-  // full rationale and the corrected framing. Same root-cause-unknown
-  // pattern (`.shell-main` doesn't render within 10s) reproduced
-  // locally; prior "passes locally" claim was false.
+  // SHARPER FRAMING 2026-04-29 (Codex P3): one contaminant repaired —
+  // the stale stub at line 100 used `active_breach_site_ids` (the
+  // function name on the frontend), but the actual endpoint is
+  // `active_breach_sites`. Codex /gate flagged it; fix verified.
+  // Tests still fail with the same `.shell-main` waitFor timeout
+  // after the stub repair, so the stub was a contaminant of the
+  // diagnosis but not the root cause. Underlying issue: /globe
+  // does not render `.shell-main` within 10s under the current
+  // stub set + vite dev / Rails dev local stack. Possible causes
+  // not yet investigated: another unstubbed hook (Tranche 6 added
+  // useActiveSiteConfidence which is replay-gated and shouldn't
+  // fire here, but other hooks may), a JS error during the globe
+  // engine init that this stub set hides, or a fixture-shape
+  // mismatch in how the test seeds sites/signals. Investigation
+  // deferred to a dedicated test-harness slice; production paths
+  // covered by other E2E specs that pass on CI.
   const siteFixture: SiteFixture = {
     id: 'site-anchor',
     name: 'Anchor Site',
@@ -285,9 +297,9 @@ test.fixme('globe site remains pinned to its projected coordinates after drag ro
 })
 
 test.fixme('globe signal remains pinned to its projected coordinates after drag rotation', async ({ page }) => {
-  // CORRECTED 2026-04-28: same root-cause-unknown pattern as the two
-  // tests above; prior "passes locally" framing was false. See
-  // globe-overlay-clickthrough.spec.ts for the full corrective.
+  // SHARPER FRAMING 2026-04-29 (Codex P3): see the site-pinned test
+  // above for the full diagnosis update — stale-stub contaminant
+  // repaired, underlying `.shell-main` render issue still present.
   const siteFixture: SiteFixture = {
     id: 'site-anchor',
     name: 'Anchor Site',
