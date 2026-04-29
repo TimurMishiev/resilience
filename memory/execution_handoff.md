@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-29 (Production live at https://resilience-ops.fly.dev/; post-deploy hardening pass: deep-eval A.2 + A.3 closed in-rotation; A.4 + P1 cross-tenant leak closed earlier in pass; remaining work is /audit + /wtf-roadmap + globe shell-main investigation)
+Last updated: 2026-04-29 (Production live at https://resilience-ops.fly.dev/; post-deploy hardening pass: deep-eval A.2 + A.3 closed in-rotation, plus newly-discovered A.3-sibling in telemetry SSE closed at `c2473bc`; A.4 + P1 cross-tenant leak closed earlier in pass; remaining work is /audit + /wtf-roadmap + globe shell-main investigation)
 
 ## Current Phase
 
@@ -125,7 +125,7 @@ item and is **stakeholder-blocked**, not engineering-blocked.
   (associative/commutative). 2 regression specs prove the contract
   (max batch ≤ bound, multi-batch produced, output correctness
   preserved across batch boundaries).
-- ✅ **Deep-eval A.3 closed in-rotation** (this rotation). Wired
+- ✅ **Deep-eval A.3 closed in-rotation** (`9e3fa8b`). Wired
   periodic user-scope refresh into the events SSE loop:
   `USER_SCOPE_REFRESH_SECONDS = 30` mirrors
   `TelemetryController::ALLOWED_ASSETS_REFRESH_SECONDS = 30`.
@@ -139,6 +139,23 @@ item and is **stakeholder-blocked**, not engineering-blocked.
   deletion mid-stream now closes the stream instead of stranding
   it. 2 regression specs prove (a) org reassignment behavior +
   `update_subscription` call (b) stream closes on user delete.
+- ✅ **A.3-sibling closed in-rotation** (`c2473bc`) — newly
+  discovered while reviewing the A.3 fix. `TelemetryController`'s
+  pre-existing 30s refresh re-resolved `AssetPolicy::Scope` but
+  passed the stream-open in-memory `current_user` into it, so
+  USER reassignment (admin moves viewer from org A to org B) was
+  invisible to the refresh — only ASSET reassignment (asset moved
+  between sites) was caught. Fix: reload the User from DB uncached
+  via `User.find_by(id: current_user.id)` inside the refresh tick,
+  break the loop on nil (user deleted → close stream), and feed
+  the FRESH user into both `AssetPolicy::Scope` and the inline
+  unrestricted-viewer check that determines the broadcaster filter
+  shape. 2 regression specs (user reassignment, user deletion).
+  Audit-trail honesty: this gap was NOT in the original deep-eval
+  finding list — surfaced via my post-A.3 review of sibling SSE
+  controllers. `signals_controller`'s stream remains correctly
+  unscoped (ExternalSignal is intentionally global per
+  `external_signal_policy.rb:1-4`).
 - ⏸ **Globe primitive-pickup tests** (3 tests) are `test.fixme`d
   with documented unknown root cause; production paths covered by
   other E2E specs that pass on CI.
