@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { fetchSseToken } from '../lib/sseToken'
+import {
+  currentSseRetryDelayMs,
+  nextSseRetryDelayMs,
+  SSE_RETRY_RESET_DELAY_MS,
+} from '../lib/sseBackoff'
 import { isTelemetryFresh, type TelemetryMap, type TelemetryReading } from '../lib/telemetry'
 
 /**
@@ -19,7 +24,7 @@ export function useTelemetryStream(enabled = true) {
   const [connected, setConnected] = useState(false)
   const esRef    = useRef<EventSource | null>(null)
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const delayRef = useRef(1000)
+  const delayRef = useRef(SSE_RETRY_RESET_DELAY_MS)
 
   // Reset state when the stream is disabled.
   // Calling setState inside an effect body is intentional here: we want to
@@ -38,6 +43,14 @@ export function useTelemetryStream(enabled = true) {
 
     let mounted = true
 
+    function scheduleReconnect() {
+      const retryDelay = currentSseRetryDelayMs(delayRef.current)
+      retryRef.current = setTimeout(() => {
+        delayRef.current = nextSseRetryDelayMs(retryDelay)
+        connect()
+      }, retryDelay)
+    }
+
     async function connect() {
       try {
         // Exchange the long-lived JWT for a short-lived (60s) SSE-only token.
@@ -54,7 +67,7 @@ export function useTelemetryStream(enabled = true) {
 
         es.addEventListener('connected', () => {
           setConnected(true)
-          delayRef.current = 1000
+          delayRef.current = SSE_RETRY_RESET_DELAY_MS
         })
 
         es.addEventListener('heartbeat', () => {
@@ -81,19 +94,14 @@ export function useTelemetryStream(enabled = true) {
 
           if (!mounted) return
 
-          retryRef.current = setTimeout(() => {
-            delayRef.current = Math.min(delayRef.current * 2, 30_000)
-            connect()
-          }, delayRef.current)
+          scheduleReconnect()
         }
       } catch {
         // Token exchange failed — retry with back-off
         if (!mounted) return
+        setConnected(false)
 
-        retryRef.current = setTimeout(() => {
-          delayRef.current = Math.min(delayRef.current * 2, 30_000)
-          connect()
-        }, delayRef.current)
+        scheduleReconnect()
       }
     }
 

@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { fetchSseToken } from '../lib/sseToken'
+import {
+  currentSseRetryDelayMs,
+  nextSseRetryDelayMs,
+  SSE_RETRY_RESET_DELAY_MS,
+} from '../lib/sseBackoff'
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected'
 
@@ -41,7 +46,7 @@ export function useEventSource({ onEvent, enabled = true }: Options = {}) {
   const [status, setStatus] = useState<ConnectionStatus>('disconnected')
   const esRef      = useRef<EventSource | null>(null)
   const retryRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const delayRef   = useRef(1000)   // initial retry delay ms
+  const delayRef   = useRef(SSE_RETRY_RESET_DELAY_MS)
   const onEventRef = useRef(onEvent)
 
   // Keep callback ref fresh without re-connecting
@@ -51,6 +56,14 @@ export function useEventSource({ onEvent, enabled = true }: Options = {}) {
     if (!enabled) return
 
     let cancelled = false
+
+    function scheduleReconnect() {
+      const retryDelay = currentSseRetryDelayMs(delayRef.current)
+      retryRef.current = setTimeout(() => {
+        delayRef.current = nextSseRetryDelayMs(retryDelay)
+        connect()
+      }, retryDelay)
+    }
 
     async function connect() {
       try {
@@ -72,7 +85,7 @@ export function useEventSource({ onEvent, enabled = true }: Options = {}) {
 
         es.addEventListener('connected', () => {
           setStatus('connected')
-          delayRef.current = 1000   // reset back-off on success
+          delayRef.current = SSE_RETRY_RESET_DELAY_MS
         })
 
         es.addEventListener('heartbeat', () => {
@@ -97,19 +110,12 @@ export function useEventSource({ onEvent, enabled = true }: Options = {}) {
 
           if (cancelled) return
 
-          // Exponential back-off, capped at 30s
-          retryRef.current = setTimeout(() => {
-            delayRef.current = Math.min(delayRef.current * 2, 30_000)
-            connect()
-          }, delayRef.current)
+          scheduleReconnect()
         }
       } catch {
         if (cancelled) return
         setStatus('disconnected')
-        retryRef.current = setTimeout(() => {
-          delayRef.current = Math.min(delayRef.current * 2, 30_000)
-          connect()
-        }, delayRef.current)
+        scheduleReconnect()
       }
     }
 

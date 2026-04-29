@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-29 (Production live at https://resilience-ops.fly.dev/ at `ac626fb`; `main` is ahead of production by one code/test follow-up `563ce5c` plus this doc-only rotation. `563ce5c` repairs demo-user seed drift for `viewer@resilience.mil` and aligns `replay-map.spec.ts` to the current replay copy, while production data was repaired live via `bin/rails runner` so all three demo roles now authenticate successfully. Current session closed the remaining paginated E2E stub contract gaps on both globe helpers and `map-site-selection.spec.ts`, deployed that proof cleanup, and recorded the explicit decision that GPU-dependent map Playwright coverage remains local/manual rather than CI-gated until a reliable GPU lane exists. Session arc: A.2/A.3/A.3-sibling/correlation-rule-conditions.site_id closed in earlier slices; Codex 5-finding backlog at `4b4b489` (#1/#2/#4/#5 fixed, #3 resolved-as-documented at `7e1e783`); manual deep-mode QA F1+F3 closed at `b7e4040`; full-system /audit at `b7e4040` produced 10 P3 findings, all closed at `f149dbf`; Codex /gate at `f149dbf` surfaced 3 P2 prompt-safety gaps in remaining AI interpolation surfaces, all closed at `c44754c` with wire-layer regression specs; `95a3532` deployed the OpenSky `ssl_http` fix on production version 35; `946b41a` rotated the handoff + findings matrix to match live deploy truth; `a57f5c6` narrowed globe E2E harness contamination without un-fixme'ing the 3 primitive-pickup tests; `08bf593` drafts the next selection-grounded AI explainer slice; `7d662bf` ships engine-init failure handling on both `useMapLibreEngine` and `useGlobeEngine`; `bbce9d5` rotates docs for `7d662bf`; `830ceb3` decomposes EntityCard.tsx 635 → 92-line public surface with sub-modules in `components/entity-card/`; `59d6e20` rotates docs for `830ceb3`; `6d0f100` un-`fixme`s all 3 globe primitive-pickup tests after fixing the missing `meta` envelope on the `/api/sites` stub; `117b16d` rotates docs for `6d0f100`; `fdcda0b` lands 35 direct unit tests on MapOverlayControls as the tests-first regression net; `5148b8f` decomposes MapOverlayControls.tsx 884 → 205-line orchestrator + 11 sub-components in `overlay-controls/` under that net; `c383c5d` rotates handoff/findings to reflect the MapOverlayControls closure; `ac626fb` closes the remaining paginated E2E stub contract gaps on map and globe and is live on production version 36.)
+Last updated: 2026-04-29 (Production live at https://resilience-ops.fly.dev/ on version 37 / commit `890a8d5`, which closes the QA-sweep root-route inconsistency and attempts to suppress restricted `/health` calls for non-commanders. Current dirty tree is a narrow follow-up on two still-real production issues: harden SSE reconnect cadence so the three live stream hooks cannot self-trip the shared stream-open throttle bucket under reconnect storms, and add route-level `/health` gating so viewer/operator roles never mount the restricted page component at all. Validated locally in the dirty tree: targeted Vitest 38/38 across the three SSE hook suites plus OperationalHealthPage/OperationalHealthRoutePage, `npx tsc --noEmit`, eslint on touched frontend files, and `git diff --check`. Production AI remains an acknowledged operational-state issue (Anthropic credits/key state), separate from this code slice. Historical session arc below preserved for takeover continuity.)
 
 ## Current Phase
 
@@ -33,13 +33,29 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**Post-deploy hardening pass — closed in production; residual
-frontend debt is now explicit and narrow (2026-04-29).** Production
-now runs `ac626fb` (Fly version 36), which includes the
-map/globe paginated E2E contract cleanup. `main` adds one small
-post-deploy follow-up (`563ce5c`) to keep demo-user seeds and the
-production replay-map smoke harness aligned with reality. The core
-hardening work is complete and live. Remaining debt is now explicit:
+**Post-deploy hardening pass — production mostly closed, with one
+active dirty-tree follow-up (2026-04-29).** Production now runs
+`890a8d5` (Fly version 37), which aligned `/` → `/sites` and added
+query-level `/health` gating. Fresh production QA then confirmed two
+remaining live issues worth fixing before outreach:
+- SSE reconnect / throttle interaction still drives repeated `429`
+  responses on `/api/events`, `/api/signals/stream`, and
+  `/api/telemetry/stream` under real browser reconnect churn
+- viewer `/health` still produces noisy `403` backend calls in
+  production, so query-level gating alone was not sufficient
+
+The current dirty tree addresses exactly those two items:
+- `frontend/src/lib/sseBackoff.ts` + `useEventSource.ts` +
+  `useSignalStream.ts` + `useTelemetryStream.ts`
+  introduce a 5s failed-open retry floor (still exponential,
+  still reset on successful connect) so reconnect storms cannot
+  self-hammer the shared stream-open limiter
+- `frontend/src/pages/OperationalHealthRoutePage.tsx` plus the
+  `App.tsx` route swap add route-level commander gating, so the
+  restricted operational-health page never mounts for viewer/operator
+  roles even if query-level guards regress
+
+Remaining debt after this dirty tranche stays explicit:
 - `MapPage.tsx` architecture size/decomposition debt
 - GPU-dependent map Playwright proof remains local/manual rather than
   CI-gated by deliberate decision

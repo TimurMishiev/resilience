@@ -67,9 +67,11 @@ describe('useEventSource lifecycle', () => {
     expect(result.current.status).toBe('disconnected')
     expect(es1.closed).toBe(true)
 
-    // After 1s, should retry
+    // Failed stream opens now wait 5s before retrying so the three live SSE
+    // hooks cannot churn fast enough to self-trip the shared stream-open rate
+    // limiter.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(1000)
+      await vi.advanceTimersByTimeAsync(5000)
     })
 
     expect(MockEventSource.instances).toHaveLength(2)
@@ -89,9 +91,9 @@ describe('useEventSource lifecycle', () => {
     // Error triggers retry
     act(() => es1.triggerError())
 
-    // Wait for first retry (1s delay)
+    // Wait for first retry (5s failed-open floor)
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(1000)
+      await vi.advanceTimersByTimeAsync(5000)
     })
 
     const es2 = MockEventSource.instances[1]
@@ -102,9 +104,10 @@ describe('useEventSource lifecycle', () => {
     // Another error
     act(() => es2.triggerError())
 
-    // Should retry at 1s again (delay was reset), not 2s
+    // Should retry at the same failed-open floor again (delay was reset on
+    // success), not continue doubling from the prior error.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(1000)
+      await vi.advanceTimersByTimeAsync(5000)
     })
 
     expect(MockEventSource.instances).toHaveLength(3)
@@ -179,9 +182,9 @@ describe('useEventSource lifecycle', () => {
     // Resolve token on retry
     postMock.mockResolvedValueOnce({ token: 'retry-token', expires_in: 60 })
 
-    // Advance past back-off delay (1s initial)
+    // Advance past failed-open retry floor.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(1000)
+      await vi.advanceTimersByTimeAsync(5000)
     })
 
     expect(MockEventSource.instances).toHaveLength(1)

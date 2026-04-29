@@ -155,7 +155,7 @@ describe('useTelemetryStream', () => {
     expect(es1.closed).toBe(true)
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(1000)
+      await vi.advanceTimersByTimeAsync(5000)
     })
 
     expect(MockEventSource.instances).toHaveLength(2)
@@ -175,7 +175,7 @@ describe('useTelemetryStream', () => {
     postMock.mockResolvedValueOnce({ token: 'retry-token', expires_in: 60 })
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(1000)
+      await vi.advanceTimersByTimeAsync(5000)
     })
 
     expect(MockEventSource.instances).toHaveLength(1)

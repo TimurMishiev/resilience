@@ -110,9 +110,10 @@ describe('useSignalStream', () => {
     act(() => es1.triggerError())
     expect(es1.closed).toBe(true)
 
-    // Should retry after 1s
+    // Failed stream opens now wait 5s before retrying so reconnect storms do
+    // not trip the shared stream-open throttle bucket.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(1000)
+      await vi.advanceTimersByTimeAsync(5000)
     })
 
     expect(MockEventSource.instances).toHaveLength(2)

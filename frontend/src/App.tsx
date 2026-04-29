@@ -35,7 +35,7 @@ const SecurityPage        = lazy(() => import('./pages/SecurityPage'))
 const PlanningPage        = lazy(() => import('./pages/PlanningPage'))
 const OntologyQueryPage   = lazy(() => import('./pages/OntologyQueryPage'))
 const SwimlanePage        = lazy(() => import('./pages/SwimlanePage'))
-const OperationalHealthPage = lazy(() => import('./pages/OperationalHealthPage'))
+const OperationalHealthRoutePage = lazy(() => import('./pages/OperationalHealthRoutePage'))
 const OrganizationsPage    = lazy(() => import('./pages/OrganizationsPage'))
 const UsersPage            = lazy(() => import('./pages/UsersPage'))
 
@@ -69,7 +69,7 @@ export default function App() {
               <Route path="areas" element={<PageErrorBoundary pageName="Areas"><AreasPage /></PageErrorBoundary>} />
               <Route path="planning" element={<PageErrorBoundary pageName="Planning"><PlanningPage /></PageErrorBoundary>} />
               <Route path="swimlane" element={<PageErrorBoundary pageName="Swimlane"><SwimlanePage /></PageErrorBoundary>} />
-              <Route path="health" element={<PageErrorBoundary pageName="Operational Health"><OperationalHealthPage /></PageErrorBoundary>} />
+              <Route path="health" element={<PageErrorBoundary pageName="Operational Health"><OperationalHealthRoutePage /></PageErrorBoundary>} />
               <Route path="organizations" element={<PageErrorBoundary pageName="Organizations"><OrganizationsPage /></PageErrorBoundary>} />
               <Route path="users" element={<PageErrorBoundary pageName="Users"><UsersPage /></PageErrorBoundary>} />
               <Route path="*" element={<NonIdealState icon="error" title="Page not found" description="The URL you entered does not match any page in this application." />} />
