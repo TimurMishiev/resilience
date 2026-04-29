@@ -43,7 +43,10 @@ async function stubGlobePageRoutes(page: Page, sites: SiteFixture[]) {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ data: sites }),
+      body: JSON.stringify({
+        data: sites,
+        meta: { page: 1, total_pages: 1, per_page: sites.length, total: sites.length },
+      }),
     })
   })
   await page.route('**/api/tasks**', async route => {
@@ -161,43 +164,7 @@ async function waitForGlobeBridge(page: Page) {
   }
 }
 
-test.fixme('globe geofence overlay resolver still recognizes the underlying site', async ({ page }) => {
-  // CORRECTED 2026-04-28 (was an incorrect CI-only-skip with a "passes
-  // locally" claim that was never verified). Subsequent local validation
-  // against vite dev (5173) + Rails dev (3000) reproduced the failure
-  // pattern: page navigates to /globe but `.shell-main` never renders
-  // within 10s. Screenshot shows a blank white page. Same outcome on CI,
-  // different timing.
-  //
-  // UPDATE 2026-04-29 (audit P3 follow-up — harness cleanup tranche):
-  // Static analysis of all hooks AppShell + GlobePage mount identified
-  // three endpoints firing on /globe that the original stub set
-  // missed: /api/events (AppShell useSseEvents — the highest-priority
-  // candidate per the earlier audit hypothesis), /api/chokepoints
-  // (useAllChokepoints), and /api/signal_rule_matches/active_site_confidence
-  // (useActiveSiteConfidence). All three are now stubbed in
-  // stubGlobePageRoutes above. The test stays `test.fixme` because
-  // we have not interactively re-run it and proven it now passes; if
-  // the residual failure is harness-caused this fix may close it, if
-  // it is a real Cesium primitive-pickup issue the harness fix is
-  // insufficient. The next investigator should locally run this test
-  // and either un-fixme (if green) or update this comment to point
-  // at the actual remaining root cause (Cesium viewer-bridge timing,
-  // primitive-pickup behaviour, etc.) without harness contamination
-  // confusing the diagnosis.
-  //
-  // `test.fixme` rather than `test.skip(!!process.env.CI, ...)` because
-  // the prior framing ("flaky in headless CI; passes locally") was
-  // false. `fixme` correctly reports the test as expected-failure in
-  // both environments and shows up in test reports as a known gap, not
-  // a passing test.
-  //
-  // Production impact: zero. The other E2E tests covering production
-  // paths (Login → Dashboard, Alert triage, Incident detail, Replay
-  // mode, Commander gating, Role boundaries) all pass on CI and gate
-  // deploy correctly. These three globe-interaction tests cover
-  // specific Cesium primitive-pickup behaviour that is not on the
-  // production-correctness critical path.
+test('globe geofence overlay resolver still recognizes the underlying site', async ({ page }) => {
   const site: SiteFixture = {
     id: 'site-geofence',
     name: 'Geofence Site',

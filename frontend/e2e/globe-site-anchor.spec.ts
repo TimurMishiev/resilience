@@ -73,7 +73,10 @@ async function stubGlobePageRoutes(
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ data: sites }),
+      body: JSON.stringify({
+        data: sites,
+        meta: { page: 1, total_pages: 1, per_page: sites.length, total: sites.length },
+      }),
     })
   })
   await page.route('**/api/tasks**', async route => {
@@ -242,34 +245,7 @@ async function readProjectedPositions(
   }
 }
 
-test.fixme('globe site remains pinned to its projected coordinates after drag rotation', async ({ page }) => {
-  // SHARPER FRAMING 2026-04-29 (Codex P3): one contaminant repaired —
-  // the stale stub at line 100 used `active_breach_site_ids` (the
-  // function name on the frontend), but the actual endpoint is
-  // `active_breach_sites`. Codex /gate flagged it; fix verified.
-  //
-  // UPDATE 2026-04-29 (audit P3 follow-up — harness cleanup tranche):
-  // A second harness contamination layer has been narrowed by static
-  // analysis. Three endpoints firing on /globe that the original stub
-  // set missed are now stubbed in `stubGlobePageRoutes` above:
-  //   - /api/events (AppShell useSseEvents — the strongest candidate
-  //     for the .shell-main render delay, since AppShell waits on
-  //     liveStatus before computing sourceHealth)
-  //   - /api/signal_rule_matches/active_site_confidence
-  //     (GlobePage useActiveSiteConfidence — defaults enabled=true,
-  //     fires even outside replay mode despite earlier comment)
-  //   - /api/chokepoints (GlobePage useAllChokepoints)
-  //
-  // The test stays `test.fixme` because we have not interactively
-  // re-run it and proven it now passes. If the harness fix closed
-  // the gap, an investigator running this locally will see green
-  // and can un-fixme. If the failure is genuinely Cesium-side
-  // (primitive-pickup behaviour, viewer-bridge timing, dispatchSyntheticPick
-  // semantics), the harness narrowing means the residual failure
-  // is now isolated from stub contamination — a clean diagnostic
-  // starting point.
-  //
-  // Production paths remain covered by other E2E specs that pass on CI.
+test('globe site remains pinned to its projected coordinates after drag rotation', async ({ page }) => {
   const siteFixture: SiteFixture = {
     id: 'site-anchor',
     name: 'Anchor Site',
@@ -332,10 +308,7 @@ test.fixme('globe site remains pinned to its projected coordinates after drag ro
   expect(siteDeltaPx).toBeLessThanOrEqual(4)
 })
 
-test.fixme('globe signal remains pinned to its projected coordinates after drag rotation', async ({ page }) => {
-  // SHARPER FRAMING 2026-04-29 (Codex P3): see the site-pinned test
-  // above for the full diagnosis update — stale-stub contaminant
-  // repaired, underlying `.shell-main` render issue still present.
+test('globe signal remains pinned to its projected coordinates after drag rotation', async ({ page }) => {
   const siteFixture: SiteFixture = {
     id: 'site-anchor',
     name: 'Anchor Site',
