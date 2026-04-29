@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-29 (Production live at https://resilience-ops.fly.dev/; post-deploy hardening pass + Codex 5-finding backlog closure: A.2/A.3/A.3-sibling/correlation-rule-conditions.site_id all closed earlier; this rotation closed Codex backlog items #1, #2, #4, #5; #3 resolved-as-documented after investigation surfaced that production seeds zero Organizations and runs effectively single-tenant — NOT NULL hardening preserved as a triggered future migration with explicit trigger conditions captured in site.rb + area_of_operation.rb model comments)
+Last updated: 2026-04-29 (Production live at https://resilience-ops.fly.dev/ at `6b3b94a`; HEAD on `main` is `c44754c`, ~10 commits ahead — pending deploy. Rotation history this session: A.2/A.3/A.3-sibling/correlation-rule-conditions.site_id closed in earlier slices; Codex 5-finding backlog at `4b4b489` (#1/#2/#4/#5 fixed, #3 resolved-as-documented at `7e1e783`); manual deep-mode QA F1+F3 closed at `b7e4040`; full-system /audit at `b7e4040` produced 10 P3 findings, all closed at `f149dbf`; Codex /gate at `f149dbf` surfaced 3 P2 prompt-safety gaps in remaining AI interpolation surfaces, all closed at `c44754c` with wire-layer regression specs. Codex /gate at `c44754c` confirmed code-clean — no P0/P1/P2 findings; only continuity nit was this header (now rotated). Awaiting `flyctl deploy` + smoke-verify.)
 
 ## Current Phase
 
@@ -33,13 +33,41 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**Post-deploy hardening pass (2026-04-29).** Production deploy
-shipped at HEAD `6b3b94a` to https://resilience-ops.fly.dev/.
-User direction: take 1-2 days to make state genuinely
-production-credible — close real findings, document deferrals
-honestly, run audits, coordinate with Codex (back online) for
-peer review. Ahead of running manual functional testing + external
-re-evaluation cycle.
+**Post-deploy hardening pass — code-complete, deploy-pending
+(2026-04-29).** Production currently at `6b3b94a`; HEAD on `main`
+is `c44754c`, ~10 commits ahead. User direction was: take 1-2
+days to make state genuinely production-credible before any
+external evaluator re-runs. That work is complete.
+
+Hardening rotation timeline this session (newest first):
+  - `c44754c` — Codex /gate P2 closure: sanitize 3 remaining AI
+    prompt interpolation surfaces (FilterService + SignalFilterService
+    tool descriptions, SummaryService system-prompt header). Wire-
+    layer regression specs assert on `args[:tools]` + `args[:system]`
+    payloads from `messages_create`, not just helper internals.
+    Codex re-/gate at `c44754c` confirmed code-clean.
+  - `f149dbf` — All 10 P3 findings from full-system /audit closed:
+    new `Ai::PromptSafety` shared module; AI error-message exposure
+    fix; AI client double-construction centralized; unbounded
+    task_id pluck capped; bulk_triage N+1 preload;
+    `Recommendations::GenerationJob` retry_on; ReadinessController +
+    RiskScoresController `verify_policy_scoped`; GlobePage camera-
+    fly stale closure; GlobePage signal-layer URL preserve; new
+    `lib/sseToken.ts` shared in-flight promise.
+  - `b7e4040` — Manual deep-mode browser QA closure (F1 MapLibre
+    console noise, F3 replay updated_at clamp across 6 serializers).
+  - `7e1e783` — Codex backlog #3 resolved-as-documented (sites
+    nullable orgs are intentional-with-trigger).
+  - `4b4b489` — Codex 5-finding backlog: #1/#2/#4/#5 fixed.
+  - `e82b1f1` — correlation-rule conditions.site_id tenant-boundary.
+  - `cd9941d` — Codex P2 starvation: SSE refresh sentinel.
+  - earlier: A.2/A.3/A.3-sibling closed.
+
+Validation at `c44754c`: backend rspec 2501/0; frontend vitest
+766/766; tsc -b exit 0; brakeman 0 warnings; bundler-audit clean.
+
+**Next action: `flyctl deploy` + smoke-verify** (the only step
+remaining before declaring this rotation closed).
 
 ### Production deploy state (2026-04-29 — TRUE state at this rotation)
 
