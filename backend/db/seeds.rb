@@ -535,7 +535,8 @@ puts "  Seeding users..."
 
 [
   { email: "commander@resilience.mil", password: "password123", role: "commander" },
-  { email: "operator@resilience.mil",  password: "password123", role: "operator"  }
+  { email: "operator@resilience.mil",  password: "password123", role: "operator"  },
+  { email: "viewer@resilience.mil",    password: "password123", role: "viewer"    }
 ].each do |attrs|
   user = User.find_or_initialize_by(email: attrs[:email])
   user.assign_attributes(password: attrs[:password], role: attrs[:role])
