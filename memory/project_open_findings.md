@@ -42,12 +42,20 @@ _(No open P1 items.)_
 
 ## P3 / Ongoing Hygiene
 
-- Frontend decomposition remains open architecture debt.
+- Frontend decomposition remains open architecture debt for the
+  two map-surface monoliths.
   - Current large files at reconciliation time:
-    - [MapPage.tsx](/Users/timurmishiev/Desktop/Code/resilience/frontend/src/pages/MapPage.tsx): 875 lines
+    - [MapPage.tsx](/Users/timurmishiev/Desktop/Code/resilience/frontend/src/pages/MapPage.tsx): 905 lines
     - [MapOverlayControls.tsx](/Users/timurmishiev/Desktop/Code/resilience/frontend/src/components/map/MapOverlayControls.tsx): 884 lines
-    - [EntityCard.tsx](/Users/timurmishiev/Desktop/Code/resilience/frontend/src/components/EntityCard.tsx): 635 lines
-  - This is not a production blocker, but it is real code-quality debt and should not be described as already closed.
+  - Both are high-blast-radius (primary operator surface) and
+    have no direct unit tests — only integration-style coverage
+    via `MapPage.test.tsx`. Decomposing them safely needs either
+    direct unit tests first or interactive browser verification.
+  - [EntityCard.tsx](/Users/timurmishiev/Desktop/Code/resilience/frontend/src/components/EntityCard.tsx)
+    closed at `830ceb3` (635 → 92-line public surface, sub-modules
+    in `entity-card/`).
+  - This is not a production blocker, but it is real code-quality
+    debt and should not be described as already closed.
 
 - Keep `backend/db/structure.sql` and the local test environment aligned with the supported PostGIS baseline.
 - Keep `memory/project_resilience.md`, `memory/execution_handoff.md`, and actual code aligned.
@@ -57,6 +65,13 @@ _(No open P1 items.)_
 
 ## Closed Since Last Reconciliation
 
+- ~~EntityCard.tsx 635-line monolith~~ — closed at `830ceb3`.
+  Public surface is now `EntityCard.tsx` (92 lines); sub-components
+  live in `components/entity-card/` (`internals.ts` 55,
+  `Overviews.tsx` 336, `Relations.tsx` 118, `RawPanel.tsx` 23).
+  Mechanical extraction; all 4 EntityCard tests + 20 consumer tests
+  + 15 adjacent tests pass; tsc -b clean; eslint clean. Public
+  imports unchanged (5 callsites untouched).
 - ~~Map / globe engine-init failure handling~~ — closed at `7d662bf`.
   Both `useMapLibreEngine` and `useGlobeEngine` now expose
   `engineError` + `retryEngine`; `MapPage` and `GlobePage` render a

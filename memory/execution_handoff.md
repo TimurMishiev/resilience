@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-29 (Production live at https://resilience-ops.fly.dev/ at `95a3532`; `HEAD` on `main` is `7d662bf`, frontend-only resilience work ahead of production. Session arc: A.2/A.3/A.3-sibling/correlation-rule-conditions.site_id closed in earlier slices; Codex 5-finding backlog at `4b4b489` (#1/#2/#4/#5 fixed, #3 resolved-as-documented at `7e1e783`); manual deep-mode QA F1+F3 closed at `b7e4040`; full-system /audit at `b7e4040` produced 10 P3 findings, all closed at `f149dbf`; Codex /gate at `f149dbf` surfaced 3 P2 prompt-safety gaps in remaining AI interpolation surfaces, all closed at `c44754c` with wire-layer regression specs; `95a3532` deployed the OpenSky `ssl_http` fix and is live on production version 35; `946b41a` rotated the handoff + findings matrix to match live deploy truth; `a57f5c6` narrowed globe E2E harness contamination without un-fixme'ing the 3 primitive-pickup tests; `08bf593` drafts the next selection-grounded AI explainer slice; `7d662bf` ships engine-init failure handling on both `useMapLibreEngine` and `useGlobeEngine` with a Blueprint NonIdealState overlay + Retry on each page and 6 new regression specs.)
+Last updated: 2026-04-29 (Production live at https://resilience-ops.fly.dev/ at `95a3532`; `HEAD` on `main` is `830ceb3`, frontend-only resilience + decomp work ahead of production. Session arc: A.2/A.3/A.3-sibling/correlation-rule-conditions.site_id closed in earlier slices; Codex 5-finding backlog at `4b4b489` (#1/#2/#4/#5 fixed, #3 resolved-as-documented at `7e1e783`); manual deep-mode QA F1+F3 closed at `b7e4040`; full-system /audit at `b7e4040` produced 10 P3 findings, all closed at `f149dbf`; Codex /gate at `f149dbf` surfaced 3 P2 prompt-safety gaps in remaining AI interpolation surfaces, all closed at `c44754c` with wire-layer regression specs; `95a3532` deployed the OpenSky `ssl_http` fix and is live on production version 35; `946b41a` rotated the handoff + findings matrix to match live deploy truth; `a57f5c6` narrowed globe E2E harness contamination without un-fixme'ing the 3 primitive-pickup tests; `08bf593` drafts the next selection-grounded AI explainer slice; `7d662bf` ships engine-init failure handling on both `useMapLibreEngine` and `useGlobeEngine` with a Blueprint NonIdealState overlay + Retry on each page and 6 new regression specs; `bbce9d5` rotates docs for `7d662bf` closure; `830ceb3` decomposes EntityCard.tsx 635 → 92-line public surface with sub-modules in `components/entity-card/`.)
 
 ## Current Phase
 
@@ -43,6 +43,17 @@ frontend proof/resilience and architecture quality, not backend
 auth/correctness.
 
 Hardening rotation timeline this session (newest first):
+  - `830ceb3` — EntityCard.tsx decomposition (635 → 92-line public
+    surface). Sub-components moved verbatim to
+    `components/entity-card/`: `internals.ts` (helpers + EntityType),
+    `Overviews.tsx` (Task/Asset/Site/Ao), `Relations.tsx`
+    (Task/Asset/Site/Ao), `RawPanel.tsx`. Public imports unchanged
+    (5 callsites untouched). All 4 EntityCard tests + 20 consumer
+    tests pass; tsc -b + eslint clean. Closes the EntityCard line
+    of "frontend decomposition debt"; map-surface monoliths
+    remain open and unsafe for autonomous-loop decomp.
+  - `bbce9d5` — doc rotation reflecting `7d662bf` engine-init
+    closure (handoff + findings + project_resilience).
   - `7d662bf` — engine-init failure handling on `useMapLibreEngine`
     + `useGlobeEngine`. Both hooks now catch preload reject,
     constructor throw, and runtime error-before-load, then surface
@@ -98,14 +109,25 @@ Validation at `7d662bf`: focused vitest on `useMapLibreEngine`
 58/58 (was 55), `useGlobeEngine` 49/49 (was 46), `MapPage` 40/40;
 tsc -b exit 0; backend unchanged from `95a3532` (2503/0). Full
 vitest suite confirmed green via post-push gate harness.
+Validation at `830ceb3`: focused vitest on `EntityCard` 4/4 +
+consumer pages (Assets/Tasks/SiteDetail/Planning) 20/20 +
+adjacent surfaces (AlertTriage/IncidentDetail/Areas) 15/15;
+tsc -b --force exit 0; eslint on touched files exit 0; full
+vitest suite hit known local OOM (ERR_IPC_CHANNEL_CLOSED) —
+post-push gate harness is the authoritative full-sweep check.
+Backend unchanged from `95a3532` (2503/0).
 
 **Next action:** if continuing hardening before new feature work,
 the remaining real debt bands are:
 1. globe primitive-pickup E2E proof (3 `test.fixme` specs; local
    verification blocked by needing the full backend stack for
    global-setup auth)
-2. frontend decomposition debt (`MapPage.tsx` 905,
-   `MapOverlayControls.tsx` 884, `EntityCard.tsx` 635)
+2. frontend decomposition debt — `EntityCard.tsx` closed at
+   `830ceb3` (635 → 92 + 4 sibling files); `MapPage.tsx` 905 and
+   `MapOverlayControls.tsx` 884 remain. Both are high-blast-radius
+   (primary operator surface) and have no direct unit tests, so a
+   safe decomp needs either direct unit tests first or interactive
+   browser verification — not safe inside an autonomous loop.
 Roadmap item 8 (4B — access-pattern anomaly detection) remains
 stakeholder-blocked and separate from these hygiene items.
 
@@ -248,11 +270,14 @@ item and is **stakeholder-blocked**, not engineering-blocked.
   when init rejects (preload reject, constructor throw, or runtime
   error before load). Coverage: 6 new regression specs (3 per
   hook).
-- ⏸ **Frontend decomposition debt** remains open.
-  `MapPage.tsx` (905), `MapOverlayControls.tsx` (884), and
-  `EntityCard.tsx` (635) are large enough to make code review and
-  state-coupling audits harder. P3 hygiene, not a correctness or
-  security gap.
+- ⏸ **Frontend decomposition debt** remains open for the two
+  map-surface monoliths. `EntityCard.tsx` closed at `830ceb3`
+  (635 → 92-line public surface + `entity-card/` sub-modules).
+  `MapPage.tsx` (905) and `MapOverlayControls.tsx` (884) remain;
+  both are primary-operator-surface, high-blast-radius, and have
+  no direct unit tests, so a safe decomp needs either direct
+  unit tests first or interactive browser verification.
+  P3 hygiene, not a correctness or security gap.
 - ⏸ **MapPage perf profile to recover original 15ms / 120ms bar**
   deferred as a future tranche; current bar reflects measured CI
   reality, not regression.
