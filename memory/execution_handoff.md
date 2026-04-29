@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-29 (Production live at https://resilience-ops.fly.dev/; post-deploy hardening pass: A.2 closed at `90ea836`; A.3 + A.3-sibling **payload-gated initial fixes were caught by Codex /gate** (P2 starvation finding) and superseded by sentinel-driven decoupling — see "Codex P2 starvation finding" block below; A.4 + P1 cross-tenant leak closed earlier in pass; remaining work is /audit + /wtf-roadmap + globe shell-main investigation)
+Last updated: 2026-04-29 (Production live at https://resilience-ops.fly.dev/; post-deploy hardening pass + Codex 5-finding backlog closure: A.2/A.3/A.3-sibling/correlation-rule-conditions.site_id all closed earlier; this rotation closed Codex backlog items #1, #2, #4, #5 and deferred #3 with documented architecture question — see "Codex 5-finding backlog" block below)
 
 ## Current Phase
 
@@ -182,6 +182,88 @@ item and is **stakeholder-blocked**, not engineering-blocked.
 - ⏸ **MapPage perf profile to recover original 15ms / 120ms bar**
   deferred as a future tranche; current bar reflects measured CI
   reality, not regression.
+
+### Codex 5-finding backlog (2026-04-28) — closure status
+
+Codex's /gate review at HEAD `e82b1f1` (after the
+correlation-rule.conditions.site_id closure) named a consolidated
+five-item backlog. Each was independently verified against the
+code (not just trusted) and either fixed or deferred with reasoning:
+
+- ✅ **#1 — Destroy-path audit org-attribution** (`event_writer.rb`).
+  Real bug. Controllers that destroy AO-anchored entities
+  (CorrelationRule, Chokepoint, CommanderIntent, PacePlan,
+  SaluteReport) snapshot `area_of_operation_id` flat rather than a
+  nested AO record. After destroy, `resolve_organization_id`'s
+  primary lookup fails (row gone) and `snapshot_org_id`'s three
+  shapes (flat org_id / nested site / nested AO) didn't cover flat
+  `area_of_operation_id`. Audit row persisted with nil
+  organization_id → globally visible via SSE's "events without
+  organization_id pass through" rule → cross-tenant leak of
+  deleted-entity content. Fix: `snapshot_org_id` extended with a
+  fourth shape that does an AO lookup by id. Regression spec at
+  `correlation_rules_spec.rb` proves a scoped-commander destroy
+  yields an audit row with the correct organization_id.
+
+- ✅ **#2 — Recommendation executor unscoped lookups**
+  (`executor_service.rb`). Real defense-in-depth gap. Every
+  `find_by(id:)` in dispatchers (alert / incident / site / task /
+  asset) bypassed Pundit scope, so a poisoned action_payload would
+  let downstream services (`Alerts::TransitionService`,
+  `Tasks::CreationService`, `Tasks::UpdateService`,
+  `Incidents::TransitionService` — none of which enforce tenant
+  scope on inputs) operate on cross-tenant entities. Fix: new
+  `find_scoped(klass, id)` helper that resolves
+  `<Klass>Policy::Scope.new(@user, klass.all).resolve` and
+  `find_by` against that. Three regression specs cover
+  `close_stale_alert`, `flag_site`, and `create_task` rejecting
+  cross-tenant action_payload entities and proving downstream
+  services are NOT invoked.
+
+- ⏸ **#3 — `sites.organization_id` NOT NULL hardening**
+  (`structure.sql`, `site.rb`). Real but DEFERRED for
+  product-architecture reasons. The column is currently nullable;
+  `Site#belongs_to :organization, optional: true`. Making it NOT
+  NULL is hardening BUT requires a product decision: are nil-org
+  sites legitimate "admin-global" entities (visible only to
+  unrestricted users via `ApplicationPolicy::Scope#site_scope`'s
+  no-filter branch), or is that legacy drift from before the
+  multi-tenancy rollout? The migration would need to either
+  backfill nil-org rows to a real organization_id or block the
+  NOT-NULL transition until they're cleaned up. This is a schema
+  change with high blast radius (FK strength, optional →
+  required, model callbacks); per the autonomous-loop hold-rule
+  I will not decide it without explicit direction. Documented
+  here as the next pending architecture question.
+
+- ✅ **#4 — Replay same-timestamp ordering**
+  (`audit_snapshot_service.rb`). Real bug. `.order(:occurred_at)`
+  alone produced non-deterministic folding of events with
+  identical occurred_at (common under burst load or
+  same-transaction multi-writes), so the same `as_of` query could
+  return different replay state on different calls — a
+  reproducibility hazard for any audit-driven snapshot consumer.
+  Fix: `.order(:occurred_at, :sequence)` adds the globally-
+  monotonic `sequence` column as a stable tiebreaker (added at
+  migration `20260424180000`). Regression spec creates three
+  same-timestamp events and asserts the last-by-sequence write
+  wins on five repeated calls.
+
+- ✅ **#5 — Rule-firing retry semantics**
+  (`rule_firing_service.rb`). Real bug. The bottom
+  `rescue StandardError` caught `ActiveRecord::Deadlocked` /
+  `PG::Error` / lock-timeouts and converted them to
+  `ServiceResult.failure`. The job then raised
+  `RuleFiringFailure` (NOT in `retry_on` ActiveRecord::StatementInvalid,
+  PG::Error), so SolidQueue gave up after one attempt — a
+  transient deadlock became a permanent firing miss. Fix: a new
+  `rescue ActiveRecord::StatementInvalid, PG::Error; raise` clause
+  re-raises transient DB errors so the original exception class
+  reaches the job's retry_on. The catch-all StandardError rescue
+  remains for non-transient errors. Three regression specs:
+  Deadlocked propagates, PG::Error propagates, ArgumentError
+  still wraps in failure (preserves prior behavior for non-DB
+  exceptions).
 
 ### Closed deep-eval findings — implementation summary
 

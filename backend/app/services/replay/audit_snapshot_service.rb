@@ -14,10 +14,20 @@ module Replay
     def call
       return ServiceResult.success(snapshots: {}) if @entity_ids.empty? || @as_of.blank?
 
+      # Order by (occurred_at, sequence) so same-timestamp events fold
+      # deterministically. Without the `sequence` tiebreaker, two events
+      # for the same entity written in the same transaction (or same
+      # millisecond, common under burst load) would be ordered
+      # non-deterministically by Postgres, and the merge_snapshots fold
+      # below would produce different replay state on different calls.
+      # `sequence` is a global monotonic column on audit_events
+      # (migration 20260424180000), strictly increasing across all orgs,
+      # so it provides a stable secondary sort regardless of timestamp
+      # collisions.
       snapshots = AuditEvent
         .where(entity_type: @entity_type, entity_id: @entity_ids)
         .where("occurred_at <= ?", @as_of)
-        .order(:occurred_at)
+        .order(:occurred_at, :sequence)
         .each_with_object({}) do |event, index|
           index[event.entity_id] = self.class.merge_snapshots(index[event.entity_id], event.after_snapshot)
         end

@@ -451,6 +451,33 @@ RSpec.describe "Api::CorrelationRules", type: :request do
       delete "/api/correlation_rules/#{SecureRandom.uuid}", headers: auth_headers(commander)
       expect(response).to have_http_status(:not_found)
     end
+
+    # Codex backlog #1 (2026-04-28): post-destroy audit-event
+    # organization_id attribution. The controller's destroy snapshot
+    # captures area_of_operation_id flat (correlation_rule_snapshot)
+    # rather than a nested AO record. After destroy, EventWriter's
+    # primary org-resolution lookup fails (the rule row is gone), so
+    # the snapshot fallback is the only path. Without the flat-AO-id
+    # case in snapshot_org_id, the audit row was persisted with nil
+    # organization_id and became globally visible via SSE's "events
+    # without organization_id pass through to every subscriber" rule
+    # — a cross-tenant leak of the deleted rule's full content.
+    it "attributes the destroy audit event to the rule's organization (Codex #1 — flat AO-id snapshot fallback)" do
+      org = create(:organization)
+      scoped_commander = create(:user, :commander, organization: org)
+      target_ao = create(:area_of_operation, organization: org)
+      doomed_rule = create(:correlation_rule, created_by: scoped_commander, area_of_operation: target_ao)
+
+      expect {
+        delete "/api/correlation_rules/#{doomed_rule.id}", headers: auth_headers(scoped_commander)
+      }.to change(AuditEvent, :count).by(1)
+
+      event = AuditEvent.last
+      expect(event.event_type).to eq("correlation_rule.deleted")
+      # Critical: the post-destroy audit row must carry the rule's
+      # organization_id, not nil — pre-fix this would be nil.
+      expect(event.organization_id).to eq(org.id)
+    end
   end
 
   describe "GET /api/correlation_rules/effectiveness" do

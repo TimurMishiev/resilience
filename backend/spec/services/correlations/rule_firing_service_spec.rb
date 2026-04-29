@@ -175,6 +175,46 @@ RSpec.describe Correlations::RuleFiringService do
     end
   end
 
+  # Codex backlog #5 (2026-04-28): transient DB errors must propagate to
+  # the caller (RuleFiringJob) so retry_on can retry the job. Previously
+  # the service's bottom `rescue StandardError` caught Deadlocked /
+  # PG::Error / lock timeouts and wrapped them in ServiceResult.failure;
+  # the job then raised RuleFiringFailure (NOT in retry_on) and
+  # SolidQueue gave up after one attempt. The fix re-raises
+  # ActiveRecord::StatementInvalid and PG::Error specifically, so the
+  # job-level retry_on sees the original exception class.
+  describe "Codex #5 — transient DB errors propagate for job-level retry" do
+    it "re-raises ActiveRecord::Deadlocked instead of wrapping in ServiceResult.failure" do
+      allow(SignalRuleMatch).to receive(:create!).and_raise(
+        ActiveRecord::Deadlocked.new("deadlock detected"),
+      )
+
+      expect {
+        described_class.call(rule: rule, signal: signal, site: site)
+      }.to raise_error(ActiveRecord::Deadlocked, /deadlock detected/)
+    end
+
+    it "re-raises PG::Error instead of wrapping in ServiceResult.failure" do
+      allow(SignalRuleMatch).to receive(:create!).and_raise(
+        PG::ConnectionBad.new("connection lost"),
+      )
+
+      expect {
+        described_class.call(rule: rule, signal: signal, site: site)
+      }.to raise_error(PG::Error)
+    end
+
+    it "still returns ServiceResult.failure for non-DB errors (preserves prior behavior)" do
+      allow(SignalRuleMatch).to receive(:create!).and_raise(
+        ArgumentError.new("malformed metadata"),
+      )
+
+      r = described_class.call(rule: rule, signal: signal, site: site)
+      expect(r.success).to be(false)
+      expect(r.errors.first).to include("malformed metadata")
+    end
+  end
+
   # ---------------------------------------------------------------------------
   # escalate_task action
   # ---------------------------------------------------------------------------

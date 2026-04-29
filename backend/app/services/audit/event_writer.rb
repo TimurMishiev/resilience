@@ -206,9 +206,24 @@ module Audit
     end
 
     # Extracts organization_id from a destroyed entity's before_snapshot.
-    # Handles three shapes: flat { "organization_id" => ... },
-    # nested { "site" => { "organization_id" => ... } }, and
-    # AO-anchored { "area_of_operation" => { "organization_id" => ... } }.
+    # Handles four shapes:
+    #   1. flat                   { "organization_id" => ... }
+    #   2. nested site            { "site" => { "organization_id" => ... } }
+    #   3. nested AO              { "area_of_operation" => { "organization_id" => ... } }
+    #   4. flat AO foreign key    { "area_of_operation_id" => ... } → look up
+    #
+    # Codex backlog #1 (2026-04-28): controllers that destroy
+    # AO-anchored entities (CorrelationRule, Chokepoint, CommanderIntent,
+    # PacePlan, SaluteReport) snapshot `area_of_operation_id` directly
+    # rather than nesting the full AO record (see e.g.
+    # correlation_rules_controller.rb#correlation_rule_snapshot). After
+    # destroy, resolve_organization_id's primary lookup also fails (the
+    # row is gone), so the fallback is the only path. Without case 4,
+    # the audit row was persisted with nil organization_id and became
+    # globally visible through events_controller.rb's "events without
+    # org_id pass through" rule — a cross-tenant SSE leak of the
+    # deleted entity's full content. Case 4 closes that gap with one
+    # cheap indexed lookup.
     def self.snapshot_org_id(before_snapshot)
       return nil unless before_snapshot.is_a?(Hash)
 
@@ -216,6 +231,9 @@ module Audit
       return h[:organization_id] if h[:organization_id].present?
       return h.dig(:site, :organization_id) if h.dig(:site, :organization_id).present?
       return h.dig(:area_of_operation, :organization_id) if h.dig(:area_of_operation, :organization_id).present?
+
+      ao_id = h[:area_of_operation_id]
+      return AreaOfOperation.where(id: ao_id).pick(:organization_id) if ao_id.present?
 
       nil
     end

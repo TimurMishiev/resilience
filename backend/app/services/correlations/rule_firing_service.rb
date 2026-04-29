@@ -151,6 +151,19 @@ module Correlations
     rescue ActiveRecord::RecordNotUnique
       log_outcome(:info, outcome: "duplicate_skipped")
       ServiceResult.failure(errors: ["duplicate"])
+    rescue ActiveRecord::StatementInvalid, PG::Error
+      # Codex backlog #5 (2026-04-28): transient DB errors
+      # (Deadlocked, lock timeout, connection blip) MUST propagate
+      # so the RuleFiringJob's `retry_on ActiveRecord::StatementInvalid,
+      # PG::Error` can see the original exception class. The previous
+      # `rescue StandardError` below caught these too, wrapped them
+      # in ServiceResult.failure, and the job then raised a
+      # RuleFiringFailure (NOT in retry_on) — converting transient
+      # deadlocks into permanent job failures with no automatic
+      # retry. Job-level logging at rule_firing_job.rb's rescue
+      # StandardError block still records the error class for
+      # diagnosis; we don't double-log here.
+      raise
     rescue StandardError => e
       log_outcome(
         :error,

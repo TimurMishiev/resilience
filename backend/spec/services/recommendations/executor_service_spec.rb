@@ -243,4 +243,73 @@ RSpec.describe Recommendations::ExecutorService, type: :service do
       expect(task.reload.asset_id).to eq asset.id
     end
   end
+
+  # Codex backlog #2 (2026-04-28): action_payload entities must go
+  # through the executing user's Pundit scope, never a bare find_by.
+  # Without this, a poisoned action_payload (or any future generator
+  # regression that lets a cross-tenant id slip in) would let the
+  # executor call downstream services on entities outside the user's
+  # tenant authority. The recommendation itself is tenant-scoped at
+  # the controller (RecommendationsController#execute uses
+  # scoped_record); these specs prove the same scope discipline now
+  # extends to every entity referenced by action_payload.
+  describe "Codex #2 — action_payload entities must be in the executing user's tenant scope" do
+    let(:org_a)         { create(:organization) }
+    let(:org_b)         { create(:organization) }
+    let(:scoped_user)   { create(:user, :commander, organization: org_a) }
+    let(:foreign_site)  { create(:site, organization: org_b) }
+    let(:foreign_match) { create(:signal_rule_match, site: foreign_site, workflow_status: "unacknowledged") }
+
+    it "rejects close_stale_alert when alert_id points at a cross-tenant SignalRuleMatch" do
+      rec = create(:recommendation,
+                   status: "accepted",
+                   recommendation_type:  "close_stale_alert",
+                   affected_entity_type: "SignalRuleMatch",
+                   affected_entity_id:   foreign_match.id,
+                   action_payload:       { "alert_id" => foreign_match.id, "to_status" => "closed" },
+                   expires_at:           2.hours.from_now)
+
+      # Critical: Alerts::TransitionService must NOT be invoked. Pre-fix
+      # the bare find_by would resolve and the service would happily
+      # transition the cross-tenant match.
+      expect(Alerts::TransitionService).not_to receive(:call)
+
+      result = described_class.call(recommendation: rec, user: scoped_user)
+      expect(result).not_to be_success
+      expect(result.errors.first).to include("Alert #{foreign_match.id} not found")
+      # Cross-tenant match must remain untouched.
+      expect(foreign_match.reload.workflow_status).to eq("unacknowledged")
+    end
+
+    it "rejects flag_site when site_id points at a cross-tenant Site" do
+      rec = create(:recommendation,
+                   status: "accepted",
+                   recommendation_type:  "flag_site",
+                   affected_entity_type: "Site",
+                   affected_entity_id:   foreign_site.id,
+                   action_payload:       { "site_id" => foreign_site.id },
+                   expires_at:           2.hours.from_now)
+
+      result = described_class.call(recommendation: rec, user: scoped_user)
+      expect(result).not_to be_success
+      expect(result.errors.first).to include("Site #{foreign_site.id} not found")
+      # Cross-tenant site must NOT have been flagged.
+      expect(foreign_site.reload.flagged_at).to be_nil
+    end
+
+    it "rejects create_task when site_id points at a cross-tenant Site" do
+      rec = create(:recommendation,
+                   status: "accepted",
+                   recommendation_type:  "create_task",
+                   affected_entity_type: "Site",
+                   affected_entity_id:   foreign_site.id,
+                   action_payload:       { "site_id" => foreign_site.id, "title" => "Cross-tenant task" },
+                   expires_at:           2.hours.from_now)
+
+      expect(Tasks::CreationService).not_to receive(:call)
+      result = described_class.call(recommendation: rec, user: scoped_user)
+      expect(result).not_to be_success
+      expect(result.errors.first).to include("Site #{foreign_site.id} not found")
+    end
+  end
 end
