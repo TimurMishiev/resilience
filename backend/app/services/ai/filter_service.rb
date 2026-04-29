@@ -73,9 +73,17 @@ module Ai
 
     # Build the tool schema with site IDs as an enum — the model can only return
     # a value from this list for site_id. Names are embedded in descriptions only.
+    #
+    # Audit P3 follow-up (2026-04-29, Codex /gate at f149dbf): site names
+    # are user-controlled strings and were previously interpolated raw
+    # into the tool description. Output validation kept this from
+    # becoming an auth issue (the model can only return an id from the
+    # enum), but a malicious or malformed name could still inject
+    # control chars or prompt-framing text into the model's tool-use
+    # context. PromptSafety.sanitize_for_prompt closes the gap.
     def build_tool(sites)
       site_enum = sites.map { |s| s[:id] }
-      site_descriptions = sites.map { |s| "#{s[:name]} → #{s[:id]}" }.join(", ")
+      site_descriptions = sites.map { |s| "#{Ai::PromptSafety.sanitize_for_prompt(s[:name])} → #{s[:id]}" }.join(", ")
 
       {
         name:        TOOL_NAME,

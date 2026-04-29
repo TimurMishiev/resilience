@@ -71,9 +71,12 @@ module Ai
       If a filter field is not mentioned or unclear, omit it or set it to null.
     PROMPT
 
+    # Audit P3 follow-up (2026-04-29, Codex /gate at f149dbf): see
+    # FilterService#build_tool for rationale. Site names sanitized
+    # before tool-description interpolation.
     def build_tool(sites)
       site_enum         = sites.map { |s| s[:id] }
-      site_descriptions = sites.map { |s| "#{s[:name]} → #{s[:id]}" }.join(", ")
+      site_descriptions = sites.map { |s| "#{Ai::PromptSafety.sanitize_for_prompt(s[:name])} → #{s[:id]}" }.join(", ")
 
       {
         name:        TOOL_NAME,

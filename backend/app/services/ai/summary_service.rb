@@ -238,7 +238,13 @@ module Ai
     # ── prompt builders ──────────────────────────────────────────────────────────
 
     def build_system_prompt
-      site_ctx = @site ? "for #{@site.name}" : "across all sites"
+      # Audit P3 follow-up (2026-04-29, Codex /gate at f149dbf): the
+      # system prompt is the highest-priority context block — a
+      # malicious site name interpolated here would frame the entire
+      # briefing. Sanitize before interpolation. The build_user_content
+      # path was sanitized in the original audit P3 commit; this header
+      # was missed.
+      site_ctx = @site ? "for #{sanitize_for_prompt(@site.name)}" : "across all sites"
 
       focus = case @summary_type
               when "site_activity"
