@@ -66,6 +66,7 @@ module Api
       correlation_id = SecureRandom.uuid
 
       ApplicationRecord.transaction do
+        validate_site_target_scope!(rule)
         rule.save!
         Audit::EventWriter.write(
           actor: current_user.email,
@@ -91,7 +92,9 @@ module Api
       correlation_id = SecureRandom.uuid
 
       ApplicationRecord.transaction do
-        rule.update!(rule_params)
+        rule.assign_attributes(rule_params)
+        validate_site_target_scope!(rule)
+        rule.save!
         Audit::EventWriter.write(
           actor: current_user.email,
           entity_type: "CorrelationRule",
@@ -196,6 +199,28 @@ module Api
     end
 
     private
+
+    def validate_site_target_scope!(rule)
+      site_id = explicit_target_site_id(rule.conditions)
+      return if site_id.blank?
+
+      site = policy_scope(Site).find_by(id: site_id)
+      unless site
+        rule.errors.add(:conditions, "site_id must reference an accessible site")
+        raise ActiveRecord::RecordInvalid, rule
+      end
+
+      return unless rule.area_of_operation_id.present? && site.area_of_operation_id != rule.area_of_operation_id
+
+      rule.errors.add(:conditions, "site_id must belong to the rule's area_of_operation")
+      raise ActiveRecord::RecordInvalid, rule
+    end
+
+    def explicit_target_site_id(conditions)
+      return nil unless conditions.is_a?(Hash)
+
+      conditions["site_id"] || conditions[:site_id]
+    end
 
     # Builds a hash of signal_type → array of lightweight signal structs for all
     # typed conditions. Called once per dry_run request so corroboration/count

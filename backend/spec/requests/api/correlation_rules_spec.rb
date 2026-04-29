@@ -287,6 +287,56 @@ RSpec.describe "Api::CorrelationRules", type: :request do
       expect(response).to have_http_status(:created)
       expect(JSON.parse(response.body)["mitre_tags"]).to eq([])
     end
+
+    it "returns 422 when conditions.site_id points at an inaccessible site" do
+      org_a = create(:organization)
+      org_b = create(:organization)
+      scoped_commander = create(:user, :commander, organization: org_a)
+      # CorrelationRulePolicy#create? requires the rule's area_of_operation
+      # to be accessible to the actor (application_policy.rb:60-72) — an
+      # org-scoped user with a nil-AO rule fails at the policy gate
+      # before reaching validate_site_target_scope!. Setting an AO in
+      # the commander's org lets the request actually exercise the new
+      # site-scope validation.
+      target_ao = create(:area_of_operation, organization: org_a)
+      foreign_site = create(:site, organization: org_b)
+
+      expect {
+        post "/api/correlation_rules",
+             params: {
+               correlation_rule: valid_params[:correlation_rule].merge(
+                 area_of_operation_id: target_ao.id,
+                 conditions: { site_id: foreign_site.id, signal_type: "seismic_event", proximity_km: 50 },
+               ),
+             },
+             headers: auth_headers(scoped_commander), as: :json
+      }.not_to change(CorrelationRule, :count)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(JSON.parse(response.body)["errors"].join(" ")).to include("site_id must reference an accessible site")
+    end
+
+    it "returns 422 when conditions.site_id falls outside the rule area_of_operation" do
+      org = create(:organization)
+      scoped_commander = create(:user, :commander, organization: org)
+      target_ao = create(:area_of_operation, organization: org)
+      other_ao = create(:area_of_operation, organization: org)
+      mismatched_site = create(:site, organization: org, area_of_operation: other_ao)
+
+      expect {
+        post "/api/correlation_rules",
+             params: {
+               correlation_rule: valid_params[:correlation_rule].merge(
+                 area_of_operation_id: target_ao.id,
+                 conditions: { site_id: mismatched_site.id, signal_type: "seismic_event", proximity_km: 50 },
+               ),
+             },
+             headers: auth_headers(scoped_commander), as: :json
+      }.not_to change(CorrelationRule, :count)
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(JSON.parse(response.body)["errors"].join(" ")).to include("site_id must belong to the rule's area_of_operation")
+    end
   end
 
   describe "PATCH /api/correlation_rules/:id" do
@@ -341,6 +391,27 @@ RSpec.describe "Api::CorrelationRules", type: :request do
             headers: auth_headers(commander), as: :json
       expect(response).to have_http_status(:ok)
       expect(JSON.parse(response.body)["mitre_tags"]).to contain_exactly("T0879", "T0880")
+    end
+
+    it "returns 422 when updating conditions.site_id to an inaccessible site" do
+      org_a = create(:organization)
+      org_b = create(:organization)
+      scoped_commander = create(:user, :commander, organization: org_a)
+      # As above on POST: org-scoped commanders need a rule whose AO
+      # they can reach via owned_area_of_operation_scope, otherwise
+      # policy_scope filters the rule out and the PATCH 404s before
+      # reaching validate_site_target_scope!.
+      target_ao = create(:area_of_operation, organization: org_a)
+      owned_rule = create(:correlation_rule, created_by: scoped_commander, area_of_operation: target_ao)
+      foreign_site = create(:site, organization: org_b)
+
+      patch "/api/correlation_rules/#{owned_rule.id}",
+            params:  { correlation_rule: { conditions: { site_id: foreign_site.id, signal_type: "seismic_event", proximity_km: 50 } } },
+            headers: auth_headers(scoped_commander), as: :json
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(JSON.parse(response.body)["errors"].join(" ")).to include("site_id must reference an accessible site")
+      expect(owned_rule.reload.conditions).not_to include("site_id" => foreign_site.id)
     end
   end
 

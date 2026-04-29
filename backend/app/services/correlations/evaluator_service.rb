@@ -46,8 +46,29 @@ module Correlations
       new(signal: signal, reference_time: reference_time).matches_rule_at_site?(rule, site)
     end
 
+    def self.explicit_target_site(rule)
+      site_id = rule.conditions.is_a?(Hash) ? rule.conditions["site_id"] : nil
+      return nil if site_id.blank?
+
+      site = Site.find_by(id: site_id)
+      return nil unless site
+      return nil unless explicit_target_site_allowed?(rule: rule, site: site)
+
+      site
+    end
+
+    def self.explicit_target_site_allowed?(rule:, site:)
+      return false if rule.area_of_operation_id.present? && site.area_of_operation_id != rule.area_of_operation_id
+
+      creator_org_id = rule.created_by&.organization_id
+      return false if creator_org_id.present? && site.organization_id != creator_org_id
+
+      true
+    end
+
     # Three-branch tenant resolution (MT3):
-    #   1. rule.conditions["site_id"] present → single-site rule, short-circuit.
+    #   1. rule.conditions["site_id"] present → explicit site target, but only
+    #      if that site still satisfies the rule's tenant/AO envelope.
     #   2. rule.area_of_operation_id present → scope by AO (org-safe transitively
     #      because every site in an AO shares the AO's organization).
     #   3. rule.area_of_operation_id nil + creator has organization_id → scope
@@ -58,7 +79,10 @@ module Correlations
     #      intentionally global rules.
     def self.target_sites_scope(rule)
       site_id = rule.conditions["site_id"]
-      return Site.where(id: site_id) if site_id.present?
+      if site_id.present?
+        site = explicit_target_site(rule)
+        return site ? Site.where(id: site.id) : Site.none
+      end
 
       base = Site.active
       return base.where(area_of_operation_id: rule.area_of_operation_id) if rule.area_of_operation_id.present?
@@ -75,7 +99,7 @@ module Correlations
     # tenant boundary.
     def self.rule_targets_site?(rule:, site:)
       site_id = rule.conditions.is_a?(Hash) ? rule.conditions["site_id"] : nil
-      return site.id.to_s == site_id.to_s if site_id.present?
+      return site.id.to_s == site_id.to_s && explicit_target_site_allowed?(rule: rule, site: site) if site_id.present?
 
       return false unless site.status == "active"
       return false if rule.area_of_operation_id.present? && site.area_of_operation_id != rule.area_of_operation_id
@@ -119,13 +143,13 @@ module Correlations
     end
 
     # Resolves the target site set for a rule against a preloaded list of
-    # active sites. Single-site rules (conditions["site_id"] present) still
-    # go through a direct lookup because the referenced site may be
+    # active sites. Explicit site targets (conditions["site_id"] present)
+    # still go through a direct lookup because the referenced site may be
     # inactive — preserving the original target_sites_scope behavior.
     def target_sites_for(rule, preloaded_active_sites)
       site_id = rule.conditions.is_a?(Hash) ? rule.conditions["site_id"] : nil
       if site_id.present?
-        site = Site.find_by(id: site_id)
+        site = self.class.explicit_target_site(rule)
         return site ? [site] : []
       end
 
@@ -243,7 +267,7 @@ module Correlations
     # ── Site targeting ─────────────────────────────────────────────────────────
 
     # Returns the set of sites this rule should be evaluated against.
-    # Legacy flat rules can carry a site_id filter; compound rules scope via
+    # Rules may carry an explicit site_id filter; otherwise they scope via
     # area_of_operation_id (a model attribute) or default to all active sites.
     def target_sites(rule)
       self.class.target_sites_scope(rule)

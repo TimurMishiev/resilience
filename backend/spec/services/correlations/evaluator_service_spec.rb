@@ -587,17 +587,24 @@ RSpec.describe Correlations::EvaluatorService do
           .to contain_exactly(site_org_a.id, site_org_b.id, site_in_ao.id)
       end
 
-      it "short-circuits to the single site when conditions carry a site_id" do
+      it "short-circuits to the single accessible site when conditions carry a site_id" do
+        commander = create(:user, :commander, organization: org_a)
+        rule = create(:correlation_rule,
+                      created_by: commander,
+                      conditions: { "site_id" => site_org_a.id.to_s, "signal_type" => "seismic_event" })
+
+        expect(described_class.target_sites_scope(rule).pluck(:id))
+          .to contain_exactly(site_org_a.id)
+      end
+
+      it "returns no sites when conditions.site_id points at a foreign-tenant site" do
         commander = create(:user, :commander, organization: org_a)
         rule = create(:correlation_rule,
                       created_by: commander,
                       conditions: { "site_id" => site_org_b.id.to_s, "signal_type" => "seismic_event" })
 
-        # site_id short-circuit bypasses tenant inference entirely — expected,
-        # because the controller-layer policy already constrains who can
-        # author site-specific rules at create time.
         expect(described_class.target_sites_scope(rule).pluck(:id))
-          .to contain_exactly(site_org_b.id)
+          .to eq([])
       end
     end
 
@@ -624,6 +631,15 @@ RSpec.describe Correlations::EvaluatorService do
           end
         end
       end
+
+      it "rejects an explicit foreign site_id even when the site id matches" do
+        commander = create(:user, :commander, organization: org_a)
+        rule = create(:correlation_rule,
+                      created_by: commander,
+                      conditions: { "site_id" => site_org_b.id.to_s, "signal_type" => "seismic_event" })
+
+        expect(described_class.rule_targets_site?(rule: rule, site: site_org_b)).to be(false)
+      end
     end
 
     describe "#call cross-tenant leak closure" do
@@ -643,6 +659,41 @@ RSpec.describe Correlations::EvaluatorService do
         result = described_class.call(signal: signal)
         expect(result.payload[:fired_count]).to eq(0)
         expect(SignalRuleMatch.where(site_id: site_org_b.id)).to be_empty
+      end
+
+      it "does not fire a persisted bad rule whose explicit site_id points at an org-B site" do
+        commander_a = create(:user, :commander, organization: org_a)
+        create(:correlation_rule,
+               created_by: commander_a,
+               conditions: { "site_id" => site_org_b.id.to_s, "signal_type" => "seismic_event", "proximity_km" => 100 })
+
+        signal = create(:external_signal,
+                        lat: site_org_b.latitude.to_f,
+                        lng: site_org_b.longitude.to_f,
+                        signal_type: "seismic_event")
+
+        result = described_class.call(signal: signal)
+        expect(result.payload[:fired_count]).to eq(0)
+        expect(SignalRuleMatch.where(site_id: site_org_b.id)).to be_empty
+      end
+
+      it "does not fire a persisted bad rule whose explicit site_id falls outside the rule area_of_operation" do
+        commander_a = create(:user, :commander, organization: org_a)
+        other_ao = create(:area_of_operation, organization: org_a)
+        site_outside_ao = create(:site, organization: org_a, area_of_operation: other_ao, latitude: 13.0, longitude: 23.0)
+        create(:correlation_rule,
+               created_by: commander_a,
+               area_of_operation: ao_a,
+               conditions: { "site_id" => site_outside_ao.id.to_s, "signal_type" => "seismic_event", "proximity_km" => 100 })
+
+        signal = create(:external_signal,
+                        lat: site_outside_ao.latitude.to_f,
+                        lng: site_outside_ao.longitude.to_f,
+                        signal_type: "seismic_event")
+
+        result = described_class.call(signal: signal)
+        expect(result.payload[:fired_count]).to eq(0)
+        expect(SignalRuleMatch.where(site_id: site_outside_ao.id)).to be_empty
       end
     end
 
