@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-29 (Production live at https://resilience-ops.fly.dev/ at `95a3532`; `HEAD` on `main` is `c383c5d`, with a narrow dirty-tree follow-up closing the remaining globe E2E paginated-stub contract gap and rotating repo-truth files. Session arc: A.2/A.3/A.3-sibling/correlation-rule-conditions.site_id closed in earlier slices; Codex 5-finding backlog at `4b4b489` (#1/#2/#4/#5 fixed, #3 resolved-as-documented at `7e1e783`); manual deep-mode QA F1+F3 closed at `b7e4040`; full-system /audit at `b7e4040` produced 10 P3 findings, all closed at `f149dbf`; Codex /gate at `f149dbf` surfaced 3 P2 prompt-safety gaps in remaining AI interpolation surfaces, all closed at `c44754c` with wire-layer regression specs; `95a3532` deployed the OpenSky `ssl_http` fix and is live on production version 35; `946b41a` rotated the handoff + findings matrix to match live deploy truth; `a57f5c6` narrowed globe E2E harness contamination without un-fixme'ing the 3 primitive-pickup tests; `08bf593` drafts the next selection-grounded AI explainer slice; `7d662bf` ships engine-init failure handling on both `useMapLibreEngine` and `useGlobeEngine`; `bbce9d5` rotates docs for `7d662bf`; `830ceb3` decomposes EntityCard.tsx 635 → 92-line public surface with sub-modules in `components/entity-card/`; `59d6e20` rotates docs for `830ceb3`; `6d0f100` un-`fixme`s all 3 globe primitive-pickup tests after fixing the missing `meta` envelope on the `/api/sites` stub; `117b16d` rotates docs for `6d0f100`; `fdcda0b` lands 35 direct unit tests on MapOverlayControls as the tests-first regression net; `5148b8f` decomposes MapOverlayControls.tsx 884 → 205-line orchestrator + 11 sub-components in `overlay-controls/` under that net; `c383c5d` rotates handoff/findings to reflect the MapOverlayControls closure.)
+Last updated: 2026-04-29 (Production live at https://resilience-ops.fly.dev/ at `ac626fb`; `main` is ahead of production by one code/test follow-up `563ce5c` plus this doc-only rotation. `563ce5c` repairs demo-user seed drift for `viewer@resilience.mil` and aligns `replay-map.spec.ts` to the current replay copy, while production data was repaired live via `bin/rails runner` so all three demo roles now authenticate successfully. Current session closed the remaining paginated E2E stub contract gaps on both globe helpers and `map-site-selection.spec.ts`, deployed that proof cleanup, and recorded the explicit decision that GPU-dependent map Playwright coverage remains local/manual rather than CI-gated until a reliable GPU lane exists. Session arc: A.2/A.3/A.3-sibling/correlation-rule-conditions.site_id closed in earlier slices; Codex 5-finding backlog at `4b4b489` (#1/#2/#4/#5 fixed, #3 resolved-as-documented at `7e1e783`); manual deep-mode QA F1+F3 closed at `b7e4040`; full-system /audit at `b7e4040` produced 10 P3 findings, all closed at `f149dbf`; Codex /gate at `f149dbf` surfaced 3 P2 prompt-safety gaps in remaining AI interpolation surfaces, all closed at `c44754c` with wire-layer regression specs; `95a3532` deployed the OpenSky `ssl_http` fix on production version 35; `946b41a` rotated the handoff + findings matrix to match live deploy truth; `a57f5c6` narrowed globe E2E harness contamination without un-fixme'ing the 3 primitive-pickup tests; `08bf593` drafts the next selection-grounded AI explainer slice; `7d662bf` ships engine-init failure handling on both `useMapLibreEngine` and `useGlobeEngine`; `bbce9d5` rotates docs for `7d662bf`; `830ceb3` decomposes EntityCard.tsx 635 → 92-line public surface with sub-modules in `components/entity-card/`; `59d6e20` rotates docs for `830ceb3`; `6d0f100` un-`fixme`s all 3 globe primitive-pickup tests after fixing the missing `meta` envelope on the `/api/sites` stub; `117b16d` rotates docs for `6d0f100`; `fdcda0b` lands 35 direct unit tests on MapOverlayControls as the tests-first regression net; `5148b8f` decomposes MapOverlayControls.tsx 884 → 205-line orchestrator + 11 sub-components in `overlay-controls/` under that net; `c383c5d` rotates handoff/findings to reflect the MapOverlayControls closure; `ac626fb` closes the remaining paginated E2E stub contract gaps on map and globe and is live on production version 36.)
 
 ## Current Phase
 
@@ -34,29 +34,34 @@ item 1, see ADR-010.)
 ## Current Slice
 
 **Post-deploy hardening pass — closed in production; residual
-frontend debt nearly closed (2026-04-29).** Production sits at
-`95a3532`; `main` is ahead at `c383c5d` with frontend-only
-resilience, proof, and decomposition work. Current dirty-tree
-follow-up is intentionally narrow: finish the remaining paginated
-E2E-helper contract cleanup that Codex /gate found across the
-globe helpers and `map-site-selection.spec.ts`, then rotate the
-two stale truth files. The core hardening work is complete and live.
-Remaining debt after this follow-up should be limited to MapPage
-architecture size plus stakeholder-blocked item 4B, not backend
-auth/correctness.
+frontend debt is now explicit and narrow (2026-04-29).** Production
+now runs `ac626fb` (Fly version 36), which includes the
+map/globe paginated E2E contract cleanup. `main` adds one small
+post-deploy follow-up (`563ce5c`) to keep demo-user seeds and the
+production replay-map smoke harness aligned with reality. The core
+hardening work is complete and live. Remaining debt is now explicit:
+- `MapPage.tsx` architecture size/decomposition debt
+- GPU-dependent map Playwright proof remains local/manual rather than
+  CI-gated by deliberate decision
+- stakeholder-blocked item 4B
+
+There is no active backend/auth/correctness remediation slice left.
 
 Hardening rotation timeline this session (newest first):
-  - Dirty tree (uncommitted) — close the last paginated E2E-harness
-    contract gap from Codex /gate and Claude follow-up. Globe helpers
-    (`globe-site-anchor.spec.ts`,
+  - `ac626fb` — close the last paginated E2E-harness contract gap on
+    map and globe. Globe helpers (`globe-site-anchor.spec.ts`,
     `globe-overlay-clickthrough.spec.ts`) now return full paginated
     `meta` envelopes for every mounted `useAll*` stub
     (`/api/tasks`, `/api/assets`, `/api/areas_of_operation`,
-    `/api/chokepoints`), not just `/api/sites`. `map-site-selection.spec.ts`
-    now does the same for `/api/sites`, `/api/tasks`, `/api/assets`,
-    and `/api/areas_of_operation`. This removes the remaining path
-    where active Playwright specs could pass while background React
-    Query fetches still failed inside `fetchAllPaginated`.
+    `/api/chokepoints`), not just `/api/sites`.
+    `map-site-selection.spec.ts` now does the same for `/api/sites`,
+    `/api/tasks`, `/api/assets`, and `/api/areas_of_operation`. This
+    removes the remaining path where active Playwright specs could
+    pass while background React Query fetches still failed inside
+    `fetchAllPaginated`. Deployed live as Fly version 36. Production
+    smoke after deploy: `/up` 200 (~72ms), direct authenticated
+    browser smoke showed both `/map` and `/globe` render `LIVE` with
+    zero page errors and zero failed requests.
   - `5148b8f` — MapOverlayControls.tsx decomposition (884 → 205-
     line orchestrator). 11 sub-components extracted to
     `components/map/overlay-controls/`: derivations.ts,
@@ -177,30 +182,49 @@ Validation at `5148b8f`: vitest src/test/MapOverlayControls.test.tsx
 14/14; tsc -b --force exit 0; eslint on
 MapOverlayControls.tsx + overlay-controls/ exit 0; backend
 unchanged.
+Validation at `ac626fb`: `flyctl deploy --app resilience-ops`
+completed successfully; production is Fly version 36 and
+`https://resilience-ops.fly.dev/up` returned 200 (~72ms). Targeted
+Playwright remained green locally after the paginated-stub cleanup:
+`e2e/globe-overlay-clickthrough.spec.ts` +
+`e2e/globe-site-anchor.spec.ts` 3/3, `e2e/map-site-selection.spec.ts`
+2/2. Direct authenticated browser smoke against production logged in
+as `commander@resilience.mil`, then verified `/map` and `/globe`
+render `LIVE` with zero page errors and zero failed requests. Explicit
+policy decision recorded: GPU-dependent map Playwright coverage stays
+local/manual rather than CI-gated until a reliable GPU-capable lane
+exists.
+Validation at `563ce5c`: `ruby -c backend/db/seeds.rb` Syntax OK.
+Production one-off repair via `flyctl ssh console ... bin/rails runner`
+reset `viewer@resilience.mil` to role `viewer` / password
+`password123`; live `POST /api/auth/login` for viewer now returns 201.
+Standard Playwright production replay smokes now pass under the normal
+harness: `E2E_BASE_URL=https://resilience-ops.fly.dev npx playwright
+test e2e/replay-map.spec.ts e2e/replay-globe.spec.ts` => 2/2 green.
 
-**Next action:** the only remaining frontend-decomposition debt
-is `MapPage.tsx` (905), which the user has explicitly deferred
-("defer for now: full MapPage decomposition unless
-MapOverlayControls decomp lands cleanly, and you still believe
-line-count architecture debt is worth the blast radius before
-sending Palantir materials"). `EntityCard.tsx` closed at
-`830ceb3`; `MapOverlayControls.tsx` closed at `5148b8f` after
-the tests-first net at `fdcda0b`; globe primitive-pickup E2E
-proof closed at `6d0f100`. Roadmap item 8 (4B — access-pattern
-anomaly detection) remains stakeholder-blocked and separate
-from these hygiene items.
+**Next action:** choose whether to burn down
+[`MapPage.tsx`](frontend/src/pages/MapPage.tsx) (905 lines) before
+outreach or treat it as documented non-blocking architecture debt.
+`EntityCard.tsx` closed at `830ceb3`;
+`MapOverlayControls.tsx` closed at `5148b8f` after the tests-first
+net at `fdcda0b`; globe primitive-pickup E2E proof closed at
+`6d0f100`; map/globe paginated-helper contract cleanup is now live at
+`ac626fb`. GPU-dependent map Playwright coverage remains intentionally
+local/manual rather than CI-gated until a reliable GPU lane exists.
+Roadmap item 8 (4B — access-pattern anomaly detection) remains
+stakeholder-blocked and separate from these hygiene items.
 
 ### Production deploy state (2026-04-29 — TRUE state at close)
 
 **Live URL:** https://resilience-ops.fly.dev/
-**Live production commit:** `95a3532`
-**Current Fly app version:** `35`
+**Live production commit:** `ac626fb`
+**Current Fly app version:** `36`
 **Current Fly app-machine state:** 1 started, 2 auto-stopped
 (`min_machines_running = 1`), all healthy on `flyctl status`
 post-deploy.
 **Smoke verified:** `/up` 200, `/login` 200.
-**Live fix at this tip:** OpenSky `ssl_http` regression closed in
-production via `95a3532`.
+**Live fix at this tip:** paginated E2E harness contract cleanup on
+map/globe plus all prior frontend resilience/decomposition closures.
 
 **Fly secrets in production (verified via `flyctl secrets list`):**
 - `RAILS_MASTER_KEY` — pre-existing

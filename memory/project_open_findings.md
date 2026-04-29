@@ -51,6 +51,25 @@ _(No open P1 items.)_
     Palantir review.
   - This is not a production blocker.
 
+- GPU-dependent map Playwright proof remains intentionally local/manual,
+  not CI-gated.
+  - [map-site-selection.spec.ts](/Users/timurmishiev/Desktop/Code/resilience/frontend/e2e/map-site-selection.spec.ts),
+    [live-map-streams.spec.ts](/Users/timurmishiev/Desktop/Code/resilience/frontend/e2e/live-map-streams.spec.ts),
+    and [replay-map.spec.ts](/Users/timurmishiev/Desktop/Code/resilience/frontend/e2e/replay-map.spec.ts)
+    stay `test.skip(!!process.env.CI, ...)` because the current CI
+    swiftshader path does not provide dependable MapLibre canvas proof.
+  - Explicit decision at `ac626fb`: keep these as local-GPU/manual
+    smoke tests until a reliable GPU-capable lane exists, rather than
+    pretending they are CI-verifiable today.
+  - Current proof: `map-site-selection.spec.ts` 2/2 passed locally;
+    direct production browser smoke after deploy verified `/map`
+    and `/globe` render authenticated `LIVE` surfaces with zero page
+    errors or failed requests; and standard replay smokes
+    (`replay-map.spec.ts`, `replay-globe.spec.ts`) now pass against
+    production after the live viewer-account repair and the copy
+    alignment in `563ce5c`.
+  - This is accepted proof-quality debt, not a known runtime defect.
+
 - Keep `backend/db/structure.sql` and the local test environment aligned with the supported PostGIS baseline.
 - Keep `memory/project_resilience.md`, `memory/execution_handoff.md`, and actual code aligned.
 
