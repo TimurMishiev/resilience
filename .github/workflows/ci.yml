@@ -53,18 +53,31 @@ jobs:
       - name: ESLint
         run: yarn lint
 
-      - name: Vitest unit tests
-        # Phase 1 workaround for the parent-process heap exhaustion. Every
-        # test file passes individually, but the vitest parent accumulates
-        # ~4GB of bookkeeping (results, timings, IPC channel state) by the
-        # time the last file completes. Default node heap is 4096MB so the
-        # parent OOMs during final-summary serialization on ubuntu-latest.
-        # 6144MB gives the parent ~50% headroom; ubuntu-latest has 7GB total
-        # RAM so this still leaves ~1GB for the OS. Phase 2 (root-cause
-        # diagnosis with --logHeapUsage) will determine whether the leak
-        # is in vitest internals (keep this workaround) or in app cleanup
-        # code (real fix that also benefits production).
-        run: NODE_OPTIONS="--max-old-space-size=6144" yarn test
+      # Phase 2 fix: vitest 3.2.4 has an unbounded leak in its parent
+      # process — diagnosis with --logHeapUsage confirmed individual test
+      # files peak at 50-150MB and drop cleanly, but the parent retains
+      # every IPC message (test results, console output, worker state)
+      # and never frees them. At ~100 test files the parent crosses 6GB
+      # and OOMs after all tests pass. Stack trace at OOM points to
+      # tinypool/ProcessWorker.send + MessagePort — vitest's worker IPC
+      # channel.
+      #
+      # Sharding gives each shard a fresh parent process retaining only
+      # ~25 files of IPC state, well under any memory ceiling. No vitest
+      # config changes; default `threads` pool. Each step is independent
+      # and uses the default 4GB node heap (no NODE_OPTIONS needed).
+      #
+      # This is a vitest-specific workaround. The production app does
+      # not use vitest, so no production impact. Long-term fix is to
+      # upgrade vitest once a version with the IPC retention fix lands.
+      - name: Vitest unit tests (shard 1/4)
+        run: yarn test --shard=1/4
+      - name: Vitest unit tests (shard 2/4)
+        run: yarn test --shard=2/4
+      - name: Vitest unit tests (shard 3/4)
+        run: yarn test --shard=3/4
+      - name: Vitest unit tests (shard 4/4)
+        run: yarn test --shard=4/4
 
       - name: Build
         run: yarn build
