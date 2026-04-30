@@ -1,9 +1,9 @@
 # Resilience
 
 [![CI](https://img.shields.io/github/actions/workflow/status/TimurMishiev/resilience/ci.yml?branch=main&label=CI)](https://github.com/TimurMishiev/resilience/actions)
-[![Backend specs](https://img.shields.io/badge/backend%20specs-2%2C312-brightgreen)](#test-coverage)
-[![Frontend tests](https://img.shields.io/badge/frontend%20tests-678-brightgreen)](#test-coverage)
-[![E2E scenarios](https://img.shields.io/badge/Playwright%20E2E-15-brightgreen)](#test-coverage)
+[![Backend suite](https://img.shields.io/badge/backend-RSpec%20suite-brightgreen)](#test-coverage)
+[![Frontend tests](https://img.shields.io/badge/frontend%20tests-815-brightgreen)](#test-coverage)
+[![Playwright](https://img.shields.io/badge/Playwright-55%20tests%20%2F%2015%20files-brightgreen)](#test-coverage)
 [![Security](https://img.shields.io/badge/Brakeman-0%20warnings-brightgreen)](#security)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](frontend/tsconfig.app.json)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -12,7 +12,7 @@
 
 Resilience is the kind of software that runs inside a TOC (Tactical Operations Center). It ingests live sensor feeds, correlates threat patterns, fuses alerts into incidents, and gives operators a single operational picture across 2D map, 3D globe, and structured data surfaces. Every mutation is audit-logged transactionally. Every surface supports time-travel replay. The authorization model enforces organization and area-of-operation boundaries at every layer.
 
-Built as a portfolio project targeting defense-tech engineering roles (Palantir, Anduril, Reveal Technology, Shield AI). The codebase is production-hardened: **2,312 backend specs, 678 frontend tests across 91 files, 15 Playwright E2E scenarios**, Pundit authorization on every endpoint, and CI that gates on security scanning, type safety, and performance budgets before auto-deploying. Installable as a PWA with offline caching. Classification banner support (UNCLASSIFIED / CUI / SECRET).
+Built as a portfolio project targeting defense-tech engineering roles (Palantir, Anduril, Reveal Technology, Shield AI). The codebase is production-hardened: **a large backend RSpec suite spanning 192 spec files, 815 frontend tests across 105 files, and 55 Playwright tests across 15 spec files**, with Pundit authorization on every endpoint and CI that gates on security scanning, type safety, and performance budgets before auto-deploying. Installable as a PWA with offline caching. Classification banner support (UNCLASSIFIED / CUI / SECRET).
 
 **Live:** [https://resilience-ops.fly.dev](https://resilience-ops.fly.dev)
 
@@ -21,6 +21,17 @@ Built as a portfolio project targeting defense-tech engineering roles (Palantir,
 | Commander | commander@resilience.mil | password123 |
 | Operator | operator@resilience.mil | password123 |
 | Viewer | viewer@resilience.mil | password123 |
+
+---
+
+## Start Here
+
+- **Want the guided live walkthrough?** Read [docs/demo-guide.md](docs/demo-guide.md).
+- **Want the fastest code review path?** Start with the [Reviewer's Guide](#reviewers-guide--if-you-only-have-10-minutes) below, then [PORTFOLIO.md](PORTFOLIO.md).
+- **Want to run it locally?** Use [Quick Start (Docker)](#quick-start-docker) below, then [CONTRIBUTING.md](CONTRIBUTING.md) for full dev setup.
+- **Want design rationale?** Read the ADRs in [docs/](docs/).
+- **Public reviewer docs:** `README.md`, `PORTFOLIO.md`, `CONTRIBUTING.md`, `SECURITY.md`, and `docs/`.
+- **Internal execution docs:** `memory/` is the repo's AI-assisted handoff and planning area. It is not required to evaluate, demo, or run the product.
 
 ---
 
@@ -35,7 +46,7 @@ Busy? Open these five files. Each one is deliberately chosen to demonstrate a di
    Correlation-rule cooldowns use `UPDATE ... WHERE last_fired_at <= ?` with `update_all`. If `rows_updated == 0`, the claim lost; another worker already fired. Exactly-once semantics via row lock, not via distributed lock or idempotency key. The paired spec — [`rule_firing_service_spec.rb`](backend/spec/services/correlations/rule_firing_service_spec.rb) — proves the concurrency invariant, not just the happy path.
 
 3. **Multi-tenant authorization with named helpers** — [`backend/app/policies/application_policy.rb`](backend/app/policies/application_policy.rb)
-   Notice the helper pair `owned_area_of_operation_accessible?` vs `area_of_operation_surface_accessible?`. The first hides org-null global AOs; the second exposes them. Every Pundit policy uses a **named** helper, never the raw flag. This is the anti-pattern to the "let's just check `organization_id`" sprawl that multi-tenant systems accrete. 30 policies, one discipline, enforced by `verify_authorized` after-action.
+   Notice the helper pair `owned_area_of_operation_accessible?` vs `area_of_operation_surface_accessible?`. The first hides org-null global AOs; the second exposes them. Every Pundit policy uses a **named** helper, never the raw flag. This is the anti-pattern to the "let's just check `organization_id`" sprawl that multi-tenant systems accrete. 32 policies, one discipline, enforced by `verify_authorized` after-action.
 
 4. **AI trust boundary** — [`backend/app/services/recommendations/validator.rb`](backend/app/services/recommendations/validator.rb)
    LLM-produced recommendations run four checks before persistence: (1) surfaced entity exists, (2) each evidence item exists, (3) action-payload IDs exist, (4) payload IDs refer to the *same* entity as the surfaced entity. Check 4 is the one that matters — it prevents the model from displaying "Incident A" in the UI while carrying "Incident B" in the executable payload. LLM output is treated as untrusted input, same posture as user input.
@@ -61,6 +72,8 @@ docker compose up
 
 Open **http://localhost:3000**. Demo data (9 sites, 19 tasks, 7 signal types, vessels, incidents, correlation rules) is seeded automatically on first run.
 
+Need a walkthrough after boot? See [docs/demo-guide.md](docs/demo-guide.md).
+
 > **AI features** require an Anthropic API key:
 > ```bash
 > ANTHROPIC_API_KEY=sk-ant-... docker compose up
@@ -75,19 +88,19 @@ Open **http://localhost:3000**. Demo data (9 sites, 19 tasks, 7 signal types, ve
 ```
                           ┌──────────────────────────────────────────────┐
                           │            Frontend  (React 19 / TS)        │
-                          │  25 pages  ·  66 components  ·  58 hooks   │
+                          │  26 pages  ·  80 components  ·  64 hooks   │
                           │  Blueprint.js  ·  MapLibre GL  ·  CesiumJS │
                           └────────────────────┬─────────────────────────┘
                                                │  REST  +  SSE
                           ┌────────────────────▼─────────────────────────┐
                           │           Backend  (Rails 8 API)             │
-                          │  27 models  ·  30 policies  ·  63 services  │
-                          │  31 controllers  ·  13 jobs  ·  69 migrations│
+                          │  30 models  ·  32 policies  ·  75 services  │
+                          │  39 controllers  ·  16 jobs  ·  79 migrations│
                           └──┬──────────────────┬───────────────────┬────┘
                              │                  │                   │
                ┌─────────────▼──────┐  ┌───────▼────────┐  ┌──────▼──────────┐
                │  PostgreSQL 17     │  │  SolidQueue    │  │  SSE Broadcaster │
-               │  + PostGIS         │  │  18 recurring  │  │  PG LISTEN/      │
+               │  + PostGIS         │  │  20 recurring  │  │  PG LISTEN/      │
                │  UUID PKs          │  │  jobs          │  │  NOTIFY relay    │
                │  structure.sql     │  │                │  │                  │
                └────────────────────┘  └────────────────┘  └──────────────────┘
@@ -223,9 +236,9 @@ SSE (Server-Sent Events) with PostgreSQL `LISTEN`/`NOTIFY` relay for cross-proce
 
 | Layer | Count | Tool |
 |-------|-------|------|
-| Backend specs | 2,312 | RSpec |
-| Frontend unit/integration | 678 (91 files) | Vitest |
-| E2E critical paths | 15 scenarios | Playwright |
+| Backend suite | 192 spec files | RSpec |
+| Frontend unit/integration | 815 tests (105 files) | Vitest |
+| E2E critical paths | 55 tests (15 files) | Playwright |
 | Security scanning | 0 warnings | Brakeman + bundler-audit |
 | Type safety | 0 errors | TypeScript strict |
 | Lint | 0 errors | ESLint |
@@ -254,7 +267,7 @@ Key test categories:
 | Database | PostgreSQL 17 + PostGIS | UUID PKs, `structure.sql`, spatial queries (`ST_DWithin`), partial indexes |
 | Background jobs | SolidQueue | In-process, no Redis dependency, recurring schedule via `recurring.yml` |
 | Real-time | SSE + PG LISTEN/NOTIFY | Unidirectional push, cross-process relay, HTTP/2 compatible |
-| Auth | JWT + bcrypt + Pundit + Rack::Attack | Stateless tokens, per-session revocation via `jti`, 30 authorization policies |
+| Auth | JWT + bcrypt + Pundit + Rack::Attack | Stateless tokens, per-session revocation via `jti`, 32 authorization policies |
 | AI | Anthropic Claude (tool-use) | Grounded summaries, ontology queries, recommendations with circuit breaker |
 | PWA | vite-plugin-pwa + Workbox | Offline-capable with smart precaching — app shell cached, map/globe assets on-demand, API network-first |
 | Observability | Sentry (graceful without DSN) + `OperationalStatus` | Error tracking + DB-backed health snapshots for jobs and feeds |
@@ -268,7 +281,7 @@ Key test categories:
 push to main
   ├── Frontend: tsc + ESLint + Vitest + build
   ├── Backend Security: Brakeman + bundler-audit
-  ├── Backend Tests: RSpec (2,312 examples against PostGIS 17)
+  ├── Backend Tests: RSpec against PostGIS 17
   ├── Globe Benchmark: Playwright perf budget against Dockerized app
   └── E2E: Playwright critical paths against Dockerized app
         │
@@ -321,7 +334,7 @@ Open **http://localhost:5173**. The Vite dev server proxies `/api/*` to the Rail
 ```bash
 # Backend
 cd backend
-bundle exec rspec                          # 2,312 examples
+bundle exec rspec                          # full backend suite
 bundle exec brakeman --no-progress -q      # security scan
 bundle exec bundler-audit check            # CVE check
 
@@ -329,7 +342,7 @@ bundle exec bundler-audit check            # CVE check
 cd frontend
 npx tsc --noEmit                           # type check
 yarn lint                                  # ESLint
-npx vitest run                             # 678 tests (91 files)
+npx vitest run                             # 815 tests (105 files)
 yarn build                                 # production build (tsc -b, stricter)
 ```
 
@@ -389,27 +402,27 @@ resilience/
 ├── frontend/                      # React 19 + TypeScript + Vite
 │   ├── src/
 │   │   ├── api/                   # 24 API client modules
-│   │   ├── components/            # 66 shared components (map/, dashboard/, shell/)
-│   │   ├── context/               # AuthContext, ReplayContext
-│   │   ├── hooks/                 # 58 hooks (data, engine, telemetry, replay)
-│   │   ├── pages/                 # 25 page components
+│   │   ├── components/            # 80 shared components (map/, dashboard/, shell/)
+│   │   ├── context/               # AuthContext, ReplayContext, ClassificationContext
+│   │   ├── hooks/                 # 64 hooks (data, engine, telemetry, replay)
+│   │   ├── pages/                 # 26 page components
 │   │   ├── lib/                   # Utilities (colors, coverage, formatters, signals)
-│   │   └── test/                  # 91 Vitest test files
-│   └── e2e/                       # 15 Playwright E2E scenarios
+│   │   └── test/                  # 105 Vitest test files
+│   └── e2e/                       # 15 Playwright spec files / 55 tests
 │
 └── backend/                       # Rails 8.1 API
     ├── app/
-    │   ├── controllers/api/       # 31 API controllers
-    │   ├── models/                # 27 ActiveRecord models
-    │   ├── policies/              # 30 Pundit authorization policies
-    │   ├── services/              # 63 service objects
-    │   └── jobs/                  # 13 background jobs
+    │   ├── controllers/api/       # 39 API controllers
+    │   ├── models/                # 30 ActiveRecord models
+    │   ├── policies/              # 32 Pundit authorization policies
+    │   ├── services/              # 75 service objects
+    │   └── jobs/                  # 16 background jobs
     ├── config/
-    │   └── recurring.yml          # 18 SolidQueue recurring job schedules
+    │   └── recurring.yml          # 20 SolidQueue recurring job schedules
     ├── db/
-    │   ├── migrate/               # 69 migrations
+    │   ├── migrate/               # 79 migrations
     │   └── structure.sql          # Committed PostGIS-aware schema
-    └── spec/                      # 2,312 RSpec examples
+    └── spec/                      # 192 RSpec spec files
 ```
 
 ---

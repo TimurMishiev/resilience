@@ -6,7 +6,7 @@ type: findings
 
 # Resilience — Open Findings
 
-Last reconciled with code: 2026-04-29
+Last reconciled with code: 2026-04-30
 
 The production-readiness program (`memory/project_production_readiness_plan.md`) is complete.
 Execution-context Phases 1–7 are complete.
@@ -29,9 +29,10 @@ _(No open P1 items.)_
   - Org/AO scoping is enforced in policies with request-level proof.
   - Multi-tenant admin UI and workspace management remain a future roadmap program, not an active defect.
 
-- SSE transport ceiling remains a future scale project, not a current blocker.
-  - Admission control, reconnect throttling, and scope refresh hardening are closed for the current Fly deployment target.
-  - Replacing thread-per-connection SSE is still future scale work if multi-machine or materially higher concurrency becomes a real target.
+- SSE transport ceiling remains a future scale project, not a current demo blocker.
+  - Fresh production smoke on Fly version 44 was clean after deploying the authenticated per-user SSE throttle fix.
+  - `/map` and `/globe` both rendered without stale-data or telemetry-offline warnings; the observed SSE stream opens returned `200`.
+  - Thread-per-connection SSE replacement is still future scale work if multi-machine or materially higher concurrency becomes a real target.
 
 ## P3 / Ongoing Hygiene
 

@@ -46,7 +46,7 @@ RSpec.describe "Api::Events", type: :request do
       expect(JSON.parse(response.body).fetch("errors").first).to match(/Too many live streams/)
     end
 
-    it "rate limits repeated stream opens from the same IP" do
+    it "rate limits repeated stream opens from the same authenticated user" do
       queue.close
 
       Rack::Attack::SSE_STREAM_OPENS_PER_MINUTE.times do
@@ -58,6 +58,22 @@ RSpec.describe "Api::Events", type: :request do
 
       expect(response).to have_http_status(:too_many_requests)
       expect(response.headers["Retry-After"]).to be_present
+    end
+
+    it "does not make authenticated users behind the same IP compete for one stream-open bucket" do
+      queue.close
+      other_user = create(:user)
+      other_token = JwtAuthenticatable.encode_sse(other_user.id)
+
+      (Rack::Attack::SSE_STREAM_OPENS_PER_MINUTE / 2 + 1).times do
+        get "/api/events", params: { token: sse_token }
+        expect(response).to have_http_status(:ok)
+      end
+
+      (Rack::Attack::SSE_STREAM_OPENS_PER_MINUTE / 2 + 1).times do
+        get "/api/events", params: { token: other_token }
+        expect(response).to have_http_status(:ok)
+      end
     end
 
     # ── Org-scoped SSE filtering ───────────────────────────────────────────────

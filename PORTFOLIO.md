@@ -19,7 +19,7 @@ Pick the budget that fits:
    [`backend/app/services/audit/event_writer.rb`](backend/app/services/audit/event_writer.rb).
 
 **What you're evaluating in 5 minutes:**
-- Does the demo actually work end-to-end (map + globe + replay + AI)?
+- Does the demo actually work end-to-end (map + globe + replay, and AI if Anthropic is available)?
 - Does the `EventWriter` code look like someone who understands transactional
   audit trails, or someone who wrapped `puts` in a service class?
 
@@ -87,8 +87,8 @@ git clone https://github.com/TimurMishiev/resilience.git
 cd resilience
 docker compose up                         # seeds demo data, opens localhost:3000
 # In another shell:
-cd backend && bundle exec rspec           # 2,312 examples against PostGIS
-cd frontend && npx vitest run             # 678 tests across 91 files
+cd backend && bundle exec rspec           # full backend suite against PostGIS
+cd frontend && npx vitest run             # 815 tests across 105 files
 ```
 
 ---
@@ -112,8 +112,8 @@ Use the live demo with the commander account. Do this sequence:
    types), dry-run it against historical signals, save.
 5. **AI Briefing** — ask for a briefing on any site. Notice that every
    entity reference the model cites resolves to a real record (see ADR-005
-   for why). Requires an `ANTHROPIC_API_KEY` — the live demo does not have
-   one configured, so run locally to exercise this surface:
+   for why). Requires a valid `ANTHROPIC_API_KEY`; if the live demo returns
+   unavailable, run locally to exercise this surface:
    `ANTHROPIC_API_KEY=sk-ant-... docker compose up`.
 6. **Replay** — set a past timestamp. Sites, tasks, alerts, readiness
    scores, AO overlays, and the map view all reconstruct historical state.
@@ -146,7 +146,7 @@ after looking at this code:
   written by someone who's seen hallucinated references cause bad
   operator decisions.
 
-- **Test quality over test count.** 2,312 backend specs and 678 frontend
+- **Test quality over test count.** A large backend RSpec suite and 815 frontend
   tests, but what matters is what they prove: org-isolation specs,
   scoped-access request specs, concurrency-invariant specs for the rule
   engine, adapter-level engine tests for the map/globe, role-boundary E2E
@@ -163,7 +163,7 @@ after looking at this code:
 
 A senior reviewer will find these before you do. Better to name them:
 
-- **`MapPage.tsx` is 847 lines** with 29 `useState` + 31 `useCallback`. It
+- **`MapPage.tsx` is 905 lines** with a large amount of page-level orchestration still concentrated in one file. It
   grew across five geospatial-tool additions without a refactor pass. The
   extraction (`useActiveMapTool` + per-tool hooks) is documented in the
   CTO evaluation as P4 but is currently gated on a sixth tool being

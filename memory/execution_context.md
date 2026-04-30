@@ -6,17 +6,22 @@ type: project
 
 # Resilience — Execution Context
 
-Last updated: 2026-04-22
+Last updated: 2026-04-30
 
 This file is the durable source of truth for project direction, execution sequencing, collaboration rules, and engineering expectations. It exists so Claude Code or Codex can continue work safely from the repo without relying on chat history.
 
 If this file disagrees with the code, trust the code first and then update this file.
 
-## Current State Snapshot (2026-04-22)
+## Current State Snapshot (2026-04-30)
 
-- Phases 1–7 are shipped. Latest roadmap sequencing (including Phase 7 slice list and post-Phase-7 remediation) lives in `memory/execution_handoff.md`.
-- Active work: audit-driven remediation. Band A (I1, G1, API1, D1) and Band B (I2, R1) shipped in `27831e1`; handoff rotation committed in `e2d02c2`. Remaining bands (C, D) are tracked in `.claude/skills/resilience-remediation/references/findings.md`.
-- Phase definitions below are preserved as the finished roadmap. Do not re-execute them. Any new roadmap phase must be added explicitly, not inferred.
+- Phases 1–7 are shipped.
+- Audit-driven remediation is closed. The old Band A/B/C/D framing is historical, not active execution guidance.
+- Current repo state is outreach hardening / proof closeout. Remaining real items are:
+  - operational AI restore (Anthropic credits/key state)
+  - deferred `MapPage.tsx` decomposition
+  - GPU-dependent map Playwright remaining local/manual by policy
+  - stakeholder-blocked item `4B`
+- Phase definitions below are preserved as finished roadmap history. Do not re-execute them.
 
 ## Project Direction
 
@@ -79,9 +84,12 @@ It is a serious operational product.
 
 ## Current Execution Rule
 
-Phases 0–7 are complete. Active work is audit-driven remediation tracked in `memory/execution_handoff.md` and the findings matrix at `.claude/skills/resilience-remediation/references/findings.md`.
+Phases 0–7 are complete. Audit remediation is complete. The active rule now is:
 
-Do not start a new roadmap phase without explicit user alignment. Remediation continues in the order Band A → B → C → D.
+- keep repo memory aligned with current code and production truth
+- fix only confirmed live blockers before new feature work
+- treat AI availability as an operational dependency, not a speculative code project
+- do not start a new roadmap phase without explicit user alignment
 
 ## Roadmap (shipped; kept for historical reference)
 

@@ -19,10 +19,10 @@ This directory holds the frontend. For project overview, architecture, UI stack,
 
 ## Layout
 
-- `src/pages/` — 25 page components (dashboard, map, globe, incidents, planning, replay, etc.)
-- `src/components/` — 65 shared components (map/, dashboard/, shell/, blueprint wrappers)
-- `src/hooks/` — 58 hooks (data fetching, engine bridges, telemetry, replay)
+- `src/pages/` — 26 page components (dashboard, map, globe, incidents, planning, replay, etc.)
+- `src/components/` — 80 shared components (map/, dashboard/, shell/, blueprint wrappers)
+- `src/hooks/` — 64 hooks (data fetching, engine bridges, telemetry, replay)
 - `src/api/` — 24 API client modules
-- `src/context/` — `AuthContext`, `ReplayContext`
-- `src/test/` — 90 Vitest test files
-- `e2e/` — 15 Playwright E2E scenarios
+- `src/context/` — `AuthContext`, `ReplayContext`, `ClassificationContext`
+- `src/test/` — 105 Vitest test files
+- `e2e/` — 15 Playwright spec files (55 tests)

@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-29 (Production live at https://resilience-ops.fly.dev/ on version 38 / commit `3e81336`, which closes the two remaining production QA defects from the outreach hardening pass: SSE reconnect churn now respects a 5s failed-open retry floor across events/signals/telemetry, and `/health` is route-gated so viewer/operator roles never mount the restricted page component. Post-deploy smoke on version 38 re-confirmed both fixes on production: commander `/map` no longer showed stale-data / telemetry-offline symptoms in the browser pass, and viewer `/health` showed the lockout UI without any restricted `/api/feed_health` or `/api/operational_health` 403s. Validated for this tranche: targeted Vitest 38/38 across the three SSE hook suites plus OperationalHealthPage/OperationalHealthRoutePage, `npx tsc --noEmit`, eslint on touched frontend files, `git diff --check`, and post-push gate suite green (`RSpec`, TypeScript, ESLint, Brakeman, bundler-audit, frontend build). Production AI remains an acknowledged operational-state issue (Anthropic credits/key state), separate from this code slice. Historical session arc below preserved for takeover continuity.)
+Last updated: 2026-04-30 (Repo HEAD `a2f08bd`; production live at https://resilience-ops.fly.dev/ on Fly version 44; working tree contains an uncommitted demo-readiness tranche: public-doc refresh plus the deployed authenticated SSE throttle isolation in `backend/config/initializers/rack_attack.rb`. Current truth: full frontend Vitest passes locally at 815/815, `npx tsc --noEmit` passes, production `/up` and `/login` return 200, viewer `/health` still shows the lockout UI without restricted backend calls, production replay smokes on `/map` + `/globe` pass, and a fresh commander browser smoke on version 44 showed clean `/map` and `/globe` live surfaces with observed SSE stream opens returning `200`. Production AI remains operationally unavailable. Historical session arc below preserved for takeover continuity.)
 
 ## Current Phase
 
@@ -33,10 +33,10 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**Post-deploy hardening pass — closed in production (2026-04-29).**
-Production now runs `3e81336` (Fly version 38). The prior
+**Demo-readiness hardening — public-doc refresh plus deployed SSE throttle isolation (2026-04-30).**
+Production currently reports Fly version 43. The prior
 `890a8d5` follow-up aligned `/` → `/sites` and added query-level
-`/health` gating; `3e81336` finishes the remaining production
+`/health` gating; `3e81336` finished the remaining production
 hardening by:
 - adding a 5s failed-open retry floor in
   `frontend/src/lib/sseBackoff.ts` and threading it through
@@ -47,20 +47,34 @@ hardening by:
   swapping the `/health` route to it, so non-commander roles never
   mount the restricted operational-health page component at all
 
-Fresh production smoke after deploying version 38 confirmed both
-behavioral fixes:
-- commander `/map` loaded without the stale-data banner or
-  `TELEMETRY OFFLINE` warning
-- viewer `/health` showed the lockout UI and did not emit restricted
-  `/api/feed_health` or `/api/operational_health` 403s
+Current production smoke on version 44 confirms:
+- viewer `/health` shows the lockout UI and does not emit restricted
+  `/api/feed_health` or `/api/operational_health` requests
+- production replay smokes for `/map` and `/globe` pass
+- production AI is still unavailable and degrades honestly
 
-Remaining debt after this dirty tranche stays explicit:
+The current dirty tranche addresses two things:
+- public reviewer/demo docs were refreshed and a dedicated
+  `docs/demo-guide.md` was added
+- Rack::Attack now defines authenticated per-user SSE token/open
+  throttles and makes the coarse IP throttles fallback-only for
+  anonymous or malformed SSE traffic
+
+Post-deploy production smoke on version 44 confirmed the SSE fix:
+- commander `/map` rendered without stale-data or `TELEMETRY OFFLINE`
+- commander sidebar navigation `/map` → `/globe` stayed clean
+- observed `/api/events`, `/api/signals/stream`, and
+  `/api/telemetry/stream` opens returned `200`
+
+Remaining debt / caveats stay explicit:
 - `MapPage.tsx` architecture size/decomposition debt
 - GPU-dependent map Playwright proof remains local/manual rather than
   CI-gated by deliberate decision
 - stakeholder-blocked item 4B
+- Anthropic availability for live AI demo surfaces
 
-There is no active backend/auth/correctness remediation slice left.
+There is no active broad remediation program left. The remaining live
+demo blocker is Anthropic availability.
 
 Hardening rotation timeline this session (newest first):
   - `ac626fb` — close the last paginated E2E-harness contract gap on
@@ -217,28 +231,27 @@ Standard Playwright production replay smokes now pass under the normal
 harness: `E2E_BASE_URL=https://resilience-ops.fly.dev npx playwright
 test e2e/replay-map.spec.ts e2e/replay-globe.spec.ts` => 2/2 green.
 
-**Next action:** restore Anthropic service availability for the live
-AI surfaces (`/briefing`, `/ontology`) by topping up credits and/or
+**Next action:** restore Anthropic service availability for the live AI
+surfaces (`/briefing`, `/ontology`) by topping up credits and/or
 rotating `ANTHROPIC_API_KEY` in Fly secrets if needed, then rerun a
-production AI smoke. After that, the only remaining items are
+production AI smoke. After that, the only remaining items should be
 documented non-blockers: deferred
 [`MapPage.tsx`](frontend/src/pages/MapPage.tsx) decomposition,
 GPU-dependent map Playwright remaining local/manual, and stakeholder-
 blocked roadmap item 8 (4B — access-pattern anomaly detection).
 
-### Production deploy state (2026-04-29 — TRUE state at close)
+### Production deploy state (2026-04-30 — current truth)
 
 **Live URL:** https://resilience-ops.fly.dev/
-**Live production commit:** `3e81336`
-**Current Fly app version:** `38`
-**Current Fly app-machine state:** 1 started, 2 auto-stopped
-(`min_machines_running = 1`), all healthy on `flyctl status`
-post-deploy.
-**Smoke verified:** `/up` 200, `/login` 200, commander `/map` live
-surface healthy, viewer `/health` lockout without restricted 403s.
-**Live fix at this tip:** SSE reconnect backoff hardening plus
-route-level `/health` gating, on top of the prior map/globe proof
-cleanup and frontend resilience/decomposition closures.
+**Repo HEAD:** `a2f08bd`
+**Current Fly app version:** `44`
+**Current Fly app-machine state:** 2 started, 1 auto-stopped,
+healthy on `flyctl status`.
+**Smoke verified:** `/up` 200, `/login` 200, viewer `/health`
+lockout without restricted backend calls, production replay smokes
+green, commander `/map` live clean, commander `/globe` live clean.
+**Current live caveat:** AI remains operationally unavailable until
+Anthropic availability is restored.
 
 **Fly secrets in production (verified via `flyctl secrets list`):**
 - `RAILS_MASTER_KEY` — pre-existing
@@ -1796,13 +1809,11 @@ Deferred from Phase 5: **5-2B-globe (optional) — globe alert evidence context*
 - `eec8439` — Phase 4 Slice 4c: site A/B compare
 - `7ba0155` — Phase 4 Slice 4c-followup: compare-tab hardening
 
-## In Progress
+## Historical Prior State (superseded)
 
 - Phase 7 remains closed.
-- Audit remediation is active under the **full bulletproof sweep**:
-  - Band D (F1, O1, J1, M1) — **shipped and pushed**
-  - Band C (MT1, MT2, MT3) — **shipped and pushed (manual scope-approval mode)**
-  - CTO P1 → P2 → (scope P3) → defer P4 — next
+- Audit remediation is no longer active; the bullets below are retained as
+  historical closure context only.
 - Band A (`I1`, `G1`, `API1`, `D1`) and Band B (`I2`, `R1`) — shipped in `27831e1`.
 - Band D `F1` — shipped in `43ea358`.
 - Band D `O1` — shipped in `e7eaccb`.

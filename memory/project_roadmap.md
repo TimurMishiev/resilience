@@ -63,23 +63,26 @@ This file tracks major future programs. It is not the active dirty-tree handoff 
 
 ## Current Major Tracks
 
-These are the real remaining programs. They are not “small hardening patches.”
+These are the real remaining programs.
 
 1. ~~Production readiness execution~~ — **COMPLETE** (2026-04-09)
 2. ~~Execution-context Phases 1–7~~ — **COMPLETE** (2026-04-22)
-3. Audit remediation — **active**
-   - Band A (I1, G1, API1, D1) and Band B (I2, R1) shipped in `27831e1`
-   - Band C (MT1 SSE org-scoping, MT2 recommendation context assembly, MT3 correlation target-site resolution) gated on multi-tenant shared deployment decision
-   - Band D (F1 BriefingPanel race, O1 metrics-latency window, J1 RevokedJwt pruning, M1 migration safety program) is lower-priority hardening
-4. Security/identity maturity (future)
+3. ~~Audit remediation~~ — **COMPLETE**
+4. Operational AI restore
+   - restore Anthropic credits/key so `/briefing` and `/ontology` are demo-live
+5. Frontend decomposition (deferred, on-demand)
+   - `MapPage.tsx` is the only deliberately deferred large-file debt
+6. GPU-proof policy / infra
+   - keep GPU-dependent map Playwright local/manual until a reliable GPU CI lane exists
+7. Security/identity maturity (future)
    - richer role modeling beyond current 4-role system
    - org admin vs platform admin separation
-5. Tenant/workspace isolation (future)
+8. Tenant/workspace isolation (future)
    - full multi-tenant admin UI and workspace management
    - domain-wide data scoping beyond current org/AO enforcement
-6. Frontend decomposition (future, on-demand)
-   - remaining large pages (`AlertTriagePage`, `GraphPage`, `SignalFeedPage`) if velocity demands it
-7. Spatial baseline/documentation cleanup
+9. Stakeholder-blocked `4B`
+   - access-pattern anomaly detection remains blocked on threat-model/product direction
+10. Spatial baseline/documentation cleanup
    - keep PostGIS-backed schema reality, local test setup, and comments/docs aligned
 
 ## Explicit Non-Goals For The Current Tracks

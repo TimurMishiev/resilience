@@ -126,22 +126,48 @@ class Rack::Attack
     ai_user_key(req) if req.path.start_with?("/api/ai")
   end
 
+  # Authenticated SSE traffic should not compete in one coarse shared-IP
+  # bucket. A single reviewer behind a corporate NAT must not inherit the
+  # reconnect history of every other authenticated user on that IP. Per-user
+  # buckets are the primary throttle for legitimate traffic; IP throttles
+  # remain as a fallback for anonymous or malformed requests.
+  SSE_TOKEN_USER_REQUESTS_PER_MINUTE  = ENV.fetch("SSE_TOKEN_USER_REQUESTS_PER_MINUTE", 120).to_i
+  SSE_TOKEN_USER_REQUESTS_PER_HOUR    = ENV.fetch("SSE_TOKEN_USER_REQUESTS_PER_HOUR", 3000).to_i
+  SSE_STREAM_USER_OPENS_PER_MINUTE    = ENV.fetch("SSE_STREAM_USER_OPENS_PER_MINUTE", 120).to_i
+  SSE_STREAM_USER_OPENS_PER_HOUR      = ENV.fetch("SSE_STREAM_USER_OPENS_PER_HOUR", 3000).to_i
+
+  throttle("sse-token/user/minute", limit: SSE_TOKEN_USER_REQUESTS_PER_MINUTE, period: 60) do |req|
+    sse_token_user_key(req)
+  end
+
+  throttle("sse-token/user/hour", limit: SSE_TOKEN_USER_REQUESTS_PER_HOUR, period: 3600) do |req|
+    sse_token_user_key(req)
+  end
+
+  throttle("sse-stream-open/user/minute", limit: SSE_STREAM_USER_OPENS_PER_MINUTE, period: 60) do |req|
+    sse_stream_user_key(req)
+  end
+
+  throttle("sse-stream-open/user/hour", limit: SSE_STREAM_USER_OPENS_PER_HOUR, period: 3600) do |req|
+    sse_stream_user_key(req)
+  end
+
   # SSE token minting and stream opens are inexpensive individually but can
   # overwhelm Puma threads if a client reconnects in a tight loop.
   throttle("sse-token/ip/minute", limit: SSE_TOKEN_REQUESTS_PER_MINUTE, period: 60) do |req|
-    req.ip if req.path == "/api/sse_token" && req.post?
+    sse_token_ip_key(req)
   end
 
   throttle("sse-token/ip/hour", limit: SSE_TOKEN_REQUESTS_PER_HOUR, period: 3600) do |req|
-    req.ip if req.path == "/api/sse_token" && req.post?
+    sse_token_ip_key(req)
   end
 
   throttle("sse-stream-open/ip/minute", limit: SSE_STREAM_OPENS_PER_MINUTE, period: 60) do |req|
-    req.ip if sse_stream_request?(req)
+    sse_stream_ip_key(req)
   end
 
   throttle("sse-stream-open/ip/hour", limit: SSE_STREAM_OPENS_PER_HOUR, period: 3600) do |req|
-    req.ip if sse_stream_request?(req)
+    sse_stream_ip_key(req)
   end
 
   # General API — 300 requests per IP per minute (generous for a dashboard).
@@ -203,15 +229,14 @@ class Rack::Attack
       ].include?(req.path)
     end
 
-    # Extracts the authenticated user id from the request for per-user
-    # throttling. Mirrors JwtAuthenticatable#extract_token's priority
+    # Extracts the authenticated user id from the request. Mirrors
+    # JwtAuthenticatable#extract_token's priority
     # (Authorization: Bearer header → _resilience_session cookie). Returns
-    # nil on any decode failure; per-user throttle simply no-ops and the
-    # per-IP throttle still applies.
+    # nil on any decode failure.
     #
     # decode_payload only performs a JWT signature check — no DB call, no
     # revocation check — so this is cheap to evaluate per request.
-    def ai_user_key(req)
+    def authenticated_user_key(req)
       token = req.get_header("HTTP_AUTHORIZATION").to_s.delete_prefix("Bearer ").strip
       token = Rack::Request.new(req.env).cookies["_resilience_session"].to_s.strip if token.blank?
       return nil if token.blank?
@@ -219,6 +244,46 @@ class Rack::Attack
       JwtAuthenticatable.decode_payload(token)[:sub]
     rescue StandardError
       nil
+    end
+
+    # AI endpoints use the regular session token carried in the Authorization
+    # header or cookie.
+    def ai_user_key(req)
+      authenticated_user_key(req)
+    end
+
+    def sse_token_user_key(req)
+      return nil unless req.path == "/api/sse_token" && req.post?
+
+      authenticated_user_key(req)
+    end
+
+    def sse_token_ip_key(req)
+      return nil unless req.path == "/api/sse_token" && req.post?
+      return nil if sse_token_user_key(req).present?
+
+      req.ip
+    end
+
+    def sse_stream_user_key(req)
+      return nil unless sse_stream_request?(req)
+
+      token = Rack::Request.new(req.env).params["token"].to_s.strip
+      return nil if token.blank?
+
+      payload = JwtAuthenticatable.decode_payload(token)
+      return nil unless payload[:sse_only]
+
+      payload[:sub]
+    rescue StandardError
+      nil
+    end
+
+    def sse_stream_ip_key(req)
+      return nil unless sse_stream_request?(req)
+      return nil if sse_stream_user_key(req).present?
+
+      req.ip
     end
 
     # Extracts the login email from a POST /api/auth/login body for

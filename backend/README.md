@@ -13,6 +13,6 @@ This directory holds the backend. For project overview, architecture, stack, dep
 - Run tests: `TEST_DATABASE_PORT=5434 bundle exec rspec`
 - Rebuild test DB: see the "Local test setup" section in [`../CLAUDE.md`](../CLAUDE.md)
 - Run server: `RAILS_MAX_THREADS=48 bundle exec rails server`
-- Policies: `app/policies/` (30 Pundit policies)
-- Services: `app/services/` (63 service objects)
-- Jobs + recurring schedules: `app/jobs/` + `config/recurring.yml` (13 job classes, 18 production schedules)
+- Policies: `app/policies/` (32 Pundit policies)
+- Services: `app/services/` (75 service objects)
+- Jobs + recurring schedules: `app/jobs/` + `config/recurring.yml` (16 job classes, 20 production schedules)
