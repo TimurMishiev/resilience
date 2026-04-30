@@ -53,45 +53,8 @@ jobs:
       - name: ESLint
         run: yarn lint
 
-      # Phase 2.2 fix: vitest 3.2.4 has an unbounded leak in its parent
-      # process. Diagnosis with --logHeapUsage confirmed individual test
-      # files peak at 50-150MB and drop cleanly, but the parent retains
-      # tinypool IPC state and never frees it. Stack trace at OOM points
-      # to tinypool/ProcessWorker.send + MessagePort. Empirically:
-      #
-      #   - Full suite (100+ files) at 6GB heap → OOM at 6045MB
-      #   - 4 shards × 6GB heap → shard 3/4 OOM at 6046MB (same ceiling!)
-      #
-      # The OOM hits the SAME ceiling regardless of file count, meaning
-      # the leak isn't proportional to file count — it's fixed-cost data
-      # structure(s) in vitest's reporter or tinypool that bloat to ~6GB
-      # then V8 mark-compact gives up (3000ms cycles freeing only 14MB).
-      #
-      # 4 shards still clustered the heavy page-level tests (MapOverlay
-      # Controls, PlanningPage, UsersPage, SiteDetailPage, IncidentDetail
-      # Page) into shard 3/4 by hash. Going to 8 shards distributes those
-      # heavy files across more parent processes, so no single parent
-      # accumulates enough state to hit the 6GB wall.
-      #
-      # Each shard runs sequentially in this job — only one node process
-      # at a time holds 6GB on ubuntu-latest's 7GB RAM. Production app
-      # does not use vitest. Long-term fix: upgrade vitest.
-      - name: Vitest unit tests (shard 1/8)
-        run: NODE_OPTIONS="--max-old-space-size=6144" yarn test --shard=1/8
-      - name: Vitest unit tests (shard 2/8)
-        run: NODE_OPTIONS="--max-old-space-size=6144" yarn test --shard=2/8
-      - name: Vitest unit tests (shard 3/8)
-        run: NODE_OPTIONS="--max-old-space-size=6144" yarn test --shard=3/8
-      - name: Vitest unit tests (shard 4/8)
-        run: NODE_OPTIONS="--max-old-space-size=6144" yarn test --shard=4/8
-      - name: Vitest unit tests (shard 5/8)
-        run: NODE_OPTIONS="--max-old-space-size=6144" yarn test --shard=5/8
-      - name: Vitest unit tests (shard 6/8)
-        run: NODE_OPTIONS="--max-old-space-size=6144" yarn test --shard=6/8
-      - name: Vitest unit tests (shard 7/8)
-        run: NODE_OPTIONS="--max-old-space-size=6144" yarn test --shard=7/8
-      - name: Vitest unit tests (shard 8/8)
-        run: NODE_OPTIONS="--max-old-space-size=6144" yarn test --shard=8/8
+      - name: Vitest unit tests
+        run: yarn test
 
       - name: Build
         run: yarn build
