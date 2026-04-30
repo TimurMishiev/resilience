@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-30 (Repo HEAD `1c3276e`; production live at https://resilience-ops.fly.dev/ on Fly version 44; working tree now contains MapPage decomposition tranche 2 on top of the already-pushed tranche 1. Current truth: full frontend Vitest passed locally at 815/815 on the clean base before this dirty slice, targeted decomposition validation remains green on the current tranche (`MapPage.test.tsx` 40/40 plus `useMapBenchmarkBridge.test.ts` 10/10, `npx tsc -b` clean, `git diff --check` clean), production `/up` and `/login` return 200, viewer `/health` shows the lockout UI without restricted backend calls, production replay smokes on `/map` + `/globe` pass, and a fresh commander browser smoke on version 44 showed clean `/map` and `/globe` live surfaces with observed SSE stream opens returning `200`. Production AI remains operationally unavailable. Historical session arc below preserved for takeover continuity.)
+Last updated: 2026-04-30 (Repo HEAD `8419734`; production live at https://resilience-ops.fly.dev/ on Fly version 44; working tree clean after MapPage decomposition tranche 2. Current truth: full frontend Vitest passed locally at 815/815 on the clean base before tranche 2, targeted tranche-2 validation passed (`MapPage.test.tsx` 40/40 plus `useMapBenchmarkBridge.test.ts` 10/10, `npx tsc -b` clean, `git diff --check` clean), production `/up` and `/login` return 200, viewer `/health` shows the lockout UI without restricted backend calls, production replay smokes on `/map` + `/globe` pass, and a fresh commander browser smoke on version 44 showed clean `/map` and `/globe` live surfaces with observed SSE stream opens returning `200`. Production AI remains operationally unavailable. Historical session arc below preserved for takeover continuity.)
 
 ## Current Phase
 
@@ -33,14 +33,14 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**MapPage decomposition — tests-first tranche 2 (2026-04-30).**
+**MapPage decomposition — tranche 2 committed (2026-04-30).**
 The public-doc refresh + authenticated SSE throttle isolation were
 committed and pushed at `3e7a5d6`; tranche 1 of `MapPage.tsx`
-decomposition then landed at `1c3276e`. Work has continued in a new
-dirty-tree tranche under the repo-owned
+decomposition then landed at `1c3276e`; tranche 2 is now committed at
+`8419734` under the repo-owned
 `resilience-map-page-decomposition` skill.
 
-Validated decomposition work currently in the dirty tree:
+Validated decomposition work now on `main`:
 - previously extracted from tranche 1:
   - `frontend/src/hooks/useMapToolState.ts`
   - `frontend/src/hooks/useMapContextPanelState.ts`
@@ -66,16 +66,15 @@ Validated decomposition work currently in the dirty tree:
 - reduced `frontend/src/pages/MapPage.tsx` from 905 lines to 461
   without changing page semantics
 
-Validation run on the current dirty slice:
+Validation for committed tranche 2:
 - `git diff --check` clean
 - `cd frontend && npx tsc -b` passes
 - `cd frontend && npx vitest run src/test/MapPage.test.tsx src/test/useMapBenchmarkBridge.test.ts --reporter=dot`
   → 50/50 green after the build-seam fixes
 
 Next recommended action:
-- run `gate` on the current dirty tree before any further extraction
-- if clean, commit/push tranche 2
-- only then choose the next substantial seam
+- start the next substantial `MapPage` seam from this clean base
+- keep Claude in reviewer/gate mode after 1–2 coherent sub-slices
 
 Production hardening context preserved below for continuity. The prior
 `890a8d5` follow-up aligned `/` → `/sites` and added query-level
