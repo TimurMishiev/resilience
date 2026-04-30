@@ -54,7 +54,17 @@ jobs:
         run: yarn lint
 
       - name: Vitest unit tests
-        run: yarn test
+        # Phase 1 workaround for the parent-process heap exhaustion. Every
+        # test file passes individually, but the vitest parent accumulates
+        # ~4GB of bookkeeping (results, timings, IPC channel state) by the
+        # time the last file completes. Default node heap is 4096MB so the
+        # parent OOMs during final-summary serialization on ubuntu-latest.
+        # 6144MB gives the parent ~50% headroom; ubuntu-latest has 7GB total
+        # RAM so this still leaves ~1GB for the OS. Phase 2 (root-cause
+        # diagnosis with --logHeapUsage) will determine whether the leak
+        # is in vitest internals (keep this workaround) or in app cleanup
+        # code (real fix that also benefits production).
+        run: NODE_OPTIONS="--max-old-space-size=6144" yarn test
 
       - name: Build
         run: yarn build
