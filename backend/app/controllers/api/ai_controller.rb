@@ -1,5 +1,13 @@
 module Api
   class AiController < BaseController
+    # All four AI endpoints are POST-shaped reads (LLM analysis with a
+    # natural-language body) — none mutate state. ontology_query and summary
+    # legitimately take as_of to scope the historical context the LLM sees.
+    # The base-controller replay-mutation guard treats POST+as_of as a
+    # mutation attempt by default; opt out here because these endpoints are
+    # part of the read surface despite their HTTP verb.
+    skip_before_action :reject_replay_mutations!
+
     # Both AI endpoints are commander-only — they make real Anthropic API calls
     # and the per-IP rate limit alone is insufficient if operators share an IP.
     before_action :require_commander!

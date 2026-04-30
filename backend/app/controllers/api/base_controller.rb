@@ -12,6 +12,13 @@ module Api
     include JwtAuthenticatable
     include Pundit::Authorization
     after_action :verify_authorized
+    # Defense-in-depth: replay mode is read-only. Frontend useReplayGuardedMutation
+    # is the primary block; this is the backend backstop so a non-browser caller
+    # (curl, automation) or a frontend regression cannot mutate live state under
+    # an as_of request. Audit chain remains causally correct either way (EventWriter
+    # uses Time.current), but operator intent ("I am viewing history") and server
+    # effect must agree.
+    before_action :reject_replay_mutations!
 
     # Append authenticated user_id to lograge's structured log line.
     def append_info_to_payload(payload)
@@ -51,6 +58,19 @@ module Api
     end
 
     private
+
+    def reject_replay_mutations!
+      return if request.get? || request.head?
+      return if params[:as_of].blank?
+
+      # The action never runs, so Pundit's after_action verify_authorized would
+      # raise AuthorizationNotPerformedError. Mark the request as having
+      # performed authorization so the after_action passes.
+      skip_authorization
+      render json: {
+        errors: ["Replay mode is read-only — mutations with as_of are not permitted"]
+      }, status: :forbidden
+    end
 
     # Parses the ?as_of= query param into a Time. Raises 400 on invalid input so
     # replay clients can never silently fall back to live data.
