@@ -106,7 +106,7 @@ Run the obvious checks for every meaningful sub-slice:
 
 ```text
 git diff --check
-cd frontend && npx tsc --noEmit
+cd frontend && npx tsc -b
 cd frontend && npx vitest run <targeted MapPage-related tests>
 ```
 
@@ -130,7 +130,7 @@ After every coherent extraction or behavior-preserving refactor step:
 
 1. run:
    - `git diff --check`
-   - `cd frontend && npx tsc --noEmit`
+   - `cd frontend && npx tsc -b`
    - `cd frontend && npx vitest run <targeted MapPage-related tests>`
 2. if any check fails, fix it immediately before touching the next slice
 3. do not stack a second unvalidated extraction on top of a failing first one

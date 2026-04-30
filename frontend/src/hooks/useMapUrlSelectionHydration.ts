@@ -3,7 +3,7 @@ import type { Location } from 'react-router-dom'
 import { assetDisplayPosition } from '../lib/assetPresentation'
 import { parseEntitySelectionRoute } from '../lib/entitySelectionRoute'
 import type { Asset, Signal, Site } from '../api/types'
-import type { TelemetryReading } from '../lib/telemetry'
+import type { TelemetryMap } from '../lib/telemetry'
 
 interface UseMapUrlSelectionHydrationParams {
   mapLoaded: boolean
@@ -11,7 +11,7 @@ interface UseMapUrlSelectionHydrationParams {
   sites: Site[]
   assets: Asset[]
   signals: Signal[]
-  readings: TelemetryReading[]
+  readings: TelemetryMap
   isReplaying: boolean
   flyTo: (center: [number, number], zoom: number) => void
   urlSelectionAppliedRef: MutableRefObject<boolean>

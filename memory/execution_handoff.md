@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-30 (Repo HEAD `3e7a5d6`; production live at https://resilience-ops.fly.dev/ on Fly version 44; working tree now contains a validated `MapPage.tsx` decomposition tranche on top of the already-pushed demo-readiness sync. Current truth: full frontend Vitest passes locally at 815/815 before the current dirty slice, targeted decomposition validation remains green (`MapPage.test.tsx` 40/40 plus `useMapBenchmarkBridge.test.ts` 10/10), `npx tsc --noEmit` passes, production `/up` and `/login` return 200, viewer `/health` shows the lockout UI without restricted backend calls, production replay smokes on `/map` + `/globe` pass, and a fresh commander browser smoke on version 44 showed clean `/map` and `/globe` live surfaces with observed SSE stream opens returning `200`. Production AI remains operationally unavailable. Historical session arc below preserved for takeover continuity.)
+Last updated: 2026-04-30 (Repo HEAD `1c3276e`; production live at https://resilience-ops.fly.dev/ on Fly version 44; working tree now contains MapPage decomposition tranche 2 on top of the already-pushed tranche 1. Current truth: full frontend Vitest passed locally at 815/815 on the clean base before this dirty slice, targeted decomposition validation remains green on the current tranche (`MapPage.test.tsx` 40/40 plus `useMapBenchmarkBridge.test.ts` 10/10, `npx tsc -b` clean, `git diff --check` clean), production `/up` and `/login` return 200, viewer `/health` shows the lockout UI without restricted backend calls, production replay smokes on `/map` + `/globe` pass, and a fresh commander browser smoke on version 44 showed clean `/map` and `/globe` live surfaces with observed SSE stream opens returning `200`. Production AI remains operationally unavailable. Historical session arc below preserved for takeover continuity.)
 
 ## Current Phase
 
@@ -33,38 +33,49 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**MapPage decomposition — tests-first tranche 1 (2026-04-30).**
+**MapPage decomposition — tests-first tranche 2 (2026-04-30).**
 The public-doc refresh + authenticated SSE throttle isolation were
-committed and pushed at `3e7a5d6`; production Fly version 44 is now
-ahead only by runtime state, not by code. Work immediately shifted
-into the deferred `frontend/src/pages/MapPage.tsx` architecture slice
-under the repo-owned `resilience-map-page-decomposition` skill.
+committed and pushed at `3e7a5d6`; tranche 1 of `MapPage.tsx`
+decomposition then landed at `1c3276e`. Work has continued in a new
+dirty-tree tranche under the repo-owned
+`resilience-map-page-decomposition` skill.
 
 Validated decomposition work currently in the dirty tree:
-- extracted map tool-orchestration state from `MapPage.tsx` into
-  `frontend/src/hooks/useMapToolState.ts`
-- extracted docked-panel keyboard/resize/open-close behavior into
-  `frontend/src/hooks/useMapContextPanelState.ts`
-- extracted benchmark/E2E bridge wiring into
-  `frontend/src/hooks/useMapPageDiagnostics.ts`
-- extracted URL/deep-link initial selection hydration into
-  `frontend/src/hooks/useMapUrlSelectionHydration.ts`
-- reduced `frontend/src/pages/MapPage.tsx` from 905 lines to 567
+- previously extracted from tranche 1:
+  - `frontend/src/hooks/useMapToolState.ts`
+  - `frontend/src/hooks/useMapContextPanelState.ts`
+  - `frontend/src/hooks/useMapPageDiagnostics.ts`
+  - `frontend/src/hooks/useMapUrlSelectionHydration.ts`
+- newly extracted in tranche 2:
+  - `frontend/src/hooks/useMapSelectionState.ts`
+    - tasks-by-site derivation
+    - selected site / asset / signal / vessel context
+    - replay-aware vessel track derivation
+    - selection-clear + transition invalidation callbacks
+  - `frontend/src/hooks/useMapPageData.ts`
+    - query/data-plane wiring
+    - replay/live signals selection
+    - breaches, confidence halos, chokepoints, telemetry
+    - coverage circles and replay pulses
+- fixed tranche-1/tranche-2 build-seam type issues:
+  - `useMapUrlSelectionHydration.ts` now types `readings` as `TelemetryMap`
+  - `useMapPageData.ts` now uses `useReplayParams` return shapes for
+    `asOfParam` and `signalQueryParams`
+  - decomposition skill updated to require `npx tsc -b`, not
+    `npx tsc --noEmit`, for tranche validation
+- reduced `frontend/src/pages/MapPage.tsx` from 905 lines to 461
   without changing page semantics
 
 Validation run on the current dirty slice:
 - `git diff --check` clean
-- `cd frontend && npx tsc --noEmit` passes
-- `cd frontend && npx vitest run src/test/MapPage.test.tsx --reporter=dot`
-  → 40/40 green after each extraction step
+- `cd frontend && npx tsc -b` passes
 - `cd frontend && npx vitest run src/test/MapPage.test.tsx src/test/useMapBenchmarkBridge.test.ts --reporter=dot`
-  → 50/50 green after the diagnostics extraction
+  → 50/50 green after the build-seam fixes
 
-Next recommended slice:
-- keep `MapPage.tsx` focused on data/selection/render only
-- next extraction target should be selection-derived panel state only
-  if it forms a meaningful ownership unit rather than a tiny wrapper;
-  otherwise leave it inline and move to the next substantial seam
+Next recommended action:
+- run `gate` on the current dirty tree before any further extraction
+- if clean, commit/push tranche 2
+- only then choose the next substantial seam
 
 Production hardening context preserved below for continuity. The prior
 `890a8d5` follow-up aligned `/` → `/sites` and added query-level
