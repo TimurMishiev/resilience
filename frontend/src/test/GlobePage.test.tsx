@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -63,6 +63,10 @@ const mockReplay = vi.hoisted(() => ({
 const vesselHookState = vi.hoisted(() => ({
   useVessels: vi.fn(),
   useVesselTracks: vi.fn(),
+}))
+
+const activeSiteConfidenceState = vi.hoisted(() => ({
+  calls: [] as Array<{ enabled?: boolean; refetchInterval?: number | false; asOf?: string }>,
 }))
 
 vi.mock('../hooks/useSites', () => ({
@@ -151,6 +155,36 @@ vi.mock('../hooks/useSignalRuleMatches', () => ({
   useActiveBreachSiteIds: () => ({
     data: { site_ids: ['site-1'] },
   }),
+}))
+
+vi.mock('../hooks/useActiveSiteConfidence', () => ({
+  useActiveSiteConfidence: (
+    params?: { as_of?: string },
+    options?: { enabled?: boolean; refetchInterval?: number | false },
+  ) => {
+    activeSiteConfidenceState.calls.push({
+      enabled: options?.enabled,
+      refetchInterval: options?.refetchInterval,
+      asOf: params?.as_of,
+    })
+    return { data: { summaries: [] } }
+  },
+}))
+
+vi.mock('../hooks/useAssetTrails', () => ({
+  useAssetTrails: () => [],
+}))
+
+vi.mock('../hooks/useEvidenceLinkedIds', () => ({
+  useEvidenceLinkedIds: () => ({
+    evidenceSignalIds: [],
+    evidenceSiteIds: [],
+  }),
+}))
+
+vi.mock('../hooks/useReferenceTimeMs', () => ({
+  useReferenceTimeMs: (asOf?: string | null) =>
+    asOf ? Date.parse(asOf) : Date.parse('2026-03-24T00:00:00.000Z'),
 }))
 
 // GlobePage now calls useRole() for the alerts-section canTriage gate. Mock
@@ -255,6 +289,8 @@ vi.mock('../components/GlobeInspectorPanel', () => ({
 
 import GlobePage from '../pages/GlobePage'
 
+const queryClients: QueryClient[] = []
+
 function LocationProbe() {
   const location = useLocation()
   return <div data-testid="location-search">{location.search}</div>
@@ -276,9 +312,10 @@ function ExternalNavigatorProbe() {
 function renderGlobePage(initialEntry = '/globe') {
   const queryClient = new QueryClient({
     defaultOptions: {
-      queries: { retry: false },
+      queries: { retry: false, gcTime: 0 },
     },
   })
+  queryClients.push(queryClient)
   window.history.replaceState(null, '', initialEntry)
 
   const renderTree = () => (
@@ -348,11 +385,15 @@ describe('GlobePage selection routing', () => {
     vesselHookState.useVesselTracks.mockReset()
     vesselHookState.useVessels.mockReturnValue({ data: { data: [] } })
     vesselHookState.useVesselTracks.mockReturnValue({ data: { data: [] } })
+    activeSiteConfidenceState.calls = []
     window.localStorage.clear()
   })
 
   afterEach(() => {
     vi.useRealTimers()
+    for (const queryClient of queryClients.splice(0)) {
+      queryClient.clear()
+    }
   })
 
   it('keeps the selected site inspector open after a self-authored route sync writes selection into the URL', async () => {
@@ -462,8 +503,6 @@ describe('GlobePage selection routing', () => {
   })
 
   it('preserves a deep-linked signal route while SSE has not yet delivered the signal', async () => {
-    vi.useFakeTimers()
-
     const view = renderGlobePage('/globe?signal_id=sig-1')
 
     expect(screen.getByTestId('location-search')).toHaveTextContent('?signal_id=sig-1')
@@ -490,17 +529,14 @@ describe('GlobePage selection routing', () => {
   })
 
   it('clears a deep-linked signal route after the SSE grace period expires with no delivery', async () => {
-    vi.useFakeTimers()
-
     renderGlobePage('/globe?signal_id=sig-never')
 
     expect(screen.getByTestId('location-search')).toHaveTextContent('?signal_id=sig-never')
 
-    await act(async () => {
-      vi.advanceTimersByTime(1500)
-    })
-
-    expect(screen.getByTestId('location-search')).toBeEmptyDOMElement()
+    await waitFor(
+      () => expect(screen.getByTestId('location-search')).toBeEmptyDOMElement(),
+      { timeout: 2000 },
+    )
   })
 
   it('clears a selected signal and route when the backing signal disappears after load', async () => {
@@ -532,12 +568,12 @@ describe('GlobePage selection routing', () => {
   it('gives an external same-signal retry a fresh SSE grace window in a long-lived session', async () => {
     // Mirror of the MapPage regression guard — this must prove the external
     // same-signal retry path, not the self-authored engine callback path.
-    vi.useFakeTimers()
-
     // Phase 1 — settle the grace window for sig-a.
     renderGlobePage('/globe?signal_id=sig-a')
-    await act(async () => { vi.advanceTimersByTime(1500) })
-    expect(screen.getByTestId('location-search')).toBeEmptyDOMElement()
+    await waitFor(
+      () => expect(screen.getByTestId('location-search')).toBeEmptyDOMElement(),
+      { timeout: 2000 },
+    )
 
     // Phase 2 — retry the SAME signal through the router. This keeps the route
     // authoritative and directly proves the location.key-scoped grace window.

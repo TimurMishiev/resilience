@@ -196,12 +196,17 @@ export default function GlobePage() {
   // the URL if the user hadn't manually picked something else in the
   // meantime. This makes layer-toggle behave as a UX visibility
   // control, not a destructive deselect.
+  const previousShowSignalsRef = useRef(showSignals)
   useEffect(() => {
+    const wasShowingSignals = previousShowSignalsRef.current
+    previousShowSignalsRef.current = showSignals
+
     if (!showSignals) {
       setSelectedSignalId(null)
       return
     }
     if (selectedSignalId) return
+    if (wasShowingSignals) return
     const { signalId } = parseEntitySelectionRoute(location.search)
     if (signalId) setSelectedSignalId(signalId)
   }, [location.search, selectedSignalId, setSelectedSignalId, showSignals])
