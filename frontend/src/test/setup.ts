@@ -5,6 +5,6 @@ import { afterEach, vi } from 'vitest'
 afterEach(() => {
   cleanup()
   vi.useRealTimers()
-  vi.restoreAllMocks()
+  vi.clearAllMocks()
   vi.unstubAllGlobals()
 })
