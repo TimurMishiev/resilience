@@ -63,21 +63,25 @@ jobs:
       # channel.
       #
       # Sharding gives each shard a fresh parent process retaining only
-      # ~25 files of IPC state, well under any memory ceiling. No vitest
-      # config changes; default `threads` pool. Each step is independent
-      # and uses the default 4GB node heap (no NODE_OPTIONS needed).
+      # ~25 files of IPC state. The heaviest cluster (shard 3/4) holds
+      # the map/globe/page-level component tests, whose parent retention
+      # exceeds 4GB even on a 25-file slice — observed in CI run
+      # 25146220179. Bumping each shard's heap to 6GB gives ~4× the
+      # observed worst-case retention as headroom. ubuntu-latest has 7GB
+      # total RAM; one shard runs at a time, so 6GB heap leaves ~1GB
+      # for the OS — workable.
       #
       # This is a vitest-specific workaround. The production app does
       # not use vitest, so no production impact. Long-term fix is to
       # upgrade vitest once a version with the IPC retention fix lands.
       - name: Vitest unit tests (shard 1/4)
-        run: yarn test --shard=1/4
+        run: NODE_OPTIONS="--max-old-space-size=6144" yarn test --shard=1/4
       - name: Vitest unit tests (shard 2/4)
-        run: yarn test --shard=2/4
+        run: NODE_OPTIONS="--max-old-space-size=6144" yarn test --shard=2/4
       - name: Vitest unit tests (shard 3/4)
-        run: yarn test --shard=3/4
+        run: NODE_OPTIONS="--max-old-space-size=6144" yarn test --shard=3/4
       - name: Vitest unit tests (shard 4/4)
-        run: yarn test --shard=4/4
+        run: NODE_OPTIONS="--max-old-space-size=6144" yarn test --shard=4/4
 
       - name: Build
         run: yarn build
