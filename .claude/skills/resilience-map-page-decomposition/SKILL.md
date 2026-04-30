@@ -118,6 +118,60 @@ Do not claim validation you did not run.
 
 If backend RSpec is still blocked by the PG17/local-schema issue, say so plainly and continue with the relevant frontend proof.
 
+## Review loop
+
+Do not use the whole-system `audit` skill after every tiny extraction.
+That is too blunt, too slow, and too noisy for an in-flight page refactor.
+
+Use this loop instead:
+
+### Per sub-slice (mandatory)
+After every coherent extraction or behavior-preserving refactor step:
+
+1. run:
+   - `git diff --check`
+   - `cd frontend && npx tsc --noEmit`
+   - `cd frontend && npx vitest run <targeted MapPage-related tests>`
+2. if any check fails, fix it immediately before touching the next slice
+3. do not stack a second unvalidated extraction on top of a failing first one
+
+### Per coherent tranche (mandatory)
+After 1–3 related sub-slices, or before any commit:
+
+1. run the `gate` skill against the current dirty tree
+2. resolve any P0/P1 before continuing
+3. resolve P2/P3 immediately if they are in-slice and cheap; otherwise record them explicitly in `memory/execution_handoff.md`
+4. only continue to the next tranche once gate says the current tranche is coherent
+
+### Milestone boundaries (selective)
+Use the whole-system `audit` skill only when one of these is true:
+
+- a major `MapPage` milestone landed
+- the refactor changed visible map behavior beyond the direct page seam
+- the work is about to be deployed
+- the whole app is about to be sent externally
+
+Default milestone examples:
+- regression-net complete
+- first major decomposition tranche complete
+- final `MapPage` tranche complete
+- pre-deploy / pre-outreach
+
+### Escalation rule
+
+If `gate` surfaces a likely cross-surface issue that `MapPage` tests do not prove,
+then pause the next extraction and escalate to `audit`.
+
+### Working rule
+
+The safe cadence is:
+
+`build slice -> validate -> gate -> fix findings -> continue`
+
+not
+
+`build slice -> audit whole app -> build slice -> audit whole app`
+
 ## Handoff discipline
 
 If you hit limits or need to stop mid-slice:
