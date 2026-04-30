@@ -36,6 +36,14 @@ RSpec.configure do |config|
   config.before(:suite) do
     DatabaseCleaner.strategy = :transaction
     DatabaseCleaner.clean_with(:truncation, except: %w[spatial_ref_sys])
+
+    # Telemetry readings is a date-partitioned table. The migration only
+    # creates partitions for the legacy-data window; tests that insert at
+    # Time.current would fail with "no partition of relation
+    # telemetry_readings found for row" the moment the suite is run after
+    # the last migration-created partition expires (manifested in CI
+    # daily after 2026-04-30). Ensure today + lookahead is always present.
+    Telemetry::PartitionManager.ensure_window!(Time.current) if defined?(Telemetry::PartitionManager)
   end
 
   config.around(:each) do |example|

@@ -103,7 +103,11 @@ RSpec.describe Telemetry::SimulatorService do
     end
 
     it "ensures the required telemetry partition before bulk insert" do
-      allow(Telemetry::PartitionManager).to receive(:ensure_window!)
+      # Spy with .and_call_original so the real partition creation runs;
+      # otherwise the subsequent insert_all! fails with "no partition of
+      # relation telemetry_readings found for row" because the stub
+      # neutralised the partition-ensurance step.
+      allow(Telemetry::PartitionManager).to receive(:ensure_window!).and_call_original
 
       service.send(:persist!, rows, occurred_at)
 
