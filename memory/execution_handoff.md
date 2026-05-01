@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-30 (Repo HEAD `a6295d2`; production live at https://resilience-ops.fly.dev/ on Fly version 44; working tree dirty only in this handoff rotation after MapPage decomposition tranche 6. Current truth: full frontend Vitest passed locally at 815/815 on the clean base before tranche 2, tranche-2 validation passed (`MapPage.test.tsx` 40/40 plus `useMapBenchmarkBridge.test.ts` 10/10, `npx tsc -b` clean, `git diff --check` clean), tranche 3 was committed/pushed at `4107a64`, tranche 4 was committed/pushed at `81f9a54` with handoff rotation at `9fbdb2e`, tranche 5 was committed/pushed at `350e532` with handoff rotation at `de8ac03`, and tranche 6 was committed locally at `a6295d2` after clean validation (`MapPage.test.tsx` 40/40 plus `useMapBenchmarkBridge.test.ts` 10/10, `npx tsc -b` clean, `git diff --check` clean). Production `/up` and `/login` return 200, viewer `/health` shows the lockout UI without restricted backend calls, production replay smokes on `/map` + `/globe` pass, and a fresh commander browser smoke on version 44 showed clean `/map` and `/globe` live surfaces with observed SSE stream opens returning `200`. Production AI remains operationally unavailable. Historical session arc below preserved for takeover continuity.)
+Last updated: 2026-04-30 (Repo HEAD `68cf547`; production live at https://resilience-ops.fly.dev/ on Fly version 44; working tree clean after MapPage decomposition tranche 6 and handoff rotation. Current truth: full frontend Vitest passes locally at 815/815 on the current base, tranche-2 validation passed (`MapPage.test.tsx` 40/40 plus `useMapBenchmarkBridge.test.ts` 10/10, `npx tsc -b` clean, `git diff --check` clean), tranche 3 was committed/pushed at `4107a64`, tranche 4 was committed/pushed at `81f9a54` with handoff rotation at `9fbdb2e`, tranche 5 was committed/pushed at `350e532` with handoff rotation at `de8ac03`, and tranche 6 was committed/pushed at `a6295d2` with handoff rotation at `68cf547` after clean validation (`MapPage.test.tsx` 40/40 plus `useMapBenchmarkBridge.test.ts` 10/10, `npx tsc -b` clean, `git diff --check` clean). Production `/up` and `/login` return 200, viewer `/health` shows the lockout UI without restricted backend calls, production replay smokes on `/map` + `/globe` pass, and a fresh commander browser smoke on version 44 showed clean `/map` and `/globe` live surfaces with observed SSE stream opens returning `200`. Production AI remains operationally unavailable. Historical session arc below preserved for takeover continuity.)
 
 ## Current Phase
 
@@ -33,7 +33,7 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**MapPage decomposition — tranche 6 committed locally, handoff rotation pending push (2026-04-30).**
+**MapPage decomposition — tranche 6 committed and pushed (2026-04-30).**
 The public-doc refresh + authenticated SSE throttle isolation were
 committed and pushed at `3e7a5d6`; tranche 1 of `MapPage.tsx`
 decomposition then landed at `1c3276e`; tranche 2 is now committed at
@@ -163,11 +163,16 @@ Validation for committed tranche 6:
 - `cd frontend && npx tsc -b` passes
 - `cd frontend && npx vitest run src/test/MapPage.test.tsx src/test/useMapBenchmarkBridge.test.ts --reporter=dot`
   → 50/50 green
+- `cd frontend && npx vitest run --reporter=dot`
+  → 815/815 green
 
 Next recommended action:
-- push the handoff rotation so `main` matches the local committed state
-- inspect the fresh clean base and stop if no further real seam remains
-- only continue decomposition if the next slice reduces genuine ownership complexity rather than creating wrapper churn
+- stop `MapPage` decomposition here unless a new concrete responsibility seam appears
+- current page shape is a wiring harness; further extraction now risks wrapper churn
+- next milestone work should be:
+  - production/browser smoke if needed for reassurance
+  - Anthropic restoration for live AI surfaces
+  - final demo/outreach prep
 
 Production hardening context preserved below for continuity. The prior
 `890a8d5` follow-up aligned `/` → `/sites` and added query-level
