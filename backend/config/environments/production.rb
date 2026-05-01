@@ -66,10 +66,13 @@ Rails.application.configure do
 
   # DNS rebinding protection — allowlist the Fly.io hostname and localhost for Docker.
   # The health check path is excluded so Fly's uptime probe is never blocked.
+  # EXTRA_HOSTS is an env-tunable comma-separated list used by transient
+  # deploys (e.g. resilience-loadtest.fly.dev for the Tranche B capacity
+  # test). Production resilience-ops never sets it; the default list holds.
   config.hosts = [
     "resilience-ops.fly.dev",
     "localhost",
     "127.0.0.1",
-  ]
+  ] + ENV.fetch("EXTRA_HOSTS", "").split(",").map(&:strip).reject(&:empty?)
   config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
 end

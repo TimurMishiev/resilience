@@ -29,17 +29,26 @@ set -euo pipefail
 BACKEND_HOST="${BACKEND_HOST:-127.0.0.1:3000}"
 LOGIN_EMAIL="${LOGIN_EMAIL:-loadtest-admin@loadtest.local}"
 LOGIN_PASSWORD="${LOGIN_PASSWORD:-loadtest-password-123}"
+# Auto-pick https when targeting Fly (force_https = true on the loadtest
+# deploy will 301 plain http and ab can't follow that cleanly). Override
+# explicitly if needed: SCHEME=http for a local dev server.
+if [ -z "${SCHEME:-}" ]; then
+  case "${BACKEND_HOST}" in
+    *.fly.dev*|*.flycast*) SCHEME=https ;;
+    *)                     SCHEME=http  ;;
+  esac
+fi
 
 # ── Output directory ────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RESULTS_DIR="${SCRIPT_DIR}/results/production-shape-$(date +%Y-%m-%d_%H%M%S)"
 mkdir -p "${RESULTS_DIR}"
 echo "Writing results to: ${RESULTS_DIR}"
-echo "Target: http://${BACKEND_HOST}"
+echo "Target: ${SCHEME}://${BACKEND_HOST}"
 
 # ── Health check ────────────────────────────────────────────────────────
 status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
-              "http://${BACKEND_HOST}/up" || echo "000")
+              "${SCHEME}://${BACKEND_HOST}/up" || echo "000")
 if [ "$status" != "200" ]; then
   echo "ERROR: Rails server not responding at ${BACKEND_HOST} (got: $status)"
   echo "Check the target is up: flyctl status --app resilience-loadtest"
@@ -59,7 +68,7 @@ EOF
 # either match this or set CORS_ORIGINS to include LOGIN_ORIGIN.
 LOGIN_ORIGIN="${LOGIN_ORIGIN:-http://localhost:5173}"
 
-curl -s -X POST "http://${BACKEND_HOST}/api/auth/login" \
+curl -s -X POST "${SCHEME}://${BACKEND_HOST}/api/auth/login" \
   -H "Content-Type: application/json" \
   -H "Origin: ${LOGIN_ORIGIN}" \
   -d "@${LOGIN_BODY}" \
@@ -76,7 +85,7 @@ echo "Captured JWT (length=${#JWT})"
 
 # ── Capture a known site_id and incident_id from the API itself ─────────
 SITE_ID=$(curl -s -H "Cookie: _resilience_session=${JWT}" \
-                "http://${BACKEND_HOST}/api/sites" \
+                "${SCHEME}://${BACKEND_HOST}/api/sites" \
           | python3 -c 'import sys, json; d=json.load(sys.stdin); print(d["data"][0]["id"])' \
           2>/dev/null || true)
 if [ -z "$SITE_ID" ]; then
@@ -86,7 +95,7 @@ fi
 echo "Captured SITE_ID=${SITE_ID}"
 
 INCIDENT_ID=$(curl -s -H "Cookie: _resilience_session=${JWT}" \
-                    "http://${BACKEND_HOST}/api/incidents" \
+                    "${SCHEME}://${BACKEND_HOST}/api/incidents" \
               | python3 -c 'import sys, json; d=json.load(sys.stdin); print(d.get("data", [{}])[0].get("id", ""))' \
               2>/dev/null || true)
 if [ -z "$INCIDENT_ID" ]; then
@@ -116,7 +125,7 @@ run_ab() {
   echo ""
   echo "=== ${label}: GET ${path} — n=${n}, c=${c} ==="
   ab -n "${n}" -c "${c}" -H "Cookie: _resilience_session=${JWT}" \
-     "http://${BACKEND_HOST}${path}" 2>&1 \
+     "${SCHEME}://${BACKEND_HOST}${path}" 2>&1 \
      | tee "${outfile}" | tail -22
 }
 
@@ -171,7 +180,7 @@ mkdir -p "${SSE_LOGDIR}"
 echo "  fetching SSE tokens..." > "${SSE_OUT}"
 for i in $(seq 1 50); do
   TOKEN=$(curl -s -X POST -H "Cookie: _resilience_session=${JWT}" \
-                "http://${BACKEND_HOST}/api/sse_token" \
+                "${SCHEME}://${BACKEND_HOST}/api/sse_token" \
           | python3 -c 'import sys, json; d=json.load(sys.stdin); print(d.get("token", ""))' 2>/dev/null || true)
   if [ -z "$TOKEN" ]; then
     # Fallback: many SSE endpoints accept the session cookie directly. If
@@ -184,9 +193,9 @@ for i in $(seq 1 50); do
   # initial HTTP status hits stdout fast. Output lands in a per-connection
   # log we can summarise after.
   if [ -n "$TOKEN" ]; then
-    URL="http://${BACKEND_HOST}/api/events?token=${TOKEN}"
+    URL="${SCHEME}://${BACKEND_HOST}/api/events?token=${TOKEN}"
   else
-    URL="http://${BACKEND_HOST}/api/events"
+    URL="${SCHEME}://${BACKEND_HOST}/api/events"
   fi
   curl -s -N -m 30 -w "HTTP_CODE=%{http_code}\n" \
        -H "Cookie: _resilience_session=${JWT}" \

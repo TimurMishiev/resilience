@@ -1,0 +1,87 @@
+# Fly.io configuration for the Tranche B load-test app.
+#
+# This is NOT a long-lived deployment. The app is created, seeded with a
+# production-shape synthetic dataset (10K sites / 100K signals / 10K
+# audit events) via `rake load_test:seed`, exercised by
+# perf/load-test/run-production-shape.sh, the numbers captured in
+# docs/load-test-2026-05-production-shape.md, and the app destroyed.
+#
+# Sized to MATCH production resilience-ops (shared-cpu-1x, 1 GB) so the
+# numbers reflect what the live deploy can actually do — not what an
+# oversized test machine could do.
+#
+# The only meaningful divergence from production is the bypass env vars
+# scoped to single-source-IP load testing: API_IP_REQUESTS_PER_MINUTE
+# raised from 300 → 100000 and SSE_MAX_STREAMS_PER_USER/IP raised from
+# 12 → 100. Production resilience-ops never sets these.
+
+app            = "resilience-loadtest"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[deploy]
+  # Strip the `COMMENT ON EXTENSION postgis` line from structure.sql before
+  # loading the schema. Fly's Managed Postgres connects as `fly-user`, which
+  # is not the extension owner — that COMMENT is a Postgres metadata-only
+  # statement and rejecting it is harmless. Production resilience-ops
+  # connects as a superuser-equivalent and never hits this. Then prepare the
+  # DB (creates schema_migrations + loads structure.sql) and run any pending
+  # migrations on top.
+  release_command = "bash -c 'sed -i \"/COMMENT ON EXTENSION postgis/d\" db/structure.sql && bin/rails db:prepare'"
+
+[env]
+  RAILS_ENV                = "production"
+  RAILS_LOG_TO_STDOUT      = "true"
+  RAILS_SERVE_STATIC_FILES = "true"
+  # SolidQueue OFF for the load test. With it on, background jobs
+  # (Correlations::EvaluateRecentJob, GeofenceBreachService) compete with
+  # API requests for the 20 puma threads and produce noisy, ambient CPU
+  # contention that skews the percentile measurements. The test wants to
+  # measure HTTP request handling, not co-tenanted job throughput.
+  SOLID_QUEUE_IN_PUMA      = "false"
+  RAILS_MAX_THREADS        = "20"
+
+  # Production-divergent: bypass single-source-IP throttles for the
+  # capacity test. See backend/perf/load-test/run-production-shape.sh
+  # comment block for the full rationale.
+  API_IP_REQUESTS_PER_MINUTE = "100000"
+  SSE_MAX_STREAMS_PER_USER   = "100"
+  SSE_MAX_STREAMS_PER_IP     = "100"
+
+  # Match the harness's default LOGIN_ORIGIN so the
+  # browser_origin_permitted? check accepts the request. Production
+  # resilience-ops uses its own real origin; we use the dev default so
+  # the harness doesn't need a separate Origin override per environment.
+  CORS_ORIGINS = "http://localhost:5173"
+
+  # Allow this app's hostname through Rails' DNS-rebinding host authorization
+  # (production.rb hardcodes only resilience-ops.fly.dev). EXTRA_HOSTS is
+  # appended to config.hosts at boot.
+  EXTRA_HOSTS = "resilience-loadtest.fly.dev"
+
+  THRUSTER_HTTP_PORT = "8080"
+
+[http_service]
+  internal_port       = 8080
+  force_https         = true
+  auto_stop_machines  = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type       = "connections"
+    hard_limit = 25
+    soft_limit = 20
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval     = "15s"
+    method       = "GET"
+    path         = "/up"
+    timeout      = "5s"
+
+[[vm]]
+  size   = "shared-cpu-1x"
+  memory = "1gb"
