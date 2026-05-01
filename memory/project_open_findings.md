@@ -36,8 +36,7 @@ _(No open P1 items.)_
 
 ## P3 / Ongoing Hygiene
 
-- Frontend decomposition is mostly closed; only `MapPage.tsx`
-  remains as deferred decomp debt.
+- Frontend decomposition is substantially closed.
   - [EntityCard.tsx](/Users/timurmishiev/Desktop/Code/resilience/frontend/src/components/EntityCard.tsx)
     closed at `830ceb3` (635 → 92-line public surface,
     sub-modules in `entity-card/`).
@@ -46,11 +45,12 @@ _(No open P1 items.)_
     sibling files in `overlay-controls/`); 35 direct unit
     tests landed first as the regression net at `fdcda0b`.
   - [MapPage.tsx](/Users/timurmishiev/Desktop/Code/resilience/frontend/src/pages/MapPage.tsx)
-    (905 lines) is the only remaining large file. Per user
-    direction it stays deferred unless line-count architecture
-    debt is independently judged worth the blast radius before
-    Palantir review.
-  - This is not a production blocker.
+    was decomposed across six tranches from 905 lines to 351
+    with behavior preserved and the page reduced to a wiring
+    harness over named ownership seams.
+  - Current judgment: stop here unless a new concrete seam
+    appears. Further extraction now risks wrapper churn more
+    than architectural improvement.
 
 - GPU-dependent map Playwright proof remains intentionally local/manual,
   not CI-gated.

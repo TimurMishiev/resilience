@@ -163,12 +163,13 @@ after looking at this code:
 
 A senior reviewer will find these before you do. Better to name them:
 
-- **`MapPage.tsx` is 905 lines** with a large amount of page-level orchestration still concentrated in one file. It
-  grew across five geospatial-tool additions without a refactor pass. The
-  extraction (`useActiveMapTool` + per-tool hooks) is documented in the
-  CTO evaluation as P4 but is currently gated on a sixth tool being
-  planned. The honest read: this engineer ships features fast but has a
-  higher refactor-trigger threshold than I'd want at staff level.
+- **`MapPage.tsx` historically grew too far before it was refactored.**
+  It reached 905 lines before a dedicated six-tranche decomposition pass
+  reduced it to 351 lines and split the page into named orchestration,
+  display, data, selection, engine, and panel ownership seams. The
+  current file is in a good state; the honest signal is that the refactor
+  trigger happened later than I would want at staff level, then was paid
+  down decisively once it became the right work.
 
 - **ADR-002 (Horizontal Scaling) is still Proposed, not Accepted.** Single
   Fly machine today. The scaling architecture is designed but not

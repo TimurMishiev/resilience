@@ -70,19 +70,17 @@ These are the real remaining programs.
 3. ~~Audit remediation~~ — **COMPLETE**
 4. Operational AI restore
    - restore Anthropic credits/key so `/briefing` and `/ontology` are demo-live
-5. Frontend decomposition (deferred, on-demand)
-   - `MapPage.tsx` is the only deliberately deferred large-file debt
-6. GPU-proof policy / infra
+5. GPU-proof policy / infra
    - keep GPU-dependent map Playwright local/manual until a reliable GPU CI lane exists
-7. Security/identity maturity (future)
+6. Security/identity maturity (future)
    - richer role modeling beyond current 4-role system
    - org admin vs platform admin separation
-8. Tenant/workspace isolation (future)
+7. Tenant/workspace isolation (future)
    - full multi-tenant admin UI and workspace management
    - domain-wide data scoping beyond current org/AO enforcement
-9. Stakeholder-blocked `4B`
+8. Stakeholder-blocked `4B`
    - access-pattern anomaly detection remains blocked on threat-model/product direction
-10. Spatial baseline/documentation cleanup
+9. Spatial baseline/documentation cleanup
    - keep PostGIS-backed schema reality, local test setup, and comments/docs aligned
 
 ## Explicit Non-Goals For The Current Tracks

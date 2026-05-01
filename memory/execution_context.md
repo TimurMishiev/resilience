@@ -18,7 +18,7 @@ If this file disagrees with the code, trust the code first and then update this 
 - Audit-driven remediation is closed. The old Band A/B/C/D framing is historical, not active execution guidance.
 - Current repo state is outreach hardening / proof closeout. Remaining real items are:
   - operational AI restore (Anthropic credits/key state)
-  - deferred `MapPage.tsx` decomposition
+  - final demo / outreach proof closeout
   - GPU-dependent map Playwright remaining local/manual by policy
   - stakeholder-blocked item `4B`
 - Phase definitions below are preserved as finished roadmap history. Do not re-execute them.
@@ -89,6 +89,7 @@ Phases 0–7 are complete. Audit remediation is complete. The active rule now is
 - keep repo memory aligned with current code and production truth
 - fix only confirmed live blockers before new feature work
 - treat AI availability as an operational dependency, not a speculative code project
+- treat the `MapPage.tsx` decomposition as substantially closed unless a new concrete seam appears
 - do not start a new roadmap phase without explicit user alignment
 
 ## Roadmap (shipped; kept for historical reference)

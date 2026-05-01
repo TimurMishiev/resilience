@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-30 (Repo HEAD `68cf547`; production live at https://resilience-ops.fly.dev/ on Fly version 44; working tree clean after MapPage decomposition tranche 6 and handoff rotation. Current truth: full frontend Vitest passes locally at 815/815 on the current base, tranche-2 validation passed (`MapPage.test.tsx` 40/40 plus `useMapBenchmarkBridge.test.ts` 10/10, `npx tsc -b` clean, `git diff --check` clean), tranche 3 was committed/pushed at `4107a64`, tranche 4 was committed/pushed at `81f9a54` with handoff rotation at `9fbdb2e`, tranche 5 was committed/pushed at `350e532` with handoff rotation at `de8ac03`, and tranche 6 was committed/pushed at `a6295d2` with handoff rotation at `68cf547` after clean validation (`MapPage.test.tsx` 40/40 plus `useMapBenchmarkBridge.test.ts` 10/10, `npx tsc -b` clean, `git diff --check` clean). Production `/up` and `/login` return 200, viewer `/health` shows the lockout UI without restricted backend calls, production replay smokes on `/map` + `/globe` pass, and a fresh commander browser smoke on version 44 showed clean `/map` and `/globe` live surfaces with observed SSE stream opens returning `200`. Production AI remains operationally unavailable. Historical session arc below preserved for takeover continuity.)
+Last updated: 2026-05-01 (post-proof closeout and deploy to Fly version 45. Current truth: the current repo base passed full frontend proof locally under the CI-matching Node runtime (`npx tsc -b`, `yarn lint`, full Vitest 815/815, `yarn build`, `yarn audit` with only moderate findings); full backend proof also passed locally under Ruby 3.4.7 + Bundler 2.7.2 + PostgreSQL 17 (`bundle exec brakeman` 0 warnings, `bundle exec bundler-audit check --update` clean, `rails db:schema:load` against PG17, migration/`structure.sql` sync clean, full RSpec 2527/0). Production live at https://resilience-ops.fly.dev/ is now Fly version 45. Post-deploy smoke passed for viewer `/health`, replay `/map`, replay `/globe`, and `/map -> /globe -> /map` selection continuity. Production AI remains operationally unavailable and honestly returns `422 {\"errors\":[\"AI service is unavailable. Contact your administrator.\"]}` on both `/api/ai/summary` and `/api/ai/ontology_query`. Historical session arc below is preserved for takeover continuity.)
 
 ## Current Phase
 
@@ -33,146 +33,39 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**MapPage decomposition — tranche 6 committed and pushed (2026-04-30).**
-The public-doc refresh + authenticated SSE throttle isolation were
-committed and pushed at `3e7a5d6`; tranche 1 of `MapPage.tsx`
-decomposition then landed at `1c3276e`; tranche 2 is now committed at
-`8419734` under the repo-owned
-`resilience-map-page-decomposition` skill.
+**Proof closeout and deploy are complete.**
 
-Validated decomposition work now on `main`:
-- previously extracted from tranche 1:
-  - `frontend/src/hooks/useMapToolState.ts`
-  - `frontend/src/hooks/useMapContextPanelState.ts`
-  - `frontend/src/hooks/useMapPageDiagnostics.ts`
-  - `frontend/src/hooks/useMapUrlSelectionHydration.ts`
-- newly extracted in tranche 2:
-  - `frontend/src/hooks/useMapSelectionState.ts`
-    - tasks-by-site derivation
-    - selected site / asset / signal / vessel context
-    - replay-aware vessel track derivation
-    - selection-clear + transition invalidation callbacks
-  - `frontend/src/hooks/useMapPageData.ts`
-    - query/data-plane wiring
-    - replay/live signals selection
-    - breaches, confidence halos, chokepoints, telemetry
-    - coverage circles and replay pulses
-- fixed tranche-1/tranche-2 build-seam type issues:
-  - `useMapUrlSelectionHydration.ts` now types `readings` as `TelemetryMap`
-  - `useMapPageData.ts` now uses `useReplayParams` return shapes for
-    `asOfParam` and `signalQueryParams`
-  - decomposition skill updated to require `npx tsc -b`, not
-    `npx tsc --noEmit`, for tranche validation
-- reduced `frontend/src/pages/MapPage.tsx` from 905 lines to 461
-  without changing page semantics
+Current repo/runtime truth:
+- `MapPage.tsx` decomposition is substantially closed.
+  - Public surface reduced from 905 lines to 351 across six validated tranches.
+  - Current judgment: stop here unless a new concrete responsibility seam appears.
+  - Further extraction now risks wrapper churn more than architectural improvement.
+- Frontend proof completed locally on the current base:
+  - `cd frontend && npx tsc -b`
+  - `cd frontend && yarn lint`
+  - `cd frontend && yarn test`
+  - `cd frontend && yarn build`
+  - `cd frontend && yarn audit --level high` → only moderate findings, which matches CI pass policy
+- Backend proof completed locally under the CI-parity stack:
+  - Ruby 3.4.7 via `rbenv`
+  - PostgreSQL 17 on local port 5434 with PG17 client tools on `PATH`
+  - `cd backend && bundle exec brakeman --no-pager --exit-on-warn`
+  - `cd backend && bundle exec bundler-audit check --update`
+  - `cd backend && rails db:schema:load` against PG17
+  - migration / `db/structure.sql` sync check clean
+  - `cd backend && bundle exec rspec --format progress` → 2527 examples, 0 failures
+- Production deployed successfully to Fly version 45.
+- Post-deploy smoke completed:
+  - `flyctl status` healthy: 1 started, 2 auto-stopped as expected
+  - replay map smoke passed
+  - replay globe smoke passed
+  - map → globe → map selection continuity passed
+  - viewer `/health` shows lockout UI and makes no restricted backend calls
+  - commander-authenticated AI endpoints return honest `422 unavailable`
 
-Validation for committed tranche 2:
-- `git diff --check` clean
-- `cd frontend && npx tsc -b` passes
-- `cd frontend && npx vitest run src/test/MapPage.test.tsx src/test/useMapBenchmarkBridge.test.ts --reporter=dot`
-  → 50/50 green after the build-seam fixes
-
-Committed tranche 3 at `4107a64`:
-- extracted `frontend/src/hooks/useMapDisplayState.ts`
-  - owns local map display/control state:
-    - `mapStyle`
-    - signals / coverage / heatmap / chokepoints / trails / replay-pulses toggles
-    - trail-window minutes
-  - builds the `MapOverlayControls` prop contract from the current display state
-    plus live status (`loading`, `error`, `telemetryConnected`, `signalError`,
-    replay pulse count)
-- extracted `frontend/src/components/map/MapViewportSurface.tsx`
-  - owns viewport chrome composition:
-    - map container
-    - engine-failure overlay
-    - `MapOverlayControls` render
-- updated `frontend/src/components/map/MapOverlayControls.tsx` to export
-  `MapOverlayControlsProps`, so the control-plane hook and viewport component
-  share the exact public contract instead of duplicating prop types
-- reduced `frontend/src/pages/MapPage.tsx` from 461 lines to 419 lines
-  without changing page semantics
-
-Validation for committed tranche 3:
-- `git diff --check` clean
-- `cd frontend && npx tsc -b` passes
-- `cd frontend && npx vitest run src/test/MapPage.test.tsx src/test/MapOverlayControls.test.tsx --reporter=dot`
-  → 75/75 green
-
-Committed tranche 4 at `81f9a54`:
-- extracted `frontend/src/components/map/MapContextPanelSurface.tsx`
-  - owns the docked context-panel surface:
-    - aside shell
-    - resize handle
-    - inline debrief mount
-    - selection-panels vs empty-state branch
-- updated `frontend/src/components/map/MapSelectionPanels.tsx` to export
-  `MapSelectionPanelsProps`, so the new context-panel surface shares the exact
-  selection-panel contract instead of duplicating it
-- reduced `frontend/src/pages/MapPage.tsx` from 419 lines to 399 lines
-  without changing page semantics
-- cumulative `MapPage.tsx` reduction across tranches 1–4:
-  905 lines → 399 lines (−56%)
-
-Validation for committed tranche 4:
-- `git diff --check` clean
-- `cd frontend && npx tsc -b` passes
-- `cd frontend && npx vitest run src/test/MapPage.test.tsx --reporter=dot`
-  → 40/40 green
-- `cd frontend && npx vitest run --reporter=dot`
-  → 815/815 green
-
-Committed handoff rotation after tranche 4 at `9fbdb2e`.
-
-Committed tranche 5 at `350e532`:
-- extracted `frontend/src/hooks/useMapSelectionOrchestration.ts`
-  - owns the selection orchestration plane except final map-ready URL hydration:
-    - route-backed entity selection sync
-    - evidence-linked ids
-    - derived selected site / asset / signal / vessel state
-    - selection clear + transition invalidation callbacks
-  - exposes the selection ids, setters, callbacks, evidence ids, and
-    `urlSelectionAppliedRef` back to `MapPage`
-- reduced `frontend/src/pages/MapPage.tsx` from 399 lines to 384 lines
-  without changing page semantics
-- cumulative `MapPage.tsx` reduction across tranches 1–5:
-  905 lines → 384 lines (−58%)
-
-Validation for committed tranche 5:
-- `git diff --check` clean
-- `cd frontend && npx tsc -b` passes
-- `cd frontend && npx vitest run src/test/MapPage.test.tsx --reporter=dot`
-  → 40/40 green
-
-Committed handoff rotation after tranche 5 at `de8ac03`.
-
-Committed tranche 6 at `a6295d2`:
-- extracted `frontend/src/hooks/useMapEngineOrchestration.ts`
-  - owns the engine/runtime orchestration plane:
-    - `useMapLibreEngine`
-    - map-ready URL hydration via `useMapUrlSelectionHydration`
-    - diagnostics / benchmark / E2E bridges via `useMapPageDiagnostics`
-  - intentionally returns only the page-owned runtime outputs still needed
-    by `MapPage` (`mapLoaded`, `engineError`, `retryEngine`, `resize`)
-- reduced `frontend/src/pages/MapPage.tsx` from 384 lines to 351 lines
-  without changing page semantics
-- cumulative `MapPage.tsx` reduction across tranches 1–6:
-  905 lines → 351 lines (−61%)
-
-Validation for committed tranche 6:
-- `git diff --check` clean
-- `cd frontend && npx tsc -b` passes
-- `cd frontend && npx vitest run src/test/MapPage.test.tsx src/test/useMapBenchmarkBridge.test.ts --reporter=dot`
-  → 50/50 green
-- `cd frontend && npx vitest run --reporter=dot`
-  → 815/815 green
-
-Next recommended action:
-- stop `MapPage` decomposition here unless a new concrete responsibility seam appears
-- current page shape is a wiring harness; further extraction now risks wrapper churn
-- next milestone work should be:
-  - production/browser smoke if needed for reassurance
-  - Anthropic restoration for live AI surfaces
-  - final demo/outreach prep
+Current next action:
+- restore Anthropic availability if live AI is required for the demo
+- otherwise move into outreach/demo prep from this base
 
 Production hardening context preserved below for continuity. The prior
 `890a8d5` follow-up aligned `/` → `/sites` and added query-level
@@ -207,7 +100,6 @@ Post-deploy production smoke on version 44 confirmed the SSE fix:
   `/api/telemetry/stream` opens returned `200`
 
 Remaining debt / caveats stay explicit:
-- `MapPage.tsx` architecture size/decomposition debt
 - GPU-dependent map Playwright proof remains local/manual rather than
   CI-gated by deliberate decision
 - stakeholder-blocked item 4B
@@ -374,17 +266,16 @@ test e2e/replay-map.spec.ts e2e/replay-globe.spec.ts` => 2/2 green.
 **Next action:** restore Anthropic service availability for the live AI
 surfaces (`/briefing`, `/ontology`) by topping up credits and/or
 rotating `ANTHROPIC_API_KEY` in Fly secrets if needed, then rerun a
-production AI smoke. After that, the only remaining items should be
-documented non-blockers: deferred
-[`MapPage.tsx`](frontend/src/pages/MapPage.tsx) decomposition,
-GPU-dependent map Playwright remaining local/manual, and stakeholder-
-blocked roadmap item 8 (4B — access-pattern anomaly detection).
+production AI smoke. After that, the remaining items should be the
+documented non-blockers: GPU-dependent map Playwright remaining
+local/manual and stakeholder-blocked roadmap item 8 (4B —
+access-pattern anomaly detection).
 
 ### Production deploy state (2026-04-30 — current truth)
 
 **Live URL:** https://resilience-ops.fly.dev/
 **Repo HEAD:** `a2f08bd`
-**Current Fly app version:** `44`
+**Current Fly app version:** `45`
 **Current Fly app-machine state:** 2 started, 1 auto-stopped,
 healthy on `flyctl status`.
 **Smoke verified:** `/up` 200, `/login` 200, viewer `/health`
