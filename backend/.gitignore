@@ -34,8 +34,10 @@
 
 # Ad-hoc load-test run results. Committed baselines (e.g.
 # 2026-04-25_baseline) are explicit — timestamped runs are ad-hoc and
-# pollute git status. Re-add specific runs with `git add -f` if a result
-# warrants permanent inclusion.
-/perf/load-test/results/20*/
+# pollute git status. The first pattern matches only date_HHMMSS dirs
+# (e.g. 2026-05-01_031149) so dirs ending in _baseline (or any other
+# explicit suffix) stay committable. Re-add specific runs with
+# `git add -f` if a result warrants permanent inclusion.
+/perf/load-test/results/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]_[0-9][0-9][0-9][0-9][0-9][0-9]/
 /perf/load-test/results/production-shape-*/
 
