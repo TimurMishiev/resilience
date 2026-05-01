@@ -151,7 +151,7 @@ Read after broad code discovery:
 memory/execution_context.md
 memory/execution_handoff.md
 memory/project_resilience.md
-memory/project_roadmap.md
+.claude/memory/project_roadmap.md
 memory/project_open_findings.md
 ```
 

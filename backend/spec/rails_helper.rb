@@ -46,7 +46,18 @@ RSpec.configure do |config|
     Telemetry::PartitionManager.ensure_window!(Time.current) if defined?(Telemetry::PartitionManager)
   end
 
+  # Examples tagged `db_concurrency: true` need data to be visible to threads
+  # other than the main test connection. The default :transaction strategy
+  # wraps each example in a transaction on the primary connection — invisible
+  # to a second thread that checks out its own connection. Switch to
+  # truncation locally for those examples; the (small) cost is that the test
+  # commits and we pay a truncation pass after.
   config.around(:each) do |example|
+    if example.metadata[:db_concurrency]
+      DatabaseCleaner.strategy = :truncation, { except: %w[spatial_ref_sys] }
+    else
+      DatabaseCleaner.strategy = :transaction
+    end
     DatabaseCleaner.cleaning { example.run }
   end
 

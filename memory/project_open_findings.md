@@ -8,7 +8,8 @@ type: findings
 
 Last reconciled with code: 2026-05-01
 
-The production-readiness program (`memory/project_production_readiness_plan.md`) is complete.
+The production-readiness program is complete (closed plan archived under
+`.claude/memory/project_production_readiness_plan.md`).
 Execution-context Phases 1–7 are complete.
 
 The audit-remediation backlog is **closed**. The merged findings matrix in:

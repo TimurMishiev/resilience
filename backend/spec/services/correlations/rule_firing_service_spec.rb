@@ -663,4 +663,95 @@ RSpec.describe Correlations::RuleFiringService do
       expect(SignalRuleMatch.count).to eq(1)
     end
   end
+
+  # ── Concurrent cooldown claim (two real threads racing) ────────────────────
+  #
+  # The cooldown contract claims that two simultaneous calls cannot both fire
+  # a rule. The atomic primitive is the conditional UPDATE inside the
+  # service's transaction:
+  #
+  #   UPDATE correlation_rules
+  #      SET last_fired_at = now()
+  #    WHERE id = ?
+  #      AND (last_fired_at IS NULL OR last_fired_at <= cutoff)
+  #
+  # Postgres acquires a row-level lock on the matching row; a second
+  # transaction's UPDATE blocks until the first commits, then re-evaluates
+  # the WHERE clause and matches zero rows. The service raises
+  # CooldownActive on a zero-row result and the transaction rolls back.
+  #
+  # Until now this was proved only with travel_to + sequential calls — which
+  # exercises the WHERE-clause logic but not the lock-and-re-evaluate part
+  # under genuine concurrency. The interview-grade ambush is exactly that
+  # gap. This spec spawns two threads, blocks them at a CountDownLatch, then
+  # releases them simultaneously and asserts (a) exactly one ServiceResult
+  # is success, (b) exactly one SignalRuleMatch row exists, (c) only one
+  # Task was created, (d) the loser sees the canonical "cooldown" error.
+  #
+  # Tagged db_concurrency: true so rails_helper.rb switches to truncation —
+  # data created in the example must be visible from threads holding their
+  # own DB connections (see hook in spec/rails_helper.rb).
+  describe "concurrent cooldown claim", db_concurrency: true do
+    # Build the rule + site + signal eagerly so the threads see committed
+    # data. Each thread uses with_connection to check out its own
+    # connection from the pool.
+    let!(:concurrent_site) do
+      create(:site, name: "Concurrency Site", latitude: 51.5, longitude: 0.0)
+    end
+    let!(:concurrent_signal) do
+      create(:external_signal,
+             lat: 51.5, lng: 0.1,
+             signal_type: "seismic_event",
+             source: "usgs_seismic")
+    end
+    let!(:concurrent_rule) do
+      create(:correlation_rule,
+             name:             "Concurrent Cooldown Rule",
+             cooldown_minutes: 60,
+             last_fired_at:    nil,
+             conditions:       { "signal_type" => "seismic_event", "proximity_km" => 100 },
+             actions:          { "create_task" => { "title" => "Concurrent alert", "priority" => "normal" } })
+    end
+
+    it "lets exactly one of two simultaneous calls win the cooldown lock" do
+      latch   = Concurrent::CountDownLatch.new(1)
+      results = Concurrent::Array.new
+      errors  = Concurrent::Array.new
+
+      threads = 2.times.map do
+        Thread.new do
+          ActiveRecord::Base.connection_pool.with_connection do
+            latch.wait
+            results << described_class.call(
+              rule:   concurrent_rule,
+              signal: concurrent_signal,
+              site:   concurrent_site,
+            )
+          rescue StandardError => e
+            errors << e
+          end
+        end
+      end
+
+      # Give both threads a moment to reach the latch before releasing.
+      sleep 0.1
+      latch.count_down
+      threads.each(&:join)
+
+      expect(errors).to be_empty, "threads raised: #{errors.map { |e| "#{e.class}: #{e.message}" }.join('; ')}"
+      expect(results.size).to eq(2)
+
+      successes = results.count { |r| r.success }
+      failures  = results.reject { |r| r.success }
+
+      expect(successes).to eq(1), "expected exactly one winner, got #{successes} successes / #{failures.size} failures"
+      expect(failures.size).to eq(1)
+      expect(failures.first.errors).to eq(["cooldown"])
+
+      # And the side-effects honour the single winner: one match, one task.
+      expect(SignalRuleMatch.where(correlation_rule_id: concurrent_rule.id).count).to eq(1)
+      expect(Task.where(site_id: concurrent_site.id).count).to eq(1)
+      expect(concurrent_rule.reload.last_fired_at).to be_present
+    end
+  end
 end

@@ -43,8 +43,19 @@ property:
    readonly, fails on the trigger; trigger drop survives, fails on
    the chain.
 2. **Atomic cooldown under concurrency** —
-   `backend/app/services/correlations/rule_firing_service.rb`
-   (and its paired spec, which proves the invariant, not just the happy path)
+   `backend/app/services/correlations/rule_firing_service.rb`. The cooldown
+   gate is a single conditional `UPDATE` inside the firing transaction;
+   Postgres row-level locking serialises racing writers. Two paired specs
+   prove the invariant directly:
+   `spec/services/correlations/rule_firing_service_spec.rb` (`concurrent
+   cooldown claim` describe block) spawns two real threads behind a
+   `Concurrent::CountDownLatch`, releases them simultaneously, and asserts
+   exactly one ServiceResult is success and exactly one `SignalRuleMatch`
+   row exists; `spec/models/audit_event_spec.rb` (`chain integrity under
+   two-thread concurrency`) does the same for the per-org audit chain
+   advisory lock and runs `Audit::ChainVerifier` end-to-end as the final
+   assertion. Concurrency is proved with two threads racing for a real DB
+   lock, not with `travel_to` and sequential calls.
 3. **Multi-tenant authorization with named helpers** —
    `backend/app/policies/application_policy.rb`
 4. **AI trust boundary** — `backend/app/services/recommendations/validator.rb`
@@ -145,6 +156,20 @@ after looking at this code:
   checks (ADR-005) aren't written by someone who trusts LLMs. They're
   written by someone who's seen hallucinated references cause bad
   operator decisions.
+
+  **What this is and isn't.** The AI integration is *single-shot
+  validated tool-use*: the operator triggers a request, Claude returns a
+  structured response over the Anthropic SDK, the `Recommendations::Validator`
+  rejects anything whose entity references don't resolve to a real row at
+  the request's `as_of`, and the result is rendered. This is deliberately
+  not an agent loop (planner → executor → verifier with autonomous
+  re-planning). The current problem shape — operator-in-the-loop briefings
+  and recommendations against an audited operational picture — is better
+  served by a contained single-shot surface with a hard validation
+  boundary than by a multi-step agent whose failure modes are harder to
+  audit. ADR-005 names that scope explicitly. A genuine agent loop is
+  Phase-2 work for a different problem (e.g. autonomous incident triage
+  with rollback), not the framing this surface is claiming.
 
 - **Test quality over test count.** A large backend RSpec suite and 815 frontend
   tests, but what matters is what they prove: org-isolation specs,

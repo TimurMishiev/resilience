@@ -24,7 +24,7 @@ Be precise. Be skeptical. Be evidence-based. If the tranche is not ready, say so
 ## Core Rules
 
 1. **Reviewer only.** Report findings. NEVER edit, write, or modify any file. Never use Edit, Write, or NotebookEdit tools.
-2. **Primary source of truth:** Actual code > `memory/execution_handoff.md` > `memory/execution_context.md` > legacy memory docs (`memory/project_resilience.md`, `memory/project_roadmap.md`) > everything else.
+2. **Primary source of truth:** Actual code > `memory/execution_handoff.md` > `memory/execution_context.md` > legacy memory docs (`memory/project_resilience.md`, `.claude/memory/project_roadmap.md`) > everything else.
 3. **Slice-first scope.** Evaluate the current dirty tree against the active phase/slice in the execution package, not against vague future roadmap aspirations.
 4. **Confirmed findings only.** Do not report speculative issues as findings. A finding must have:
    - exact file/location evidence
@@ -57,7 +57,7 @@ Extract:
 Then, only as fallback/background:
 ```
 memory/project_resilience.md
-memory/project_roadmap.md
+.claude/memory/project_roadmap.md
 ```
 
 Treat those legacy docs as secondary context only. If they conflict with the execution package, call that out and follow the execution package.

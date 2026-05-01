@@ -14,10 +14,10 @@ import { useRole } from '../../hooks/useRole'
  * on spatial work. Role-gated: only commanders (via useRole.canAccessDebrief)
  * see the toggle at all; viewer-role users get no expand/collapse affordance.
  *
- * This is the reduced-scope implementation of CTO P3 — one slice, one
- * component, reusing the shared replay state. A full-workstation variant
- * would split replay authority per panel and coordinate across panes; that
- * remains a separate decision (see memory/cto_evaluation_roadmap.md §P3).
+ * This is the reduced-scope implementation: one slice, one component,
+ * reusing the shared replay state. A full-workstation variant would split
+ * replay authority per panel and coordinate across panes; that remains a
+ * separate, deferred decision.
  */
 export function MapInlineDebriefPanel() {
   const role = useRole()
