@@ -109,5 +109,23 @@ RSpec.describe Ai::ErrorClassifier do
       error = Anthropic::Errors::APIConnectionError.new(message: "boom", url: URI("https://api.anthropic.com"))
       expect(described_class.failure_tag(error)).to eq("transient")
     end
+
+    # Lock the documented design at error_classifier.rb:6-13 in code, not
+    # just in a comment. The classifier intentionally maps rate-limit
+    # errors to TRANSIENT (user retries; circuit breaker handles repeated
+    # failures); a future SDK upgrade or a refactor that splits rate-limit
+    # into its own bucket should be a deliberate decision tracked through
+    # this spec, not a silent change. Audit P3 closure (2026-05-01).
+    it "tags RateLimitError as transient (documented design — see error_classifier.rb:6-13)" do
+      error = Anthropic::Errors::RateLimitError.new(
+        url: URI("https://api.anthropic.com/v1/messages"),
+        status: 429,
+        headers: {},
+        body: { type: "error", error: { type: "rate_limit_error", message: "rate limited" } },
+        request: nil,
+        response: nil,
+      )
+      expect(described_class.failure_tag(error)).to eq("transient")
+    end
   end
 end

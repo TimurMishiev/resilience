@@ -21,6 +21,23 @@ module Briefings
     BANNER_BG   = "1a2332"
     BANNER_H    = 22  # points
 
+    # Mirror of Ai::SummaryService::ALLOWED_SUMMARY_TYPES. Both layers must
+    # stay aligned because the frontend `AiSummaryType` union
+    # (frontend/src/api/types.ts) maps 1:1 to these values. A divergence
+    # here would silently render a PDF whose title block says one thing
+    # while the briefing prose was generated for a different scope.
+    ALLOWED_SUMMARY_TYPES = %w[site_activity readiness_change leadership_briefing].freeze
+
+    # Citations are user-supplied audit_event UUIDs that get interpolated
+    # verbatim into the PDF citations section (see #add_citations_section).
+    # Prawn renders them as plain text, so there is no script-execution
+    # vector — but a malformed string (control chars, oversized blob,
+    # non-UUID label) would corrupt the citations list. Filter to canonical
+    # UUID-v4 shape and silently drop the rest. Filter (not reject) because
+    # citations are auxiliary; we'd rather render a slightly thinner
+    # citation list than fail the whole briefing.
+    UUID_PATTERN = /\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/i.freeze
+
     RISK_PALETTE = {
       "low"      => "27ae60",
       "moderate" => "d4a017",
@@ -30,13 +47,19 @@ module Briefings
 
     def initialize(summary:, citations:, context_counts:, summary_type:, site_name: nil)
       @summary        = summary.to_s
-      @citations      = Array(citations)
+      @citations      = sanitize_citations(citations)
       @context_counts = context_counts.transform_keys(&:to_sym)
       @summary_type   = summary_type.to_s
       @site_name      = site_name
     end
 
     def call
+      unless ALLOWED_SUMMARY_TYPES.include?(@summary_type)
+        return ServiceResult.failure(errors: [
+          "Invalid summary_type. Must be one of: #{ALLOWED_SUMMARY_TYPES.join(', ')}",
+        ])
+      end
+
       risk_data = fetch_risk_data
       pdf_bytes = render_pdf(risk_data)
       ServiceResult.success(pdf: pdf_bytes)
@@ -236,6 +259,13 @@ module Briefings
       pdf.stroke_horizontal_rule
       pdf.stroke_color "000000"
       pdf.move_down 14
+    end
+
+    # Filter raw citations input down to canonical UUID-shaped strings.
+    # Anything else (numeric IDs, free-form labels, control-char-laced
+    # strings, non-strings) is silently dropped. See UUID_PATTERN comment.
+    def sanitize_citations(raw)
+      Array(raw).select { |id| id.is_a?(String) && id.match?(UUID_PATTERN) }
     end
   end
 end
