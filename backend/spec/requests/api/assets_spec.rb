@@ -1,6 +1,6 @@
 require "rails_helper"
 
-RSpec.describe "Api::Assets", type: :request do
+RSpec.describe "Api::Assets", type: :request, openapi: true do
   let(:current_user) { create(:user, :commander) }
   let!(:site_a) { create(:site) }
   let!(:site_b) { create(:site) }
@@ -12,6 +12,7 @@ RSpec.describe "Api::Assets", type: :request do
     it "returns 200 with all assets in data array" do
       get "/api/assets", headers: auth_headers(current_user)
       expect(response).to have_http_status(:ok)
+      assert_response_schema_confirm(200)
       ids = JSON.parse(response.body)["data"].map { |a| a["id"] }
       expect(ids).to contain_exactly(vehicle.id, equipment.id, orphan.id)
     end

@@ -1,6 +1,6 @@
 require "rails_helper"
 
-RSpec.describe "Api::Readiness", type: :request do
+RSpec.describe "Api::Readiness", type: :request, openapi: true do
   let(:current_user) { create(:user, :commander) }
   let!(:site_a) { create(:site, name: "Alpha") }
   let!(:site_b) { create(:site, name: "Bravo") }
@@ -14,6 +14,7 @@ RSpec.describe "Api::Readiness", type: :request do
       it "returns 200 with readiness for all sites" do
         get "/api/readiness", headers: auth_headers(current_user)
         expect(response).to have_http_status(:ok)
+        assert_response_schema_confirm(200)
         body = JSON.parse(response.body)
         data = body["data"]
         expect(data.length).to eq(2)

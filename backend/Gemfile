@@ -69,6 +69,12 @@ group :development, :test do
   gem "database_cleaner-active_record"
   gem "simplecov", require: false
 
+  # OpenAPI contract enforcement (Tranche E2 of the 87→90 plan).
+  # Validates request specs' responses against contracts/openapi.yaml so
+  # the API spec stays a load-bearing contract instead of decoration.
+  # Test-only — never loaded in production.
+  gem "committee-rails", require: false
+
 
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
   gem "debug", platforms: %i[ mri windows ], require: "debug/prelude"

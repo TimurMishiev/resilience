@@ -1,6 +1,6 @@
 require "rails_helper"
 
-RSpec.describe "Api::Sites", type: :request do
+RSpec.describe "Api::Sites", type: :request, openapi: true do
   let(:current_user) { create(:user, :commander) }
   let!(:alpha)   { create(:site, name: "Alpha", status: "active") }
   let!(:bravo)   { create(:site, name: "Bravo", status: "active") }
@@ -10,6 +10,7 @@ RSpec.describe "Api::Sites", type: :request do
     it "returns 200 with all sites in data array" do
       get "/api/sites", headers: auth_headers(current_user)
       expect(response).to have_http_status(:ok)
+      assert_response_schema_confirm(200)
       ids = JSON.parse(response.body)["data"].map { |s| s["id"] }
       expect(ids).to contain_exactly(alpha.id, bravo.id, charlie.id)
     end
@@ -28,6 +29,7 @@ RSpec.describe "Api::Sites", type: :request do
 
     it "returns expected fields on each record" do
       get "/api/sites", headers: auth_headers(current_user)
+      assert_response_schema_confirm(200)
       site = JSON.parse(response.body)["data"].first
       expect(site.keys).to include("id", "name", "latitude", "longitude", "status", "created_at")
     end
@@ -74,6 +76,7 @@ RSpec.describe "Api::Sites", type: :request do
   describe "GET /api/sites/:id" do
     it "returns 200 with the site (no pagination wrapper)" do
       get "/api/sites/#{alpha.id}", headers: auth_headers(current_user)
+      assert_response_schema_confirm(200)
       expect(response).to have_http_status(:ok)
       body = JSON.parse(response.body)
       expect(body["id"]).to eq(alpha.id)

@@ -1,6 +1,6 @@
 require "rails_helper"
 
-RSpec.describe "Api::Tasks", type: :request do
+RSpec.describe "Api::Tasks", type: :request, openapi: true do
   let(:current_user) { create(:user, :commander) }
   let!(:site) { create(:site) }
 
@@ -12,6 +12,7 @@ RSpec.describe "Api::Tasks", type: :request do
     it "returns 200 with all tasks in data array" do
       get "/api/tasks", headers: auth_headers(current_user)
       expect(response).to have_http_status(:ok)
+      assert_response_schema_confirm(200)
       ids = JSON.parse(response.body)["data"].map { |t| t["id"] }
       expect(ids).to include(task_new.id, task_resolved.id, task_other_site.id)
     end
