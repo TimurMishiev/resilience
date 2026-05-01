@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-05-01 (post-proof closeout and deploy to Fly version 45. Current truth: the current repo base passed full frontend proof locally under the CI-matching Node runtime (`npx tsc -b`, `yarn lint`, full Vitest 815/815, `yarn build`, `yarn audit` with only moderate findings); full backend proof also passed locally under Ruby 3.4.7 + Bundler 2.7.2 + PostgreSQL 17 (`bundle exec brakeman` 0 warnings, `bundle exec bundler-audit check --update` clean, `rails db:schema:load` against PG17, migration/`structure.sql` sync clean, full RSpec 2527/0). Production live at https://resilience-ops.fly.dev/ is now Fly version 45. Post-deploy smoke passed for viewer `/health`, replay `/map`, replay `/globe`, and `/map -> /globe -> /map` selection continuity. Production AI remains operationally unavailable and honestly returns `422 {\"errors\":[\"AI service is unavailable. Contact your administrator.\"]}` on both `/api/ai/summary` and `/api/ai/ontology_query`. Historical session arc below is preserved for takeover continuity.)
+Last updated: 2026-05-01 (post-proof closeout, deploy to Fly version 46, and joint Claude+Codex hardening sweep. Current truth: the current repo base passes full frontend proof locally under the CI-matching Node runtime (`npx tsc -b`, `yarn lint`, full Vitest 815/815, `yarn build`, `yarn audit --level high` clean — moderate findings are all transitive build/runtime deps documented in `project_open_findings.md`); full backend proof also passes locally under Ruby 3.4.7 + Bundler 2.7.2 + PostgreSQL 17 (`bundle exec brakeman` 0 warnings, `bundle exec bundler-audit check --update` clean, `rails db:schema:load` against PG17, migration/`structure.sql` sync clean, full RSpec 2527/0). Production live at https://resilience-ops.fly.dev/ is on Fly version 46. Post-deploy smoke passed for viewer `/health`, replay `/map`, replay `/globe`, and `/map -> /globe -> /map` selection continuity. Production AI remains operationally unavailable and honestly returns `422 {\"errors\":[\"AI service is unavailable. Contact your administrator.\"]}` on both `/api/ai/summary` and `/api/ai/ontology_query`. Historical session arc below is preserved for takeover continuity.)
 
 ## Current Phase
 
@@ -54,7 +54,7 @@ Current repo/runtime truth:
   - `cd backend && rails db:schema:load` against PG17
   - migration / `db/structure.sql` sync check clean
   - `cd backend && bundle exec rspec --format progress` → 2527 examples, 0 failures
-- Production deployed successfully to Fly version 45.
+- Production deployed successfully to Fly version 46.
 - Post-deploy smoke completed:
   - `flyctl status` healthy: 1 started, 2 auto-stopped as expected
   - replay map smoke passed
@@ -80,7 +80,7 @@ hardening by:
   swapping the `/health` route to it, so non-commander roles never
   mount the restricted operational-health page component at all
 
-Current production smoke on version 44 confirms:
+Current production smoke on version 46 confirms:
 - viewer `/health` shows the lockout UI and does not emit restricted
   `/api/feed_health` or `/api/operational_health` requests
 - production replay smokes for `/map` and `/globe` pass
@@ -93,7 +93,7 @@ The current dirty tranche addresses two things:
   throttles and makes the coarse IP throttles fallback-only for
   anonymous or malformed SSE traffic
 
-Post-deploy production smoke on version 44 confirmed the SSE fix:
+Post-deploy production smoke on version 46 confirmed the SSE fix:
 - commander `/map` rendered without stale-data or `TELEMETRY OFFLINE`
 - commander sidebar navigation `/map` → `/globe` stayed clean
 - observed `/api/events`, `/api/signals/stream`, and

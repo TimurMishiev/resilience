@@ -6,7 +6,7 @@ type: findings
 
 # Resilience — Open Findings
 
-Last reconciled with code: 2026-04-30
+Last reconciled with code: 2026-05-01
 
 The production-readiness program (`memory/project_production_readiness_plan.md`) is complete.
 Execution-context Phases 1–7 are complete.
@@ -30,9 +30,25 @@ _(No open P1 items.)_
   - Multi-tenant admin UI and workspace management remain a future roadmap program, not an active defect.
 
 - SSE transport ceiling remains a future scale project, not a current demo blocker.
-  - Fresh production smoke on Fly version 44 was clean after deploying the authenticated per-user SSE throttle fix.
+  - Fresh production smoke on Fly version 46 was clean after deploying the authenticated per-user SSE throttle fix.
   - `/map` and `/globe` both rendered without stale-data or telemetry-offline warnings; the observed SSE stream opens returned `200`.
   - Thread-per-connection SSE replacement is still future scale work if multi-machine or materially higher concurrency becomes a real target.
+
+- Frontend `yarn audit` triage (2026-05-01).
+  - `yarn audit --level high` is **clean** (CI-fail threshold). 21 moderate advisories remain, all transitive, all triaged below.
+  - **dompurify** ×8 across 4 CVEs (mXSS / FORBID_TAGS bypass / prototype pollution).
+    - Path: `cesium#@cesium#engine#dompurify@3.3.3`. Cesium uses DOMPurify internally for entity HTML sanitization (descriptions, infoboxes).
+    - Single-tenant deployment limits the cross-tenant XSS surface. The app does not directly invoke DOMPurify; exposure depends on whether user-supplied entity strings flow into Cesium's HTML pipeline.
+    - **Disposition:** Accept until upstream Cesium ships a newer DOMPurify. Forced overrides via `resolutions:` carry Cesium-API regression risk that exceeds the current marginal exposure.
+  - **brace-expansion** ×9 (regex DOS).
+    - Path: `@vitest/coverage-v8` and `vite-plugin-pwa#workbox-build` build chains.
+    - **Build-time only.** No runtime exposure. Disposition: accept.
+  - **protocol-buffers-schema** ×3 (prototype pollution).
+    - Path: `maplibre-gl#pbf#resolve-protobuf-schema`. Used to parse vector tile protobufs.
+    - Tile transport is HTTPS to trusted origins; not exposed to attacker-controlled protobufs in the live deployment. Disposition: accept until upstream maplibre-gl ships a newer pbf.
+  - **serialize-javascript** ×1 (CPU exhaustion DOS).
+    - Already pinned via `package.json` `resolutions: { "serialize-javascript": "^7.0.3" }` — the safe-version override is in place. No further action.
+  - **Re-evaluate when:** any of these moves to `high` severity, OR direct app usage of DOMPurify is added, OR a multi-tenant deployment ships.
 
 ## P3 / Ongoing Hygiene
 
@@ -78,6 +94,23 @@ _(No open P1 items.)_
   - This is an open initiative, not a latent production defect.
 
 ## Closed Since Last Reconciliation
+
+- ~~`AuditEvent.up_to` non-deterministic iteration order on same-`occurred_at` events~~ —
+  closed in this sweep. The scope now appends `.order(:sequence)`, where
+  `sequence` is the postgres-issued globally monotonic id
+  (`DEFAULT nextval('audit_events_sequence_seq')`). Callers that already
+  apply their own order compose additively; the sequence clause acts only
+  as a final tiebreaker. Direct regression spec at
+  [backend/spec/models/audit_event_spec.rb](/Users/timurmishiev/Desktop/Code/resilience/backend/spec/models/audit_event_spec.rb)
+  (`.up_to ... orders results by sequence so same-occurred_at events return in deterministic chain order`).
+- ~~No regression spec for chain-tip determinism under same-`Time.current` burst writes~~ —
+  closed in this sweep (was OVL-2 from the joint 2026-05-01 audit).
+  New spec drives 5 sequential `Audit::EventWriter.write` calls under
+  `travel_to(fixed_time)` and asserts (a) chain_position deltas are 1
+  between consecutive rows, (b) all share the same occurred_at, (c)
+  every prev_hash equals the previous row_hash, and (d) every row_hash
+  matches a fresh `ChainHasher.compute` recomputation. Located at the
+  same model spec as F5.
 
 - ~~MapOverlayControls.tsx 884-line monolith~~ — closed at
   `5148b8f`. Public surface is now `MapOverlayControls.tsx`

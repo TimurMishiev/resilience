@@ -6,19 +6,19 @@ type: project
 
 # Resilience — Execution Context
 
-Last updated: 2026-04-30
+Last updated: 2026-05-01
 
 This file is the durable source of truth for project direction, execution sequencing, collaboration rules, and engineering expectations. It exists so Claude Code or Codex can continue work safely from the repo without relying on chat history.
 
 If this file disagrees with the code, trust the code first and then update this file.
 
-## Current State Snapshot (2026-04-30)
+## Current State Snapshot (2026-05-01)
 
 - Phases 1–7 are shipped.
 - Audit-driven remediation is closed. The old Band A/B/C/D framing is historical, not active execution guidance.
-- Current repo state is outreach hardening / proof closeout. Remaining real items are:
-  - operational AI restore (Anthropic credits/key state)
-  - final demo / outreach proof closeout
+- Outreach hardening and proof closeout are **complete**. Production is live on Fly **v46** at https://resilience-ops.fly.dev/. Six MapPage decomposition tranches landed (905 → 351 lines, −61%). Joint Claude+Codex audit (2026-05-01) found zero new defects; backlog is defense-in-depth only.
+- Remaining real items are:
+  - operational AI restore (Anthropic credits/key state — not a code defect; honest 422 degradation is in place)
   - GPU-dependent map Playwright remaining local/manual by policy
   - stakeholder-blocked item `4B`
 - Phase definitions below are preserved as finished roadmap history. Do not re-execute them.
