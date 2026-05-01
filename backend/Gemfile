@@ -15,7 +15,7 @@ gem "puma", ">= 5.0"
 gem "bcrypt", "~> 3.1.7"
 
 # JWT authentication
-gem "jwt", "~> 2.10"
+gem "jwt", "~> 3.1"
 
 # TOTP (RFC 6238) for second-factor login. ROTP is the de-facto Ruby
 # library for HOTP / TOTP — used by the major Rails MFA gems
