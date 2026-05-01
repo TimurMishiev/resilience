@@ -6,6 +6,13 @@ Technology, Shield AI, or similar defense-tech shops. It exists because
 the README is exhaustive (by design) but doesn't tell you where to
 spend your time.
 
+**If you only read one thing here, read [Provenance is one
+invariant](docs/audit-replay-validator-thesis.md).** It's the design
+thesis behind the system — the argument that the audit chain, the
+replay projection, and the LLM trust boundary are the same idea
+applied at three layers. The rest of this document tells you where in
+the code that thesis lives.
+
 Pick the budget that fits:
 
 ---

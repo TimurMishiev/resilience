@@ -14,6 +14,8 @@ Resilience is the kind of software that runs inside a TOC (Tactical Operations C
 
 Built as a portfolio project targeting defense-tech engineering roles (Palantir, Anduril, Reveal Technology, Shield AI). The codebase is production-hardened: **a large backend RSpec suite spanning 192 spec files, 815 frontend tests across 105 files, and 55 Playwright tests across 15 spec files**, with Pundit authorization on every endpoint and CI that gates on security scanning, type safety, and performance budgets before auto-deploying. Installable as a PWA with offline caching. Classification banner support (UNCLASSIFIED / CUI / SECRET).
 
+**Read the design thesis: [Provenance is one invariant](docs/audit-replay-validator-thesis.md)** — a 1,900-word essay arguing that the audit chain, the replay projection, and the LLM trust boundary are the same idea applied at three layers. The repo is the example; the thesis is the argument.
+
 **Live:** [https://resilience-ops.fly.dev](https://resilience-ops.fly.dev)
 
 | Role | Email | Password |
