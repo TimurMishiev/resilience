@@ -9,8 +9,17 @@ module Api
     # Query params: status, severity, site_id, assigned_to_id, page, per_page
     def index
       authorize Incident
+      # Live-mode index does NOT preload signal_rule_matches — the
+      # serializer only uses them via `.size` and `.filter_map(&:task_id)
+      # .uniq.size`, both of which can be answered by two cheap
+      # GROUP-BY queries against signal_rule_matches without
+      # materializing every match row in Ruby. Replay mode still needs
+      # the matches because their fired_at must be compared to as_of
+      # per-row, so we keep the original includes there.
+      base_includes = [:site, :area_of_operation, :assigned_to, :prosecuted_by]
+      base_includes << :signal_rule_matches if as_of
       incidents = policy_scope(Incident)
-        .includes(:site, :area_of_operation, :signal_rule_matches, :assigned_to, :prosecuted_by)
+        .includes(*base_includes)
         .by_severity
         .recent
 
@@ -30,7 +39,37 @@ module Api
         incidents = incidents.where(assigned_to_id: params[:assigned_to_id]) if params[:assigned_to_id].present?
 
         records, meta = paginate(incidents)
-        render json: { data: records.map { |i| serialize_incident(i) }, meta: meta }
+        # Pre-compute alert_count + task_count for the page in two
+        # grouped queries. Previously: each serialize_incident loaded
+        # every SignalRuleMatch row via the .includes preload, then
+        # called .size + .filter_map(&:task_id).uniq.size in Ruby.
+        # That was the load-test 3.4s p50 cause for /api/incidents
+        # at c=20 — at scale, 50 incidents × N matches (some incidents
+        # have hundreds) loads every column of every match across the
+        # network just to count them. The grouped queries answer the
+        # same question with 2 cheap COUNT queries and ~0 row
+        # materialisation. Tranche-B-followup at audit 2026-05-01.
+        match_counts_by_incident_id = SignalRuleMatch
+          .where(incident_id: records.map(&:id))
+          .group(:incident_id)
+          .count
+        task_counts_by_incident_id = SignalRuleMatch
+          .where(incident_id: records.map(&:id))
+          .where.not(task_id: nil)
+          .distinct
+          .group(:incident_id)
+          .count(:task_id)
+
+        render json: {
+          data: records.map { |i|
+            serialize_incident(
+              i,
+              alert_count: match_counts_by_incident_id[i.id] || 0,
+              task_count:  task_counts_by_incident_id[i.id]  || 0,
+            )
+          },
+          meta: meta,
+        }
       end
     end
 
