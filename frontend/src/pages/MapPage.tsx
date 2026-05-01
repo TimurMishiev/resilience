@@ -1,15 +1,13 @@
 import { useRef } from 'react'
-import { useEntitySelectionSync } from '../hooks/useEntitySelectionSync'
 import { useRole } from '../hooks/useRole'
 import { useReferenceTimeMs } from '../hooks/useReferenceTimeMs'
 import { useReplayParams } from '../hooks/useReplayParams'
 import { useMapLibreEngine } from '../hooks/useMapLibreEngine'
-import { useEvidenceLinkedIds } from '../hooks/useEvidenceLinkedIds'
 import { useMapContextPanelState } from '../hooks/useMapContextPanelState'
 import { useMapDisplayState } from '../hooks/useMapDisplayState'
 import { useMapPageData } from '../hooks/useMapPageData'
 import { useMapPageDiagnostics } from '../hooks/useMapPageDiagnostics'
-import { useMapSelectionState } from '../hooks/useMapSelectionState'
+import { useMapSelectionOrchestration } from '../hooks/useMapSelectionOrchestration'
 import { useMapToolState } from '../hooks/useMapToolState'
 import { useMapUrlSelectionHydration } from '../hooks/useMapUrlSelectionHydration'
 import { useLocation } from 'react-router-dom'
@@ -18,7 +16,7 @@ import type { MapSelectionPanelsProps } from '../components/map/MapSelectionPane
 import { MapViewportSurface } from '../components/map/MapViewportSurface'
 
 export default function MapPage() {
-  const location    = useLocation()
+  const location = useLocation()
   const { asOf, isReplaying, asOfParam, signalQueryParams } = useReplayParams()
   const { role, canTriageAlerts } = useRole()
   const referenceTimeMs = useReferenceTimeMs(isReplaying ? asOf : null)
@@ -181,54 +179,43 @@ export default function MapPage() {
     telemetryConnected,
   })
 
-  // ---------------------------------------------------------------------------
-  // Entity selection sync — shared with GlobePage
-  // ---------------------------------------------------------------------------
-  const {
-    selectedSiteId, selectedAssetId, selectedSignalId,
-    setSelectedSiteId, setSelectedAssetId, setSelectedSignalId,
-    onSiteClick, onAssetClick, onSignalClick,
-    updateSelectionRoute,
-    urlSelectionAppliedRef,
-  } = useEntitySelectionSync({
-    source: 'map',
-    signals, signalsConnected, signalError,
-    sites, assets,
-    sitesLoaded,
-    assetsLoaded,
-    isReplaying, asOf,
-  })
-
-  const { evidenceSignalIds, evidenceSiteIds } = useEvidenceLinkedIds(selectedSiteId, selectedSignalId, asOf)
-
   const {
     clearSelection,
+    evidenceSignalIds,
+    evidenceSiteIds,
     handleTransitioned,
     hasSelection,
+    onAssetClick,
+    onSignalClick,
+    onSiteClick,
     readiness,
     selectedAsset,
+    selectedAssetId,
     selectedLiveReading,
     selectedSignal,
+    selectedSignalId,
     selectedSite,
+    selectedSiteId,
     selectedTasks,
     selectedVessel,
-    tasksBySite,
-    vesselTracks,
-  } = useMapSelectionState({
-    allTasks,
-    assets,
-    asOf,
-    isReplaying,
-    readings,
-    selectedAssetId,
-    selectedSignalId,
-    selectedSiteId,
     setSelectedAssetId,
     setSelectedSignalId,
     setSelectedSiteId,
+    tasksBySite,
+    urlSelectionAppliedRef,
+    vesselTracks,
+  } = useMapSelectionOrchestration({
+    allTasks,
+    assets,
+    assetsLoaded,
+    asOf,
+    isReplaying,
+    readings,
+    signalError,
     signals,
+    signalsConnected,
     sites,
-    updateSelectionRoute,
+    sitesLoaded,
   })
 
   // ---------------------------------------------------------------------------
@@ -292,9 +279,6 @@ export default function MapPage() {
     onMapCoordinateClick: handleMapCoordinateClick,
   })
 
-  // ---------------------------------------------------------------------------
-  // URL deep-link selection — fires once per navigation after map is ready
-  // ---------------------------------------------------------------------------
   useMapUrlSelectionHydration({
     mapLoaded,
     location,
