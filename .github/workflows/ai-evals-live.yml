@@ -77,7 +77,7 @@ jobs:
         if: steps.gate.outputs.skipped == 'false'
         run: bundle exec rails db:seed
 
-      - name: Run live AI evaluations
+      - name: Run live AI evaluations (contract)
         if: steps.gate.outputs.skipped == 'false'
         # The [run] argument is the rake task's explicit opt-in (see
         # lib/tasks/ai_evals.rake). Without it the task skips — this
@@ -85,11 +85,39 @@ jobs:
         # never burns API traffic by accident even when .env has a key.
         run: bundle exec rake "ai:live_evals[run]"
 
-      - name: Upload results artifact
+      - name: Run behavioural AI evaluations (Tranche C)
+        if: steps.gate.outputs.skipped == 'false'
+        # Behavioural eval: scores precision/recall on the recommendation
+        # pipeline against a frozen set of human-labelled operational
+        # scenarios. Same gating as the contract eval. Posts a markdown
+        # summary table to GITHUB_STEP_SUMMARY so the trend is visible
+        # in the workflow run UI without unzipping the artifact.
+        #
+        # AI_EVALS_ALLOW_DESTRUCTIVE_RESET is the second of two safety
+        # gates on `RecommendationBehaviorRunner#reset_eval_state!` (the
+        # other being a database-name-must-end-in-_test check).
+        # Production resilience-ops never sets it; the dev DB never sets
+        # it. Only this CI step opts in, and only against
+        # resilience_test.
+        env:
+          AI_EVALS_RESULTS_DIR: ${{ github.workspace }}/backend/tmp/ai_evals_behavior
+          AI_EVALS_ALLOW_DESTRUCTIVE_RESET: "1"
+        run: bundle exec rake "ai:behavior_evals[run]"
+
+      - name: Upload contract results artifact
         if: steps.gate.outputs.skipped == 'false' && always()
         uses: actions/upload-artifact@v4
         with:
           name: ai-evals-live-results
           path: backend/tmp/ai_evals_live/
           retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload behavioural results artifact
+        if: steps.gate.outputs.skipped == 'false' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-evals-behavior-results
+          path: backend/tmp/ai_evals_behavior/
+          retention-days: 90
           if-no-files-found: warn

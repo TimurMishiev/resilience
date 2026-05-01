@@ -45,4 +45,43 @@ namespace :ai do
     exit_code = Ai::EvalsRunner.new.run!
     exit(exit_code) unless exit_code.zero?
   end
+
+  # Behavioural eval lane (Tranche C of the 87→90 plan).
+  #
+  # Distinct from `ai:live_evals` (the contract harness above): this
+  # task asserts that for a given operational scenario the model
+  # produces the *right kind* of recommendation against the *right
+  # entity*. Scoring is precision/recall over a frozen set of human-
+  # labelled scenarios. See backend/lib/ai_evals/ + docs/ai-evals/
+  # for design and operating notes.
+  #
+  # Same default-skip + opt-in contract as ai:live_evals, for the
+  # same reason: dotenv re-applies env values at boot, so rake-task
+  # argument is the only reliable opt-in signal.
+  #
+  #   bundle exec rake ai:behavior_evals          → SKIP
+  #   bundle exec rake "ai:behavior_evals[run]"   → RUN
+  #
+  # Ships dormant: until ANTHROPIC_API_KEY is present in CI, this
+  # exits cleanly without making any network calls. The moment the
+  # secret is restored, the next weekly cron run produces the first
+  # trend point.
+  desc "Behavioural AI eval lane (real Anthropic calls). Pass [run] to execute; default is skip."
+  task :behavior_evals, [:mode] => :environment do |_t, args|
+    mode = args[:mode].to_s
+
+    if mode != "run"
+      puts "[ai:behavior_evals] skipped (default-safe). To execute live calls, run: bundle exec rake \"ai:behavior_evals[run]\""
+      next
+    end
+
+    if ENV["ANTHROPIC_API_KEY"].to_s.strip.empty?
+      puts "[ai:behavior_evals] ANTHROPIC_API_KEY not set — skipping behavioural evaluation."
+      next
+    end
+
+    require Rails.root.join("lib", "ai_evals", "recommendation_behavior_runner")
+    exit_code = AiEvals::RecommendationBehaviorRunner.new.run!
+    exit(exit_code) unless exit_code.zero?
+  end
 end
