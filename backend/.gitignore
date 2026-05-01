@@ -32,3 +32,10 @@
 # Ignore key files for decrypting credentials and more.
 /config/*.key
 
+# Ad-hoc load-test run results. Committed baselines (e.g.
+# 2026-04-25_baseline) are explicit — timestamped runs are ad-hoc and
+# pollute git status. Re-add specific runs with `git add -f` if a result
+# warrants permanent inclusion.
+/perf/load-test/results/20*/
+/perf/load-test/results/production-shape-*/
+

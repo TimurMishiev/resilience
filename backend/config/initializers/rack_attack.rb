@@ -171,7 +171,14 @@ class Rack::Attack
   end
 
   # General API — 300 requests per IP per minute (generous for a dashboard).
-  throttle("api/ip/minute", limit: 300, period: 60) do |req|
+  # Env-tunable so the resilience-loadtest deploy can raise the ceiling for
+  # the duration of a Tranche B production-shape capacity test (single
+  # source IP firing thousands of requests in seconds — production traffic
+  # comes from many IPs each under their own budget). Production
+  # resilience-ops never sets this; the default 300 holds.
+  API_IP_REQUESTS_PER_MINUTE = ENV.fetch("API_IP_REQUESTS_PER_MINUTE", 300).to_i
+
+  throttle("api/ip/minute", limit: API_IP_REQUESTS_PER_MINUTE, period: 60) do |req|
     req.ip if req.path.start_with?("/api")
   end
 
