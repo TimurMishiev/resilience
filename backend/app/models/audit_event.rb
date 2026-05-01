@@ -13,7 +13,13 @@ class AuditEvent < ApplicationRecord
   validates :occurred_at, presence: true
 
   scope :for_entity, ->(type, id) { where(entity_type: type, entity_id: id).order(:occurred_at) }
-  scope :up_to, ->(timestamp) { where("occurred_at <= ?", timestamp) }
+  # `sequence` is the postgres-issued globally monotonic id for audit events
+  # (DEFAULT nextval('audit_events_sequence_seq')). Ordering by it gives the
+  # scope deterministic iteration order even when multiple events share the
+  # same `occurred_at` (burst writes, fixtures, sub-millisecond cascades).
+  # Callers that already apply their own .order will compose additively;
+  # the sequence clause then acts only as a final tiebreaker.
+  scope :up_to, ->(timestamp) { where("occurred_at <= ?", timestamp).order(:sequence) }
 
   private
 

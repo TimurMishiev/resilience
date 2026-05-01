@@ -80,5 +80,80 @@ RSpec.describe AuditEvent, type: :model do
       expect(results).to include(before, at)
       expect(results).not_to include(after)
     end
+
+    # Defends the chain-determinism contract: the scope must order
+    # deterministically even when several events share the same occurred_at.
+    # Without an explicit .order clause, Postgres iteration order is undefined
+    # and replay state reconstruction can drift between identical inputs.
+    it "orders results by sequence so same-occurred_at events return in deterministic chain order" do
+      fixed = 1.hour.ago.change(usec: 0)
+      e1 = create(:audit_event, occurred_at: fixed)
+      e2 = create(:audit_event, occurred_at: fixed)
+      e3 = create(:audit_event, occurred_at: fixed)
+
+      results = described_class.up_to(Time.current).to_a
+
+      expect(results).to include(e1, e2, e3)
+      sequences = results.map(&:sequence)
+      expect(sequences).to eq(sequences.sort)
+    end
+  end
+
+  # ── Chain determinism under burst writes ────────────────────────────────────
+  #
+  # Direct proof that Audit::EventWriter produces a sound chain even when many
+  # writes happen at the same `Time.current`. Closes OVL-2 from the joint
+  # 2026-05-01 audit. Uses Audit::EventWriter.write (not the factory) because
+  # only the writer builds a real hash chain — the factory's chain_position /
+  # prev_hash / row_hash columns are random placeholders for non-chain tests.
+  describe "chain determinism under same-occurred_at burst writes" do
+    let(:org) { create(:organization) }
+    let(:fixed_time) { Time.current.change(usec: 0) }
+
+    it "produces a monotonic chain_position and validly-linked prev_hash chain" do
+      travel_to(fixed_time) do
+        5.times do |i|
+          Audit::EventWriter.write(
+            actor: "burst-test@example.com",
+            entity_type: "Site",
+            entity_id: SecureRandom.uuid,
+            event_type: "burst.test",
+            before_snapshot: nil,
+            after_snapshot: { i: i },
+            correlation_id: SecureRandom.uuid,
+            organization_id: org.id,
+          )
+        end
+      end
+
+      events = AuditEvent
+        .where(organization_id: org.id, event_type: "burst.test")
+        .order(:chain_position)
+        .to_a
+
+      expect(events.size).to eq(5)
+      # Chain position is monotonic from the org's existing tip; we only
+      # assert that the deltas between consecutive rows are 1 (chain is
+      # tight) rather than that the absolute values are 1..5, because the
+      # advisory-lock-protected nextval may be perturbed by other test
+      # data. The hash-link assertion below is the real proof of soundness.
+      events.each_cons(2) do |earlier, later|
+        expect(later.chain_position - earlier.chain_position).to eq(1)
+      end
+
+      # All five share the same occurred_at (the determinism scenario).
+      expect(events.map(&:occurred_at).uniq.size).to eq(1)
+
+      # Hash-chain integrity: each prev_hash must match the previous row_hash.
+      events.each_cons(2) do |earlier, later|
+        expect(later.prev_hash).to eq(earlier.row_hash)
+      end
+
+      # Every row's row_hash must match a fresh ChainHasher recomputation.
+      events.each do |event|
+        attrs = event.attributes.symbolize_keys.except(:row_hash, :created_at, :updated_at)
+        expect(Audit::ChainHasher.compute(attrs)).to eq(event.row_hash)
+      end
+    end
   end
 end
