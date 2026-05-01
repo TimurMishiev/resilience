@@ -45,11 +45,12 @@ module OpenapiHelper
       schema_path: OPENAPI_SCHEMA_PATH.to_s,
       strict:      true,
       prefix:      "/api",
-      # Silence the openapi_parser deprecation warning — strict
-      # reference validation is the safer default and is becoming the
-      # gem default in the next major version. Setting it explicitly
-      # opts in to the future behavior now.
-      parser_options: { strict_reference_validation: true },
+      # NOTE: openapi_parser emits a deprecation warning about
+      # `strict_reference_validation` defaulting to true in a future
+      # release. The setting is on the parser itself, not on
+      # committee_options — passing it via committee is a no-op. The
+      # warning is loud but harmless; the gate works correctly without
+      # the flag. Re-evaluate when the parser version is bumped.
     }
   end
 end
