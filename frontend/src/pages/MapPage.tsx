@@ -2,14 +2,12 @@ import { useRef } from 'react'
 import { useRole } from '../hooks/useRole'
 import { useReferenceTimeMs } from '../hooks/useReferenceTimeMs'
 import { useReplayParams } from '../hooks/useReplayParams'
-import { useMapLibreEngine } from '../hooks/useMapLibreEngine'
 import { useMapContextPanelState } from '../hooks/useMapContextPanelState'
 import { useMapDisplayState } from '../hooks/useMapDisplayState'
+import { useMapEngineOrchestration } from '../hooks/useMapEngineOrchestration'
 import { useMapPageData } from '../hooks/useMapPageData'
-import { useMapPageDiagnostics } from '../hooks/useMapPageDiagnostics'
 import { useMapSelectionOrchestration } from '../hooks/useMapSelectionOrchestration'
 import { useMapToolState } from '../hooks/useMapToolState'
-import { useMapUrlSelectionHydration } from '../hooks/useMapUrlSelectionHydration'
 import { useLocation } from 'react-router-dom'
 import { MapContextPanelSurface } from '../components/map/MapContextPanelSurface'
 import type { MapSelectionPanelsProps } from '../components/map/MapSelectionPanels'
@@ -218,11 +216,9 @@ export default function MapPage() {
     sitesLoaded,
   })
 
-  // ---------------------------------------------------------------------------
-  // MapLibre engine
-  // ---------------------------------------------------------------------------
-  const { mapLoaded, engineError, retryEngine, flyTo, getZoom, projectPosition, inspectCanvasPosition, resize } = useMapLibreEngine({
+  const { mapLoaded, engineError, retryEngine, resize } = useMapEngineOrchestration({
     containerRef: mapContainerRef,
+    location,
     sites,
     assets,
     signals,
@@ -277,17 +273,9 @@ export default function MapPage() {
     onMapSectorAnchorClick: handleMapSectorAnchorClick,
     onMapBearingLineAnchorClick: handleMapBearingLineAnchorClick,
     onMapCoordinateClick: handleMapCoordinateClick,
-  })
-
-  useMapUrlSelectionHydration({
-    mapLoaded,
-    location,
-    sites,
-    assets,
-    signals,
-    readings,
-    isReplaying,
-    flyTo,
+    signalCount: signals.length,
+    signalsConnected,
+    telemetryConnected,
     urlSelectionAppliedRef,
     setSelectedSiteId,
     setSelectedAssetId,
@@ -315,27 +303,6 @@ export default function MapPage() {
     rangeRingMode,
     resize,
     sectorMode,
-  })
-
-  useMapPageDiagnostics({
-    getZoom,
-    inspectCanvasPosition,
-    mapLoaded,
-    projectPosition,
-    selectedAssetId,
-    selectedSignalId,
-    selectedSiteId,
-    setSelectedAssetId,
-    setSelectedSignalId,
-    setSelectedSiteId,
-    showCoverage,
-    showHeatmap,
-    showSignals,
-    signalCount: signals.length,
-    signals,
-    signalsConnected,
-    sites,
-    telemetryConnected,
   })
 
   const selectionPanelsProps: MapSelectionPanelsProps = {
