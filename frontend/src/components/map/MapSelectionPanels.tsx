@@ -6,7 +6,7 @@ import { MapAssetPanel } from '../MapAssetPanel'
 import { MapSignalPanel } from '../MapSignalPanel'
 import { MapSitePanel } from '../MapSitePanel'
 
-interface MapSelectionPanelsProps {
+export interface MapSelectionPanelsProps {
   selectedSite: Site | null
   selectedTasks: Task[]
   readiness: number | null

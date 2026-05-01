@@ -13,8 +13,8 @@ import { useMapSelectionState } from '../hooks/useMapSelectionState'
 import { useMapToolState } from '../hooks/useMapToolState'
 import { useMapUrlSelectionHydration } from '../hooks/useMapUrlSelectionHydration'
 import { useLocation } from 'react-router-dom'
-import { MapSelectionPanels } from '../components/map/MapSelectionPanels'
-import { MapInlineDebriefPanel } from '../components/map/MapInlineDebriefPanel'
+import { MapContextPanelSurface } from '../components/map/MapContextPanelSurface'
+import type { MapSelectionPanelsProps } from '../components/map/MapSelectionPanels'
 import { MapViewportSurface } from '../components/map/MapViewportSurface'
 
 export default function MapPage() {
@@ -354,6 +354,28 @@ export default function MapPage() {
     telemetryConnected,
   })
 
+  const selectionPanelsProps: MapSelectionPanelsProps = {
+    selectedSite,
+    selectedTasks,
+    readiness,
+    riskBySiteId,
+    role,
+    canTriage: canTriageAlerts,
+    referenceTimeMs,
+    selectedAsset,
+    selectedLiveReading,
+    selectedSignal,
+    selectedVessel,
+    vesselTracks,
+    isReplaying,
+    onSelectSite: onSiteClick,
+    onSelectSignal: onSignalClick,
+    onTransitioned: handleTransitioned,
+    onCloseSite: closePanel,
+    onCloseAsset: closePanel,
+    onCloseSignal: closePanel,
+  }
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
@@ -365,55 +387,14 @@ export default function MapPage() {
         overlayControlsProps={overlayControlsProps}
         retryEngine={retryEngine}
       />
-
-      {contextPanelOpen && (
-        <aside
-          ref={panelRef}
-          className="map-context-panel"
-          role="complementary"
-          aria-label="Map selection detail"
-          style={{ flexBasis: panelWidth, width: panelWidth }}
-        >
-          <div
-            className="map-context-panel-resize-handle"
-            onMouseDown={handleResizeStart}
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize panel"
-            data-testid="panel-resize-handle"
-          />
-          <MapInlineDebriefPanel />
-          {hasSelection ? (
-            <MapSelectionPanels
-              selectedSite={selectedSite}
-              selectedTasks={selectedTasks}
-              readiness={readiness}
-              riskBySiteId={riskBySiteId}
-              role={role}
-              canTriage={canTriageAlerts}
-              referenceTimeMs={referenceTimeMs}
-              selectedAsset={selectedAsset}
-              selectedLiveReading={selectedLiveReading}
-              selectedSignal={selectedSignal}
-              selectedVessel={selectedVessel}
-              vesselTracks={vesselTracks}
-              isReplaying={isReplaying}
-              onSelectSite={onSiteClick}
-              onSelectSignal={onSignalClick}
-              onTransitioned={handleTransitioned}
-              onCloseSite={closePanel}
-              onCloseAsset={closePanel}
-              onCloseSignal={closePanel}
-            />
-          ) : (
-            <div className="map-context-panel-empty bp6-text-muted" data-testid="panel-empty-state">
-              Select a site, asset, or signal on the map to view details.
-              <br /><br />
-              Press <kbd>]</kbd> or <kbd>Esc</kbd> to close this panel.
-            </div>
-          )}
-        </aside>
-      )}
+      <MapContextPanelSurface
+        contextPanelOpen={contextPanelOpen}
+        handleResizeStart={handleResizeStart}
+        hasSelection={hasSelection}
+        panelRef={panelRef}
+        panelWidth={panelWidth}
+        selectionPanelsProps={selectionPanelsProps}
+      />
     </div>
   )
 }
