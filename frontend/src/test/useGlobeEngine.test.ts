@@ -523,8 +523,8 @@ function makeSite(overrides: Partial<GlobeEngineInput['sites'][number]> = {}) {
   return {
     id: 'site-1',
     name: 'Alpha',
-    latitude: '10.0',
-    longitude: '20.0',
+    latitude: 10,
+    longitude: 20,
     status: 'active',
     area_of_operation_id: null,
     flagged_at: null,
@@ -715,8 +715,8 @@ describe('useGlobeEngine adapter', () => {
     it('adds a viewer entity with id="site-<siteId>" for each site', async () => {
       const refs = makeContainerRef()
       const sites = [
-        { id: 'alpha', name: 'Alpha', latitude: '10.0', longitude: '20.0', status: 'active', geofence_radius_km: 0 },
-        { id: 'beta',  name: 'Beta',  latitude: '30.0', longitude: '40.0', status: 'active', geofence_radius_km: 0 },
+        { id: 'alpha', name: 'Alpha', latitude: 10, longitude: 20, status: 'active', geofence_radius_km: 0 },
+        { id: 'beta',  name: 'Beta',  latitude: 30, longitude: 40, status: 'active', geofence_radius_km: 0 },
       ]
       await bootGlobe(cesium, refs, defaultInput(refs, { sites: sites as GlobeEngineInput['sites'] }))
 
@@ -726,7 +726,7 @@ describe('useGlobeEngine adapter', () => {
 
     it('removes stale site entity when site is removed from the list', async () => {
       const refs = makeContainerRef()
-      const site = { id: 'alpha', name: 'Alpha', latitude: '10.0', longitude: '20.0', status: 'active', geofence_radius_km: 0 }
+      const site = { id: 'alpha', name: 'Alpha', latitude: 10, longitude: 20, status: 'active', geofence_radius_km: 0 }
       const hook = await bootGlobe(cesium, refs, defaultInput(refs, {
         sites: [site] as GlobeEngineInput['sites'],
       }))
@@ -1396,8 +1396,8 @@ describe('useGlobeEngine adapter', () => {
     it('applies linked-highlight outline to the selected asset\'s home site', async () => {
       const refs  = makeContainerRef()
       const sites = [
-        makeSite({ id: 'site-1', name: 'Alpha',  latitude: '10', longitude: '20' }),
-        makeSite({ id: 'site-2', name: 'Bravo',  latitude: '11', longitude: '21' }),
+        makeSite({ id: 'site-1', name: 'Alpha',  latitude: 10, longitude: 20 }),
+        makeSite({ id: 'site-2', name: 'Bravo',  latitude: 11, longitude: 21 }),
       ]
       const assets = [
         makeAsset({ id: 'asset-1', home_site_id: 'site-1' }),

@@ -10,6 +10,7 @@ vi.mock('../api/correlation_rules', () => ({
 }))
 
 import { DryRunDrawer } from '../components/correlationRules/DryRunDrawer'
+import { ReplayProvider } from '../context/ReplayContext'
 import type { CorrelationRule } from '../api/types'
 
 const RULE: CorrelationRule = {
@@ -33,7 +34,9 @@ function renderDrawer(rule: CorrelationRule | null = RULE) {
   const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
   render(
     <QueryClientProvider client={qc}>
-      <DryRunDrawer rule={rule} onClose={onClose} />
+      <ReplayProvider>
+        <DryRunDrawer rule={rule} onClose={onClose} />
+      </ReplayProvider>
     </QueryClientProvider>,
   )
   return { onClose }

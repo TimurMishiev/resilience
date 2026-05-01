@@ -193,11 +193,28 @@ module Api
     end
 
     def serialize_site(site, snapshot: nil, as_of: nil)
+      # Coerce latitude/longitude to Float at the JSON boundary. The
+      # underlying Postgres column is `numeric(9,6)` which Rails maps to
+      # BigDecimal, and BigDecimal serializes as a JSON string by
+      # default ("51.759504" not 51.759504). Pre-2026-05-01 the API
+      # returned strings and the frontend type was `number | string` to
+      # tolerate both shapes. Since coordinates round-trip cleanly
+      # through Float for the 6-digit precision the column stores
+      # (~10cm at the equator), and a numeric type is what every
+      # consumer actually wants, we normalise to Float here so the
+      # OpenAPI spec can declare `type: number, format: double` and the
+      # frontend type can be `number` cleanly.
+      #
+      # snapshot_or_current may return either a string (from a
+      # historical audit_event JSON snapshot) or a BigDecimal (from
+      # the live AR object). Float() coerces both.
+      latitude_value  = snapshot_or_current(snapshot, "latitude",  site.latitude)
+      longitude_value = snapshot_or_current(snapshot, "longitude", site.longitude)
       {
         id: site.id,
         name: snapshot_or_current(snapshot, "name", site.name),
-        latitude: snapshot_or_current(snapshot, "latitude", site.latitude),
-        longitude: snapshot_or_current(snapshot, "longitude", site.longitude),
+        latitude:  latitude_value.nil?  ? nil : Float(latitude_value),
+        longitude: longitude_value.nil? ? nil : Float(longitude_value),
         status: snapshot_or_current(snapshot, "status", site.status),
         area_of_operation_id: snapshot_or_current(snapshot, "area_of_operation_id", site.area_of_operation_id),
         flagged_at: snapshot_or_current(snapshot, "flagged_at", site.flagged_at),

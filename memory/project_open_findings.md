@@ -35,19 +35,16 @@ _(No open P1 items.)_
   - `/map` and `/globe` both rendered without stale-data or telemetry-offline warnings; the observed SSE stream opens returned `200`.
   - Thread-per-connection SSE replacement is still future scale work if multi-machine or materially higher concurrency becomes a real target.
 
-- Coordinate-column JSON shape (lat/long return as string, not number).
-  - Postgres `numeric(9,6)` → Rails serialises BigDecimal as string by
-    default; the production API returns `"51.759504"` not `51.759504`.
-  - Frontend already accommodates with `latitude: number | string` at
-    [`frontend/src/api/types.ts:58`](/Users/timurmishiev/Desktop/Code/resilience/frontend/src/api/types.ts).
-  - Tranche E2 (2026-05-01, `37981a1`) documented this in the OpenAPI
-    contract by changing the Site schema's lat/long to `type: string`
-    with a numeric pattern, so the contract gate matches reality.
-  - The cleaner long-term fix is `.to_f` in `serialize_site` (and the
-    other 4 callsites) so the API emits proper JSON numbers, then drop
-    the frontend's `number | string` union. Touches 1 controller, 1
-    frontend type, ~5 callsites, snapshot tests. Hygiene improvement,
-    not a defect — system works correctly with strings today.
+- ~~Coordinate-column JSON shape (lat/long return as string, not number)~~
+  — closed in the post-audit hygiene sweep (2026-05-01). Site
+  serialization now coerces Postgres `numeric(9,6)` → Float at the JSON
+  boundary in `sites_controller.rb#serialize_site` and the equivalent
+  path in `planning_controller.rb`. OpenAPI Site schema reverted from
+  `type: string + pattern` to `type: number, format: double`. Frontend
+  `Site.latitude`/`longitude` narrowed from `number | string` to
+  `number`. Test fixtures updated. Audit-event JSON snapshots
+  containing historical string values still round-trip cleanly because
+  `Float()` coerces both string and BigDecimal inputs.
 
 - Frontend `yarn audit` triage (2026-05-01).
   - `yarn audit --level high` is **clean** (CI-fail threshold). 21 moderate advisories remain, all transitive, all triaged below.

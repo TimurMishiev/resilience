@@ -55,8 +55,12 @@ export type WorkflowStatus = 'new' | 'triaged' | 'in_progress' | 'blocked' | 're
 export interface Site {
   id: string
   name: string
-  latitude: number | string  // Rails serializes decimal columns as strings
-  longitude: number | string
+  // Backend coerces Postgres numeric(9,6) → Float at the JSON boundary
+  // (sites_controller.rb#serialize_site, audit 2026-05-01). Pre-fix the
+  // shape was `number | string` to tolerate Rails' default
+  // BigDecimal-as-string encoding.
+  latitude: number
+  longitude: number
   status: SiteStatus
   area_of_operation_id: string | null
   flagged_at: string | null

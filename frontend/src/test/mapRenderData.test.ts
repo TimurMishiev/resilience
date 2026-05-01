@@ -12,8 +12,8 @@ import {
 const baseSite: Site = {
   id: 'site-1',
   name: 'Site Alpha',
-  latitude: '51.5000',
-  longitude: '0.1200',
+  latitude: 51.5,
+  longitude: 0.12,
   status: 'active',
   area_of_operation_id: null,
   flagged_at: null,

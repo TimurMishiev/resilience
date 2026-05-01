@@ -8,8 +8,8 @@ const mockState = vi.hoisted(() => ({
   sites: {
     data: {
       data: [
-        { id: 's1', name: 'Alpha Base', status: 'active', latitude: '26.5', longitude: '56.2', flagged_at: null, flag_reason: null, area_of_operation_id: null },
-        { id: 's2', name: 'Bravo Outpost', status: 'inactive', latitude: '25.0', longitude: '55.0', flagged_at: '2026-04-01T00:00:00Z', flag_reason: 'High risk', area_of_operation_id: null },
+        { id: 's1', name: 'Alpha Base', status: 'active', latitude: 26.5, longitude: 56.2, flagged_at: null, flag_reason: null, area_of_operation_id: null },
+        { id: 's2', name: 'Bravo Outpost', status: 'inactive', latitude: 25.0, longitude: 55.0, flagged_at: '2026-04-01T00:00:00Z', flag_reason: 'High risk', area_of_operation_id: null },
       ],
       meta: { total: 2 },
     },

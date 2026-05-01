@@ -317,8 +317,10 @@ module Api
           name: snapshot_or_current(snapshot, "name", site.name),
           area_of_operation_id: snapshot_or_current(snapshot, "area_of_operation_id", site.area_of_operation_id),
           status: snapshot_or_current(snapshot, "status", site.status),
-          latitude: snapshot_or_current(snapshot, "latitude", site.latitude),
-          longitude: snapshot_or_current(snapshot, "longitude", site.longitude),
+          # Coerce to Float at the JSON boundary — see same note at
+          # sites_controller.rb#serialize_site.
+          latitude:  Float(snapshot_or_current(snapshot, "latitude",  site.latitude)),
+          longitude: Float(snapshot_or_current(snapshot, "longitude", site.longitude)),
           geofence_radius_km: snapshot_or_current(snapshot, "geofence_radius_km", site.geofence_radius_km),
         }
       end

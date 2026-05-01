@@ -484,20 +484,19 @@ components:
           format: uuid
         name:
           type: string
-        # Postgres `numeric(9,6)` columns. Rails' default JSON encoder
-        # emits BigDecimal as a string to preserve precision; the
-        # frontend reads via `parseFloat` (see frontend/src/api/types.ts
-        # comment "Rails serializes decimal columns as strings").
-        # Documenting the production reality here rather than an
-        # aspirational `number` type, so committee-rails contract
-        # enforcement (Tranche E2) catches real drift instead of
-        # flagging this every time.
+        # Postgres `numeric(9,6)` columns are coerced to Float at the
+        # JSON boundary by sites_controller.rb#serialize_site (and
+        # planning_controller.rb's site index). 6-digit precision (~10cm
+        # at the equator) round-trips cleanly through Float, and a
+        # numeric type is what every consumer actually wants. Audit
+        # 2026-05-01 closed the prior `string`-shape compromise that
+        # documented an aspirational gap rather than fixing it.
         latitude:
-          type: string
-          pattern: '^-?\d+(\.\d+)?$'
+          type: number
+          format: double
         longitude:
-          type: string
-          pattern: '^-?\d+(\.\d+)?$'
+          type: number
+          format: double
         status:
           type: string
           enum: [active, inactive]
