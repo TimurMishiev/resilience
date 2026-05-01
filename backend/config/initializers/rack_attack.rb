@@ -42,18 +42,35 @@ class Rack::Attack
   #
   # Env-tunable (post-push self-review follow-up, 2026-04-29) so production
   # can be re-tuned without a redeploy via flyctl secrets set.
-  SSE_TOKEN_REQUESTS_PER_MINUTE = ENV.fetch("SSE_TOKEN_REQUESTS_PER_MINUTE", 120).to_i
-  SSE_TOKEN_REQUESTS_PER_HOUR   = ENV.fetch("SSE_TOKEN_REQUESTS_PER_HOUR",   300).to_i
-  SSE_STREAM_OPENS_PER_MINUTE   = ENV.fetch("SSE_STREAM_OPENS_PER_MINUTE",   120).to_i
-  SSE_STREAM_OPENS_PER_HOUR     = ENV.fetch("SSE_STREAM_OPENS_PER_HOUR",     300).to_i
+  #
+  # Boot-time validation: every env-tunable throttle below uses
+  # `positive_integer_env` rather than `ENV.fetch(...).to_i`. Reason:
+  # `.to_i` silently coerces non-numeric strings to 0, which would set
+  # the cap to 0 and 429 every request — an effective DoS that's hard
+  # to diagnose in a deploy log because nothing fails noisily. Failing
+  # fast at boot with a clear "must be a positive integer" message is
+  # strictly better than silent runtime degradation.
+  def self.positive_integer_env(name, default)
+    raw = ENV.fetch(name, default.to_s).to_s
+    parsed = Integer(raw, 10)
+    raise "Rack::Attack #{name} must be a positive integer (got #{raw.inspect})" unless parsed.positive?
+    parsed
+  rescue ArgumentError
+    raise "Rack::Attack #{name} must be a positive integer (got #{raw.inspect})"
+  end
+
+  SSE_TOKEN_REQUESTS_PER_MINUTE = positive_integer_env("SSE_TOKEN_REQUESTS_PER_MINUTE", 120)
+  SSE_TOKEN_REQUESTS_PER_HOUR   = positive_integer_env("SSE_TOKEN_REQUESTS_PER_HOUR",   300)
+  SSE_STREAM_OPENS_PER_MINUTE   = positive_integer_env("SSE_STREAM_OPENS_PER_MINUTE",   120)
+  SSE_STREAM_OPENS_PER_HOUR     = positive_integer_env("SSE_STREAM_OPENS_PER_HOUR",     300)
 
   # Repeat-offender blocklist parameters. Reduced bantime from 3600s → 60s
   # at f3d3e7b (QA P3, 2026-04-29). Extracted as named constants and made
   # env-tunable in this follow-up so a future scanner-abuse incident can
   # be hardened in production without a redeploy.
-  REPEAT_OFFENDER_MAX_RETRY        = ENV.fetch("REPEAT_OFFENDER_MAX_RETRY",        10).to_i
-  REPEAT_OFFENDER_FIND_TIME_SECS   = ENV.fetch("REPEAT_OFFENDER_FIND_TIME_SECS",   600).to_i
-  REPEAT_OFFENDER_BAN_TIME_SECS    = ENV.fetch("REPEAT_OFFENDER_BAN_TIME_SECS",    60).to_i
+  REPEAT_OFFENDER_MAX_RETRY        = positive_integer_env("REPEAT_OFFENDER_MAX_RETRY",        10)
+  REPEAT_OFFENDER_FIND_TIME_SECS   = positive_integer_env("REPEAT_OFFENDER_FIND_TIME_SECS",   600)
+  REPEAT_OFFENDER_BAN_TIME_SECS    = positive_integer_env("REPEAT_OFFENDER_BAN_TIME_SECS",    60)
 
   ### Throttles ###
 
@@ -131,10 +148,10 @@ class Rack::Attack
   # reconnect history of every other authenticated user on that IP. Per-user
   # buckets are the primary throttle for legitimate traffic; IP throttles
   # remain as a fallback for anonymous or malformed requests.
-  SSE_TOKEN_USER_REQUESTS_PER_MINUTE  = ENV.fetch("SSE_TOKEN_USER_REQUESTS_PER_MINUTE", 120).to_i
-  SSE_TOKEN_USER_REQUESTS_PER_HOUR    = ENV.fetch("SSE_TOKEN_USER_REQUESTS_PER_HOUR", 3000).to_i
-  SSE_STREAM_USER_OPENS_PER_MINUTE    = ENV.fetch("SSE_STREAM_USER_OPENS_PER_MINUTE", 120).to_i
-  SSE_STREAM_USER_OPENS_PER_HOUR      = ENV.fetch("SSE_STREAM_USER_OPENS_PER_HOUR", 3000).to_i
+  SSE_TOKEN_USER_REQUESTS_PER_MINUTE  = positive_integer_env("SSE_TOKEN_USER_REQUESTS_PER_MINUTE", 120)
+  SSE_TOKEN_USER_REQUESTS_PER_HOUR    = positive_integer_env("SSE_TOKEN_USER_REQUESTS_PER_HOUR", 3000)
+  SSE_STREAM_USER_OPENS_PER_MINUTE    = positive_integer_env("SSE_STREAM_USER_OPENS_PER_MINUTE", 120)
+  SSE_STREAM_USER_OPENS_PER_HOUR      = positive_integer_env("SSE_STREAM_USER_OPENS_PER_HOUR", 3000)
 
   throttle("sse-token/user/minute", limit: SSE_TOKEN_USER_REQUESTS_PER_MINUTE, period: 60) do |req|
     sse_token_user_key(req)
@@ -176,7 +193,7 @@ class Rack::Attack
   # source IP firing thousands of requests in seconds — production traffic
   # comes from many IPs each under their own budget). Production
   # resilience-ops never sets this; the default 300 holds.
-  API_IP_REQUESTS_PER_MINUTE = ENV.fetch("API_IP_REQUESTS_PER_MINUTE", 300).to_i
+  API_IP_REQUESTS_PER_MINUTE = positive_integer_env("API_IP_REQUESTS_PER_MINUTE", 300)
 
   throttle("api/ip/minute", limit: API_IP_REQUESTS_PER_MINUTE, period: 60) do |req|
     req.ip if req.path.start_with?("/api")

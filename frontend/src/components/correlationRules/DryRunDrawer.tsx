@@ -10,11 +10,11 @@ import {
   Spinner,
   Tag,
 } from '@blueprintjs/core'
-import { useMutation } from '@tanstack/react-query'
 import { dryRunRule } from '../../api/correlation_rules'
 import type { DryRunResult } from '../../api/correlation_rules'
 import type { CorrelationRule } from '../../api/types'
 import { humanize } from '../../utils/humanize'
+import { useReplayGuardedMutation } from '../../hooks/useReplayGuardedMutation'
 
 interface DryRunDrawerProps {
   rule:    CorrelationRule | null
@@ -26,7 +26,15 @@ export function DryRunDrawer({ rule, onClose }: DryRunDrawerProps) {
   const [result, setResult] = useState<DryRunResult | null>(null)
   const [error,  setError]  = useState<string | null>(null)
 
-  const mutation = useMutation({
+  // Defence-in-depth: dry-run is a POST that the backend treats as a
+  // pure read (no persistence), but during replay the user really
+  // means "what would this rule have fired against in the replay
+  // window," not "what would it fire against now." Rather than send
+  // an against-current-data POST that produces confusing UX, the
+  // replay-guarded mutation rejects cleanly while in replay. The 45
+  // other frontend mutations all use this hook; the one raw
+  // useMutation here was the lone outlier (audit 2026-05-01, F-01).
+  const mutation = useReplayGuardedMutation({
     mutationFn: ({ id, h }: { id: string; h: number }) => dryRunRule(id, h),
     onSuccess: r  => { setResult(r); setError(null) },
     onError:   e  => setError((e as Error).message),
