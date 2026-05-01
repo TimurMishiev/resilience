@@ -158,18 +158,15 @@ after looking at this code:
   operator decisions.
 
   **What this is and isn't.** The AI integration is *single-shot
-  validated tool-use*: the operator triggers a request, Claude returns a
-  structured response over the Anthropic SDK, the `Recommendations::Validator`
-  rejects anything whose entity references don't resolve to a real row at
-  the request's `as_of`, and the result is rendered. This is deliberately
-  not an agent loop (planner → executor → verifier with autonomous
-  re-planning). The current problem shape — operator-in-the-loop briefings
-  and recommendations against an audited operational picture — is better
-  served by a contained single-shot surface with a hard validation
-  boundary than by a multi-step agent whose failure modes are harder to
-  audit. ADR-005 names that scope explicitly. A genuine agent loop is
-  Phase-2 work for a different problem (e.g. autonomous incident triage
-  with rollback), not the framing this surface is claiming.
+  validated tool-use*: operator triggers a request, Claude returns a
+  structured response, the `Recommendations::Validator` rejects anything
+  whose entity references don't resolve at the request's `as_of`, the
+  result is rendered. This is deliberately *not* an agent loop with
+  autonomous re-planning — the operator-in-the-loop problem shape is
+  better served by a contained surface with a hard validation boundary
+  than by a multi-step agent whose failure modes are harder to audit. A
+  genuine agent loop belongs to a different problem (autonomous incident
+  triage with rollback) and would be a Phase-2 design.
 
 - **Test quality over test count.** A large backend RSpec suite and 815 frontend
   tests, but what matters is what they prove: org-isolation specs,

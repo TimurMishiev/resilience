@@ -683,10 +683,13 @@ RSpec.describe Correlations::RuleFiringService do
   # Until now this was proved only with travel_to + sequential calls — which
   # exercises the WHERE-clause logic but not the lock-and-re-evaluate part
   # under genuine concurrency. The interview-grade ambush is exactly that
-  # gap. This spec spawns two threads, blocks them at a CountDownLatch, then
-  # releases them simultaneously and asserts (a) exactly one ServiceResult
-  # is success, (b) exactly one SignalRuleMatch row exists, (c) only one
-  # Task was created, (d) the loser sees the canonical "cooldown" error.
+  # gap. This spec spawns two threads, blocks them at a CyclicBarrier(2)
+  # (which guarantees both have arrived before either proceeds — a
+  # CountDownLatch + sleep is probabilistic and can silently weaken under
+  # CI scheduling jitter), and asserts (a) exactly one ServiceResult is
+  # success, (b) exactly one SignalRuleMatch row exists, (c) only one
+  # Task was created, (d) the loser sees the canonical "cooldown" error,
+  # (e) last_fired_at landed inside the test's wall-clock window.
   #
   # Tagged db_concurrency: true so rails_helper.rb switches to truncation —
   # data created in the example must be visible from threads holding their
@@ -714,14 +717,21 @@ RSpec.describe Correlations::RuleFiringService do
     end
 
     it "lets exactly one of two simultaneous calls win the cooldown lock" do
-      latch   = Concurrent::CountDownLatch.new(1)
+      barrier = Concurrent::CyclicBarrier.new(2)
       results = Concurrent::Array.new
       errors  = Concurrent::Array.new
+
+      window_start = Time.current
 
       threads = 2.times.map do
         Thread.new do
           ActiveRecord::Base.connection_pool.with_connection do
-            latch.wait
+            # Both threads block here; release together when the second
+            # thread arrives. This is a hard correctness guarantee — unlike
+            # CountDownLatch + sleep, no scheduling jitter can cause one
+            # thread to start while the other has not yet reached the
+            # rendezvous point.
+            barrier.wait
             results << described_class.call(
               rule:   concurrent_rule,
               signal: concurrent_signal,
@@ -733,10 +743,8 @@ RSpec.describe Correlations::RuleFiringService do
         end
       end
 
-      # Give both threads a moment to reach the latch before releasing.
-      sleep 0.1
-      latch.count_down
       threads.each(&:join)
+      window_end = Time.current
 
       expect(errors).to be_empty, "threads raised: #{errors.map { |e| "#{e.class}: #{e.message}" }.join('; ')}"
       expect(results.size).to eq(2)
@@ -751,7 +759,13 @@ RSpec.describe Correlations::RuleFiringService do
       # And the side-effects honour the single winner: one match, one task.
       expect(SignalRuleMatch.where(correlation_rule_id: concurrent_rule.id).count).to eq(1)
       expect(Task.where(site_id: concurrent_site.id).count).to eq(1)
-      expect(concurrent_rule.reload.last_fired_at).to be_present
+
+      # last_fired_at must land inside the test's wall-clock window. A
+      # weaker `be_present` assertion would survive a future EventWriter
+      # refactor that swaps the time source for a wrong one (e.g. UTC vs
+      # local, or an injected stub left in by mistake) and silently
+      # corrupt the cooldown gate's WHERE-clause math.
+      expect(concurrent_rule.reload.last_fired_at).to be_between(window_start, window_end)
     end
   end
 end
