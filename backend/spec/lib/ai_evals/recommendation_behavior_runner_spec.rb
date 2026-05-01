@@ -54,4 +54,37 @@ RSpec.describe AiEvals::RecommendationBehaviorRunner do
       ENV.delete("AI_EVALS_ALLOW_DESTRUCTIVE_RESET")
     end
   end
+
+  describe "SafetyViolation propagation through run!" do
+    # The runner's per-scenario rescue must NOT swallow SafetyViolation —
+    # if it does, a misconfigured local run produces six fake "failed"
+    # scenarios instead of an immediate, visible halt. This is the bug
+    # the post-push review on 53a4be4 caught.
+    it "lets SafetyViolation bubble out of run! instead of demoting it to a per-scenario failure" do
+      # Build a runner with a single fake scenario class so we don't
+      # need real scenario setup. The rescue layer is what we're
+      # exercising.
+      fake_scenario = Class.new do
+        def name        = "fake"
+        def description = "fake"
+        def setup!(*)   ; end
+        def expected    = []
+      end
+
+      runner = described_class.new(scenario_classes: [fake_scenario])
+
+      # Wrong DB → SafetyViolation should propagate from run_scenario
+      # all the way out of run!, not be caught by the broad
+      # StandardError rescue inside run_scenario.
+      allow(ActiveRecord::Base.connection).to receive(:current_database).and_return("resilience_development")
+      ENV["AI_EVALS_ALLOW_DESTRUCTIVE_RESET"] = "1"
+      allow(Metrics::Recorder).to receive(:reset!)
+
+      expect {
+        runner.run!
+      }.to raise_error(AiEvals::RecommendationBehaviorRunner::SafetyViolation, /must end in '_test'/)
+    ensure
+      ENV.delete("AI_EVALS_ALLOW_DESTRUCTIVE_RESET")
+    end
+  end
 end

@@ -113,7 +113,17 @@ module AiEvals
         llm_recs: recs.count { |r| r[:tier] == "llm" },
         rule_recs: recs.count { |r| r[:tier] == "rule" },
       )
-    rescue => e
+    rescue SafetyViolation
+      # Safety gates must abort the whole run, not be silently
+      # demoted to a per-scenario failure. If either gate fires
+      # (wrong DB or missing opt-in env), the developer needs to
+      # see the message NOW and the run must stop. Swallowing this
+      # in the broad StandardError rescue below would still log the
+      # gate's message but produce six fake "failed" scenarios and
+      # let the workflow keep going — exactly the visibility loss
+      # the gate is supposed to prevent.
+      raise
+    rescue StandardError => e
       {
         scenario:    scenario.name,
         description: scenario.description,
