@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-30 (Repo HEAD `81f9a54`; production live at https://resilience-ops.fly.dev/ on Fly version 44; working tree dirty only in this handoff rotation after MapPage decomposition tranche 4. Current truth: full frontend Vitest passed locally at 815/815 on the clean base before tranche 2, tranche-2 validation passed (`MapPage.test.tsx` 40/40 plus `useMapBenchmarkBridge.test.ts` 10/10, `npx tsc -b` clean, `git diff --check` clean), tranche 3 was committed/pushed at `4107a64`, and tranche 4 was committed locally at `81f9a54` after clean validation (`MapPage.test.tsx` 40/40, full frontend Vitest 815/815, `npx tsc -b` clean, `git diff --check` clean). Production `/up` and `/login` return 200, viewer `/health` shows the lockout UI without restricted backend calls, production replay smokes on `/map` + `/globe` pass, and a fresh commander browser smoke on version 44 showed clean `/map` and `/globe` live surfaces with observed SSE stream opens returning `200`. Production AI remains operationally unavailable. Historical session arc below preserved for takeover continuity.)
+Last updated: 2026-04-30 (Repo HEAD `350e532`; production live at https://resilience-ops.fly.dev/ on Fly version 44; working tree dirty only in this handoff rotation after MapPage decomposition tranche 5. Current truth: full frontend Vitest passed locally at 815/815 on the clean base before tranche 2, tranche-2 validation passed (`MapPage.test.tsx` 40/40 plus `useMapBenchmarkBridge.test.ts` 10/10, `npx tsc -b` clean, `git diff --check` clean), tranche 3 was committed/pushed at `4107a64`, tranche 4 was committed/pushed at `81f9a54` with handoff rotation at `9fbdb2e`, and tranche 5 was committed locally at `350e532` after clean validation (`MapPage.test.tsx` 40/40, `npx tsc -b` clean, `git diff --check` clean). Production `/up` and `/login` return 200, viewer `/health` shows the lockout UI without restricted backend calls, production replay smokes on `/map` + `/globe` pass, and a fresh commander browser smoke on version 44 showed clean `/map` and `/globe` live surfaces with observed SSE stream opens returning `200`. Production AI remains operationally unavailable. Historical session arc below preserved for takeover continuity.)
 
 ## Current Phase
 
@@ -33,7 +33,7 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**MapPage decomposition — tranche 4 committed locally, handoff rotation pending push (2026-04-30).**
+**MapPage decomposition — tranche 5 committed locally, handoff rotation pending push (2026-04-30).**
 The public-doc refresh + authenticated SSE throttle isolation were
 committed and pushed at `3e7a5d6`; tranche 1 of `MapPage.tsx`
 decomposition then landed at `1c3276e`; tranche 2 is now committed at
@@ -121,9 +121,31 @@ Validation for committed tranche 4:
 - `cd frontend && npx vitest run --reporter=dot`
   → 815/815 green
 
+Committed handoff rotation after tranche 4 at `9fbdb2e`.
+
+Committed tranche 5 at `350e532`:
+- extracted `frontend/src/hooks/useMapSelectionOrchestration.ts`
+  - owns the selection orchestration plane except final map-ready URL hydration:
+    - route-backed entity selection sync
+    - evidence-linked ids
+    - derived selected site / asset / signal / vessel state
+    - selection clear + transition invalidation callbacks
+  - exposes the selection ids, setters, callbacks, evidence ids, and
+    `urlSelectionAppliedRef` back to `MapPage`
+- reduced `frontend/src/pages/MapPage.tsx` from 399 lines to 384 lines
+  without changing page semantics
+- cumulative `MapPage.tsx` reduction across tranches 1–5:
+  905 lines → 384 lines (−58%)
+
+Validation for committed tranche 5:
+- `git diff --check` clean
+- `cd frontend && npx tsc -b` passes
+- `cd frontend && npx vitest run src/test/MapPage.test.tsx --reporter=dot`
+  → 40/40 green
+
 Next recommended action:
 - push the handoff rotation so `main` matches the local committed state
-- start the next substantial `MapPage` seam from clean base `81f9a54`
+- start the next substantial `MapPage` seam from clean base `350e532`
 - keep Claude in reviewer/gate mode after 1–2 coherent sub-slices
 
 Production hardening context preserved below for continuity. The prior
