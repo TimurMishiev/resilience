@@ -1,21 +1,21 @@
-import { useRef, useState } from 'react'
-import { Button, NonIdealState } from '@blueprintjs/core'
+import { useRef } from 'react'
 import { useEntitySelectionSync } from '../hooks/useEntitySelectionSync'
 import { useRole } from '../hooks/useRole'
 import { useReferenceTimeMs } from '../hooks/useReferenceTimeMs'
 import { useReplayParams } from '../hooks/useReplayParams'
-import { useMapLibreEngine, type MapStyleKey } from '../hooks/useMapLibreEngine'
+import { useMapLibreEngine } from '../hooks/useMapLibreEngine'
 import { useEvidenceLinkedIds } from '../hooks/useEvidenceLinkedIds'
 import { useMapContextPanelState } from '../hooks/useMapContextPanelState'
+import { useMapDisplayState } from '../hooks/useMapDisplayState'
 import { useMapPageData } from '../hooks/useMapPageData'
 import { useMapPageDiagnostics } from '../hooks/useMapPageDiagnostics'
 import { useMapSelectionState } from '../hooks/useMapSelectionState'
 import { useMapToolState } from '../hooks/useMapToolState'
 import { useMapUrlSelectionHydration } from '../hooks/useMapUrlSelectionHydration'
 import { useLocation } from 'react-router-dom'
-import { MapOverlayControls } from '../components/map/MapOverlayControls'
 import { MapSelectionPanels } from '../components/map/MapSelectionPanels'
 import { MapInlineDebriefPanel } from '../components/map/MapInlineDebriefPanel'
+import { MapViewportSurface } from '../components/map/MapViewportSurface'
 
 export default function MapPage() {
   const location    = useLocation()
@@ -25,19 +25,6 @@ export default function MapPage() {
 
   const mapContainerRef = useRef<HTMLDivElement>(null)
 
-  // ---------------------------------------------------------------------------
-  // Map UI state — passed to engine
-  // ---------------------------------------------------------------------------
-  const [showSignals,     setShowSignals]     = useState(true)
-  const [showCoverage,    setShowCoverage]    = useState(true)
-  const [showHeatmap,     setShowHeatmap]     = useState(false)
-  const [showChokepoints, setShowChokepoints] = useState(true)
-  const [showTrails,      setShowTrails]      = useState(true)
-  // Tranche 6-A: replay event pulses default ON. Effective only while
-  // isReplaying — live mode does not render the layer regardless.
-  const [showReplayPulses, setShowReplayPulses] = useState(true)
-  const [trailWindowMinutes, setTrailWindowMinutes] = useState(30)
-  const [mapStyle,        setMapStyle]        = useState<MapStyleKey>('tactical')
   const {
     annotationMode,
     annotations,
@@ -98,6 +85,66 @@ export default function MapPage() {
   } = useMapToolState()
 
   const {
+    buildOverlayControlsProps,
+    mapStyle,
+    showChokepoints,
+    showCoverage,
+    showHeatmap,
+    showReplayPulses,
+    showSignals,
+    showTrails,
+    trailWindowMinutes,
+  } = useMapDisplayState({
+    isReplaying,
+    annotationMode,
+    annotations,
+    rangeRingMode,
+    rangeRingAnchor,
+    rangeRingInputs,
+    rangeRingRadiiKm,
+    rangeRingUnit,
+    sectorMode,
+    sectorAnchor,
+    sectorDegreesInput,
+    sectorDegrees,
+    sectorArcInput,
+    sectorArcDegrees,
+    sectorDistanceInput,
+    sectorDistanceKm,
+    sectorUnit,
+    bearingLineMode,
+    bearingLineAnchor,
+    bearingLineDegreesInput,
+    bearingLineDegrees,
+    bearingLineDistanceInput,
+    bearingLineDistanceKm,
+    bearingLineUnit,
+    measurementMode,
+    measurementPoints,
+    onToggleAnnotations: toggleAnnotations,
+    onClearAnnotations: clearAnnotations,
+    onUpdateAnnotationLabel: updateAnnotationLabel,
+    onRemoveAnnotation: removeAnnotation,
+    onToggleRangeRings: toggleRangeRings,
+    onClearRangeRings: clearRangeRings,
+    onUpdateRangeRingInput: updateRangeRingInput,
+    onSetRangeRingUnit: setRangeRingDisplayUnit,
+    onToggleSector: toggleSector,
+    onClearSector: clearSector,
+    onUpdateSectorDegreesInput: updateSectorDegreesInput,
+    onUpdateSectorArcInput: updateSectorArcInput,
+    onUpdateSectorDistanceInput: updateSectorDistanceInput,
+    onSetSectorUnit: setSectorDisplayUnit,
+    onToggleBearingLine: toggleBearingLine,
+    onClearBearingLine: clearBearingLine,
+    onUpdateBearingLineDegreesInput: updateBearingLineDegreesInput,
+    onUpdateBearingLineDistanceInput: updateBearingLineDistanceInput,
+    onSetBearingLineUnit: setBearingLineDisplayUnit,
+    onToggleMeasurement: toggleMeasurement,
+    onClearMeasurement: clearMeasurement,
+  })
+
+  const {
     allTasks,
     areaOfOperations,
     assetTrails,
@@ -124,6 +171,14 @@ export default function MapPage() {
     isReplaying,
     signalQueryParams,
     trailWindowMinutes,
+  })
+
+  const overlayControlsProps = buildOverlayControlsProps({
+    error,
+    loading,
+    pulseCount: replayPulses.length,
+    signalError,
+    telemetryConnected,
   })
 
   // ---------------------------------------------------------------------------
@@ -304,109 +359,12 @@ export default function MapPage() {
   // ---------------------------------------------------------------------------
   return (
     <div className={`map-page${contextPanelOpen ? ' map-page--panel-open' : ''}`}>
-      <div className="map-viewport">
-        <div ref={mapContainerRef} className="map-container" />
-
-        {/* Engine init failure overlay. Without this, a CDN failure on
-            the maplibre-gl dynamic import or a WebGL-context-unavailable
-            browser left the user staring at a blank canvas with no error
-            state. The hook's retryEngine clears the error and re-runs
-            the init effect; the overlay vanishes when init succeeds. */}
-        {engineError && (
-          <div className="map-engine-error-overlay" role="alert">
-            <NonIdealState
-              icon="error"
-              title="Map engine failed to load"
-              description={
-                <>
-                  <p>{engineError.message}</p>
-                  <p style={{ fontSize: 12, color: 'var(--bp5-text-color-muted)' }}>
-                    This usually means the map runtime could not be downloaded
-                    (network blip, CDN outage) or the browser is missing WebGL
-                    support.
-                  </p>
-                </>
-              }
-              action={
-                <Button intent="primary" icon="refresh" onClick={retryEngine}>
-                  Retry
-                </Button>
-              }
-            />
-          </div>
-        )}
-
-        <MapOverlayControls
-        loading={loading}
-        error={error}
-        isReplaying={isReplaying}
-        telemetryConnected={telemetryConnected}
-        signalError={signalError}
-        mapStyle={mapStyle}
-        showCoverage={showCoverage}
-        showChokepoints={showChokepoints}
-        showTrails={showTrails}
-        trailWindowMinutes={trailWindowMinutes}
-        showSignals={showSignals}
-        showHeatmap={showHeatmap}
-        showReplayPulses={showReplayPulses}
-        pulseCount={replayPulses.length}
-        annotationMode={annotationMode}
-        annotations={annotations}
-        rangeRingMode={rangeRingMode}
-        rangeRingAnchor={rangeRingAnchor}
-        rangeRingInputs={rangeRingInputs}
-        rangeRingRadiiKm={rangeRingRadiiKm}
-        rangeRingUnit={rangeRingUnit}
-        sectorMode={sectorMode}
-        sectorAnchor={sectorAnchor}
-        sectorDegreesInput={sectorDegreesInput}
-        sectorDegrees={sectorDegrees}
-        sectorArcInput={sectorArcInput}
-        sectorArcDegrees={sectorArcDegrees}
-        sectorDistanceInput={sectorDistanceInput}
-        sectorDistanceKm={sectorDistanceKm}
-        sectorUnit={sectorUnit}
-        bearingLineMode={bearingLineMode}
-        bearingLineAnchor={bearingLineAnchor}
-        bearingLineDegreesInput={bearingLineDegreesInput}
-        bearingLineDegrees={bearingLineDegrees}
-        bearingLineDistanceInput={bearingLineDistanceInput}
-        bearingLineDistanceKm={bearingLineDistanceKm}
-        bearingLineUnit={bearingLineUnit}
-        measurementMode={measurementMode}
-        measurementPoints={measurementPoints}
-        onMapStyleChange={setMapStyle}
-        onToggleCoverage={() => setShowCoverage(v => !v)}
-        onToggleChokepoints={() => setShowChokepoints(v => !v)}
-        onToggleTrails={() => setShowTrails(v => !v)}
-        onTrailWindowChange={setTrailWindowMinutes}
-        onToggleSignals={() => setShowSignals(v => !v)}
-        onToggleHeatmap={() => setShowHeatmap(v => !v)}
-        onToggleReplayPulses={() => setShowReplayPulses(v => !v)}
-        onToggleAnnotations={toggleAnnotations}
-        onClearAnnotations={clearAnnotations}
-        onUpdateAnnotationLabel={updateAnnotationLabel}
-        onRemoveAnnotation={removeAnnotation}
-        onToggleRangeRings={toggleRangeRings}
-        onClearRangeRings={clearRangeRings}
-        onUpdateRangeRingInput={updateRangeRingInput}
-        onSetRangeRingUnit={setRangeRingDisplayUnit}
-        onToggleSector={toggleSector}
-        onClearSector={clearSector}
-        onUpdateSectorDegreesInput={updateSectorDegreesInput}
-        onUpdateSectorArcInput={updateSectorArcInput}
-        onUpdateSectorDistanceInput={updateSectorDistanceInput}
-        onSetSectorUnit={setSectorDisplayUnit}
-        onToggleBearingLine={toggleBearingLine}
-        onClearBearingLine={clearBearingLine}
-        onUpdateBearingLineDegreesInput={updateBearingLineDegreesInput}
-        onUpdateBearingLineDistanceInput={updateBearingLineDistanceInput}
-        onSetBearingLineUnit={setBearingLineDisplayUnit}
-        onToggleMeasurement={toggleMeasurement}
-        onClearMeasurement={clearMeasurement}
+      <MapViewportSurface
+        engineError={engineError}
+        mapContainerRef={mapContainerRef}
+        overlayControlsProps={overlayControlsProps}
+        retryEngine={retryEngine}
       />
-      </div>
 
       {contextPanelOpen && (
         <aside

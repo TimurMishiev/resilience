@@ -14,7 +14,7 @@ import { SectorPanel } from './overlay-controls/SectorPanel'
 import { BearingLinePanel } from './overlay-controls/BearingLinePanel'
 import { MeasurementPanel } from './overlay-controls/MeasurementPanel'
 
-interface MapOverlayControlsProps {
+export interface MapOverlayControlsProps {
   loading: boolean
   error: string | null
   isReplaying: boolean

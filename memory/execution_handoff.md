@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-04-30 (Repo HEAD `8419734`; production live at https://resilience-ops.fly.dev/ on Fly version 44; working tree clean after MapPage decomposition tranche 2. Current truth: full frontend Vitest passed locally at 815/815 on the clean base before tranche 2, targeted tranche-2 validation passed (`MapPage.test.tsx` 40/40 plus `useMapBenchmarkBridge.test.ts` 10/10, `npx tsc -b` clean, `git diff --check` clean), production `/up` and `/login` return 200, viewer `/health` shows the lockout UI without restricted backend calls, production replay smokes on `/map` + `/globe` pass, and a fresh commander browser smoke on version 44 showed clean `/map` and `/globe` live surfaces with observed SSE stream opens returning `200`. Production AI remains operationally unavailable. Historical session arc below preserved for takeover continuity.)
+Last updated: 2026-04-30 (Repo HEAD `5bb6b07`; production live at https://resilience-ops.fly.dev/ on Fly version 44; tranche 3 validated locally and ready to commit/push. Current truth: full frontend Vitest passed locally at 815/815 on the clean base before tranche 2, tranche-2 validation passed (`MapPage.test.tsx` 40/40 plus `useMapBenchmarkBridge.test.ts` 10/10, `npx tsc -b` clean, `git diff --check` clean), and tranche 3 also validates clean after the reviewer-noted cosmetic cleanup (`MapPage.test.tsx` 40/40 plus `MapOverlayControls.test.tsx` 35/35, `npx tsc -b` clean, `git diff --check` clean). Production `/up` and `/login` return 200, viewer `/health` shows the lockout UI without restricted backend calls, production replay smokes on `/map` + `/globe` pass, and a fresh commander browser smoke on version 44 showed clean `/map` and `/globe` live surfaces with observed SSE stream opens returning `200`. Production AI remains operationally unavailable. Historical session arc below preserved for takeover continuity.)
 
 ## Current Phase
 
@@ -33,7 +33,7 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**MapPage decomposition — tranche 2 committed (2026-04-30).**
+**MapPage decomposition — tranche 3 validated, ready to commit (2026-04-30).**
 The public-doc refresh + authenticated SSE throttle isolation were
 committed and pushed at `3e7a5d6`; tranche 1 of `MapPage.tsx`
 decomposition then landed at `1c3276e`; tranche 2 is now committed at
@@ -72,8 +72,45 @@ Validation for committed tranche 2:
 - `cd frontend && npx vitest run src/test/MapPage.test.tsx src/test/useMapBenchmarkBridge.test.ts --reporter=dot`
   → 50/50 green after the build-seam fixes
 
+Current tranche-3 diff on top of `5bb6b07`:
+- modified:
+  - `frontend/src/pages/MapPage.tsx`
+  - `frontend/src/components/map/MapOverlayControls.tsx`
+- new:
+  - `frontend/src/hooks/useMapDisplayState.ts`
+  - `frontend/src/components/map/MapViewportSurface.tsx`
+
+Current tranche-3 work:
+- extracted `frontend/src/hooks/useMapDisplayState.ts`
+  - owns local map display/control state:
+    - `mapStyle`
+    - signals / coverage / heatmap / chokepoints / trails / replay-pulses toggles
+    - trail-window minutes
+  - builds the `MapOverlayControls` prop contract from the current display state
+    plus live status (`loading`, `error`, `telemetryConnected`, `signalError`,
+    replay pulse count)
+- extracted `frontend/src/components/map/MapViewportSurface.tsx`
+  - owns viewport chrome composition:
+    - map container
+    - engine-failure overlay
+    - `MapOverlayControls` render
+- updated `frontend/src/components/map/MapOverlayControls.tsx` to export
+  `MapOverlayControlsProps`, so the control-plane hook and viewport component
+  share the exact public contract instead of duplicating prop types
+- reduced `frontend/src/pages/MapPage.tsx` from 461 lines to 419 lines
+  without changing page semantics
+
+Validation for the current dirty tranche:
+- `git diff --check` clean
+- `cd frontend && npx tsc -b` passes
+- `cd frontend && npx vitest run src/test/MapPage.test.tsx src/test/MapOverlayControls.test.tsx --reporter=dot`
+  → 75/75 green
+- reviewer-noted redundant passthrough assignments in
+  `useMapDisplayState.ts` were removed and the same validation was rerun clean
+
 Next recommended action:
-- start the next substantial `MapPage` seam from this clean base
+- commit/push tranche 3 from this state
+- start the next substantial `MapPage` seam from the new clean base
 - keep Claude in reviewer/gate mode after 1–2 coherent sub-slices
 
 Production hardening context preserved below for continuity. The prior
