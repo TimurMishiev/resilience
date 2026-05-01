@@ -743,7 +743,15 @@ RSpec.describe Correlations::RuleFiringService do
         end
       end
 
-      threads.each(&:join)
+      # Bounded join: if either thread fails to reach the barrier (e.g.
+      # pool checkout raises before the rescue inside the with_connection
+      # block can catch it), the surviving thread would block at
+      # barrier.wait forever and an unbounded join would hang the test
+      # runner indefinitely. 30s is generous on any real CI runner and
+      # short enough that a hang fails loudly rather than wedges the suite.
+      threads.each do |t|
+        t.join(30) || raise("thread did not complete within 30s — likely barrier deadlock from a pre-barrier failure")
+      end
       window_end = Time.current
 
       expect(errors).to be_empty, "threads raised: #{errors.map { |e| "#{e.class}: #{e.message}" }.join('; ')}"
