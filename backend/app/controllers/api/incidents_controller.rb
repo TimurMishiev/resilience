@@ -362,7 +362,15 @@ module Api
 
       replay_states = replay_states_for_incidents(records, as_of: as_of)
       matches_by_incident = records.each_with_object({}) do |record, grouped|
-        grouped[record.id] = record.signal_rule_matches.select { |match| match.fired_at <= as_of }.sort_by(&:fired_at).reverse
+        # Tie-break by id so two SignalRuleMatches sharing the exact
+        # fired_at (a burst of geofence breaches all using one
+        # Time.current snapshot) produce a stable order. Without this,
+        # `same as_of → same JSON` — the platform's replay contract — is
+        # silently violated for incidents whose alerts fire in bursts.
+        grouped[record.id] = record.signal_rule_matches
+          .select { |match| match.fired_at <= as_of }
+          .sort_by { |match| [match.fired_at, match.id] }
+          .reverse
       end
       replay_match_states = Replay::StateSerializer.match_states(matches_by_incident.values.flatten, as_of: as_of)
       task_snapshots = load_replay_task_snapshots(
@@ -435,14 +443,20 @@ module Api
 
     def replay_states_for_incidents(records, as_of:)
       incident_ids = records.map(&:id)
+      # Tie-break by sequence so audit events sharing an exact occurred_at
+      # produce a stable replay order. This matches the canonical replay
+      # ordering used by Replay::AuditSnapshotService and the chain
+      # backfiller. Without it, replay_states_for_incidents could return
+      # different state derivations for the same incident at the same
+      # as_of when burst writes share a microsecond.
       future_events = AuditEvent
         .where(entity_type: "Incident", entity_id: incident_ids)
         .where("occurred_at > ?", as_of)
-        .order(occurred_at: :desc)
+        .order(occurred_at: :desc, sequence: :desc)
       prosecution_starts = AuditEvent
         .where(entity_type: "Incident", entity_id: incident_ids, event_type: "prosecution_started")
         .where("occurred_at <= ?", as_of)
-        .order(:occurred_at)
+        .order(:occurred_at, :sequence)
         .group_by(&:entity_id)
       future_events_by_incident = future_events.group_by(&:entity_id)
 

@@ -823,4 +823,56 @@ RSpec.describe "Api::Incidents", type: :request do
       expect(ProsecutionStep.order(:created_at).last.evidence_refs).to eq({ "signal_ids" => ["sig-1", "sig-2"] })
     end
   end
+
+  # Regression for the "replay alert ordering non-determinism" finding
+  # (audit 2026-05-01 P2):
+  #
+  #   serialize_replay_incidents at incidents_controller.rb:365 used
+  #   `.sort_by(&:fired_at).reverse` — a single-key sort with no
+  #   tie-break. When two SignalRuleMatches share an exact fired_at
+  #   (a burst of geofence breaches all using one Time.current snapshot
+  #   inside Sites::GeofenceBreachService), the order after .reverse
+  #   depended on AR collection order from the cached association.
+  #   Two replay queries with the same as_of could return alerts in
+  #   different orders — silently violating the platform's stated
+  #   `same as_of → same JSON` replay contract.
+  #
+  #   Fix: tie-break by id so the order is deterministic across
+  #   processes, requests, and pool checkouts. Also tightened the
+  #   AuditEvent ordering inside replay_states_for_incidents (lines
+  #   441/445) to (occurred_at DESC, sequence DESC) — the canonical
+  #   audit-chain replay key used by Replay::AuditSnapshotService.
+  describe "GET /api/incidents/:id replay determinism under fired_at ties" do
+    let(:commander) { create(:user, :commander) }
+    let(:tied_site) { create(:site) }
+    let(:tied_incident) { create(:incident, site: tied_site, opened_at: 2.hours.ago) }
+
+    it "returns identical alert ordering across two replay reads with the same as_of" do
+      # Pin a single Time.current value so both matches share the exact
+      # fired_at — mirrors what Sites::GeofenceBreachService does under
+      # a burst of incoming signals.
+      tied_at = Time.current.utc.round(6)
+      m1 = create(:signal_rule_match, site: tied_site, fired_at: tied_at, incident: tied_incident, confidence: 0.6)
+      m2 = create(:signal_rule_match, site: tied_site, fired_at: tied_at, incident: tied_incident, confidence: 0.7)
+      m3 = create(:signal_rule_match, site: tied_site, fired_at: tied_at, incident: tied_incident, confidence: 0.5)
+
+      as_of_iso = 1.minute.from_now.iso8601
+
+      get "/api/incidents/#{tied_incident.id}",
+          params:  { as_of: as_of_iso },
+          headers: auth_headers(commander)
+      expect(response).to have_http_status(:ok)
+      first_alert_ids = JSON.parse(response.body).dig("alerts").map { |a| a["id"] }
+
+      get "/api/incidents/#{tied_incident.id}",
+          params:  { as_of: as_of_iso },
+          headers: auth_headers(commander)
+      expect(response).to have_http_status(:ok)
+      second_alert_ids = JSON.parse(response.body).dig("alerts").map { |a| a["id"] }
+
+      expect(first_alert_ids).to match_array([m1.id, m2.id, m3.id])
+      expect(first_alert_ids).to eq(second_alert_ids),
+        "replay returned different alert ordering for same as_of: #{first_alert_ids.inspect} vs #{second_alert_ids.inspect}"
+    end
+  end
 end
