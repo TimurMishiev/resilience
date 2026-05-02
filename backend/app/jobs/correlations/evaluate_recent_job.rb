@@ -32,9 +32,27 @@ module Correlations
     def perform
       cursor = IngestionCursor.for(CURSOR_NAME)
 
+      # Partial selects on these queries pre-empt loading every column of
+      # every signal/site through the correlation hot path. The selects
+      # MUST include every column read by downstream consumers
+      # (EvaluatorService, RuleFiringService, GeofenceBreachService, and
+      # — transitively via SignalRuleMatch.create!(site: ...) — the
+      # FusionService that reads `match.site.<column>` from the cached
+      # AR association). Audit 2026-05-01 caught two real defects from
+      # under-selected columns:
+      #   - signal `magnitude` (read by EvaluatorService#magnitude_ok?
+      #     for any rule with magnitude_min — production has 5 such rules
+      #     in db/seeds.rb)
+      #   - site `area_of_operation_id` (read by FusionService when
+      #     opening incidents from geofence breaches)
+      # Both raised MissingAttributeError that was silently swallowed
+      # by callers' rescue blocks → incidents and rule firings never
+      # happened. If you add a column read in the downstream services,
+      # add it here too OR add a regression spec that traces the call
+      # chain end-to-end with a partial-select fixture.
       recent = cursor
         .signals_since(ExternalSignal.select(:id, :source, :signal_type, :external_id,
-                                             :lat, :lng, :occurred_at, :ingested_at))
+                                             :lat, :lng, :magnitude, :occurred_at, :ingested_at))
         .limit(MAX_SIGNALS_PER_TICK)
         .to_a
 
@@ -42,7 +60,7 @@ module Correlations
 
       active_sites = Site.active
         .where("geofence_radius_km > 0")
-        .select(:id, :name, :latitude, :longitude, :geofence_radius_km)
+        .select(:id, :name, :latitude, :longitude, :geofence_radius_km, :area_of_operation_id)
         .to_a
 
       count = 0

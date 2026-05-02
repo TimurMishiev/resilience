@@ -249,5 +249,86 @@ RSpec.describe Incidents::FusionService, type: :service do
         end
       end
     end
+
+    # Regression for the "partial-select Site silently breaks geofence
+    # incident fusion" bug (audit 2026-05-01 P1):
+    #
+    #   `EvaluateRecentJob` loads sites via `Site.active.select(:id,
+    #   :name, :latitude, :longitude, :geofence_radius_km)` to keep the
+    #   correlation hot path's memory footprint bounded. Pre-fix, this
+    #   omitted `area_of_operation_id`. The partial Site is passed to
+    #   `Sites::GeofenceBreachService`, which calls
+    #   `SignalRuleMatch.create!(site: <partial_site>)`. AR caches the
+    #   passed-in partial AR object on the new record. When
+    #   `Incidents::FusionService` then ran
+    #   `@match.site&.area_of_operation_id` it raised
+    #   `ActiveModel::MissingAttributeError`. The caller swallowed it
+    #   in a broad rescue → SignalRuleMatch persisted, no Incident.
+    #
+    #   Two-layer fix:
+    #     1. The partial select now includes area_of_operation_id.
+    #     2. FusionService captures the FOR-UPDATE-locked Site row
+    #        (always full columns) and reads area_of_operation_id from
+    #        THAT row instead of the cached match.site association.
+    #
+    #   This spec proves the consumer fix (#2) is durable: it constructs
+    #   a SignalRuleMatch with a partial-selected Site that's missing
+    #   area_of_operation_id, runs FusionService against it, and asserts
+    #   no MissingAttributeError + the Incident is created with the
+    #   correct area_of_operation_id pulled from the locked row.
+    context "when match.site is a partial-select AR object missing area_of_operation_id" do
+      let!(:ao) do
+        AreaOfOperation.create!(
+          name: "Partial-Select Test AO",
+          threat_level: "amber",
+          posture: "defensive",
+          color: "#ffdd57",
+          geometry: { "type" => "Polygon", "coordinates" => [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]] },
+          created_by: create(:user, :commander),
+        )
+      end
+      let!(:full_site) { create(:site, area_of_operation: ao) }
+      # Mimic EvaluateRecentJob's partial select. The returned AR object
+      # has only the listed columns loaded; accessing other attributes
+      # raises ActiveModel::MissingAttributeError.
+      let(:partial_site) do
+        Site.where(id: full_site.id)
+            .select(:id, :name, :latitude, :longitude, :geofence_radius_km)
+            .first
+      end
+      let(:match_with_partial_site) do
+        # Create the SignalRuleMatch using the partial-selected site so
+        # match.site (the cached association) is the partial AR object.
+        create(:signal_rule_match, :without_task,
+               site:      partial_site,
+               fired_at:  Time.current,
+               confidence: 0.75,
+               metadata: {
+                 "distance_km"   => 5.0,
+                 "signal_type"   => "seismic_event",
+                 "signal_source" => "usgs_seismic",
+                 "actions_taken" => [],
+               })
+      end
+
+      it "does not raise MissingAttributeError when accessing area_of_operation_id" do
+        # Sanity-check the fixture: the cached site IS partial.
+        expect {
+          match_with_partial_site.site.area_of_operation_id
+        }.to raise_error(ActiveModel::MissingAttributeError)
+
+        expect {
+          described_class.call(match: match_with_partial_site)
+        }.not_to raise_error
+      end
+
+      it "creates an Incident with the correct area_of_operation_id from the freshly-locked row" do
+        result = described_class.call(match: match_with_partial_site)
+        expect(result).to be_success
+        incident = Incident.last
+        expect(incident.area_of_operation_id).to eq(ao.id)
+        expect(incident.site_id).to eq(full_site.id)
+      end
+    end
   end
 end

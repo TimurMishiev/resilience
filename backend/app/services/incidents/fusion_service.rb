@@ -39,7 +39,16 @@ module Incidents
       ActiveRecord::Base.transaction do
         # Lock site row — any other fusion call for this site will block here
         # until our transaction commits, then re-read the (now existing) incident.
-        Site.lock("FOR UPDATE").find(@match.site_id)
+        # Capture the freshly-loaded row (full columns) instead of relying on
+        # `@match.site`. The match's cached site association can be a partial-
+        # select object when the producer (e.g. EvaluateRecentJob) loaded sites
+        # without `area_of_operation_id` for memory efficiency. Reading the
+        # cached partial AR via `@match.site.area_of_operation_id` raised
+        # MissingAttributeError silently swallowed by the caller's rescue, so
+        # geofence-breach incidents never opened in production. Using the
+        # FOR-UPDATE-locked row is both the correct concurrency primitive AND
+        # the defensive read that prevents recurrence from any future caller.
+        @locked_site = Site.lock("FOR UPDATE").find(@match.site_id)
 
         incident, action = find_or_create_incident
         @match.update_column(:incident_id, incident.id)
@@ -77,14 +86,17 @@ module Incidents
     def create_new_incident
       rule_name   = @match.correlation_rule&.name || "Geofence Monitor"
       signal_type = (@match.metadata["signal_type"] || @match.signal&.signal_type || "signal").humanize
-      site_name   = @match.site&.name || "unknown site"
+      # Read site fields from the FOR-UPDATE-locked row (always full columns)
+      # rather than the match's cached AR association (which may be partial-
+      # select). See the comment in #call for the production-bug context.
+      site_name   = @locked_site&.name || "unknown site"
       dist        = @match.metadata["distance_km"]&.round(1)
       dist_str    = dist ? " (#{dist} km away)" : ""
 
       incident = Incident.create!(
         title:            "#{signal_type} activity near #{site_name}",
         site_id:          @match.site_id,
-        area_of_operation_id: @match.site&.area_of_operation_id,
+        area_of_operation_id: @locked_site&.area_of_operation_id,
         opened_at:        @match.fired_at || Time.current,
         confidence:       @match.confidence.to_f,
         severity:         severity_from_confidence(@match.confidence.to_f),
