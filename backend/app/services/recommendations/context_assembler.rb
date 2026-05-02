@@ -28,8 +28,19 @@ module Recommendations
 
     def call
       ServiceResult.success(context: build_context)
-    rescue ActiveRecord::ActiveRecordError => e
-      Rails.logger.error "[ContextAssembler] #{e.message}"
+    rescue StandardError => e
+      # Surface ALL errors as ServiceResult.failure rather than letting any
+      # individual context method silently return a default. Posture, asset
+      # availability, and unassigned-task data are load-bearing inputs to
+      # the rule engine's ROE-aware paths (rule_engine.rb#suggest_asset_assignments
+      # rejects observe-posture sites; rule_engine.rb#escalate_incidents
+      # downgrades observe-posture confidence). A silent `{}` from any of
+      # these queries would let the engine recommend kinetic actions in
+      # observe-posture AOs without any operator-visible signal that the
+      # context was incomplete. GeneratorService correctly propagates this
+      # failure (generator_service.rb:24) — no recommendations are persisted
+      # that cycle and the next GenerationJob tick retries cleanly.
+      Rails.logger.error "[ContextAssembler] #{e.class}: #{e.message}"
       ServiceResult.failure(errors: [e.message])
     end
 
@@ -167,9 +178,6 @@ module Recommendations
       tenant_sites(Site.active).where(flagged_at: nil).where(id: site_ids).map do |s|
         { id: s.id, name: s.name, risk_score: (scores[s.id].to_f / 100.0) }
       end
-    rescue => e
-      Rails.logger.warn "[ContextAssembler] flaggable_sites error: #{e.class}: #{e.message}"
-      []
     end
 
     # Sites where many unacknowledged alerts are piling up
@@ -192,9 +200,6 @@ module Recommendations
         .order(recorded_at: :desc)
         .limit(5)
         .map { |r| { site_id: r.site_id, score: r.score, recorded_at: r.recorded_at.iso8601 } }
-    rescue => e
-      Rails.logger.warn "[ContextAssembler] risk_snapshots error: #{e.class}: #{e.message}"
-      []
     end
 
     # Current ROE posture per site, keyed by site id.
@@ -209,9 +214,6 @@ module Recommendations
           next unless ao
           h[site.id] = { ao_id: ao.id, ao_name: ao.name, posture: ao.posture }
         end
-    rescue => e
-      Rails.logger.warn "[ContextAssembler] posture_by_site_id error: #{e.class}: #{e.message}"
-      {}
     end
 
     # Asset availability snapshot — used to warn when recommended tasks
@@ -225,9 +227,6 @@ module Recommendations
         degraded:  counts["degraded"].to_i,
         offline:   counts["offline"].to_i,
       }
-    rescue => e
-      Rails.logger.warn "[ContextAssembler] asset_availability error: #{e.class}: #{e.message}"
-      { available: 0, assigned: 0, degraded: 0, offline: 0 }
     end
 
     # Available assets (status=available), ordered by name — used by assign_asset rule.
@@ -236,9 +235,6 @@ module Recommendations
         .order("assets.name")
         .limit(20)
         .map { |a| { id: a.id, name: a.name, asset_type: a.asset_type } }
-    rescue => e
-      Rails.logger.warn "[ContextAssembler] available_assets error: #{e.class}: #{e.message}"
-      []
     end
 
     # Active high/critical tasks with no asset assigned — prime candidates for assign_asset.
@@ -252,9 +248,6 @@ module Recommendations
         .order(Arel.sql("CASE tasks.priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 END"), "tasks.created_at")
         .limit(10)
         .map { |t| serialize_task(t) }
-    rescue => e
-      Rails.logger.warn "[ContextAssembler] unassigned_high_priority_tasks error: #{e.class}: #{e.message}"
-      []
     end
 
     # ── Serializers ─────────────────────────────────────────────────────────────

@@ -11,6 +11,54 @@ RSpec.describe Recommendations::ContextAssembler, type: :service do
     expect(result).to be_success
   end
 
+  # Regression for the "silent rescue → ROE bypass under failure mode" class
+  # of bug (audit 2026-05-01 P1):
+  #
+  #   Six per-method bare `rescue =>` blocks (flaggable_sites, risk_snapshots,
+  #   posture_by_site_id, asset_availability, available_assets,
+  #   unassigned_high_priority_tasks) used to swallow ALL StandardError and
+  #   return empty defaults. The most dangerous of these was
+  #   posture_by_site_id returning `{}`: RuleEngine#suggest_asset_assignments
+  #   uses `posture_map.dig(t[:site_id], :posture) == "observe"` to skip
+  #   kinetic asset assignments in observe-posture AOs. A silent `{}` makes
+  #   that filter no-op — observe-posture sites become assignment candidates
+  #   without any operator-visible signal. RuleEngine#escalate_incidents
+  #   has the same shape (the 0.7× confidence downgrade for observe AOs
+  #   silently disappears).
+  #
+  #   Fix: remove all six per-method rescues; broaden the top-level rescue
+  #   to StandardError so any error surfaces as ServiceResult.failure.
+  #   GeneratorService:24 already propagates that cleanly — no recommendations
+  #   are persisted that cycle and the next GenerationJob tick retries.
+  describe "fail-fast behaviour for query errors (regression)" do
+    it "surfaces an AR error from posture_by_site_id as ServiceResult.failure" do
+      # `Site.all` is invoked only by posture_by_site_id (line 203 of the
+      # service); raising on it directly proves the broadened top-level
+      # rescue propagates the error rather than letting a per-method
+      # silent rescue swallow it and return `{}`.
+      allow(Site).to receive(:all).and_raise(
+        ActiveRecord::StatementInvalid.new("simulated DB hiccup"),
+      )
+
+      expect(result).not_to be_success
+      expect(result.errors.join).to include("simulated DB hiccup")
+    end
+
+    it "surfaces a non-AR programming error as failure (cousin of partial-select bug)" do
+      # Partial-select cousins raise ActiveModel::MissingAttributeError —
+      # which is NOT an ActiveRecord::ActiveRecordError. Pre-fix, this
+      # would have been swallowed by the per-method bare `rescue =>`;
+      # post-fix, the broadened top-level `rescue StandardError` surfaces
+      # it as ServiceResult.failure.
+      allow(Asset).to receive(:all).and_raise(
+        ActiveModel::MissingAttributeError.new("missing attribute: status"),
+      )
+
+      expect(result).not_to be_success
+      expect(result.errors.join).to include("missing attribute")
+    end
+  end
+
   it "returns a context hash with all required keys" do
     ctx = result.payload[:context]
     expect(ctx.keys).to include(
