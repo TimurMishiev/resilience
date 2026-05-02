@@ -183,4 +183,73 @@ RSpec.describe Recommendation do
       expect(build(:recommendation, status: "expired")).to be_expired
     end
   end
+
+  # Regression for the "concurrent accept/reject/defer race" finding
+  # (audit 2026-05-01 P2):
+  #
+  #   RecommendationsController#accept/reject/defer used to run
+  #   `rec.pending? then rec.accept!` outside any lock. Two commanders
+  #   clicking Accept simultaneously could both pass the predicate and
+  #   each call accept! — the model's accept! transaction wraps update! +
+  #   Audit::EventWriter.write, but with_lock was only on #execute. Net
+  #   effect: two `recommendation_accepted` audit events for one rec,
+  #   last-write-wins on reviewed_by_id and review_reason.
+  #
+  #   Fix: controller wraps the transition in
+  #   `rec.with_lock { unless pending?; return; ...; rec.accept! }`. This
+  #   spec proves the model contract the controller relies on: under
+  #   genuine concurrency, exactly one of two with_lock blocks observes
+  #   pending? as true and accept! is called exactly once.
+  #
+  # db_concurrency: true switches to truncation so data created here is
+  # visible from threads holding their own DB connections (mirrors
+  # rule_firing_service_spec.rb's cooldown concurrency spec).
+  describe "concurrent accept under with_lock + pending? re-check", db_concurrency: true do
+    let!(:concurrent_rec) do
+      create(:recommendation, status: "pending", expires_at: 2.hours.from_now)
+    end
+    let!(:concurrent_user) { create(:user, :commander) }
+
+    it "lets exactly one of two simultaneous accept attempts win" do
+      barrier = Concurrent::CyclicBarrier.new(2)
+      successes = Concurrent::Array.new
+      already   = Concurrent::Array.new
+      errors    = Concurrent::Array.new
+
+      threads = 2.times.map do
+        Thread.new do
+          ActiveRecord::Base.connection_pool.with_connection do
+            rec = Recommendation.find(concurrent_rec.id)
+            barrier.wait
+            rec.with_lock do
+              unless rec.pending?
+                already << rec.status
+                next
+              end
+              rec.accept!(user: concurrent_user, reason: "race winner")
+              successes << rec.status
+            end
+          rescue StandardError => e
+            errors << e
+          end
+        end
+      end
+
+      threads.each do |t|
+        t.join(30) || raise("thread did not complete within 30s — likely barrier deadlock from a pre-barrier failure")
+      end
+
+      expect(errors).to be_empty,
+        "threads raised: #{errors.map { |e| "#{e.class}: #{e.message}" }.join('; ')}"
+      expect(successes.size).to eq(1)
+      expect(already).to eq(["accepted"])
+      expect(concurrent_rec.reload.status).to eq("accepted")
+      accept_events = AuditEvent.where(
+        entity_type: "Recommendation",
+        entity_id:   concurrent_rec.id,
+        event_type:  "recommendation_accepted",
+      )
+      expect(accept_events.count).to eq(1)
+    end
+  end
 end

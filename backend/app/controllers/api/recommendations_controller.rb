@@ -48,39 +48,30 @@ module Api
     end
 
     # POST /api/recommendations/:id/accept
+    # Row-level lock + re-check matches the #execute pattern (line 99). Two
+    # commanders clicking Accept simultaneously would both have passed the
+    # `pending?` check pre-fix and both would have written `accept!` audit
+    # events with last-write-wins on `reviewed_by_id` and `review_reason`.
+    # The lock serialises the read-check-write window so the second writer
+    # observes status="accepted" and returns 422.
     def accept
       rec = scoped_record(Recommendation, params[:id])
       authorize rec, :accept?
-      unless rec.pending?
-        render json: { errors: ["Recommendation is already #{rec.status}"] }, status: :unprocessable_content
-        return
-      end
-      rec.accept!(user: current_user, reason: params[:reason])
-      render json: serialize(rec, evidence_context: build_evidence_context([rec], as_of: nil))
+      transition_with_lock(rec, :accept!)
     end
 
     # POST /api/recommendations/:id/reject
     def reject
       rec = scoped_record(Recommendation, params[:id])
       authorize rec, :reject?
-      unless rec.pending?
-        render json: { errors: ["Recommendation is already #{rec.status}"] }, status: :unprocessable_content
-        return
-      end
-      rec.reject!(user: current_user, reason: params[:reason])
-      render json: serialize(rec, evidence_context: build_evidence_context([rec], as_of: nil))
+      transition_with_lock(rec, :reject!)
     end
 
     # POST /api/recommendations/:id/defer
     def defer
       rec = scoped_record(Recommendation, params[:id])
       authorize rec, :defer?
-      unless rec.pending?
-        render json: { errors: ["Recommendation is already #{rec.status}"] }, status: :unprocessable_content
-        return
-      end
-      rec.defer!(user: current_user, reason: params[:reason])
-      render json: serialize(rec, evidence_context: build_evidence_context([rec], as_of: nil))
+      transition_with_lock(rec, :defer!)
     end
 
     # POST /api/recommendations/:id/execute
@@ -156,6 +147,29 @@ module Api
     end
 
     private
+
+    # Wraps a status transition (accept!/reject!/defer!) in a row-level lock
+    # and re-checks `pending?` inside the lock so concurrent operators are
+    # serialised. The second writer observes status="accepted" (or rejected/
+    # deferred) and gets a 422 with the actual current state, matching the
+    # contention contract that #execute already provides at line 99.
+    def transition_with_lock(rec, action)
+      already = nil
+
+      rec.with_lock do
+        unless rec.pending?
+          already = rec.status
+          next
+        end
+        rec.public_send(action, user: current_user, reason: params[:reason])
+      end
+
+      if already
+        render json: { errors: ["Recommendation is already #{already}"] }, status: :unprocessable_content
+      else
+        render json: serialize(rec, evidence_context: build_evidence_context([rec], as_of: nil))
+      end
+    end
 
     def serialize(rec, replay_state: nil, evidence_context: nil)
       {

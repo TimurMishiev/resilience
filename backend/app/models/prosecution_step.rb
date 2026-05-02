@@ -15,8 +15,15 @@ class ProsecutionStep < ApplicationRecord
   # ── Immutability ─────────────────────────────────────────────────────────────
   # Steps are an append-only prosecution log.
   # The schema has no updated_at column, which enforces immutability structurally.
-  # This callback is a second line of defence at the model layer.
+  # These callbacks are a second line of defence at the model layer. The
+  # destroy guard mirrors IncidentNote (incident_note.rb:22-24) — without it,
+  # a future Incident#destroy path would silently nuke the prosecution log
+  # via Incident's `has_many :prosecution_steps` association.
   before_update { throw :abort }
+  before_destroy do
+    raise ActiveRecord::ReadOnlyRecord,
+          "ProsecutionStep records are immutable and cannot be deleted"
+  end
 
   # ── Scopes ───────────────────────────────────────────────────────────────────
   scope :for_incident, ->(id) { where(incident_id: id).order(occurred_at: :asc, created_at: :asc) }

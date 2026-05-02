@@ -51,10 +51,28 @@ module Tasks
         return ServiceResult.failure(errors: ["blocked_reason must not be provided for non-blocked transitions"])
       end
 
-      before = task_snapshot(@task)
       correlation_id = SecureRandom.uuid
 
+      # Row-level lock + re-check inside the transaction defends against
+      # concurrent operators racing on the same task. Pre-fix, two
+      # operators transitioning simultaneously could both pass
+      # transition_allowed? (reads stale workflow_status), both call
+      # @task.save!, and the second writer's state silently overwrites the
+      # first — Op A's blocked_reason is discarded, Op B's resolved_at
+      # wins, two audit events are written, and Op A receives no conflict
+      # signal. with_lock + post-lock re-check returns the second writer
+      # an "Transition from 'X' to 'Y' is not allowed" failure, mirroring
+      # the contention contract Recommendations#execute relies on.
       ActiveRecord::Base.transaction do
+        @task.lock!
+        unless transition_allowed?
+          raise StaleTransition.new(
+            "Transition from '#{@task.workflow_status}' to '#{@to_status}' is not allowed"
+          )
+        end
+
+        before = task_snapshot(@task)
+
         @task.workflow_status = @to_status
         @task.blocked_reason = (@to_status == "blocked") ? @blocked_reason : nil
         # Set resolved_at on first resolution; clear it if the task is reopened
@@ -81,9 +99,13 @@ module Tasks
       end
 
       ServiceResult.success(task: @task)
+    rescue StaleTransition => e
+      ServiceResult.failure(errors: [e.message])
     rescue ActiveRecord::RecordInvalid => e
       ServiceResult.failure(errors: e.record.errors.full_messages)
     end
+
+    class StaleTransition < StandardError; end
 
     # Returns the allowed next statuses for a given current status and role.
     # Filters out commander-only transitions for operators so the frontend

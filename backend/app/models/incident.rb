@@ -27,7 +27,13 @@ class Incident < ApplicationRecord
   # destroy an incident with notes raises DeleteRestrictionError rather than
   # silently fighting the IncidentNote before_destroy guard.
   has_many :incident_notes,    dependent: :restrict_with_exception
-  has_many :prosecution_steps, dependent: :destroy
+  # ProsecutionStep is append-only (prosecution_step.rb:19-25) and now has
+  # its own before_destroy guard. Pairing `:destroy` with that immutability
+  # contract was structurally wrong — Incident#destroy would have raised on
+  # the first prosecution step's guard anyway, leaving partial state.
+  # `:restrict_with_exception` mirrors `incident_notes` above and makes the
+  # invariant explicit at the association edge.
+  has_many :prosecution_steps, dependent: :restrict_with_exception
 
   validates :title,     presence: true
   validates :status,    inclusion: { in: VALID_STATUSES }

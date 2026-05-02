@@ -94,6 +94,34 @@ RSpec.describe ProsecutionStep, type: :model do
     it "does not raise on initial create" do
       expect { create(:prosecution_step) }.not_to raise_error
     end
+
+    # Regression for the "ProsecutionStep destroy bypass" finding
+    # (audit 2026-05-01 P2). The model claims append-only but pre-fix had
+    # only a before_update guard. Incident#destroy with `dependent: :destroy`
+    # would have silently nuked the prosecution log. Mirrors IncidentNote's
+    # before_destroy guard at incident_note.rb:22-25.
+    it "raises ReadOnlyRecord on destroy" do
+      step = create(:prosecution_step)
+      expect { step.destroy }.to raise_error(ActiveRecord::ReadOnlyRecord, /immutable/)
+      expect(ProsecutionStep.exists?(step.id)).to be true
+    end
+
+    it "raises ReadOnlyRecord on destroy! (bang)" do
+      step = create(:prosecution_step)
+      expect { step.destroy! }.to raise_error(ActiveRecord::ReadOnlyRecord, /immutable/)
+    end
+
+    # Companion to the above: prove Incident now uses
+    # restrict_with_exception so an attempt to destroy a parent Incident
+    # with prosecution steps fails fast at the association edge rather
+    # than colliding with the per-row before_destroy guard mid-cascade.
+    it "blocks Incident#destroy when any prosecution_step is associated" do
+      incident = create(:incident)
+      create(:prosecution_step, incident: incident)
+      expect { incident.destroy }
+        .to raise_error(ActiveRecord::DeleteRestrictionError, /prosecution_steps/)
+      expect(Incident.exists?(incident.id)).to be true
+    end
   end
 
   # ── scopes ───────────────────────────────────────────────────────────────────

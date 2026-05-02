@@ -291,4 +291,77 @@ RSpec.describe Tasks::TransitionService, type: :service do
       end
     end
   end
+
+  # Regression for the "concurrent task transition race" finding
+  # (audit 2026-05-01 P2):
+  #
+  #   Pre-fix, transition_allowed? read the cached @task.workflow_status
+  #   outside any row lock. Two operators transitioning the same task
+  #   simultaneously could both pass the predicate, both reach
+  #   @task.save!, and the second transaction silently overwrote the
+  #   first. The losing operator received a 200 success but their state
+  #   was discarded. Two task.transitioned audit events were written
+  #   reflecting contradictory final states.
+  #
+  #   Fix: the transaction now lock!s the task row and re-checks
+  #   transition_allowed? after the lock, raising StaleTransition for
+  #   the loser so the caller gets a clean ServiceResult.failure with a
+  #   "not allowed" error. This spec proves under genuine concurrency
+  #   that exactly one of two simultaneous transitions wins.
+  describe "concurrent transition contention", db_concurrency: true do
+    let!(:concurrent_actor) { "concurrent-test-actor" }
+    let!(:concurrent_site)  { create(:site) }
+    let!(:concurrent_task) do
+      create(:task, site: concurrent_site, workflow_status: "in_progress")
+    end
+
+    it "lets exactly one of two simultaneous valid transitions win the lock" do
+      barrier = Concurrent::CyclicBarrier.new(2)
+      results = Concurrent::Array.new
+      errors  = Concurrent::Array.new
+
+      target_statuses = ["resolved", "blocked"]
+      target_reasons  = [nil, "blocked by Op B"]
+
+      threads = 2.times.map do |i|
+        Thread.new do
+          ActiveRecord::Base.connection_pool.with_connection do
+            task = Task.find(concurrent_task.id)
+            barrier.wait
+            results << described_class.call(
+              task:           task,
+              to_status:      target_statuses[i],
+              actor:          concurrent_actor,
+              actor_role:     "commander",
+              blocked_reason: target_reasons[i],
+            )
+          rescue StandardError => e
+            errors << e
+          end
+        end
+      end
+
+      threads.each do |t|
+        t.join(30) || raise("thread did not complete within 30s — likely barrier deadlock from a pre-barrier failure")
+      end
+
+      expect(errors).to be_empty,
+        "threads raised: #{errors.map { |e| "#{e.class}: #{e.message}" }.join('; ')}"
+      expect(results.size).to eq(2)
+      successes = results.count(&:success?)
+      failures  = results.count { |r| !r.success? }
+      expect(successes).to eq(1)
+      expect(failures).to eq(1)
+
+      losing = results.reject(&:success?).first
+      expect(losing.errors.first).to include("not allowed")
+
+      transitioned_events = AuditEvent.where(
+        entity_type: "Task",
+        entity_id:   concurrent_task.id,
+        event_type:  "task.transitioned",
+      )
+      expect(transitioned_events.count).to eq(1)
+    end
+  end
 end
