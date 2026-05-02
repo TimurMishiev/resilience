@@ -385,4 +385,102 @@ RSpec.describe Recommendations::Validator, type: :service do
       }.to raise_error(ActiveRecord::RecordNotUnique)
     end
   end
+
+  # Defense-in-depth regression for the "Validator does not enforce tenant
+  # scope on entity-existence checks" finding (audit 2026-05-01 P3):
+  #
+  #   ContextAssembler is per-tenant when organization_id is set, so the
+  #   LLM only ever sees in-tenant ids. But a hallucinated bigserial id
+  #   could collide with another tenant's row. Pre-fix, Validator's
+  #   `klass.exists?(id)` was a global query — a cross-tenant collision
+  #   would pass and the recommendation would persist (invisible to all
+  #   normal operators via RecommendationPolicy::Scope, but visible to
+  #   unrestricted admins and wasteful as an LLM-tier slot).
+  #
+  #   Fix: Validator accepts organization_id and tenant-scopes every
+  #   existence check via the same per-class rules ContextAssembler uses
+  #   (Site direct, SRM/Task via site, Incident via site OR ao, Asset via
+  #   home_site). ExecutorService#find_scoped + RecommendationPolicy
+  #   remain the primary tenant-action / tenant-visibility boundary;
+  #   this is the upstream defense-in-depth layer that prevents the
+  #   wasteful persistence in the first place.
+  describe "tenant-scoped entity validation (defense-in-depth)" do
+    let(:org_a) { create(:organization, name: "Org A") }
+    let(:org_b) { create(:organization, name: "Org B") }
+    let(:site_a) { create(:site, organization: org_a) }
+    let(:site_b) { create(:site, organization: org_b) }
+
+    it "rejects a recommendation pointing at another tenant's Site when org_a-scoped" do
+      attrs = valid_attrs(
+        recommendation_type:  "flag_site",
+        affected_entity_type: "Site",
+        affected_entity_id:   site_b.id,
+        action_payload:       { "site_id" => site_b.id },
+        evidence:             [{ "type" => "site", "id" => site_b.id, "detail" => "score=0.85" }],
+      )
+
+      result = described_class.call(recommendations: [attrs], organization_id: org_a.id)
+      expect(result.valid).to be_empty
+      expect(result.invalid.first[:errors].join(", "))
+        .to include("Site #{site_b.id} does not exist")
+    end
+
+    it "accepts a recommendation pointing at the same-tenant Site when org_a-scoped" do
+      attrs = valid_attrs(
+        recommendation_type:  "flag_site",
+        affected_entity_type: "Site",
+        affected_entity_id:   site_a.id,
+        action_payload:       { "site_id" => site_a.id },
+        evidence:             [{ "type" => "site", "id" => site_a.id, "detail" => "score=0.85" }],
+      )
+
+      result = described_class.call(recommendations: [attrs], organization_id: org_a.id)
+      expect(result.valid.size).to eq 1
+      expect(result.invalid).to be_empty
+    end
+
+    it "rejects evidence items pointing at another tenant's Site when org_a-scoped" do
+      attrs = valid_attrs(
+        affected_entity_type: "SignalRuleMatch",
+        affected_entity_id:   create(:signal_rule_match, site: site_a).id,
+        action_payload:       { "alert_id" => create(:signal_rule_match, site: site_a).id, "to_status" => "acknowledged" },
+        evidence:             [{ "type" => "site", "id" => site_b.id }],
+      )
+
+      result = described_class.call(recommendations: [attrs], organization_id: org_a.id)
+      expect(result.valid).to be_empty
+      expect(result.invalid.first[:errors].join(", "))
+        .to include("does not exist")
+    end
+
+    it "rejects action_payload referencing another tenant's Task when org_a-scoped" do
+      task_b  = create(:task, site: site_b)
+      asset_a = create(:asset, home_site: site_a)
+      attrs = valid_attrs(
+        recommendation_type:  "assign_asset",
+        affected_entity_type: "Task",
+        affected_entity_id:   task_b.id,
+        action_payload:       { "task_id" => task_b.id, "asset_id" => asset_a.id },
+        evidence:             [{ "type" => "task", "id" => task_b.id }],
+      )
+
+      result = described_class.call(recommendations: [attrs], organization_id: org_a.id)
+      expect(result.valid).to be_empty
+      expect(result.invalid.first[:errors].join(", "))
+        .to include("does not exist")
+    end
+
+    it "preserves global behavior when organization_id is nil (single-tenant default)" do
+      attrs = valid_attrs(
+        recommendation_type:  "flag_site",
+        affected_entity_type: "Site",
+        affected_entity_id:   site_b.id,
+        action_payload:       { "site_id" => site_b.id },
+        evidence:             [{ "type" => "site", "id" => site_b.id, "detail" => "score=0.85" }],
+      )
+
+      result = described_class.call(recommendations: [attrs])
+      expect(result.valid.size).to eq 1
+    end
+  end
 end

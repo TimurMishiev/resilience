@@ -30,7 +30,7 @@ module Recommendations
 
       all_recs = Array(tier1_result.recommendations) + Array(tier2_result.recommendations)
 
-      val_result = Validator.call(recommendations: all_recs)
+      val_result = Validator.call(recommendations: all_recs, organization_id: @organization_id)
       valid_recs = val_result.valid
 
       created = persist(valid_recs)

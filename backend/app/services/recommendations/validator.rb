@@ -31,8 +31,20 @@ module Recommendations
                                 { key: :asset_id,   klass: Asset           }],
     }.freeze
 
-    def initialize(recommendations:)
-      @recs = recommendations
+    # `organization_id:` is optional. When set, every entity-existence check
+    # (primary entity, evidence items, action_payload IDs) is tenant-scoped
+    # using the same per-class scoping rules ContextAssembler applies. This
+    # is a defense-in-depth layer behind ExecutorService's `find_scoped`
+    # and RecommendationPolicy::Scope: ContextAssembler only feeds the LLM
+    # in-tenant entities, but a hallucinated bigserial id could happen to
+    # collide with another tenant's row. Without this scoping, Validator
+    # would pass that recommendation through; with it, the rec is rejected
+    # before persistence so it never appears in the unrestricted-admin view
+    # and never wastes an LLM-tier slot. Pass nil (the default) for
+    # global-mode / single-tenant deployments — preserves pre-MT2 behavior.
+    def initialize(recommendations:, organization_id: nil)
+      @recs            = recommendations
+      @organization_id = organization_id
     end
 
     def call
@@ -54,6 +66,8 @@ module Recommendations
 
     private
 
+    attr_reader :organization_id
+
     def validate(rec)
       errors = []
 
@@ -63,12 +77,15 @@ module Recommendations
       errors << "rationale blank"             if rec[:rationale].blank?
       errors << "expires_at missing"          unless rec[:expires_at].present?
 
-      # Entity ID check — particularly important for LLM output
+      # Entity ID check — particularly important for LLM output. When
+      # organization_id is set, the existence check is tenant-scoped so
+      # a hallucinated id that happens to belong to a different tenant
+      # is rejected here, before persistence.
       if rec[:affected_entity_id].present? && rec[:affected_entity_type].present?
         klass = ENTITY_CLASSES[rec[:affected_entity_type]]
         if klass.nil?
           errors << "unknown entity type '#{rec[:affected_entity_type]}'"
-        elsif !klass.exists?(rec[:affected_entity_id])
+        elsif !tenant_scoped_exists?(rec[:affected_entity_type], rec[:affected_entity_id])
           errors << "#{rec[:affected_entity_type]} #{rec[:affected_entity_id]} does not exist"
         end
       end
@@ -85,8 +102,8 @@ module Recommendations
         end
 
         # Map evidence type string → AR model class and verify existence
-        evidence_class = ENTITY_CLASSES[evidence_entity_class_name(h[:type])]
-        if evidence_class && !evidence_class.exists?(h[:id])
+        entity_type_name = evidence_entity_class_name(h[:type])
+        if entity_type_name && !tenant_scoped_exists?(entity_type_name, h[:id])
           errors << "evidence[#{i}] #{h[:type]} #{h[:id]} does not exist"
         end
       end
@@ -123,7 +140,7 @@ module Recommendations
         id = payload_h[req[:key]]
         if id.blank?
           ["action_payload missing required key '#{req[:key]}'"]
-        elsif !req[:klass].exists?(id)
+        elsif !tenant_scoped_exists?(req[:klass].name, id)
           ["action_payload #{req[:key]} #{id} does not exist"]
         else
           []
@@ -223,6 +240,39 @@ module Recommendations
 
     def evidence_entity_class_name(type_str)
       EVIDENCE_TYPE_CLASS[type_str.to_s.downcase]
+    end
+
+    # Tenant-scoped existence check. When @organization_id is nil (global
+    # / single-tenant mode) this collapses to `klass.exists?(id)` —
+    # behavior unchanged. When set, mirrors ContextAssembler's per-class
+    # scoping rules so the existence check matches the data the LLM was
+    # given. Unknown type_name short-circuits to false (a stricter default
+    # than the prior `evidence_class.exists?` short-circuit which silently
+    # accepted unknown types).
+    def tenant_scoped_exists?(type_name, id)
+      klass = ENTITY_CLASSES[type_name]
+      return false if klass.nil?
+      return klass.exists?(id) if organization_id.nil?
+
+      case type_name
+      when "Site"
+        Site.where(id: id, organization_id: organization_id).exists?
+      when "SignalRuleMatch", "Task"
+        klass.joins(:site).where(id: id, sites: { organization_id: organization_id }).exists?
+      when "Incident"
+        Incident.left_joins(:site, :area_of_operation)
+          .where(id: id)
+          .where(
+            "sites.organization_id = :org_id OR " \
+            "(incidents.site_id IS NULL AND areas_of_operation.organization_id = :org_id)",
+            org_id: organization_id,
+          )
+          .exists?
+      when "Asset"
+        Asset.joins(:home_site).where(id: id, sites: { organization_id: organization_id }).exists?
+      else
+        false
+      end
     end
   end
 end
