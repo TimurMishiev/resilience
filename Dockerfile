@@ -113,6 +113,38 @@ COPY --chown=rails:rails --from=build /rails /rails
 # and the catch-all route returns index.html for SPA deep links.
 COPY --chown=rails:rails --from=frontend-build /app/dist /rails/public
 
+# Defense against build-cache poisoning of the previous COPY.
+#
+# Background (May 2026 incident): four sequential Fly deploys (v50-v53)
+# reached production with /rails/public containing ONLY the backend's
+# robots.txt, despite the frontend-build stage succeeding upstream and
+# yarn build producing all expected dist/ artifacts. The remote
+# builder served the COPY layer from a stale cache that pre-dated the
+# repo's frontend assets. Rails happily started and served the API,
+# Fly's healthcheck on /up returned 200 (Rails default healthcheck
+# doesn't depend on the SPA), every deploy reported success — but
+# every SPA route 404'd in production. The issue was caught by the
+# Playwright production smoke spec failing on `page.goto('/login')`.
+#
+# This RUN step transforms the silent failure into a loud build
+# failure. If the frontend bundle didn't land, the build aborts before
+# producing an image; Fly's deploy halts before any machine restart;
+# the human sees the FATAL message and rebuilds with --no-cache.
+#
+# Why test the OTHER COPY layers aren't worth verifying: lines 108
+# (bundle) and 109 (rails source) both produce loud boot failures
+# under the same cache-poison scenario — Rails can't start without
+# its gems or its source. Only line 114 (frontend overlay) is silent
+# because Rails doesn't depend on it to boot.
+#
+# Why -s and not -f: `test -f` accepts a zero-byte file. A truncated
+# index.html would render a blank page in the browser. -s requires
+# non-zero size, which is the actual invariant we care about.
+RUN test -s /rails/public/index.html || \
+    (echo "FATAL: /rails/public/index.html is missing or empty after the frontend overlay COPY. Likely a BuildKit cache poison — the layer was served from a stale cache that did not include the dist/ output. Rebuild with --no-cache: flyctl deploy --no-cache" && \
+     ls -la /rails/public/ && \
+     exit 1)
+
 ENTRYPOINT ["/rails/bin/docker-entrypoint"]
 
 EXPOSE 80
