@@ -130,16 +130,16 @@ test.describe('Production smoke — read-only golden path', () => {
     await expect(page.getByRole('heading', { name: 'Incidents', exact: true }))
       .toBeVisible({ timeout: 15000 })
 
-    // Incident detail (audit chain view #2) — open first row if any.
+    // Incident detail (audit chain view #2) — open first row.
+    // Wait for React Query to settle; a naked count() check is instantaneous
+    // and returns 0 before the fetch resolves, producing a false-skip even
+    // when the seed has incidents.
     const firstIncidentRow = page.locator('[data-testid="incident-row"]').first()
-    if ((await firstIncidentRow.count()) > 0) {
-      await firstIncidentRow.click()
-      await expect(page).toHaveURL(/\/incidents\/[^/]+/, { timeout: 10000 })
-      await expect(page.getByRole('tab', { name: /evidence/i })).toBeVisible({ timeout: 15000 })
-      await expect(page.getByRole('heading').first()).toBeVisible()
-    } else {
-      console.warn('[smoke] No incidents in seed; incident detail step skipped.')
-    }
+    await firstIncidentRow.waitFor({ state: 'attached', timeout: 15000 })
+    await firstIncidentRow.click()
+    await expect(page).toHaveURL(/\/incidents\/[^/]+/, { timeout: 10000 })
+    await expect(page.getByRole('tab', { name: /evidence/i })).toBeVisible({ timeout: 15000 })
+    await expect(page.getByRole('heading').first()).toBeVisible()
 
     // ─── 7. Recommendations: page hydrates ─────────────────────────────────
     await page.goto('/recommendations')
