@@ -25,7 +25,13 @@ if [ "${@: -2:1}" == "./bin/rails" ] && [ "${@: -1:1}" == "server" ]; then
     echo "Seeding demo data…"
     ./bin/rails db:seed
   else
-    echo "Skipping seed (env=${RAILS_ENV:-development}; FORCE_RESEED=${FORCE_RESEED:-unset}; users=$(./bin/rails runner 'print User.count' 2>/dev/null || echo '?'))."
+    # Static-only diagnostics. An inline `rails runner` here would add 3-5s
+    # to every boot just for a log message and would race with the Rails
+    # Telemetry banner on stdout, garbling the line. The env + FORCE_RESEED
+    # pair is sufficient to prove which branch fired; AuditEvent.count is
+    # available via `flyctl ssh console` if a post-deploy spot check is
+    # actually needed.
+    echo "Skipping seed (env=${RAILS_ENV:-development}; FORCE_RESEED=${FORCE_RESEED:-unset})."
   fi
 fi
 
