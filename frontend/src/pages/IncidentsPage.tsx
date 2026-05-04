@@ -224,6 +224,7 @@ export default function IncidentsPage() {
               return (
                 <tr
                   key={incident.id}
+                  data-testid="incident-row"
                   style={{ cursor: 'pointer', ...SEVERITY_ROW_STYLE[incident.severity] }}
                   onClick={() => navigate(`/incidents/${incident.id}`)}
                 >

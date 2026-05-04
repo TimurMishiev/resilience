@@ -87,7 +87,7 @@ export default function SitesPage() {
             : sites.map((site) => {
                 const risk = riskBySiteId[String(site.id)]
                 return (
-                  <tr key={site.id} className="clickable-row" onClick={() => navigate(`/sites/${site.id}`)}>
+                  <tr key={site.id} className="clickable-row" data-testid="site-row" onClick={() => navigate(`/sites/${site.id}`)}>
                     <td>
                       {site.name}
                       {site.flagged_at && (
