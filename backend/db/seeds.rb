@@ -1,5 +1,38 @@
 require "securerandom"
 
+# ── Production refusal guard ────────────────────────────────────────────────
+# This script does delete_all across 14 operational tables including
+# AuditEvent. Running it against a populated production database destroys
+# the chain-of-custody log (ADR-010) along with all incidents, signals,
+# tasks, and assets. The script's prior assumption — "I'm a development
+# seed" (line 3) — was structural intent, not an enforced invariant; any
+# operator with a Rails console or a misconfigured FORCE_RESEED flag
+# could silently nuke prod.
+#
+# Defense: refuse to run if RAILS_ENV=production AND audit events exist,
+# unless the operator has explicitly opted in with
+# ALLOW_DESTRUCTIVE_PROD_SEED=1. Pairs with the docker-entrypoint guard
+# which independently requires FORCE_RESEED=true before invoking db:seed
+# in production. Two-key protection: an accidental flag flip on either
+# side alone is insufficient to trigger destruction.
+if Rails.env.production? && AuditEvent.any? && ENV["ALLOW_DESTRUCTIVE_PROD_SEED"] != "1"
+  abort(<<~MSG)
+    seeds.rb refused to run.
+
+    Environment:           #{Rails.env}
+    Audit events present:  #{AuditEvent.count}
+
+    This script calls delete_all on 14 tables (including AuditEvent) and
+    would destroy the per-org hash-chained audit log along with all
+    operational data. To override this guard, set
+    ALLOW_DESTRUCTIVE_PROD_SEED=1.
+
+    Note: docker-entrypoint also requires FORCE_RESEED=true before
+    invoking db:seed in production. A genuine reseed of production
+    requires BOTH flags to be set deliberately.
+  MSG
+end
+
 puts "Seeding Resilience development database..."
 
 ACTOR = "system:seed"

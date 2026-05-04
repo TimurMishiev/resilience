@@ -4,12 +4,28 @@
 if [ "${@: -2:1}" == "./bin/rails" ] && [ "${@: -1:1}" == "server" ]; then
   ./bin/rails db:prepare
 
-  # FORCE_RESEED=true bypasses the guard (use to re-seed a live deployment)
-  if [ -z "$FORCE_RESEED" ] && ./bin/rails runner "exit(User.any? ? 0 : 1)" 2>/dev/null; then
-    echo "Database already seeded — skipping."
-  else
+  # ── Seed gating ──────────────────────────────────────────────────────────
+  # The previous logic was: skip seed iff (FORCE_RESEED unset AND User.any?
+  # returns true). This auto-reseeded in any environment if the User table
+  # ever emptied — production included. seeds.rb does delete_all across 14
+  # tables including AuditEvent, so an empty User table would silently
+  # destroy the audit chain on the next deploy.
+  #
+  # Inverted check: ONLY seed if either
+  #   (a) FORCE_RESEED is explicitly set, OR
+  #   (b) we're NOT in production AND the User table is empty (typical
+  #       fresh-dev-db case — first `docker compose up` should seed).
+  #
+  # Production NEVER auto-seeds without FORCE_RESEED, even if the User
+  # table is empty for unexpected reasons (partial restore, manual
+  # User.delete_all in console). A genuine prod reseed additionally
+  # requires ALLOW_DESTRUCTIVE_PROD_SEED=1, which seeds.rb's top-level
+  # guard checks independently — two-key protection.
+  if [ -n "$FORCE_RESEED" ] || ([ "$RAILS_ENV" != "production" ] && ! ./bin/rails runner "exit(User.any? ? 0 : 1)" 2>/dev/null); then
     echo "Seeding demo data…"
     ./bin/rails db:seed
+  else
+    echo "Skipping seed (env=${RAILS_ENV:-development}; FORCE_RESEED=${FORCE_RESEED:-unset}; users=$(./bin/rails runner 'print User.count' 2>/dev/null || echo '?'))."
   fi
 fi
 
