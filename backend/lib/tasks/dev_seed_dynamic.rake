@@ -25,6 +25,15 @@ namespace :dev do
   task seed_dynamic: :environment do
     abort("dev:seed_dynamic refused: only runs in development. Got Rails.env=#{Rails.env}") unless Rails.env.development?
 
+    # Refuse on a virgin DB. Without seeded Sites and ExternalSignals there's
+    # nothing for the correlation engine or geofence service to act on, and
+    # the task would silently exit with "rec gen: success=true created=0",
+    # making the operator think it worked when it produced nothing useful.
+    # Loud abort with explicit remediation is the right contract.
+    if Site.count.zero? || ExternalSignal.count.zero?
+      abort("dev:seed_dynamic refused: virgin DB (sites=#{Site.count} signals=#{ExternalSignal.count}). Run `bin/rails db:seed` first.")
+    end
+
     puts "[dev:seed_dynamic] starting…"
     before = {
       sites:       Site.count,

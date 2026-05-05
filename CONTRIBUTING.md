@@ -60,8 +60,15 @@ bundle install
 cp .env.example .env                    # then fill in SECRET_KEY_BASE
 bin/rails secret                        # generates a key — paste into .env
 bin/rails db:create db:migrate db:seed
-RAILS_MAX_THREADS=48 bundle exec rails server
+bin/rails dev:seed_dynamic              # populate incidents/alerts/risk snapshots — without this the dashboard looks dead
+bundle exec rails server                # config/initializers/development_defaults.rb sets DATABASE_PORT=5434 + SSE caps automatically
 ```
+
+> `dev:seed_dynamic` runs the correlation engine, geofence-breach service, risk
+> snapshot job, and recommendation generator over the seeded data. Production
+> generates this dynamically via Solid Queue jobs, but locally you'd start with
+> an empty dashboard until those jobs ran for hours. The task is idempotent —
+> safe to re-run after `git pull` to refresh the demo state.
 
 ### Frontend
 
