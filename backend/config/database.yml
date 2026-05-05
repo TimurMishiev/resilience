@@ -2,8 +2,15 @@ default: &default
   adapter: postgresql
   encoding: unicode
   pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
-  host: localhost
-  port: 5432
+  host: <%= ENV.fetch("DATABASE_HOST", "localhost") %>
+  # DATABASE_PORT moved into the default block so development picks it up too.
+  # The platform requires PostGIS, which is only available on PostgreSQL@17 on
+  # this machine (port 5434). Pre-fix, only the test section read this var
+  # while development hard-coded 5432 (PG@16, no PostGIS) — every fresh
+  # `bin/rails server` would fail until the operator manually overrode via
+  # DATABASE_URL. config/initializers/development_defaults.rb now sets
+  # DATABASE_PORT=5434 in dev so the canonical workflow just works.
+  port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
 
 development:
   <<: *default

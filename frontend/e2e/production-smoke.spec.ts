@@ -143,7 +143,9 @@ test.describe('Production smoke — read-only golden path', () => {
 
     // ─── 7. Recommendations: page hydrates ─────────────────────────────────
     await page.goto('/recommendations')
-    await expect(page.getByRole('heading', { name: 'Recommendations' }))
+    // exact:true so we don't strict-match the "No recommendations" empty-state
+    // heading when the filter has zero results.
+    await expect(page.getByRole('heading', { name: 'Recommendations', exact: true }))
       .toBeVisible({ timeout: 15000 })
     // Metric pills only render when `!isReplaying && metrics` is truthy.
     // The /api/recommendations/metrics call may still be in flight or
@@ -193,7 +195,9 @@ test.describe('Production smoke — mutation path', () => {
 
     await login(page)
     await page.goto('/recommendations')
-    await expect(page.getByRole('heading', { name: 'Recommendations' }))
+    // exact:true so we don't strict-match the "No recommendations" empty-state
+    // heading when the filter has zero results.
+    await expect(page.getByRole('heading', { name: 'Recommendations', exact: true }))
       .toBeVisible({ timeout: 15000 })
     await expect(page.locator('select').first()).toBeVisible({ timeout: 15000 })
 
