@@ -92,6 +92,13 @@ module Feeds
         metrics.finish(status: "error", errors: [e.message])
         raise # let PollJob retry network failures
       end
+      # See acled_ingestion_service.rb for the rationale — non-transient
+      # errors get a Sentry capture so a code bug or unexpected API shape
+      # surfaces instead of silently sitting in `degraded` state.
+      Observability.capture_exception(
+        e,
+        tags: { service: "feeds:gdacs", failure: "non_transient" },
+      )
       ServiceResult.success(metrics.success_payload(status: "degraded", errors: [e.message]))
     end
 

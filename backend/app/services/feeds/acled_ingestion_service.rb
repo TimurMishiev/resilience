@@ -109,6 +109,16 @@ module Feeds
         metrics.finish(status: "error", errors: [e.message])
         raise # let PollJob retry network failures
       end
+      # Non-transient: programming bug, unexpected API shape, etc. Without
+      # this Sentry capture, the rescue would only emit one warn/hour via
+      # throttled_warn and mark the feed `degraded` — and the dashboard
+      # would render that with a warning tag (post-fix) but no exception
+      # would surface in Sentry, so we'd never investigate the root cause.
+      # Mirrors the LlmEnricher#report_exception pattern.
+      Observability.capture_exception(
+        e,
+        tags: { service: "feeds:acled", failure: "non_transient" },
+      )
       ServiceResult.success(metrics.success_payload(status: "degraded", errors: [e.message]))
     end
 

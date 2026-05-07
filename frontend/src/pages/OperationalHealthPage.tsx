@@ -11,12 +11,14 @@ import {
   SseConnectionsCard,
   FeedLagTable,
   AiResponseTimesTable,
+  AiCircuitBreakersTable,
 } from '../components/operationalHealth/OperationalHealthTables'
 import type {
   EndpointLatency,
   SseConnectionPayload,
   FeedLagEntry,
   AiServiceTiming,
+  AiCircuitBreakersPayload,
 } from '../components/operationalHealth/OperationalHealthTables'
 
 const SNAPSHOT_LABELS: Record<FreshnessState, string> = {
@@ -62,7 +64,13 @@ export default function OperationalHealthPage() {
   const opsEntries = opsData?.data ?? []
 
   const okFeeds = feeds.filter(f => f.status === 'ok').length
-  const errorFeeds = feeds.filter(f => f.status === 'error' || f.status === 'disabled').length
+  // `degraded` was previously dropped on the floor here — a feed could return
+  // status: "degraded" (acled_ingestion_service.rb:104, 112 et al. on caught
+  // non-transient errors) and it would count in NEITHER okFeeds NOR
+  // errorFeeds, so the KPI showed "all healthy" while a feed was broken.
+  const errorFeeds = feeds.filter(
+    f => f.status === 'error' || f.status === 'disabled' || f.status === 'degraded'
+  ).length
   const relayEntries = opsEntries.filter(e => e.category === 'relay_health')
   const feedSnapshotFreshness = deriveFreshness(feedDataUpdatedAt, referenceTimeMs)
   const opsSnapshotFreshness = deriveFreshness(opsDataUpdatedAt, referenceTimeMs)
@@ -79,11 +87,22 @@ export default function OperationalHealthPage() {
   const sseEntry = metricsEntries.find(e => e.key === 'sse_connections')
   const feedLagEntry = metricsEntries.find(e => e.key === 'feed_lag')
   const aiTimingEntry = metricsEntries.find(e => e.key === 'ai_response_times')
+  const aiBreakerEntry = metricsEntries.find(e => e.key === 'ai_circuit_breakers')
 
   const requestEndpoints = (latencyEntry?.payload?.endpoints ?? []) as unknown as EndpointLatency[]
   const ssePayload = sseEntry?.payload ? sseEntry.payload as unknown as SseConnectionPayload : null
   const feedLagFeeds = (feedLagEntry?.payload?.feeds ?? []) as unknown as FeedLagEntry[]
   const aiServices = (aiTimingEntry?.payload?.services ?? []) as unknown as AiServiceTiming[]
+  // Backend Metrics::Recorder writes the breaker snapshot every cycle
+  // (recorder.rb:214). Pre-fix the payload was persisted but no frontend
+  // surface consumed it — operators had zero visibility into LLM
+  // degradation despite the data already flowing.
+  const aiBreakerPayload = aiBreakerEntry?.payload
+    ? aiBreakerEntry.payload as unknown as AiCircuitBreakersPayload
+    : null
+  const openBreakers = aiBreakerPayload
+    ? Object.entries(aiBreakerPayload.services).filter(([, info]) => info.status === 'open').map(([s]) => s)
+    : []
 
   return (
     <div className="page-content">
@@ -106,6 +125,25 @@ export default function OperationalHealthPage() {
       {!isReplaying && snapshotMessage(snapshotFreshness) && (
         <Callout intent={SNAPSHOT_INTENT[snapshotFreshness]} icon="warning-sign" style={{ marginBottom: 16 }}>
           {snapshotMessage(snapshotFreshness)}
+        </Callout>
+      )}
+
+      {/*
+        AI breaker banner — only renders when at least one breaker is open.
+        The breaker is opened by Ai::CircuitBreaker after FAILURE_THRESHOLD
+        (3) consecutive failures in OPEN_WINDOW (2 minutes); while open,
+        consumers like LlmEnricher short-circuit to ServiceResult.success
+        (recommendations: []) and the rule-tier still runs. Without this
+        banner the operator had no way to distinguish "LLM produced no
+        recommendations because nothing met the threshold" from "LLM is
+        actively unavailable."
+      */}
+      {openBreakers.length > 0 && (
+        <Callout intent="danger" icon="offline" title="AI degradation: circuit breaker open" style={{ marginBottom: 16 }}>
+          {openBreakers.length === 1
+            ? `1 AI service is currently bypassed: ${openBreakers[0]}.`
+            : `${openBreakers.length} AI services are currently bypassed: ${openBreakers.join(', ')}.`}
+          {' '}Recommendations and other LLM-tier surfaces will return rule-tier results only until the breaker auto-closes (~2 min after the last failure).
         </Callout>
       )}
 
@@ -208,6 +246,26 @@ export default function OperationalHealthPage() {
             <AiResponseTimesTable services={aiServices} />
           )}
         </div>
+      </div>
+
+      {/* AI circuit-breaker status — paired with the response-times card
+          above. The two are complementary: response-times shows the AI
+          path is HEALTHY when latencies are present; breaker status shows
+          the AI path is DEGRADED when consecutive failures pushed a
+          breaker open. Together they answer "is the LLM tier reliable
+          right now?" — which Recommendations operators need to know
+          before trusting (or distrusting) an empty AI-recommendations
+          tab. */}
+      <div className="dashboard-card" style={{ marginBottom: 20 }}>
+        <h4 className="dashboard-card-title bp6-heading">
+          <Icon icon="shield" size={14} style={{ marginRight: 6 }} />
+          AI Circuit Breakers
+        </h4>
+        {opsPending ? (
+          <div className={Classes.SKELETON} style={{ width: '100%', height: 80 }}>&nbsp;</div>
+        ) : (
+          <AiCircuitBreakersTable payload={aiBreakerPayload} />
+        )}
       </div>
 
       <div className="dashboard-card" style={{ marginBottom: 20 }}>

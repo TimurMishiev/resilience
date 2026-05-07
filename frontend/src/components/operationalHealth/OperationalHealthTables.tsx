@@ -34,10 +34,35 @@ export interface AiServiceTiming {
   max_ms: number
 }
 
+// Mirrors backend Ai::CircuitBreaker.status_snapshot — see
+// backend/app/services/ai/circuit_breaker.rb:15-27. KNOWN_SERVICES on
+// the backend is the authoritative list of breaker-monitored services
+// (task_filter, signal_filter, summary, ontology_query,
+// recommendation_llm_enricher); the snapshot returns a record per
+// service with its current status and consecutive failure count.
+export interface AiCircuitBreakerEntry {
+  service: string
+  status: 'open' | 'closed'
+  failures: number
+}
+
+export interface AiCircuitBreakersPayload {
+  services: Record<string, { status: 'open' | 'closed'; failures: number }>
+  any_open: boolean
+  recorded_at: string
+}
+
 function feedStatusIntent(status: string): 'success' | 'danger' | 'warning' | 'none' {
   if (status === 'ok') return 'success'
   if (status === 'error') return 'danger'
-  if (status === 'disabled') return 'warning'
+  // `degraded` is what feed services return on caught non-transient errors
+  // (acled_ingestion_service.rb:104, 112 et al.) — programming bugs hitting
+  // a malformed API response, JSON parse failures, etc. Pre-fix these
+  // rendered as a neutral grey tag because the status string didn't match
+  // any of the explicit branches; operators saw "no problem" while a feed
+  // was actively broken. `disabled` keeps the warning intent it already had
+  // (no creds configured for that feed).
+  if (status === 'disabled' || status === 'degraded') return 'warning'
   return 'none'
 }
 
@@ -262,6 +287,51 @@ export function FeedLagTable({ feeds, referenceTimeMs }: { feeds: FeedLagEntry[]
             <td className="bp6-text-muted" style={{ fontSize: 12 }}>
               {feed.last_poll_at ? timeAgo(feed.last_poll_at, referenceTimeMs) : '—'}
             </td>
+          </tr>
+        ))}
+      </tbody>
+    </HTMLTable>
+  )
+}
+
+// Renders the per-service AI circuit-breaker status. Each row shows
+// whether the breaker is open (Anthropic/LLM is currently being skipped
+// to protect the platform) and how many consecutive failures pushed it
+// open. Pre-fix the breaker state was recorded into OperationalStatus
+// (Metrics::Recorder#persist_circuit_breaker_status!) but no frontend
+// surface read it, so the operator had no visibility into LLM
+// degradation — Recommendations would silently return zero LLM
+// recommendations and the empty-state copy implied "no API key".
+export function AiCircuitBreakersTable({ payload }: { payload: AiCircuitBreakersPayload | null }) {
+  if (!payload || Object.keys(payload.services).length === 0) {
+    return <p className="bp6-text-muted" style={{ fontSize: 12 }}>No AI circuit-breaker telemetry yet.</p>
+  }
+
+  const rows: AiCircuitBreakerEntry[] = Object.entries(payload.services).map(([service, info]) => ({
+    service,
+    status: info.status,
+    failures: info.failures,
+  }))
+
+  return (
+    <HTMLTable compact striped style={{ width: '100%' }}>
+      <thead>
+        <tr>
+          <th>Service</th>
+          <th>Breaker</th>
+          <th>Failures</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(row => (
+          <tr key={row.service}>
+            <td style={{ fontFamily: 'monospace', fontSize: 11 }}>{row.service}</td>
+            <td>
+              <Tag minimal intent={row.status === 'open' ? 'danger' : 'success'} style={{ fontSize: 10, fontWeight: 600 }}>
+                {row.status.toUpperCase()}
+              </Tag>
+            </td>
+            <td style={{ fontSize: 11 }}>{row.failures}</td>
           </tr>
         ))}
       </tbody>
