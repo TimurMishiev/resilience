@@ -6,19 +6,19 @@ type: project
 
 # Resilience — Execution Context
 
-Last updated: 2026-05-01
+Last updated: 2026-05-08
 
 This file is the durable source of truth for project direction, execution sequencing, collaboration rules, and engineering expectations. It exists so Claude Code or Codex can continue work safely from the repo without relying on chat history.
 
 If this file disagrees with the code, trust the code first and then update this file.
 
-## Current State Snapshot (2026-05-01)
+## Current State Snapshot (2026-05-08)
 
 - Phases 1–7 are shipped.
 - Audit-driven remediation is closed. The old Band A/B/C/D framing is historical, not active execution guidance.
-- Outreach hardening and proof closeout are **complete**. Production is live on Fly **v46** at https://resilience-ops.fly.dev/. Six MapPage decomposition tranches landed (905 → 351 lines, −61%). Joint Claude+Codex audit (2026-05-01) found zero new defects; backlog is defense-in-depth only.
+- Outreach hardening and proof closeout are **complete**. Production is live on Fly **v60** at https://resilience-ops.fly.dev/. Six MapPage decomposition tranches landed (905 → 351 lines, −61%). Strict F6 closure landed at `4911373` and is deployed: recommendations metrics now expose `ai_status`, the AI-enriched tab distinguishes `no API key` vs `breaker open` vs `no threshold`, and Operational Health surfaces AI circuit-breaker state. Fresh proof on 2026-05-08: backend `2582/0`, frontend `821/821`, prod smoke/coverage `23 passed, 1 skipped`.
 - Remaining real items are:
-  - operational AI restore (Anthropic credits/key state — not a code defect; honest 422 degradation is in place)
+  - operational AI restore for `/api/ai/summary` and `/api/ai/ontology_query` (not a code defect; honest `422 AI service is unavailable` degradation is in place in production)
   - GPU-dependent map Playwright remaining local/manual by policy
   - stakeholder-blocked item `4B`
 - Phase definitions below are preserved as finished roadmap history. Do not re-execute them.

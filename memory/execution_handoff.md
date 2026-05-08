@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-05-08 (strict F6 closure implemented locally on top of `a62b377`; production remains live on Fly version 59. This slice adds state-aware `ai_status` to `GET /api/recommendations/metrics` and makes `RecommendationsPage` distinguish `no API key` vs `breaker open` vs `no threshold` on the AI-enriched tab. Historical session arc below is preserved for takeover continuity.)
+Last updated: 2026-05-08 (strict F6 closure completed at `4911373` and deployed to Fly version 60. `GET /api/recommendations/metrics` now returns `ai_status`; `RecommendationsPage` distinguishes `no API key` vs `breaker open` vs `no threshold`; full isolated proof is green and production smoke/coverage is green. Historical session arc below is preserved for takeover continuity.)
 
 ## Current Phase
 
@@ -33,9 +33,9 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**Strict F6 closure — recommendations AI empty-state state awareness.**
+**No active implementation slice.**
 
-Status: **completed locally, not yet committed/deployed in this session.**
+Status: **strict F6 closure completed, pushed, and deployed.**
 
 What changed:
 - `backend/app/controllers/api/recommendations_controller.rb`
@@ -72,8 +72,8 @@ Known risk:
 - do not widen this into broader AI restore work; the app still honestly degrades when Anthropic is unavailable
 
 Next after this slice:
-- commit + push this slice if user approves
-- if stricter proof is needed afterward, rerun broader full-suite validation in isolation, not in parallel with other heavy runners
+- operational AI restore if the user wants Briefing / Ontology live before outreach
+- otherwise, final wow-factor work can start from the clean `4911373` / Fly `v60` base
 
 **Proof closeout and deploy are otherwise complete.**
 
@@ -88,6 +88,13 @@ Current repo/runtime truth:
   - `cd frontend && yarn test`
   - `cd frontend && yarn build`
   - `cd frontend && yarn audit --level high` → only moderate findings, which matches CI pass policy
+- Fresh deployed proof on Fly `v60`:
+  - commander `/api/recommendations/metrics` returns `ai_status`
+  - `/recommendations` AI-enriched tab renders the healthy/no-threshold branch
+  - `/health` renders the AI circuit-breaker table
+  - production smoke + coverage: `23 passed, 1 skipped`
+- Remaining accepted live gap:
+  - `/api/ai/summary` and `/api/ai/ontology_query` still return honest `422 "AI service is unavailable. Contact your administrator."`
 - Backend proof completed locally under the CI-parity stack:
   - Ruby 3.4.7 via `rbenv`
   - PostgreSQL 17 on local port 5434 with PG17 client tools on `PATH`

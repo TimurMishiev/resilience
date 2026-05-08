@@ -106,7 +106,7 @@ cd resilience
 docker compose up                         # seeds demo data, opens localhost:3000
 # In another shell:
 cd backend && bundle exec rspec           # full backend suite against PostGIS
-cd frontend && npx vitest run             # 815 tests across 105 files
+cd frontend && npx vitest run             # 821 tests across 106 files
 ```
 
 ---
@@ -175,7 +175,7 @@ after looking at this code:
   genuine agent loop belongs to a different problem (autonomous incident
   triage with rollback) and would be a Phase-2 design.
 
-- **Test quality over test count.** A large backend RSpec suite and 815 frontend
+- **Test quality over test count.** A large backend RSpec suite and 821 frontend
   tests, but what matters is what they prove: org-isolation specs,
   scoped-access request specs, concurrency-invariant specs for the rule
   engine, adapter-level engine tests for the map/globe, role-boundary E2E

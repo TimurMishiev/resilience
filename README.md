@@ -2,8 +2,8 @@
 
 [![CI](https://img.shields.io/github/actions/workflow/status/TimurMishiev/resilience/ci.yml?branch=main&label=CI)](https://github.com/TimurMishiev/resilience/actions)
 [![Backend suite](https://img.shields.io/badge/backend-RSpec%20suite-brightgreen)](#test-coverage)
-[![Frontend tests](https://img.shields.io/badge/frontend%20tests-815-brightgreen)](#test-coverage)
-[![Playwright](https://img.shields.io/badge/Playwright-55%20tests%20%2F%2015%20files-brightgreen)](#test-coverage)
+[![Frontend tests](https://img.shields.io/badge/frontend%20tests-821-brightgreen)](#test-coverage)
+[![Playwright](https://img.shields.io/badge/Playwright-79%20tests%20%2F%2017%20files-brightgreen)](#test-coverage)
 [![Security](https://img.shields.io/badge/Brakeman-0%20warnings-brightgreen)](#security)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](frontend/tsconfig.app.json)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -12,7 +12,7 @@
 
 Resilience is the kind of software that runs inside a TOC (Tactical Operations Center). It ingests live sensor feeds, correlates threat patterns, fuses alerts into incidents, and gives operators a single operational picture across 2D map, 3D globe, and structured data surfaces. Every mutation is audit-logged transactionally. Every surface supports time-travel replay. The authorization model enforces organization and area-of-operation boundaries at every layer.
 
-Built as a portfolio project targeting defense-tech engineering roles (Palantir, Anduril, Reveal Technology, Shield AI). The codebase is production-hardened: **a large backend RSpec suite spanning 192 spec files, 815 frontend tests across 105 files, and 55 Playwright tests across 15 spec files**, with Pundit authorization on every endpoint and CI that gates on security scanning, type safety, and performance budgets before auto-deploying. Installable as a PWA with offline caching. Classification banner support (UNCLASSIFIED / CUI / SECRET).
+Built as a portfolio project targeting defense-tech engineering roles (Palantir, Anduril, Reveal Technology, Shield AI). The codebase is production-hardened: **a large backend RSpec suite spanning 195 spec files, 821 frontend tests across 106 files, and 79 Playwright tests across 17 spec files**, with Pundit authorization on every endpoint and CI that gates on security scanning, type safety, and performance budgets before auto-deploying. Installable as a PWA with offline caching. Classification banner support (UNCLASSIFIED / CUI / SECRET).
 
 **Read the design thesis: [Provenance is one invariant](docs/audit-replay-validator-thesis.md)** — a ~2,000-word essay arguing that the audit chain, the replay projection, and the LLM trust boundary are the same idea applied at three layers. The repo is the example; the thesis is the argument.
 
@@ -238,9 +238,9 @@ SSE (Server-Sent Events) with PostgreSQL `LISTEN`/`NOTIFY` relay for cross-proce
 
 | Layer | Count | Tool |
 |-------|-------|------|
-| Backend suite | 192 spec files | RSpec |
-| Frontend unit/integration | 815 tests (105 files) | Vitest |
-| E2E critical paths | 55 tests (15 files) | Playwright |
+| Backend suite | 195 spec files | RSpec |
+| Frontend unit/integration | 821 tests (106 files) | Vitest |
+| E2E critical paths | 79 tests (17 files) | Playwright |
 | Security scanning | 0 warnings | Brakeman + bundler-audit |
 | Type safety | 0 errors | TypeScript strict |
 | Lint | 0 errors | ESLint |
@@ -342,9 +342,9 @@ bundle exec bundler-audit check            # CVE check
 
 # Frontend
 cd frontend
-npx tsc --noEmit                           # type check
+npx tsc -b                                 # type check
 yarn lint                                  # ESLint
-npx vitest run                             # 815 tests (105 files)
+npx vitest run                             # 821 tests (106 files)
 yarn build                                 # production build (tsc -b, stricter)
 ```
 

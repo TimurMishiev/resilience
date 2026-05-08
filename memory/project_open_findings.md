@@ -6,7 +6,7 @@ type: findings
 
 # Resilience — Open Findings
 
-Last reconciled with code: 2026-05-01
+Last reconciled with code: 2026-05-08
 
 The production-readiness program is complete (closed plan archived under
 `.claude/memory/project_production_readiness_plan.md`).
@@ -26,12 +26,17 @@ _(No open P1 items.)_
 
 ## P2 / Important Platform Follow-Through
 
+- Operational AI restore remains the only accepted live product gap.
+  - Production Fly `v60` is healthy overall, but commander-authenticated calls to `/api/ai/summary` and `/api/ai/ontology_query` still return the honest `422 "AI service is unavailable. Contact your administrator."` response.
+  - This is not a code defect in the trust/degradation path: recommendations metrics now expose `ai_status`, Operational Health renders AI circuit-breaker telemetry, and the AI-enriched recommendations empty state is state-aware (`no API key` vs `breaker open` vs `no threshold`).
+  - It remains an operational dependency / Anthropic availability issue to clear before AI surfaces are demo-live.
+
 - Tenant/workspace isolation: production-readiness scope is **closed**.
   - Org/AO scoping is enforced in policies with request-level proof.
   - Multi-tenant admin UI and workspace management remain a future roadmap program, not an active defect.
 
 - SSE transport ceiling remains a future scale project, not a current demo blocker.
-  - Fresh production smoke on Fly version 46 was clean after deploying the authenticated per-user SSE throttle fix.
+  - Fresh production smoke on Fly version 60 was clean after deploying the authenticated per-user SSE throttle fix and the later F6/F7b health-surface hardening.
   - `/map` and `/globe` both rendered without stale-data or telemetry-offline warnings; the observed SSE stream opens returned `200`.
   - Thread-per-connection SSE replacement is still future scale work if multi-machine or materially higher concurrency becomes a real target.
 
