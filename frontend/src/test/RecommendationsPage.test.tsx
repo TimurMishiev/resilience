@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Recommendation } from '../api/recommendations'
+import type { Recommendation, RecommendationMetrics } from '../api/recommendations'
 
 const mockState = vi.hoisted(() => ({
   isReplaying: true,
@@ -12,6 +12,22 @@ const mockState = vi.hoisted(() => ({
   params: null as Record<string, unknown> | null,
   options: null as { refetchInterval?: number | false } | null,
   metricsOptions: null as { enabled?: boolean; refetchInterval?: number | false } | null,
+  metrics: {
+    pending: 1,
+    accepted: 0,
+    rejected: 0,
+    deferred: 0,
+    executed: 0,
+    expired: 0,
+    accept_rate: null,
+    by_tier: { rule: 1, llm: 0 },
+    by_type: { create_task: 1 },
+    ai_status: {
+      api_key_configured: true,
+      breaker_open: false,
+      services_open: [],
+    },
+  } as RecommendationMetrics,
   recommendations: [
     {
       id: 'rec-1',
@@ -65,7 +81,7 @@ vi.mock('../hooks/useRecommendations', () => ({
   },
   useRecommendationMetrics: (options?: { enabled?: boolean; refetchInterval?: number | false }) => {
     mockState.metricsOptions = options ?? null
-    return { data: null }
+    return { data: mockState.metrics }
   },
   useGenerateRecommendations: () => ({
     isPending: false,
@@ -115,6 +131,22 @@ describe('RecommendationsPage', () => {
     mockState.params = null
     mockState.options = null
     mockState.metricsOptions = null
+    mockState.metrics = {
+      pending: 1,
+      accepted: 0,
+      rejected: 0,
+      deferred: 0,
+      executed: 0,
+      expired: 0,
+      accept_rate: null,
+      by_tier: { rule: 1, llm: 0 },
+      by_type: { create_task: 1 },
+      ai_status: {
+        api_key_configured: true,
+        breaker_open: false,
+        services_open: [],
+      },
+    } as RecommendationMetrics
   })
 
   it('opens evidence during replay and keeps polling disabled', async () => {
@@ -144,5 +176,53 @@ describe('RecommendationsPage', () => {
     expect(mockState.options).toMatchObject({ refetchInterval: 60_000 })
     expect(mockState.metricsOptions).toMatchObject({ enabled: true, refetchInterval: 120_000 })
     expect(screen.getByText('1 active')).toBeInTheDocument()
+  })
+
+  it('explains that the Anthropic API key is not configured when AI metrics report no key', async () => {
+    mockState.isReplaying = false
+    mockState.asOf = null
+    mockState.metrics.ai_status = {
+      api_key_configured: false,
+      breaker_open: false,
+      services_open: [],
+    }
+
+    const user = userEvent.setup()
+    await renderPage()
+    await user.click(screen.getByRole('tab', { name: /ai-enriched/i }))
+
+    expect(screen.getByText(/Anthropic API key is not configured/i)).toBeInTheDocument()
+  })
+
+  it('explains when the AI breaker is open and names the bypassed service', async () => {
+    mockState.isReplaying = false
+    mockState.asOf = null
+    mockState.metrics.ai_status = {
+      api_key_configured: true,
+      breaker_open: true,
+      services_open: ['recommendation_llm_enricher'],
+    }
+
+    const user = userEvent.setup()
+    await renderPage()
+    await user.click(screen.getByRole('tab', { name: /ai-enriched/i }))
+
+    expect(screen.getByText(/circuit breaker is open for recommendation_llm_enricher/i)).toBeInTheDocument()
+  })
+
+  it('explains when the AI path is healthy but no items met the LLM threshold', async () => {
+    mockState.isReplaying = false
+    mockState.asOf = null
+    mockState.metrics.ai_status = {
+      api_key_configured: true,
+      breaker_open: false,
+      services_open: [],
+    }
+
+    const user = userEvent.setup()
+    await renderPage()
+    await user.click(screen.getByRole('tab', { name: /ai-enriched/i }))
+
+    expect(screen.getByText(/No items met the LLM threshold this cycle/i)).toBeInTheDocument()
   })
 })

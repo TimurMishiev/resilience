@@ -12,7 +12,7 @@ import { useRole } from '../hooks/useRole'
 import { useReplay } from '../context/ReplayContext'
 import RecommendationCard from '../components/RecommendationCard'
 import EvidenceDrawer from '../components/EvidenceDrawer'
-import type { Recommendation } from '../api/recommendations'
+import type { Recommendation, RecommendationAiStatus } from '../api/recommendations'
 
 // ── constants ────────────────────────────────────────────────────────────────
 
@@ -24,6 +24,23 @@ const STATUS_OPTIONS = [
   { value: 'executed', label: 'Executed'            },
   { value: 'expired',  label: 'Expired'             },
 ]
+
+function llmEmptyStateDescription(aiStatus: RecommendationAiStatus | undefined): string {
+  if (!aiStatus) {
+    return 'LLM-tier recommendations appear when the AI service is healthy and items meet the LLM threshold. If you expected items and see none, commanders can check Operational Health → AI Circuit Breakers.'
+  }
+
+  if (!aiStatus.api_key_configured) {
+    return 'Anthropic API key is not configured. Commanders can confirm current AI status in Operational Health → AI Circuit Breakers.'
+  }
+
+  if (aiStatus.breaker_open) {
+    const services = aiStatus.services_open.join(', ')
+    return `AI degradation detected — the circuit breaker is open for ${services}. Commanders can confirm current status in Operational Health → AI Circuit Breakers.`
+  }
+
+  return 'No items met the LLM threshold this cycle. If you expected AI-enriched items, commanders can confirm the live AI path in Operational Health → AI Circuit Breakers.'
+}
 
 // ── page ─────────────────────────────────────────────────────────────────────
 
@@ -163,20 +180,7 @@ export default function RecommendationsPage() {
                   <NonIdealState
                     icon="predictive-analysis"
                     title="No AI-enriched recommendations"
-                    description={
-                      // Pre-fix this read "appear when Anthropic API key is
-                      // configured", which mis-attributed all three legitimate
-                      // empty-state causes to a missing config:
-                      //   1. ANTHROPIC_API_KEY genuinely not set
-                      //   2. Key set, but Ai::CircuitBreaker is open right now
-                      //      (LlmEnricher short-circuits per llm_enricher.rb:28)
-                      //   3. Key set, breaker closed, but no rule matches met
-                      //      the LLM-tier threshold this cycle.
-                      // Commanders can disambiguate via Operational Health →
-                      // AI Circuit Breakers (added at the same time as this
-                      // copy update).
-                      'LLM-tier recommendations appear when the AI service is healthy and items meet the LLM threshold. If you expected items and see none, commanders can check Operational Health → AI Circuit Breakers — an open breaker indicates temporary AI degradation.'
-                    }
+                    description={llmEmptyStateDescription(metrics?.ai_status)}
                     className="tab-empty-state"
                   />
                 )}

@@ -129,6 +129,8 @@ module Api
       effectively_accepted = accepted + executed
       total_reviewed       = effectively_accepted + rejected + deferred
       accept_rate          = total_reviewed > 0 ? (effectively_accepted.to_f / total_reviewed * 100).round(1) : nil
+      breaker_snapshot     = Ai::CircuitBreaker.status_snapshot
+      services_open        = breaker_snapshot.select { |_service, info| info[:status] == "open" }.keys
 
       render json: {
         pending:     pending,
@@ -143,6 +145,11 @@ module Api
           llm:  by_tier["llm"].to_i,
         },
         by_type: scoped_recommendations.group(:recommendation_type).count,
+        ai_status: {
+          api_key_configured: ENV["ANTHROPIC_API_KEY"].present?,
+          breaker_open: services_open.any?,
+          services_open: services_open,
+        },
       }
     end
 

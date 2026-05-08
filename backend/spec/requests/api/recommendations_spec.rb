@@ -235,6 +235,14 @@ RSpec.describe "Api::Recommendations", type: :request do
       create(:recommendation, status: "accepted")
       create(:recommendation, status: "rejected")
       create(:recommendation, :llm, status: "pending", expires_at: 2.hours.from_now)
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with("ANTHROPIC_API_KEY").and_return("test-key")
+      allow(Ai::CircuitBreaker).to receive(:status_snapshot).and_return(
+        {
+          "recommendation_llm_enricher" => { status: "open", failures: 3 },
+          "summary" => { status: "closed", failures: 0 },
+        }
+      )
     end
 
     it "returns aggregate metrics" do
@@ -243,6 +251,11 @@ RSpec.describe "Api::Recommendations", type: :request do
       expect(json.keys).to include("pending", "accepted", "rejected", "executed", "expired", "by_tier", "by_type")
       expect(json["accepted"]).to eq 1
       expect(json["rejected"]).to eq 1
+      expect(json["ai_status"]).to eq(
+        "api_key_configured" => true,
+        "breaker_open" => true,
+        "services_open" => ["recommendation_llm_enricher"],
+      )
     end
   end
 

@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-05-01 (post-proof closeout, deploy to Fly version 46, and joint Claude+Codex hardening sweep. Current truth: the current repo base passes full frontend proof locally under the CI-matching Node runtime (`npx tsc -b`, `yarn lint`, full Vitest 815/815, `yarn build`, `yarn audit --level high` clean — moderate findings are all transitive build/runtime deps documented in `project_open_findings.md`); full backend proof also passes locally under Ruby 3.4.7 + Bundler 2.7.2 + PostgreSQL 17 (`bundle exec brakeman` 0 warnings, `bundle exec bundler-audit check --update` clean, `rails db:schema:load` against PG17, migration/`structure.sql` sync clean, full RSpec 2527/0). Production live at https://resilience-ops.fly.dev/ is on Fly version 46. Post-deploy smoke passed for viewer `/health`, replay `/map`, replay `/globe`, and `/map -> /globe -> /map` selection continuity. Production AI remains operationally unavailable and honestly returns `422 {\"errors\":[\"AI service is unavailable. Contact your administrator.\"]}` on both `/api/ai/summary` and `/api/ai/ontology_query`. Historical session arc below is preserved for takeover continuity.)
+Last updated: 2026-05-08 (strict F6 closure implemented locally on top of `a62b377`; production remains live on Fly version 59. This slice adds state-aware `ai_status` to `GET /api/recommendations/metrics` and makes `RecommendationsPage` distinguish `no API key` vs `breaker open` vs `no threshold` on the AI-enriched tab. Historical session arc below is preserved for takeover continuity.)
 
 ## Current Phase
 
@@ -33,7 +33,49 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**Proof closeout and deploy are complete.**
+**Strict F6 closure — recommendations AI empty-state state awareness.**
+
+Status: **completed locally, not yet committed/deployed in this session.**
+
+What changed:
+- `backend/app/controllers/api/recommendations_controller.rb`
+- `backend/spec/requests/api/recommendations_spec.rb`
+- `frontend/src/api/recommendations.ts`
+- `frontend/src/pages/RecommendationsPage.tsx`
+- `frontend/src/test/RecommendationsPage.test.tsx`
+- `memory/execution_handoff.md`
+
+Behavior closed by this slice:
+- `GET /api/recommendations/metrics` now returns `ai_status` with:
+  - `api_key_configured`
+  - `breaker_open`
+  - `services_open`
+- `RecommendationsPage` AI-enriched tab now branches on the three real live states:
+  - Anthropic API key not configured
+  - circuit breaker open
+  - AI healthy but no items met the LLM threshold
+- direct regression coverage exists for all three frontend states
+
+Validation run for this slice:
+- `git diff --check`
+- `cd backend && TEST_DATABASE_PORT=5434 RBENV_VERSION=3.4.7 rbenv exec bundle exec rspec spec/requests/api/recommendations_spec.rb --format progress`
+- `cd frontend && PATH=\"$HOME/.nvm/versions/node/v24.11.1/bin:$PATH\" npx tsc -b`
+- `cd frontend && PATH=\"$HOME/.nvm/versions/node/v24.11.1/bin:$PATH\" npx vitest run src/test/RecommendationsPage.test.tsx --reporter=dot`
+
+Last validation results:
+- `git diff --check` → clean
+- recommendations request spec → `21 examples, 0 failures`
+- frontend `tsc -b` → clean
+- focused RecommendationsPage vitest → `5/5` green
+
+Known risk:
+- do not widen this into broader AI restore work; the app still honestly degrades when Anthropic is unavailable
+
+Next after this slice:
+- commit + push this slice if user approves
+- if stricter proof is needed afterward, rerun broader full-suite validation in isolation, not in parallel with other heavy runners
+
+**Proof closeout and deploy are otherwise complete.**
 
 Current repo/runtime truth:
 - `MapPage.tsx` decomposition is substantially closed.

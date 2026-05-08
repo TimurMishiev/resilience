@@ -53,6 +53,12 @@ export interface Recommendation {
   created_at:           string
 }
 
+export interface RecommendationAiStatus {
+  api_key_configured: boolean
+  breaker_open: boolean
+  services_open: string[]
+}
+
 export interface RecommendationMetrics {
   pending:     number
   accepted:    number
@@ -63,6 +69,7 @@ export interface RecommendationMetrics {
   accept_rate: number | null
   by_tier:     { rule: number; llm: number }
   by_type:     Record<string, number>
+  ai_status:   RecommendationAiStatus
 }
 
 export type RecommendationsResponse = PaginatedResponse<Recommendation>
