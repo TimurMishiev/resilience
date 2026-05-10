@@ -84,6 +84,27 @@ function instrumentPage(page: Page) {
   }
 }
 
+async function openFirstIncidentIfPresent(page: Page): Promise<boolean> {
+  const firstIncidentRow = page.locator('[data-testid="incident-row"]').first()
+  const emptyState = page.getByText('No incidents').first()
+
+  const state = await Promise.race([
+    firstIncidentRow.waitFor({ state: 'attached', timeout: 15000 }).then(() => 'row' as const),
+    emptyState.waitFor({ state: 'visible', timeout: 15000 }).then(() => 'empty' as const),
+  ])
+
+  if (state === 'empty') {
+    await expect(emptyState).toBeVisible()
+    return false
+  }
+
+  await firstIncidentRow.click()
+  await expect(page).toHaveURL(/\/incidents\/[^/]+/, { timeout: 10000 })
+  await expect(page.getByRole('tab', { name: /evidence/i })).toBeVisible({ timeout: 15000 })
+  await expect(page.getByRole('heading').first()).toBeVisible()
+  return true
+}
+
 test.describe('Production smoke — read-only golden path', () => {
   test('login → sites → map → site detail audit → incident detail audit → recommendations → replay scrub', async ({ page, context }) => {
     const { assertClean } = instrumentPage(page)
@@ -130,16 +151,10 @@ test.describe('Production smoke — read-only golden path', () => {
     await expect(page.getByRole('heading', { name: 'Incidents', exact: true }))
       .toBeVisible({ timeout: 15000 })
 
-    // Incident detail (audit chain view #2) — open first row.
-    // Wait for React Query to settle; a naked count() check is instantaneous
-    // and returns 0 before the fetch resolves, producing a false-skip even
-    // when the seed has incidents.
-    const firstIncidentRow = page.locator('[data-testid="incident-row"]').first()
-    await firstIncidentRow.waitFor({ state: 'attached', timeout: 15000 })
-    await firstIncidentRow.click()
-    await expect(page).toHaveURL(/\/incidents\/[^/]+/, { timeout: 10000 })
-    await expect(page.getByRole('tab', { name: /evidence/i })).toBeVisible({ timeout: 15000 })
-    await expect(page.getByRole('heading').first()).toBeVisible()
+    // Incident detail (audit chain view #2) — open the first row when the
+    // current seed has incidents. Local/dev environments can legitimately
+    // have none; in that case assert the empty state and continue.
+    await openFirstIncidentIfPresent(page)
 
     // ─── 7. Recommendations: page hydrates ─────────────────────────────────
     await page.goto('/recommendations')

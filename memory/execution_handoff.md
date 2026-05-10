@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-05-10 (`d283fa0` closed the final pre-wow-factor proof/provenance defects, was pushed to `main`, and is deployed on Fly version 62. Production smoke/coverage is green. Historical session arc below is preserved for takeover continuity.)
+Last updated: 2026-05-10 (`d283fa0` remains the current shipped runtime on Fly version 62. A new dirty slice adjusts the local/CI Playwright production-smoke + production-coverage specs so incident-detail coverage honors the documented "row or empty state" contract instead of hard-failing when the local seed has zero incidents, and scopes the generic `yarn test:e2e` entrypoint back to functional specs so the dedicated map/globe benchmark files stop contaminating the E2E lane. Historical session arc below is preserved for takeover continuity.)
 
 ## Current Phase
 
@@ -33,9 +33,55 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**No active implementation slice.**
+**Active dirty slice — local E2E incident-empty-state + benchmark-lane contract fix.**
 
-Status: **pre-wow-factor proof-edge closure completed, pushed, and deployed.**
+Status: **implemented locally, not committed, not deployed.**
+
+Objective:
+- fix the red `E2E_BASE_URL=http://127.0.0.1:3000 yarn test:e2e` failure mode where:
+  - `frontend/e2e/production-smoke.spec.ts`
+  - `frontend/e2e/production-coverage.spec.ts`
+- both promised to tolerate an empty local incident seed, but actually hard-waited on `[data-testid="incident-row"]` and timed out when the list was empty
+- stop the generic `yarn test:e2e` lane from re-running benchmark specs that already belong to the dedicated `frontend-perf` path, so the known 10k map-scale benchmark noise does not make the functional E2E command red
+
+Dirty files in this slice:
+- `frontend/e2e/production-smoke.spec.ts`
+- `frontend/e2e/production-coverage.spec.ts`
+- `frontend/package.json`
+
+What changed in this slice:
+- both specs now race:
+  - first incident row attached
+  - `No incidents` empty state visible
+- when incidents exist, they still click through and verify incident detail
+- when incidents do not exist in the current environment, they assert the empty state and continue instead of failing on a nonexistent row
+- `frontend/package.json` now scopes `yarn test:e2e` to `playwright test --grep-invert benchmark`
+  - rationale: `benchmark:*` scripts and the `frontend-perf` CI job already own perf gating
+  - result: functional E2E no longer inherits the flaky 10k synthetic-signal perf test while the real benchmark lane stays intact
+
+Validation run for this slice:
+- `git diff --check`
+- `cd frontend && PATH=\"$HOME/.nvm/versions/node/v24.11.1/bin:$PATH\" npx eslint e2e/production-smoke.spec.ts e2e/production-coverage.spec.ts`
+- `cd frontend && node -e 'const pkg=require(\"./package.json\"); console.log(pkg.scripts[\"test:e2e\"])'`
+
+Last validation results:
+- `git diff --check` → clean
+- touched-spec ESLint → clean
+- `package.json` script readback → `playwright test --grep-invert benchmark`
+
+Local environment blocker while validating the exact CI command:
+- local Docker app brought up successfully via `docker compose up -d --build`
+- container logs show Puma listening on `0.0.0.0:3000`
+- but `curl http://127.0.0.1:3000/up` and `/login` hang in this shell instead of serving or refusing, so the exact local Playwright rerun could not complete here
+- this is an environment/runtime bring-up issue in the local shell, not a compile/lint issue in the changed specs
+
+Current next action:
+- rerun the same CI command in the intended environment:
+  - `E2E_BASE_URL=http://127.0.0.1:3000 yarn test:e2e`
+- if green, commit this tiny E2E-only slice
+
+Closed slice immediately before this one:
+- pre-wow-factor proof-edge closure completed, pushed, and deployed.
 
 Closed slice commit / deploy truth:
 - repo commit: `d283fa0` — `backend: close pre-wow-factor proof edges`
