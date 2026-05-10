@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-05-10 (`d283fa0` remains the current shipped runtime on Fly version 62. A new dirty slice adjusts the local/CI Playwright production-smoke + production-coverage specs so incident-detail coverage honors the documented "row or empty state" contract instead of hard-failing when the local seed has zero incidents, and scopes the generic `yarn test:e2e` entrypoint back to functional specs so the dedicated map/globe benchmark files stop contaminating the E2E lane. Historical session arc below is preserved for takeover continuity.)
+Last updated: 2026-05-10 (`d283fa0` remains the current shipped runtime on Fly version 62. `7500177` is now pushed on `main` and proved the E2E lane split: Playwright functional E2E passed, the dedicated frontend-perf benchmark lane passed, backend/security passed, and the only CI red was the frontend `yarn audit` step. A new dirty slice now closes that audit failure by pinning the vulnerable `vite-plugin-pwa` transitive packages to patched versions. Historical session arc below is preserved for takeover continuity.)
 
 ## Current Phase
 
@@ -33,54 +33,60 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**Active dirty slice — local E2E incident-empty-state + benchmark-lane contract fix.**
+**Active dirty slice — frontend audit resolution fix after `7500177`.**
 
 Status: **implemented locally, not committed, not deployed.**
 
 Objective:
-- fix the red `E2E_BASE_URL=http://127.0.0.1:3000 yarn test:e2e` failure mode where:
-  - `frontend/e2e/production-smoke.spec.ts`
-  - `frontend/e2e/production-coverage.spec.ts`
-- both promised to tolerate an empty local incident seed, but actually hard-waited on `[data-testid="incident-row"]` and timed out when the list was empty
-- stop the generic `yarn test:e2e` lane from re-running benchmark specs that already belong to the dedicated `frontend-perf` path, so the known 10k map-scale benchmark noise does not make the functional E2E command red
+- close the `Frontend — typecheck, lint, build` CI failure that remained after `7500177`
+- fix the three high `yarn audit --level high` advisories under `vite-plugin-pwa`'s transitive tree:
+  - `fast-uri` path traversal / host-confusion advisories
+  - `@babel/plugin-transform-modules-systemjs` arbitrary-code generation advisory
 
 Dirty files in this slice:
-- `frontend/e2e/production-smoke.spec.ts`
-- `frontend/e2e/production-coverage.spec.ts`
 - `frontend/package.json`
+- `frontend/yarn.lock`
 
 What changed in this slice:
-- both specs now race:
-  - first incident row attached
-  - `No incidents` empty state visible
-- when incidents exist, they still click through and verify incident detail
-- when incidents do not exist in the current environment, they assert the empty state and continue instead of failing on a nonexistent row
-- `frontend/package.json` now scopes `yarn test:e2e` to `playwright test --grep-invert benchmark`
-  - rationale: `benchmark:*` scripts and the `frontend-perf` CI job already own perf gating
-  - result: functional E2E no longer inherits the flaky 10k synthetic-signal perf test while the real benchmark lane stays intact
+- added explicit Yarn resolutions:
+  - `fast-uri: ^3.1.2`
+  - `@babel/plugin-transform-modules-systemjs: ^7.29.4`
+- regenerated `frontend/yarn.lock`
+- no runtime code changed; this is a dependency/audit-only follow-up on top of the already-pushed E2E fix at `7500177`
 
 Validation run for this slice:
 - `git diff --check`
-- `cd frontend && PATH=\"$HOME/.nvm/versions/node/v24.11.1/bin:$PATH\" npx eslint e2e/production-smoke.spec.ts e2e/production-coverage.spec.ts`
-- `cd frontend && node -e 'const pkg=require(\"./package.json\"); console.log(pkg.scripts[\"test:e2e\"])'`
+- `cd frontend && PATH=\"$HOME/.nvm/versions/node/v24.11.1/bin:$PATH\" yarn install`
+- `cd frontend && PATH=\"$HOME/.nvm/versions/node/v24.11.1/bin:$PATH\" yarn audit --level high`
+- `cd frontend && PATH=\"$HOME/.nvm/versions/node/v24.11.1/bin:$PATH\" yarn build`
+- `cd frontend && PATH=\"$HOME/.nvm/versions/node/v24.11.1/bin:$PATH\" yarn test`
 
 Last validation results:
 - `git diff --check` → clean
-- touched-spec ESLint → clean
-- `package.json` script readback → `playwright test --grep-invert benchmark`
-
-Local environment blocker while validating the exact CI command:
-- local Docker app brought up successfully via `docker compose up -d --build`
-- container logs show Puma listening on `0.0.0.0:3000`
-- but `curl http://127.0.0.1:3000/up` and `/login` hang in this shell instead of serving or refusing, so the exact local Playwright rerun could not complete here
-- this is an environment/runtime bring-up issue in the local shell, not a compile/lint issue in the changed specs
+- `yarn install` → lockfile updated successfully
+- `yarn audit --level high` → **21 moderate, 0 high/critical**
+- `yarn build` → clean
+- `yarn test` → **821/821**
 
 Current next action:
-- rerun the same CI command in the intended environment:
-  - `E2E_BASE_URL=http://127.0.0.1:3000 yarn test:e2e`
-- if green, commit this tiny E2E-only slice
+- commit + push this dependency-only follow-up on top of `7500177`
+- rerun CI; expected outcome is:
+  - `E2E — Playwright` stays green from the earlier lane split
+  - `Frontend — Globe + map benchmarks` stays green
+  - `Frontend — typecheck, lint, build` clears the prior `yarn audit` failure
 
 Closed slice immediately before this one:
+- `7500177` — `frontend: fix local e2e incident coverage contract`
+  - `production-smoke.spec.ts` and `production-coverage.spec.ts` now tolerate a legitimate empty incident list instead of timing out on `[data-testid="incident-row"]`
+  - `frontend/package.json` scopes `yarn test:e2e` to `playwright test --grep-invert benchmark`, so the generic E2E lane stops re-running dedicated perf specs
+  - CI proof on commit `7500177`:
+    - `E2E — Playwright` → success
+    - `Frontend — Globe + map benchmarks` → success
+    - `Backend — RSpec` → success
+    - `Backend — Brakeman + bundler-audit` → success
+    - workflow overall → failure only because `Frontend — typecheck, lint, build` tripped `yarn audit` on three high transitive advisories
+
+Closed slice immediately before that:
 - pre-wow-factor proof-edge closure completed, pushed, and deployed.
 
 Closed slice commit / deploy truth:
