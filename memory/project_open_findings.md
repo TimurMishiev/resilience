@@ -6,7 +6,7 @@ type: findings
 
 # Resilience — Open Findings
 
-Last reconciled with code: 2026-05-08
+Last reconciled with code: 2026-05-10
 
 The production-readiness program is complete (closed plan archived under
 `.claude/memory/project_production_readiness_plan.md`).
@@ -27,7 +27,7 @@ _(No open P1 items.)_
 ## P2 / Important Platform Follow-Through
 
 - Operational AI restore remains the only accepted live product gap.
-  - Production Fly `v60` is healthy overall, but commander-authenticated calls to `/api/ai/summary` and `/api/ai/ontology_query` still return the honest `422 "AI service is unavailable. Contact your administrator."` response.
+  - Production Fly `v62` is healthy overall, but commander-authenticated calls to `/api/ai/summary` and `/api/ai/ontology_query` still return the honest `422 "AI service is unavailable. Contact your administrator."` response.
   - This is not a code defect in the trust/degradation path: recommendations metrics now expose `ai_status`, Operational Health renders AI circuit-breaker telemetry, and the AI-enriched recommendations empty state is state-aware (`no API key` vs `breaker open` vs `no threshold`).
   - It remains an operational dependency / Anthropic availability issue to clear before AI surfaces are demo-live.
 
@@ -36,9 +36,13 @@ _(No open P1 items.)_
   - Multi-tenant admin UI and workspace management remain a future roadmap program, not an active defect.
 
 - SSE transport ceiling remains a future scale project, not a current demo blocker.
-  - Fresh production smoke on Fly version 60 was clean after deploying the authenticated per-user SSE throttle fix and the later F6/F7b health-surface hardening.
+  - Fresh production smoke on Fly version 62 was clean after the final pre-wow-factor proof/provenance closure deploy.
   - `/map` and `/globe` both rendered without stale-data or telemetry-offline warnings; the observed SSE stream opens returned `200`.
   - Thread-per-connection SSE replacement is still future scale work if multi-machine or materially higher concurrency becomes a real target.
+
+- The pre-wow-factor proof-edge backlog is now closed.
+  - `backend/lib/ai_evals/recommendation_behavior_runner.rb` no longer queries a nonexistent `recommendations.organization_id` column; the behavioural AI eval harness now reads persisted recommendations from the reset single-tenant sandbox and has direct regression coverage.
+  - `backend/app/controllers/api/audit_events_controller.rb` now matches canonical audit/replay ordering with `occurred_at DESC, sequence DESC, id DESC` plus `before_sequence` cursor pagination; same-timestamp ordering and pagination are covered by request specs, and the frontend debrief cursor contract was updated accordingly.
 
 - ~~Coordinate-column JSON shape (lat/long return as string, not number)~~
   — closed in the post-audit hygiene sweep (2026-05-01). Site

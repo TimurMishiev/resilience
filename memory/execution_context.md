@@ -6,17 +6,17 @@ type: project
 
 # Resilience — Execution Context
 
-Last updated: 2026-05-08
+Last updated: 2026-05-10
 
 This file is the durable source of truth for project direction, execution sequencing, collaboration rules, and engineering expectations. It exists so Claude Code or Codex can continue work safely from the repo without relying on chat history.
 
 If this file disagrees with the code, trust the code first and then update this file.
 
-## Current State Snapshot (2026-05-08)
+## Current State Snapshot (2026-05-10)
 
 - Phases 1–7 are shipped.
 - Audit-driven remediation is closed. The old Band A/B/C/D framing is historical, not active execution guidance.
-- Outreach hardening and proof closeout are **complete**. Production is live on Fly **v60** at https://resilience-ops.fly.dev/. Six MapPage decomposition tranches landed (905 → 351 lines, −61%). Strict F6 closure landed at `4911373` and is deployed: recommendations metrics now expose `ai_status`, the AI-enriched tab distinguishes `no API key` vs `breaker open` vs `no threshold`, and Operational Health surfaces AI circuit-breaker state. Fresh proof on 2026-05-08: backend `2582/0`, frontend `821/821`, prod smoke/coverage `23 passed, 1 skipped`.
+- Outreach hardening and proof closeout are **complete**. Production is live on Fly **v62** at https://resilience-ops.fly.dev/. Six MapPage decomposition tranches landed (905 → 351 lines, −61%). Strict F6 closure landed at `4911373`; the final pre-wow-factor proof/provenance closure landed at `d283fa0` and is now deployed. That slice closed the broken behavioural AI eval runner query and aligned the audit-events API to canonical `occurred_at/sequence/id` ordering with sequence-aware cursor pagination. Fresh proof on 2026-05-10: backend `2584/0`, frontend `821/821`, frontend build clean, production smoke/coverage `23 passed, 1 skipped`.
 - Remaining real items are:
   - operational AI restore for `/api/ai/summary` and `/api/ai/ontology_query` (not a code defect; honest `422 AI service is unavailable` degradation is in place in production)
   - GPU-dependent map Playwright remaining local/manual by policy

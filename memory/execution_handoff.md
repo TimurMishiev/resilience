@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-05-08 (current committed base is `3571b43` on `main`, deployed to Fly version 61. Active dirty slice closes the last two confirmed pre-wow-factor proof/provenance defects: the broken behavioural AI eval runner query and the audit-events sequence cursor mismatch. Focused + broad proof on the dirty tree are green. Historical session arc below is preserved for takeover continuity.)
+Last updated: 2026-05-10 (`d283fa0` closed the final pre-wow-factor proof/provenance defects, was pushed to `main`, and is deployed on Fly version 62. Production smoke/coverage is green. Historical session arc below is preserved for takeover continuity.)
 
 ## Current Phase
 
@@ -33,22 +33,22 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**Active dirty slice — pre-wow-factor proof-edge closure.**
+**No active implementation slice.**
 
-Status: **implemented locally, not committed, not deployed.**
+Status: **pre-wow-factor proof-edge closure completed, pushed, and deployed.**
 
-Base truth before this slice:
-- repo `HEAD`: `3571b43`
+Closed slice commit / deploy truth:
+- repo commit: `d283fa0` — `backend: close pre-wow-factor proof edges`
 - branch: `main`
-- production: Fly `v61`
-- current committed base is aligned to production
+- production: Fly `v62`
+- production smoke/coverage after deploy: `23 passed, 1 skipped`
 
 Objective:
 - close the two remaining confirmed pre-wow-factor defects surfaced by the multi-model frontier-eval consolidation:
   - `backend/lib/ai_evals/recommendation_behavior_runner.rb` queried a nonexistent `recommendations.organization_id` column
   - `backend/app/controllers/api/audit_events_controller.rb` still ordered/paginated same-timestamp audit rows by UUID instead of canonical `sequence`
 
-Dirty files in this slice:
+Files changed by the closed slice:
 - `backend/lib/ai_evals/recommendation_behavior_runner.rb`
 - `backend/spec/lib/ai_evals/recommendation_behavior_runner_spec.rb`
 - `backend/app/controllers/api/audit_events_controller.rb`
@@ -78,6 +78,7 @@ Validation run for this slice:
 - `cd backend && TEST_DATABASE_PORT=5434 RBENV_VERSION=3.4.7 rbenv exec bundle exec rspec --format progress`
 - `cd frontend && PATH=\"$HOME/.nvm/versions/node/v24.11.1/bin:$PATH\" npx vitest run --reporter=dot`
 - `cd frontend && PATH=\"$HOME/.nvm/versions/node/v24.11.1/bin:$PATH\" yarn build`
+- `cd frontend && rm -rf e2e/.auth && E2E_BASE_URL=https://resilience-ops.fly.dev npx playwright test e2e/production-smoke.spec.ts e2e/production-coverage.spec.ts`
 
 Last validation results:
 - `git diff --check` → clean
@@ -87,19 +88,20 @@ Last validation results:
 - backend full suite → `2584 examples, 0 failures`
 - frontend full Vitest → `821/821`
 - frontend build → clean
+- Fly deploy → version `62` healthy
+- production smoke/coverage → `23 passed, 1 skipped`
 
 Known live caveat unchanged:
 - `/api/ai/summary` and `/api/ai/ontology_query` still return honest `422 "AI service is unavailable. Contact your administrator."`
 - this is accepted operational Anthropic availability debt, not part of this slice
 
 Current repo/runtime truth:
-- the app remains demoable from the committed `3571b43` / Fly `v61` base except for live AI generation availability
+- the app remains demoable from the committed `d283fa0` / Fly `v62` base except for live AI generation availability
 - `MapPage.tsx` decomposition remains substantially closed at 351 lines; do not reopen it without a new concrete seam
-- the two remaining pre-wow-factor proof/provenance defects are now closed locally in the dirty tree
+- the two remaining pre-wow-factor proof/provenance defects are now closed in the committed and deployed artifact
 
 Current next action:
-- gate / commit / push / deploy this slice if the user wants the fixes live before wow-factor work
-- after that, move to map/globe wow-factor from the new clean base
+- move to map/globe wow-factor from the clean `d283fa0` / Fly `v62` base
 
 Production hardening context preserved below for continuity. The prior
 `890a8d5` follow-up aligned `/` → `/sites` and added query-level
