@@ -297,6 +297,7 @@ export interface AuditEvent {
 
 export interface AuditEventsCursor {
   before_occurred_at: string
+  before_sequence: number
   before_id: string
 }
 

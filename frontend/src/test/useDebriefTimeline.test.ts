@@ -113,6 +113,7 @@ describe('useDebriefTimeline', () => {
           has_more: true,
           next_cursor: {
             before_occurred_at: '2026-04-17T12:00:00.000000Z',
+            before_sequence: 42,
             before_id: 'e1',
           },
         },
@@ -151,6 +152,7 @@ describe('useDebriefTimeline', () => {
     const secondCall = (getAuditEventsPage as ReturnType<typeof vi.fn>).mock.calls[1][0]
     expect(secondCall.to).toBe(NOW)
     expect(secondCall.before_occurred_at).toBe('2026-04-17T12:00:00.000000Z')
+    expect(secondCall.before_sequence).toBe(42)
     expect(secondCall.before_id).toBe('e1')
   })
 })

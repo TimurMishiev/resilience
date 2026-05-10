@@ -234,6 +234,7 @@ describe('DebriefPanel', () => {
           has_more: true,
           next_cursor: {
             before_occurred_at: '2026-04-17T12:00:00.000000Z',
+            before_sequence: 42,
             before_id: 'e1',
           },
         },

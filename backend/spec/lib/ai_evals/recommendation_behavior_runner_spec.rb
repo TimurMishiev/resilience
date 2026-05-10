@@ -87,4 +87,59 @@ RSpec.describe AiEvals::RecommendationBehaviorRunner do
       ENV.delete("AI_EVALS_ALLOW_DESTRUCTIVE_RESET")
     end
   end
+
+  describe "scenario recommendation capture" do
+    it "scores persisted recommendations without querying a nonexistent tenant column" do
+      site_id = SecureRandom.uuid
+      signal_id = SecureRandom.uuid
+
+      fake_scenario = Class.new do
+        define_method(:initialize) do |site_id:|
+          @site_id = site_id
+        end
+
+        def name = "single-tenant-capture"
+        def description = "captures recs from the reset single-tenant sandbox"
+        def setup!(*) = nil
+
+        def expected
+          [
+            {
+              recommendation_type: "flag_site",
+              must_include: true,
+              entity_matcher: ->(rec) { rec[:affected_entity_type] == "Site" && rec[:affected_entity_id] == @site_id },
+            },
+          ]
+        end
+      end
+
+      runner = described_class.new(scenario_classes: [fake_scenario])
+      allow(runner).to receive(:reset_eval_state!)
+
+      create(
+        :recommendation,
+        :llm,
+        :for_site,
+        recommendation_type: "flag_site",
+        affected_entity_id: site_id,
+        action_payload: { "site_id" => site_id },
+      )
+      create(
+        :recommendation,
+        recommendation_type: "acknowledge_alert",
+        affected_entity_type: "SignalRuleMatch",
+        affected_entity_id: signal_id,
+        action_payload: { "alert_id" => signal_id, "to_status" => "acknowledged" },
+      )
+
+      allow(Recommendations::GeneratorService).to receive(:call).and_return(ServiceResult.success(created: 2))
+
+      result = runner.send(:run_scenario, fake_scenario.new(site_id: site_id))
+
+      expect(result).not_to have_key(:error)
+      expect(result[:recall]).to eq(1.0)
+      expect(result[:llm_recs]).to eq(1)
+      expect(result[:rule_recs]).to eq(1)
+    end
+  end
 end

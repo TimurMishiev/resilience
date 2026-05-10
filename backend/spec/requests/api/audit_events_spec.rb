@@ -190,13 +190,14 @@ RSpec.describe "Api::AuditEvents", type: :request do
 
       meta = response_meta
       expect(meta.fetch("has_more")).to eq(true)
-      expect(meta.fetch("next_cursor")).to include("before_occurred_at", "before_id")
+      expect(meta.fetch("next_cursor")).to include("before_occurred_at", "before_sequence", "before_id")
 
       cursor = meta.fetch("next_cursor")
       get "/api/audit_events",
           params: {
             limit: 2,
             before_occurred_at: cursor.fetch("before_occurred_at"),
+            before_sequence: cursor.fetch("before_sequence"),
             before_id: cursor.fetch("before_id"),
           },
           headers: auth_headers(current_user)
@@ -205,6 +206,57 @@ RSpec.describe "Api::AuditEvents", type: :request do
       expect(next_page_ids).to eq(older_events.first(2).map(&:id))
       expect(next_page_ids).not_to include(cursor.fetch("before_id"))
       expect(response_meta.fetch("has_more")).to eq(true)
+    end
+
+    it "orders same-timestamp rows by sequence and paginates with the sequence tie-break" do
+      same_time = Time.zone.parse("2026-05-01T12:00:00Z")
+      higher_uuid_first = create(
+        :audit_event,
+        id: "ffffffff-ffff-4fff-8fff-fffffffffff1",
+        entity_type: "Task",
+        entity_id: task.id,
+        occurred_at: same_time,
+      )
+      lower_uuid_second = create(
+        :audit_event,
+        id: "00000000-0000-4000-8000-000000000001",
+        entity_type: "Task",
+        entity_id: task.id,
+        occurred_at: same_time,
+      )
+
+      get "/api/audit_events",
+          params: {
+            entity_type: "Task",
+            entity_id: task.id,
+            from: same_time.iso8601,
+            to: same_time.iso8601,
+            limit: 1,
+          },
+          headers: auth_headers(current_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(response_events.map { |event| event["id"] }).to eq([lower_uuid_second.id])
+
+      cursor = response_meta.fetch("next_cursor")
+      expect(cursor.fetch("before_sequence")).to eq(lower_uuid_second.sequence)
+
+      get "/api/audit_events",
+          params: {
+            entity_type: "Task",
+            entity_id: task.id,
+            from: same_time.iso8601,
+            to: same_time.iso8601,
+            limit: 1,
+            before_occurred_at: cursor.fetch("before_occurred_at"),
+            before_sequence: cursor.fetch("before_sequence"),
+            before_id: cursor.fetch("before_id"),
+          },
+          headers: auth_headers(current_user)
+
+      expect(response).to have_http_status(:ok)
+      expect(response_events.map { |event| event["id"] }).to eq([higher_uuid_first.id])
+      expect(response_meta.fetch("has_more")).to eq(false)
     end
   end
 end

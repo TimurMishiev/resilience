@@ -95,11 +95,11 @@ module AiEvals
       result = Recommendations::GeneratorService.call(organization_id: org.id)
       raise ContractFailure, "GeneratorService failed: #{result.errors&.join(', ')}" unless result.success?
 
-      # Pull the just-persisted recommendations for this org. Filter
-      # to LLM-tier recs; rule-tier recs are deterministic and should
-      # not influence the behavioural score (they always satisfy
-      # their respective deterministic expectations).
-      recs = Recommendation.where(organization_id: org.id).map do |r|
+      # The eval sandbox is hard-reset before every scenario, then seeded
+      # with exactly one org. Recommendations do not carry a persisted
+      # `organization_id`, so the correct slice is "all recs created in
+      # this fresh single-tenant run", not a nonexistent tenant column.
+      recs = Recommendation.all.map do |r|
         {
           recommendation_type:  r.recommendation_type,
           tier:                 r.tier,

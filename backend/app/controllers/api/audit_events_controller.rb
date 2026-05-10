@@ -24,8 +24,8 @@ module Api
       )
       authorize access, :index?
 
-      events = AuditEvent.all.order(occurred_at: :desc, id: :desc)
-      events = events.up_to(as_of) if as_of.present?
+      events = AuditEvent.all
+      events = events.where("occurred_at <= ?", as_of) if as_of.present?
 
       from_time = safe_parse_datetime(params[:from])
       to_time   = safe_parse_datetime(params[:to])
@@ -54,6 +54,7 @@ module Api
       end
 
       events = apply_before_cursor(events)
+      events = events.reorder(occurred_at: :desc, sequence: :desc, id: :desc)
 
       limit = [params.fetch(:limit, 100).to_i, 500].min
       rows = events.limit(limit + 1).to_a
@@ -94,10 +95,20 @@ module Api
 
     def apply_before_cursor(events)
       before_time = safe_parse_datetime(params[:before_occurred_at])
+      before_sequence = Integer(params[:before_sequence], exception: false)
       before_id = params[:before_id].presence
       return events unless before_time
 
-      if before_id.present?
+      if before_sequence && before_id.present?
+        events.where(
+          "occurred_at < :before_time OR " \
+            "(occurred_at = :before_time AND " \
+              "(sequence < :before_sequence OR (sequence = :before_sequence AND id < :before_id)))",
+          before_time: before_time,
+          before_sequence: before_sequence,
+          before_id: before_id,
+        )
+      elsif before_id.present?
         events.where(
           "occurred_at < :before_time OR (occurred_at = :before_time AND id < :before_id)",
           before_time: before_time,
@@ -113,6 +124,7 @@ module Api
 
       {
         before_occurred_at: rows.last.occurred_at.iso8601(6),
+        before_sequence: rows.last.sequence,
         before_id: rows.last.id,
       }
     end

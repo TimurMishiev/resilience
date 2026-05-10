@@ -12,6 +12,7 @@ interface AuditEventsParams {
   limit?: number
   as_of?: string
   before_occurred_at?: string
+  before_sequence?: number
   before_id?: string
 }
 

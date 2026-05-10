@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-05-08 (strict F6 closure completed at `4911373` and deployed to Fly version 60. `GET /api/recommendations/metrics` now returns `ai_status`; `RecommendationsPage` distinguishes `no API key` vs `breaker open` vs `no threshold`; full isolated proof is green and production smoke/coverage is green. Historical session arc below is preserved for takeover continuity.)
+Last updated: 2026-05-08 (current committed base is `3571b43` on `main`, deployed to Fly version 61. Active dirty slice closes the last two confirmed pre-wow-factor proof/provenance defects: the broken behavioural AI eval runner query and the audit-events sequence cursor mismatch. Focused + broad proof on the dirty tree are green. Historical session arc below is preserved for takeover continuity.)
 
 ## Current Phase
 
@@ -33,88 +33,73 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**No active implementation slice.**
+**Active dirty slice — pre-wow-factor proof-edge closure.**
 
-Status: **strict F6 closure completed, pushed, and deployed.**
+Status: **implemented locally, not committed, not deployed.**
 
-What changed:
-- `backend/app/controllers/api/recommendations_controller.rb`
-- `backend/spec/requests/api/recommendations_spec.rb`
-- `frontend/src/api/recommendations.ts`
-- `frontend/src/pages/RecommendationsPage.tsx`
-- `frontend/src/test/RecommendationsPage.test.tsx`
+Base truth before this slice:
+- repo `HEAD`: `3571b43`
+- branch: `main`
+- production: Fly `v61`
+- current committed base is aligned to production
+
+Objective:
+- close the two remaining confirmed pre-wow-factor defects surfaced by the multi-model frontier-eval consolidation:
+  - `backend/lib/ai_evals/recommendation_behavior_runner.rb` queried a nonexistent `recommendations.organization_id` column
+  - `backend/app/controllers/api/audit_events_controller.rb` still ordered/paginated same-timestamp audit rows by UUID instead of canonical `sequence`
+
+Dirty files in this slice:
+- `backend/lib/ai_evals/recommendation_behavior_runner.rb`
+- `backend/spec/lib/ai_evals/recommendation_behavior_runner_spec.rb`
+- `backend/app/controllers/api/audit_events_controller.rb`
+- `backend/spec/requests/api/audit_events_spec.rb`
+- `frontend/src/api/audit_events.ts`
+- `frontend/src/api/types.ts`
+- `frontend/src/test/DebriefPanel.test.tsx`
+- `frontend/src/test/useDebriefTimeline.test.ts`
 - `memory/execution_handoff.md`
 
-Behavior closed by this slice:
-- `GET /api/recommendations/metrics` now returns `ai_status` with:
-  - `api_key_configured`
-  - `breaker_open`
-  - `services_open`
-- `RecommendationsPage` AI-enriched tab now branches on the three real live states:
-  - Anthropic API key not configured
-  - circuit breaker open
-  - AI healthy but no items met the LLM threshold
-- direct regression coverage exists for all three frontend states
+What changed in this slice:
+- behavioural AI eval runner now pulls persisted recommendations from the reset single-tenant sandbox instead of querying a nonexistent tenant column
+- new runner regression spec proves the capture/scoring path works without relying on `recommendations.organization_id`
+- audit-events API now uses canonical descending order:
+  - `occurred_at DESC`
+  - `sequence DESC`
+  - `id DESC`
+- audit-events cursor now carries `before_sequence` and uses it for same-timestamp pagination
+- request spec now proves canonical same-timestamp ordering and sequence-aware pagination
+- frontend audit-events cursor types/tests were updated so debrief pagination forwards `before_sequence`
 
 Validation run for this slice:
 - `git diff --check`
-- `cd backend && TEST_DATABASE_PORT=5434 RBENV_VERSION=3.4.7 rbenv exec bundle exec rspec spec/requests/api/recommendations_spec.rb --format progress`
+- `cd backend && TEST_DATABASE_PORT=5434 RBENV_VERSION=3.4.7 rbenv exec bundle exec rspec spec/lib/ai_evals/recommendation_behavior_runner_spec.rb spec/requests/api/audit_events_spec.rb --format progress`
+- `cd frontend && PATH=\"$HOME/.nvm/versions/node/v24.11.1/bin:$PATH\" npx vitest run src/test/useDebriefTimeline.test.ts src/test/DebriefPanel.test.tsx --reporter=dot`
 - `cd frontend && PATH=\"$HOME/.nvm/versions/node/v24.11.1/bin:$PATH\" npx tsc -b`
-- `cd frontend && PATH=\"$HOME/.nvm/versions/node/v24.11.1/bin:$PATH\" npx vitest run src/test/RecommendationsPage.test.tsx --reporter=dot`
+- `cd backend && TEST_DATABASE_PORT=5434 RBENV_VERSION=3.4.7 rbenv exec bundle exec rspec --format progress`
+- `cd frontend && PATH=\"$HOME/.nvm/versions/node/v24.11.1/bin:$PATH\" npx vitest run --reporter=dot`
+- `cd frontend && PATH=\"$HOME/.nvm/versions/node/v24.11.1/bin:$PATH\" yarn build`
 
 Last validation results:
 - `git diff --check` → clean
-- recommendations request spec → `21 examples, 0 failures`
+- focused backend specs → `26 examples, 0 failures`
+- focused debrief Vitest → `19 passed`
 - frontend `tsc -b` → clean
-- focused RecommendationsPage vitest → `5/5` green
+- backend full suite → `2584 examples, 0 failures`
+- frontend full Vitest → `821/821`
+- frontend build → clean
 
-Known risk:
-- do not widen this into broader AI restore work; the app still honestly degrades when Anthropic is unavailable
-
-Next after this slice:
-- operational AI restore if the user wants Briefing / Ontology live before outreach
-- otherwise, final wow-factor work can start from the clean `4911373` / Fly `v60` base
-
-**Proof closeout and deploy are otherwise complete.**
+Known live caveat unchanged:
+- `/api/ai/summary` and `/api/ai/ontology_query` still return honest `422 "AI service is unavailable. Contact your administrator."`
+- this is accepted operational Anthropic availability debt, not part of this slice
 
 Current repo/runtime truth:
-- `MapPage.tsx` decomposition is substantially closed.
-  - Public surface reduced from 905 lines to 351 across six validated tranches.
-  - Current judgment: stop here unless a new concrete responsibility seam appears.
-  - Further extraction now risks wrapper churn more than architectural improvement.
-- Frontend proof completed locally on the current base:
-  - `cd frontend && npx tsc -b`
-  - `cd frontend && yarn lint`
-  - `cd frontend && yarn test`
-  - `cd frontend && yarn build`
-  - `cd frontend && yarn audit --level high` → only moderate findings, which matches CI pass policy
-- Fresh deployed proof on Fly `v60`:
-  - commander `/api/recommendations/metrics` returns `ai_status`
-  - `/recommendations` AI-enriched tab renders the healthy/no-threshold branch
-  - `/health` renders the AI circuit-breaker table
-  - production smoke + coverage: `23 passed, 1 skipped`
-- Remaining accepted live gap:
-  - `/api/ai/summary` and `/api/ai/ontology_query` still return honest `422 "AI service is unavailable. Contact your administrator."`
-- Backend proof completed locally under the CI-parity stack:
-  - Ruby 3.4.7 via `rbenv`
-  - PostgreSQL 17 on local port 5434 with PG17 client tools on `PATH`
-  - `cd backend && bundle exec brakeman --no-pager --exit-on-warn`
-  - `cd backend && bundle exec bundler-audit check --update`
-  - `cd backend && rails db:schema:load` against PG17
-  - migration / `db/structure.sql` sync check clean
-  - `cd backend && bundle exec rspec --format progress` → 2527 examples, 0 failures
-- Production deployed successfully to Fly version 46.
-- Post-deploy smoke completed:
-  - `flyctl status` healthy: 1 started, 2 auto-stopped as expected
-  - replay map smoke passed
-  - replay globe smoke passed
-  - map → globe → map selection continuity passed
-  - viewer `/health` shows lockout UI and makes no restricted backend calls
-  - commander-authenticated AI endpoints return honest `422 unavailable`
+- the app remains demoable from the committed `3571b43` / Fly `v61` base except for live AI generation availability
+- `MapPage.tsx` decomposition remains substantially closed at 351 lines; do not reopen it without a new concrete seam
+- the two remaining pre-wow-factor proof/provenance defects are now closed locally in the dirty tree
 
 Current next action:
-- restore Anthropic availability if live AI is required for the demo
-- otherwise move into outreach/demo prep from this base
+- gate / commit / push / deploy this slice if the user wants the fixes live before wow-factor work
+- after that, move to map/globe wow-factor from the new clean base
 
 Production hardening context preserved below for continuity. The prior
 `890a8d5` follow-up aligned `/` → `/sites` and added query-level
