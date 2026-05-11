@@ -6,7 +6,7 @@ type: project
 
 # Resilience — Execution Handoff
 
-Last updated: 2026-05-10 (`d283fa0` remains the current shipped runtime on Fly version 62. `7500177` is now pushed on `main` and proved the E2E lane split: Playwright functional E2E passed, the dedicated frontend-perf benchmark lane passed, backend/security passed, and the only CI red was the frontend `yarn audit` step. A new dirty slice now closes that audit failure by pinning the vulnerable `vite-plugin-pwa` transitive packages to patched versions. Historical session arc below is preserved for takeover continuity.)
+Last updated: 2026-05-10 (`d283fa0` remains the current shipped runtime on Fly version 62. Test/dependency follow-ups `7500177` and `a9c0468` are now pushed on `main`. CI run `25640679536` is fully green: frontend, backend, E2E, frontend-perf, and deploy all succeeded. The deploy job was a no-op for runtime truth: Fly still reports app version 62, so production behavior remains the `d283fa0` / v62 artifact. Historical session arc below is preserved for takeover continuity.)
 
 ## Current Phase
 
@@ -33,49 +33,11 @@ item 1, see ADR-010.)
 
 ## Current Slice
 
-**Active dirty slice — frontend audit resolution fix after `7500177`.**
+**No active implementation slice.**
 
-Status: **implemented locally, not committed, not deployed.**
+Status: **latest hardening follow-ups completed, pushed, CI-green, runtime unchanged.**
 
-Objective:
-- close the `Frontend — typecheck, lint, build` CI failure that remained after `7500177`
-- fix the three high `yarn audit --level high` advisories under `vite-plugin-pwa`'s transitive tree:
-  - `fast-uri` path traversal / host-confusion advisories
-  - `@babel/plugin-transform-modules-systemjs` arbitrary-code generation advisory
-
-Dirty files in this slice:
-- `frontend/package.json`
-- `frontend/yarn.lock`
-
-What changed in this slice:
-- added explicit Yarn resolutions:
-  - `fast-uri: ^3.1.2`
-  - `@babel/plugin-transform-modules-systemjs: ^7.29.4`
-- regenerated `frontend/yarn.lock`
-- no runtime code changed; this is a dependency/audit-only follow-up on top of the already-pushed E2E fix at `7500177`
-
-Validation run for this slice:
-- `git diff --check`
-- `cd frontend && PATH=\"$HOME/.nvm/versions/node/v24.11.1/bin:$PATH\" yarn install`
-- `cd frontend && PATH=\"$HOME/.nvm/versions/node/v24.11.1/bin:$PATH\" yarn audit --level high`
-- `cd frontend && PATH=\"$HOME/.nvm/versions/node/v24.11.1/bin:$PATH\" yarn build`
-- `cd frontend && PATH=\"$HOME/.nvm/versions/node/v24.11.1/bin:$PATH\" yarn test`
-
-Last validation results:
-- `git diff --check` → clean
-- `yarn install` → lockfile updated successfully
-- `yarn audit --level high` → **21 moderate, 0 high/critical**
-- `yarn build` → clean
-- `yarn test` → **821/821**
-
-Current next action:
-- commit + push this dependency-only follow-up on top of `7500177`
-- rerun CI; expected outcome is:
-  - `E2E — Playwright` stays green from the earlier lane split
-  - `Frontend — Globe + map benchmarks` stays green
-  - `Frontend — typecheck, lint, build` clears the prior `yarn audit` failure
-
-Closed slice immediately before this one:
+What closed in this session:
 - `7500177` — `frontend: fix local e2e incident coverage contract`
   - `production-smoke.spec.ts` and `production-coverage.spec.ts` now tolerate a legitimate empty incident list instead of timing out on `[data-testid="incident-row"]`
   - `frontend/package.json` scopes `yarn test:e2e` to `playwright test --grep-invert benchmark`, so the generic E2E lane stops re-running dedicated perf specs
@@ -85,8 +47,28 @@ Closed slice immediately before this one:
     - `Backend — RSpec` → success
     - `Backend — Brakeman + bundler-audit` → success
     - workflow overall → failure only because `Frontend — typecheck, lint, build` tripped `yarn audit` on three high transitive advisories
+- `a9c0468` — `frontend: resolve pwa audit advisories`
+  - added explicit Yarn resolutions:
+    - `fast-uri: ^3.1.2`
+    - `@babel/plugin-transform-modules-systemjs: ^7.29.4`
+  - regenerated `frontend/yarn.lock`
+  - local proof:
+    - `git diff --check` → clean
+    - `yarn audit --level high` → **21 moderate, 0 high/critical**
+    - `yarn build` → clean
+    - `yarn test` → **821/821**
+  - CI proof on run `25640679536`:
+    - `Frontend — typecheck, lint, build` → success
+    - `Backend — Brakeman + bundler-audit` → success
+    - `Backend — RSpec` → success
+    - `E2E — Playwright` → success
+    - `Frontend — Globe + map benchmarks` → success
+    - `Deploy — Fly.io` → success
+  - runtime truth after CI deploy job:
+    - Fly app still reports version `62`
+    - no production artifact change beyond the existing `d283fa0` runtime
 
-Closed slice immediately before that:
+Closed slice immediately before this one:
 - pre-wow-factor proof-edge closure completed, pushed, and deployed.
 
 Closed slice commit / deploy truth:
