@@ -166,7 +166,7 @@ GEM
       addressable (~> 2.8)
       bigdecimal (>= 3.1, < 5)
     json_schema (0.21.0)
-    jwt (2.10.2)
+    jwt (3.1.2)
       base64
     kamal (2.10.1)
       activesupport (>= 7.0)
@@ -460,7 +460,7 @@ DEPENDENCIES
   factory_bot_rails
   faker
   h3 (~> 3.7)
-  jwt (~> 2.10)
+  jwt (~> 3.1)
   kamal
   lograge
   pg (~> 1.1)
