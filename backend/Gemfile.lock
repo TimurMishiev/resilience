@@ -382,8 +382,8 @@ GEM
       bigdecimal
       concurrent-ruby (~> 1.0, >= 1.0.2)
       logger
-    shoulda-matchers (6.5.0)
-      activesupport (>= 5.2.0)
+    shoulda-matchers (7.0.1)
+      activesupport (>= 7.1)
     simplecov (0.22.0)
       docile (~> 1.1)
       simplecov-html (~> 0.11)
@@ -476,7 +476,7 @@ DEPENDENCIES
   rubocop-rails-omakase
   sentry-rails (~> 6.5)
   sentry-ruby (~> 6.5)
-  shoulda-matchers (~> 6.0)
+  shoulda-matchers (~> 7.0)
   simplecov
   solid_cache
   solid_queue
