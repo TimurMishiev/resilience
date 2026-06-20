@@ -51,7 +51,7 @@ jobs:
       AI_EVALS_RESULTS_DIR: ${{ github.workspace }}/backend/tmp/ai_evals_live
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ruby/setup-ruby@v1
         with:
